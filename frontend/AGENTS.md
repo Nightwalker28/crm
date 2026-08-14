@@ -6,10 +6,14 @@ The frontend is Next.js + React + TypeScript and should stay aligned with the sh
 
 `docs/design/` is the written source of truth for how Lynk looks and feels. Read it before writing or restyling UI:
 
-- `docs/design/design.md` — design principles, colour policy, typography, spacing, component law, accessibility floors, and the pre-ship checklist.
+- `docs/design/design.md` — design principles, colour policy, typography, spacing, component law, the five page archetypes (§4.7), accessibility floors, and the pre-ship checklist.
 - `docs/design/tokens.md` — the token vocabulary, both themes, and how light values are derived from dark.
+- `docs/design/rebuild.md` — **the active programme.** Rulings R1–R10 constrain new work; sub-phases 5.1–5.10 are rewriting every surface onto the archetypes.
+- `docs/design/rebuild-census.md` — which sub-phase owns which of the 327 frontend files. A new file added during feature work needs a row.
 
-Short form: neutral gray instrument with no brand accent, hierarchy from ink and space rather than boxes, dark as default with light derived from it in OKLCH, Inter everywhere with monospace reserved for secrets, and shared primitives instead of page-local UI.
+Short form: neutral gray instrument with no brand accent, hierarchy from ink and space rather than boxes, dark as default with light derived from it in OKLCH, Inter everywhere with monospace reserved for secrets, and shared primitives instead of page-local UI. Every screen is one of five archetypes; only the surface's name is larger than the body; a box is earned by interactivity or separation, never by grouping.
+
+Use the `frontend-change` skill to build UI inside this system, and `frontend-design` when the work changes it.
 
 The rules are guarded, not just written down:
 

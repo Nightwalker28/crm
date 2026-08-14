@@ -783,7 +783,7 @@ rule.
 
 | | Sub-phase | Owns |
 |---|---|---|
-| 5.0 | Direction, law, census | The archetypes, the type ladder, the signature, the rulings every later sub-phase needs |
+| 5.0 | Direction, law, census — **done** | The archetypes, the type ladder, the signature, the rulings every later sub-phase needs |
 | 5.1 | Cross-cutting primitives | Seven extractions + the `@headlessui/react` → radix dialog migration |
 | 5.2 | Panel language | The 206 hand-rolled card boxes |
 | 5.3 | Record detail | **7** archetypes → 1 (the audit's Layer 4 recorded 5; catalog and the portal pages were missed) |

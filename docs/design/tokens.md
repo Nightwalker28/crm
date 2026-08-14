@@ -301,6 +301,24 @@ buttons. `Button`, `Input`, `Select` and `InputGroup` all resolve to these, so a
 control and the control beside it always match. Never override a height at the call
 site.
 
+### 6.1 Rail widths
+
+The §4.7 archetypes put a fixed column beside the content on three of the five surfaces.
+Two widths, named by role, because they are not the same job:
+
+| Token | Value | Role |
+|---|---|---|
+| `--width-rail-nav` | `16rem` (256px) | Lateral navigation — the settings nav. A list of destinations. |
+| `--width-rail-context` | `20rem` (320px) | Context beside content — the record spine, the form aside. Holds label/value pairs and inline controls. |
+
+`20rem` is the wider of the two because it carries a field label above its value at 12/14px
+and has to fit a person's name or an account name without truncating on the common case.
+`16rem` fits a nav label at `text-sm` with an icon and an indent level.
+
+These replace measured drift, not a gap: the record rail, the form aside and the settings
+sidebar were `18rem`, `20rem`, `23.75rem` and `max-w-md` across the app for what is
+structurally two roles.
+
 ---
 
 ## 7. Type
@@ -320,10 +338,38 @@ Same pixel sizes, two line heights, split on whether the text can wrap.
 | `text-xs` | 12px | `text-p-xs` | 12px / 1.55 |
 | `text-sm` | 14px | `text-p-sm` | 14px / 1.55 |
 | `text-base` | 16px | `text-p-base` | 16px / 1.6 |
+| `text-lg` | 18px | — | — |
 
 `text-2xs` replaced the 18 hand-written `text-[11px]` eyebrows. The prose family
 replaced 61 hand-tuned `text-sm leading-6` / `text-xs leading-5` pairs — if you find
 yourself writing a `leading-*` next to a `text-*`, you want a prose token.
+
+### The roles, which are what you actually pick
+
+A size on its own is not a decision. `design.md` §3.3 closes the ramp as a set of **roles**,
+each fixing size, weight and ink together — and the class you type comes from the role, not
+from how big you want the text to be.
+
+| Role | Classes |
+|---|---|
+| Surface title | `text-lg font-semibold text-copy-primary` |
+| Section heading | `text-sm font-semibold text-copy-label` |
+| Eyebrow | `text-2xs font-semibold text-copy-label` |
+| Field label | `text-xs font-medium text-copy-label` |
+| Value | `text-sm text-copy-primary` |
+| Body / cell | `text-sm text-copy-secondary` |
+| Metadata | `text-xs text-copy-muted tabular-nums` |
+| Stat figure | `text-2xl font-bold text-copy-primary tabular-nums` |
+
+**Tight `text-base` (16px) is not in the product ramp.** It stays mapped because
+`text-p-base` needs the size for prose that wraps at reading length — portal copy, legal
+text, an error explanation — but there is no tight 16px role. It used to be the
+section-heading size, and two pixels above a 14px body is why one role had drifted to four
+sizes. Reaching for it in product UI is drift, not a judgement call.
+
+Note the inversion in the table above: a **section heading is quieter than the value beneath
+it**. That is §1.3 applied to type — the operator came for the data, not for the word above
+it. Heading and value differ on weight and ink and not at all on size.
 
 Mapped to `--font-sans` / `--font-mono` in `@theme inline`, so `font-sans` and
 `font-mono` are the classes. `--font-inter` is injected by `next/font/google` in
@@ -409,6 +455,12 @@ grep -rn "outline-none" app components | grep -v "focus-visible"
 
 # spacing steps that are not on the ladder (design.md 4.1)
 grep -rnE "\b(gap|p)-5\b" app components --include=*.tsx
+
+# tight 16px is not a product role - only text-p-base survives (design.md 3.3)
+grep -rn "\btext-base\b" app components --include=*.tsx
+
+# one empty-value string per context, and no call site picks it (design.md 3.6)
+grep -rnE '"(Not recorded|Not provided|Unassigned)"' app components --include=*.tsx
 
 # a looping animation must carry its own reduced-motion guard
 grep -rn "animate-\|animation:" app components app/globals.css | grep -v "motion-reduce\|motion-safe\|prefers-reduced-motion"

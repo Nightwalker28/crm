@@ -8,7 +8,8 @@ restyle any UI in `frontend/`, start here.
 | [`design.md`](./design.md) | The design language — principles, colour policy, type, spacing, components, a11y floors, ship checklist | Before writing **any** UI |
 | [`tokens.md`](./tokens.md) | The token vocabulary — every token, its value in both themes, and how light is derived from dark | Before touching colour, type, spacing, or radius |
 | [`research-frappe-crm.md`](./research-frappe-crm.md) | Notes on Frappe CRM's design methodology, where several of our rules came from | Background. Not law. |
-| [`rebuild.md`](./rebuild.md) | **The active work.** The rebuild programme — every surface rebuilt onto one archetype set, sub-phases 5.0–5.10 | Before starting or reviewing any frontend work right now |
+| [`rebuild.md`](./rebuild.md) | **The active work.** The rebuild programme — every surface rebuilt onto one archetype set, sub-phases 5.0–5.10, and the rulings R1–R10 | Before starting or reviewing any frontend work right now |
+| [`rebuild-census.md`](./rebuild-census.md) | All 327 frontend files, one row each, with an owning sub-phase and a verdict | To find out who owns a file, and before closing a sub-phase |
 | [`consistency-pass.md`](./consistency-pass.md) | The 2026-08 audit and Phases 0–4, which added `PageShell` and `RecordTable`. Phase 5 onward moved to `rebuild.md` | For the measurements, and for what has already landed |
 
 Implementation lives in `frontend/app/globals.css` (tokens) and
@@ -39,9 +40,16 @@ rendered ones — and a new *class* of exemption is written into `design.md` fir
   OKLCH by holding hue and chroma.
 - Inter everywhere. Monospace only for secrets and raw payloads; `tabular-nums` for
   aligned figures.
+- **Only the surface's name is larger than the body.** The ladder is a closed set of
+  roles, and a section heading is *quieter* than the values under it. Tight 16px is not
+  in the product ramp.
 - Two type families at the same sizes: tight for single-line labels, `text-p-*` for
   anything that wraps. Never hand-tune a `leading-*`.
 - Sentence case. No `uppercase`, no faked small caps.
+- **A box is earned by interactivity or by separation, never by grouping.** Panel → ink
+  group → row, and at most two levels of visible container.
+- Every screen is one of **five archetypes** (§4.7). A record page is a spine, and the
+  spine is the only editable region on it.
 - One radius vocabulary — `rounded-[var(--radius-*)]`, named for what it wraps. The
   Tailwind aliases emit no CSS on purpose.
 - Use the primitives in `components/ui/`. A page-local table, dialog, or toolbar is a

@@ -1,6 +1,7 @@
 # Lynk frontend: the rebuild program
 
-**Status:** approved 2026-08-14. Sub-phase 5.0 in progress.
+**Status:** approved 2026-08-14. **Sub-phase 5.0 done** — direction, law and census landed;
+the owner took the record spine on 14 Aug 2026. **5.1 is next.**
 
 This is Phase 5 of [`consistency-pass.md`](./consistency-pass.md), expanded into its own
 programme because it outgrew the pass containing it — and because it carries scoping
@@ -64,8 +65,12 @@ Confirmed with the owner. Items 2 and 5 override `consistency-pass.md` decision 
 
 ## Settled rulings
 
-Decided with the owner 2026-08-14, before 5.0 draws a wireframe. These are the answers
-every later sub-phase builds against; they move into `design.md` as part of 5.0.
+Decided with the owner 2026-08-14. These are the answers every later sub-phase builds
+against, and they are all in `design.md` now.
+
+**R1–R6** were settled before 5.0 drew a wireframe, and constrained it. **R7–R10** came *out*
+of 5.0 — the type ladder, the panel taxonomy, the record archetype and the table variant set
+— so they are decisions the design work produced rather than inputs it was given.
 
 ### R1 — The commit model is per surface, and visible from the control
 
@@ -235,6 +240,124 @@ Fast list triage — re-staging five leads without opening five records — is *
 built**. If it is wanted later it is a follow-on with its own interaction pass, not a
 side effect of this one.
 
+### R7 — The type ladder steps down. Only the surface's name is larger than the body
+
+Decided in 5.0 and written into `design.md` §3.3. **Tight 16px leaves the product ramp**, so
+`text-lg` (18px) is the only size above the 14px body and it means exactly one thing: the
+name of the surface you are looking at.
+
+Everything below that is separated by **ink and weight, not size**:
+
+| Role | Size | Weight | Ink |
+|---|---|---|---|
+| Surface title | 18 | semibold | primary |
+| Section heading | 14 | semibold | **label** |
+| Eyebrow | 11 | semibold | label |
+| Field label | 12 | medium | label |
+| **Value** | 14 | normal | **primary** |
+| Body / cell | 14 | normal | secondary |
+| Metadata | 12 | normal | muted |
+
+**A section heading is quieter than the values under it.** That inversion is the ruling, not
+a side effect: on a record page the operator came for *Jane Doe*, not for the words *Contact
+details*, and a heading that outranks the data is furniture outranking content. Heading and
+value differ on two axes (weight, ink) and none of the third, which is a stronger signal
+than the 2px it replaces and costs no vertical space.
+
+Why 16px goes rather than being pinned: two pixels above body is not a hierarchy, it reads
+as "slightly bigger text", and it is measurably why one role drifted to four sizes —
+`text-lg` ×46, `text-base` ×43, `text-sm` ×24, bare `font-semibold` ×23 on `<h2>`. §3.3
+already said that a thing needing to be slightly bigger needs weight or space instead; the
+step that let people ignore that is now gone. `text-p-base` survives for prose.
+
+Also settled here: **one stat-figure size.** Dashboards ran `text-3xl` ×27, `text-2xl` ×18,
+`text-xl` ×15 for one role. It is `text-2xl font-bold tabular-nums`, once (5.7).
+
+**Sweep cost:** 64 tight `text-base` and 46 `text-lg` `<h2>`s. It lands with the surface that
+owns each file, not as a separate pass — `SectionHeading` (5.1) is what makes it a one-line
+change per site.
+
+### R8 — Three ways to group, and a box is earned
+
+`design.md` §1.3 budgets two levels of visible container but never named them, which is how
+**206 hand-rolled card-shaped boxes** accumulated against 65 files using `<Card>`. The
+taxonomy, now in §1.3:
+
+| Role | Draws | For |
+|---|---|---|
+| **Panel** | border `line-default` + `bg-surface` + `radius-card` | A top-level region. Level 1. A panel may not contain a panel. |
+| **Ink group** | nothing | A named cluster inside a panel. Where most of the 206 belong. |
+| **Row** | border `line-subtle` + `radius-control`, or a bare `divide-y` | A repeated **interactive** item inside a panel. Level 2. |
+
+> **A box is earned by interactivity or by separation. Never by grouping.**
+
+Two things this decides that were live drift: panels take the panel border tier and rows take
+the row-divider tier (which is what those tokens already mean), and **a repeated item that
+is not interactive is not a box at all** — it is a `divide-y` line. That is what resolves the
+activity/comment/task rows currently split between `radius-control + line-default` and
+`radius-card + line-subtle` across five files.
+
+### R9 — The record is a spine, and the spine is the only editable region
+
+The owner's call, 14 Aug 2026, against two alternatives (see 5.0). Full contract and
+wireframe in `design.md` §4.7, archetype 2.
+
+A fixed `20rem` rail carries the record's identity, state and relationships. The content
+region is the only scroller and carries one tab strip — `Details · Activity · Tasks · Files`,
+in that order, on every record type.
+
+> **The spine is the only editable region on the page.**
+> Every control that writes to the record is in it. Nothing in the content region edits.
+
+This is what makes it a signature rather than a layout, and it is the reason it was chosen
+over the two alternatives. R2 draws a categorical boundary and then names its own risk — a
+half-editable page where nothing signals what is clickable is worse than either pure model.
+A left rail on a CRM is ordinary; a left rail that *is the editable surface of the record* is
+specific to Lynk, because R1 and R2 are. The boundary is carried by position, so it is
+learnable in one glance and it cannot rot: a control that drifts out of the rail is visibly
+in the wrong place, which is not true of a convention.
+
+Consequences that are decisions, not details:
+
+- **The record page becomes a full-height column**, like the list page (§11.1). The content
+  region scrolls; the rail is a flex sibling of it, so this adds **no** `position: sticky`
+  and needs no R3 exception. That is a behaviour change on all 12 record pages.
+- **Every record type carries the spine.** The State block is omitted where a record has no
+  state fields; the Connected block is not optional. A rail carrying only "Created /
+  Updated" is a signal the record type is under-modelled — raise it, do not answer it with a
+  second archetype.
+- **One tab strip, owned by the archetype**, so nested tabs have nowhere to recur and
+  contracts, contacts and accounts inherit the four panels rather than each page remembering
+  them.
+- **The cost is width:** ~320px on every record, leaving ~700px of content at 1280px. A
+  two-column field grid fits, a three-column one does not. The three line-item documents are
+  where it bites; `RecordTable variant="lineItems"` scrolls sideways inside the content
+  region rather than the archetype bending for them.
+- **Below `lg` the rail stacks and the page reverts to a document scroll.** A fallback, not a
+  responsive feature.
+
+### R10 — One table, three variants
+
+Decided in 5.0 so that 5.5 is execution rather than discovery. `RecordTable` carries one
+`cva` variant axis and three independent props; there is no second table.
+
+| Variant | Shape | Consumers |
+|---|---|---|
+| `default` | selection, sort, row-open gesture, pagination | the 24 module lists + the 12 settings/automation/integration lists that move in 5.5 |
+| `lineItems` | editable rows, add/remove row, totals footer; no selection, no sort, no pagination | quote, order, POS invoice, `TransactionLineItemsEditor`, and the matching form pages |
+| `readOnly` | no selection, no sort, no row-open | the 2 client-portal tables (5.8) |
+
+Independent props, not variants, because they combine freely: `selectable`, `rowActions`,
+`density`. A settings list is `default` with `selectable={false}` — not a fourth variant.
+
+`variant="lineItems"` is the load-bearing build of 5.5. **If `RecordTable` genuinely cannot
+carry an editable row without contorting, that finding is written into `design.md` and taken
+to the owner before a second table is allowed to exist.** It does not get quietly exempted.
+
+The only files permitted to import `components/ui/Table` are the three primitives that
+implement it: `RecordTable`, `ModuleTableLoading`, `ModuleListToolbar`. That becomes a
+source-level check in 5.10.
+
 ---
 
 ## The coverage contract
@@ -245,14 +368,28 @@ side effect of this one.
 |---|---|
 | `app/**/page.tsx` | **116** — dashboard 90, client 17, auth 3, public 1, book 1, e2e harness 3 |
 | `app/**/layout.tsx` | 4 |
+| `app/**` route boundaries and shell | **38** — added by 5.0; see below |
 | `components/**` (non-`ui`) | 115 files, ~32,000 lines |
 | `components/ui/` | 54 files, 6,273 lines |
+| **Total** | **327** |
 
-**5.0 produces `rebuild-census.md`** — every one of those files, one row each, with its
-owning sub-phase and a one-word verdict (`rebuild` / `adopt` / `delete` / `unchanged`).
-It is updated as each sub-phase closes, so *"did we skip anything"* is answered by
-reading a table rather than by memory. **A sub-phase is not done while a row it owns is
+**The denominator was wrong at 289, and the missing 38 matter.** They are the `error.tsx` /
+`loading.tsx` / `not-found.tsx` route boundaries plus `providers.tsx`, `ClientLayout.tsx` and
+`AuthCallbackClient.tsx`. **Fourteen `error.tsx` files exist in four different sizes** — 3, 7,
+14 and 18 lines — so the §7.4 error state has four shapes in the one place `PageShell` cannot
+supply it. The audit measured error-state drift *inside* pages and missed it at the boundary
+entirely. They are owned by 5.1, because the fix is one shape drawn from `RouteStates` rather
+than 38 decisions.
+
+**5.0 produced [`rebuild-census.md`](./rebuild-census.md)** — every one of those files, one
+row each, with its owning sub-phase and a one-word verdict (`rebuild` / `adopt` / `delete` /
+`unchanged`). It is updated as each sub-phase closes, so *"did we skip anything"* is answered
+by reading a table rather than by memory. **A sub-phase is not done while a row it owns is
 unmarked.**
+
+The census also records the rule that keeps "owner" meaningful: the owning sub-phase is the
+one that *rebuilds* the file. 5.2 and 5.9 own almost nothing and touch almost everything,
+which is why neither is scheduled first.
 
 Three groups are marked `unchanged` up front, with reasons, and they are the only ones:
 
@@ -412,6 +549,118 @@ the type ladder needs a step that does not exist, this file, `rebuild-census.md`
 `consistency-pass.md` edits.
 
 **Gate: the owner reads the direction and the wireframes before 5.1 starts.**
+
+### Status: done — the direction
+
+Docs only, as specified. No product code, so there is nothing to verify beyond the documents
+themselves; `check-design.sh` is unchanged at 3 of 14 failing, the same three.
+
+**The three open axes, decided.**
+
+| Axis | Decision | Lives in |
+|---|---|---|
+| Type | **The ladder steps down.** Tight 16px leaves the product ramp; only the surface's name is larger than the body; a section heading is quieter than the values under it | `design.md` §3.3 · **R7** |
+| Layout | **Five archetypes**, one wireframe and contract each | `design.md` §4.7 |
+| Signature | **The record spine** — and the rule that the spine is the only editable region on the page | `design.md` §4.7 archetype 2 · **R9** |
+
+**The signature, and what it was chosen over.** Three record structures were drawn at
+fidelity in Lynk's own tokens and compared with the owner: the spine, a two-column document
+(closest to today — archetype 1 applied to the other nine record types), and a tabs-first
+full-width page (cheapest migration — eight of twelve record types are already roughly that
+shape). The owner took the spine on 14 Aug 2026.
+
+The reasoning, recorded because the cheap option was genuinely tempting:
+
+- **Tabs-first wins the migration and loses the product.** It puts relationships behind a tab
+  on every record in a CRM. That is the audit's "add a note is 0 clicks, 2 clicks, or
+  impossible" finding relocated to a different field, not fixed.
+- **Two-column is the median answer, and its rail has a hole in it.** Its one distinctive
+  claim is a persistent context rail that is not persistent — it scrolls away with the page.
+  Making it stay needs a `position: sticky` exception written on the same day R3 deletes ten
+  of them. It is also three container levels against §1.3's budget of two.
+- **The spine is the only one where the rule is carried by the structure** rather than by a
+  convention enforced at review — which is how seven archetypes happened in the first place.
+
+**Signature alternatives worked and rejected**, per the skill's requirement to work at least
+two and to apply the calibration test (*would I have produced this for any CRM?*):
+
+| Rejected | Why |
+|---|---|
+| A **lifecycle track** as the signature | Only means anything on lead, deal, quote and order. A signature that works on a third of the record types is not one. **Kept** as an optional first block of the spine where a real pipeline exists. |
+| A **connection strip** of related-record chips under the header | R5 deletes `Pill` on the grounds that a capsule carries no information. Re-introducing a chip row on every record page contradicts that on the same day. |
+| A **hairline ledger grid** — rule every surface on one baseline so the app reads as engineering paper | A real look, and a direct contradiction of §1.3, which says hierarchy comes from ink and not from lines. The pinned language wins (decision 1). |
+| **The ink ladder itself**, with no structural signature | Genuinely unusual, and it is already happening — it is R7. But it is a rule, not an element; there is nothing to point at. It works better as the ground the signature stands on. |
+
+### Status: done — R5 applied, the tone classification
+
+Every enum value in `lib/statusStyles.ts`, sorted once, in the doc, before 5.1 rewrites the
+file. **62 values across 13 maps.** `success` is classified from day one even though a list
+renders it as plain ink — R5 requires that, so "colour the signed states green" stays a
+one-line edit rather than a type change.
+
+| Map | `neutral` | `success` | `attention` | `critical` |
+|---|---|---|---|---|
+| Insertion order status | draft · issued · active · imported | completed | — | cancelled |
+| Contract status | draft · review · sent · active | signed | partially_signed · expired | cancelled |
+| POS invoice status | draft · issued | paid | — | void |
+| POS payment status | unpaid · partial · refunded | paid | — | — |
+| Opportunity stage | lead · qualified · proposal · negotiation · unstaged | closed_won | — | closed_lost |
+| Lead status | new · contacted · qualified · unqualified | converted | — | — |
+| Quote status | draft · sent | accepted | expired | declined |
+| Order status | draft · confirmed | fulfilled | — | cancelled |
+| Task status | todo · in_progress | completed | — | blocked |
+| Support case status | new · open · closed | resolved | pending | — |
+| Support case priority | low · medium | — | high | urgent |
+| Generic fallback | any unmapped value | — | — | — |
+
+**Categories — no tone at all, rendered as plain text:**
+
+| Map | Values | Why it is a category |
+|---|---|---|
+| Lead score grade | hot · warm · cold | Ordinal, but no value is an outcome and none is a deviation. An operator finds hot leads by sorting the column, which is what a list is for. |
+| Task priority | high · medium · low | R5: priority that is not an SLA is a category. A task's priority is set by the person who made the task. |
+
+Support case priority is the deliberate contrast: it **is** effectively an SLA — it drives
+response time — so it keeps a tone where task priority does not. That is the distinction R5
+draws, applied rather than restated.
+
+**Measured outcome: 13 of 62 values carry colour in a list — 21%,** against roughly 85%
+today. R5 predicted ~15%; the gap is contracts, which legitimately has three states an
+operator must act on.
+
+Three findings that came out of doing this classification, which are build inputs rather than
+observations:
+
+- **The AR list has no attention signal, and adding one to the enum would be wrong.**
+  `unpaid` and `partial` are the *normal* state of a recent invoice, so colouring them makes
+  an AR list mostly amber and re-creates exactly the noise R5 removes. What deserves
+  attention is **overdue** — `due_date < today && status !== "paid"` — which is a **derived
+  tone**, not an enum value. `StatusValue` must therefore accept a tone override computed by
+  the caller from a condition, not only a tone looked up from a value. That is an API
+  requirement on 5.1 and a display requirement on 5.5 and 5.7.
+- **`labelize()` is a §3.5 violation in the data layer.** It title-cases every unmapped value
+  and the maps hard-code "Closed Won", "In Progress" and "To Do", so sentence case is broken
+  on strings that reach every list page in the app — by a helper, not by a designer. Correct
+  forms: "Closed won", "Closed lost", "In progress", "To do". Recorded in `design.md` §3.6.
+- **Two maps already render wrong and nobody noticed**, because a pill looks plausible either
+  way. `sent` / `issued` / `imported` resolve to `bg-action-primary-muted` + `text-primary`,
+  and §11 records that `--color-primary` was neutralised and `bg-action-primary` was a dead
+  class emitting no CSS. Those chips are broken at HEAD. They are deleted with `Pill`.
+
+### Status: done — the remaining 5.0 rulings
+
+| Ruling | Outcome | Written into |
+|---|---|---|
+| Panel taxonomy | Three roles — panel / ink group / row. **A box is earned by interactivity or by separation, never by grouping** | `design.md` §1.3 · **R8** |
+| Button variants | Cut 9 → **6**: `default` · `outline` · `ghost` · `destructive` · `destructiveOutline` (new) · `destructiveGhost` (renamed from `dangerGhost`). `primary`, `danger`, `secondary`, `link` deleted | `design.md` §2.2 |
+| One empty-value string | **`Not set`** in a field, **`—`** in a table cell — the renderer decides from context, no call site picks. `"Unassigned"` survives only as a filter-bucket label | `design.md` §3.6 |
+| The table variant set | `default` · `lineItems` · `readOnly`, with `selectable` / `rowActions` / `density` as independent props | **R10** |
+| Rail widths | `--width-rail-nav` 16rem, `--width-rail-context` 20rem — the record spine and the form aside are the same width | `tokens.md` §6.1 |
+| Page split and field grid | One ratio `lg:grid-cols-[minmax(0,1fr)_20rem]`, one field-grid breakpoint `md:grid-cols-2` — replacing 10 ratios and 78 hand-written grids | `design.md` §4.4 |
+
+**Not settled here, deliberately.** The nine-to-twelve private field renderers are named in
+5.3 but their replacement API is 5.1's job — it needs a real call site to be designed
+against, per scoping decision 4. 5.0 fixes only the *type roles* they must resolve to (R7).
 
 ---
 

@@ -14,6 +14,12 @@ specified, not improvised, and every rule is written so it can be checked:
   motion, accessibility floors, and the pre-ship checklist. Cite sections by number.
 - `docs/design/tokens.md` — the token vocabulary, both themes, and how light is derived
   from dark in OKLCH. Read before touching colour, type, spacing, or radius.
+- `docs/design/rebuild.md` — **the active programme.** Rulings R1–R10 constrain new work:
+  what autosaves and what does not (R1/R2), that sticky is gone (R3), that an action row
+  owns its children's height (R4), that colour marks exception rather than state and
+  `Pill` is deleted (R5), and that inline edit is detail-page only (R6).
+- `docs/design/rebuild-census.md` — which sub-phase owns which file. **A new file added
+  during feature work needs a row here**, or the coverage contract silently rots.
 - `docs/design/README.md` — orientation and the short version.
 
 The rules that fail a review:
@@ -21,7 +27,14 @@ The rules that fail a review:
 - Neutral gray instrument, **no brand accent**. Colour only where it carries meaning:
   status, destructive intent, chart series (§1.2, §2.2). One primary button per view.
 - Hierarchy from ink weight and space, never from boxes, fills, or shadows. At most two
-  levels of visible container on a screen (§1.3, §4.6).
+  levels of visible container on a screen (§1.3, §4.6). **A box is earned by
+  interactivity or by separation, never by grouping** — panel / ink group / row (§1.3).
+- **Every screen is one of the five archetypes** — list, record, form, settings,
+  dashboard (§4.7). A record page is a spine, and the spine is the only editable region
+  on it. A screen that is none of the five has not decided which it is.
+- **The type ladder is a closed set of roles**, not sizes: only the surface's name is
+  larger than the body, and a section heading is *quieter* than the values under it.
+  Tight `text-base` (16px) is not in the product ramp (§3.3).
 - No raw hex, no Tailwind palette classes (`bg-slate-800`, `text-gray-400`), no arbitrary
   colour. Map to a token; if none fits, add it in `globals.css` and derive its light
   value properly (§2.5). Focus uses `ring-focus`, never the action colour (§2.3).
@@ -46,7 +59,12 @@ The rules that fail a review:
 Scope rule: restructuring screens the task did not name is a redesign, and it gets
 proposed before it is built (§1.1). If the work genuinely contradicts a rule, change the
 rule in `docs/design/design.md` in the same slice, with the reason written down (§12) —
-do not let a screen silently disagree with the file.
+do not let a screen silently disagree with the file. **If the slice would change the
+system rather than consume it, stop and load `frontend-design` instead.**
+
+Two primitives are mid-flight and must not gain new call sites: `Pill` is deleted by
+rebuild 5.1 (use `StatusValue`), and `components/ui/Table` is being narrowed to three
+importers (use `RecordTable`).
 
 ## Inspect first
 

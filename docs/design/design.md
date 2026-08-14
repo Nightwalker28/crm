@@ -87,6 +87,32 @@ always wrong.
 Nesting depth budget: **at most two levels of visible container** on any screen.
 Page → panel. Not page → panel → card → box.
 
+**The panel taxonomy.** "Two levels of container" needs the two levels named, or every
+group of fields becomes a box by default — which is how 206 hand-rolled card-shaped boxes
+accumulated against 65 files using `<Card>`. There are exactly three ways to group
+something, and only two of them draw:
+
+| Role | Draws | Token set | For |
+|---|---|---|---|
+| **Panel** | border + ground + radius | `Card` — `border-line-default`, `bg-surface`, `--radius-card`, `p-6` (or `p-4` when dense) | A top-level region of a page. Level 1. **A panel may not contain a panel.** |
+| **Ink group** | nothing | a section heading + a stack. No border, no ground, no radius | A named cluster of fields or rows *inside* a panel. This is where most of the 206 belong. |
+| **Row** | border + radius, no ground | `border-line-subtle`, `--radius-control` — or a bare `divide-y` | A repeated item inside a panel: an activity entry, a comment, a task, a picker option. Level 2, and only when the item is individually interactive. |
+
+The rule that decides between them:
+
+> **A box is earned by interactivity or by separation. Never by grouping.**
+> Grouping is a heading and some space.
+
+Two consequences worth stating, because both were live drift:
+
+- **Panels take `border-line-default`; rows take `border-line-subtle`.** That is what those
+  two tiers already mean in `tokens.md` §2 — panel edges versus row dividers. The
+  same-role boxes that split across `radius-card + line-subtle` and
+  `radius-control + line-default` were reading one tier as the other.
+- **A row that is not interactive is not a box at all.** If the operator cannot click it,
+  hover it or focus it, it is a `divide-y` line in a stack. A border around static content
+  inside a panel is the third level §1.3 forbids, wearing a smaller radius.
+
 ### 1.4 One theme, two weights
 
 Light is not a separate palette. Every non-neutral value in `.light` is derived from
@@ -158,8 +184,34 @@ loudest thing on a gray page without introducing a hue.
 | Primary label | `#0b0d10` | `#ffffff` |
 
 Because the fill is maximally loud, **there is exactly one primary button per view.**
-A screen with two filled buttons has no primary action. Secondary actions use the
-`secondary` or `outline` button variants; tertiary actions use `ghost`.
+A screen with two filled buttons has no primary action.
+
+**The variant set is closed at six.** `Button` shipped nine, three of which were aliases
+of another and one of which had no call site at all. Measured across `app/` and
+`components/`:
+
+| Variant | Call sites | Ruling |
+|---|---|---|
+| `default` | 280 (implicit) | **Keep.** The one neutral fill. |
+| `outline` | 296 | **Keep.** Every secondary action. |
+| `ghost` | 126 | **Keep.** Tertiary and icon-only actions. |
+| `destructive` | 10 | **Keep.** The confirm button of a destructive flow. |
+| `destructiveOutline` | — | **Add.** Two dialogs hand-write this string today. |
+| `destructiveGhost` | 17 | **Keep, renamed** from `dangerGhost`. |
+| ~~`primary`~~ | 0 | **Delete** — a duplicate of `default`. |
+| ~~`danger`~~ | 0 | **Delete** — a duplicate of `destructive`. |
+| ~~`secondary`~~ | 8 | **Delete** — `outline` at a different ground, for 8 call sites against 296. |
+| ~~`link`~~ | 0 | **Delete.** A link in body copy is an `<a>` (§2.2 above), not a button. |
+
+The three destructive variants share one prefix on purpose: `destructive` /
+`destructiveOutline` / `destructiveGhost` is a legible ladder, where
+`destructive` / `danger` / `dangerGhost` was three names for two ideas.
+
+**Height is owned by the action row, not by the call site.** An `ActionBar` sets the size
+for its children — `sm` in a toolbar, `default` in a page header or a form — so a row
+cannot mix a 38px button with a 32px one. `lg` stays restricted to auth and empty-state
+CTAs (§4.2). Widths may still differ: an icon-only button beside a labelled one is the
+same height and narrower, and that is not a mismatch.
 
 Links inside body copy are `text-copy-primary` with an underline offset — not a
 coloured link. A coloured link inside a gray page is the loudest pixel on screen for
@@ -245,24 +297,52 @@ Numbers that need to line up in a column get `tabular-nums`, not a mono face:
 That is what the feature is for — it gives you fixed-width digits inside the body
 face, with none of the terminal texture.
 
-### 3.3 The size ramp
+### 3.3 The ladder
 
-There are **two parallel families at the same pixel sizes**, split by whether the text
-can wrap. Getting this wrong is what makes copy look cramped or labels look floppy.
+> **Only the surface's name is larger than the body. Everything else is ink.**
 
-**Tight family** — single-line text that will not wrap:
+Under one face and no accent, hierarchy inside a page is the *only* place typographic
+personality can live — so it is specified as a closed set of **roles**, not as a range of
+sizes. A role fixes size, weight and ink together. Picking one is picking all three.
 
-| Class | Use |
-|---|---|
-| `text-2xs` (11px) | Section eyebrows, dense chips |
-| `text-xs` (12px) | Labels, table column headers, pills, metadata |
-| `text-sm` (14px) | **Default for everything.** Body, table cells, inputs, buttons, nav |
-| `text-base` (16px) | Section headings inside a page |
-| `text-lg` (18px) | Page titles |
-| `text-2xl`+ | Dashboard stat figures and marketing/auth surfaces only |
+| Role | Size | Weight | Ink | Where |
+|---|---|---|---|---|
+| **Surface title** | `text-lg` 18px | `font-semibold` | `text-copy-primary` | The name of the thing you are looking at: page title, dialog title, sheet title, whole-route state title. **Exactly one per surface.** |
+| **Section heading** | `text-sm` 14px | `font-semibold` | `text-copy-label` | A named group inside a surface. The 137 hand-written `<h2>`s land here. |
+| **Eyebrow** | `text-2xs` 11px | `font-semibold` | `text-copy-label` | A group marker above a heading or a rail block. Replaced the swept `uppercase` labels. |
+| **Field label** | `text-xs` 12px | `font-medium` | `text-copy-label` | The name of a value. |
+| **Value** | `text-sm` 14px | `font-normal` | `text-copy-primary` | The thing the operator came for. The loudest ink in the body. |
+| **Body / cell** | `text-sm` 14px | `font-normal` | `text-copy-secondary` | Table cells, descriptions in a row, supporting copy. |
+| **Metadata** | `text-xs` 12px | `font-normal` | `text-copy-muted` + `tabular-nums` | Timestamps, counts, ids, record numbers. |
+| **Stat figure** | `text-2xl` 24px | `font-bold` | `text-copy-primary` + `tabular-nums` | Dashboard metrics only. One size — see below. |
 
-**Prose family** — anything that may wrap onto a second line: descriptions, helper
-text, empty-state copy, error explanations.
+Four sizes in product UI: **11 / 12 / 14 / 18**. `text-2xl` is the dashboard exception and
+`text-3xl`+ is auth and marketing only.
+
+**16px is not in the product ramp.** It used to be the section-heading size, and that is
+the rule this table changes. Two pixels above a 14px body is not a hierarchy, it is
+"slightly bigger text" — the exact failure this section already warned against — and it is
+why one heading role had drifted to four sizes at once (`text-lg` ×46, `text-base` ×43,
+`text-sm` ×24, bare `font-semibold` ×23). A step that reads as almost-the-same gets picked
+whenever neither neighbour feels right. `text-p-base` survives for prose that genuinely
+wraps at reading length; the tight 16px does not.
+
+**The heading steps down, not up.** A section heading is quieter than the values under it:
+same size, heavier weight, one ink step back. That inversion is deliberate and it is the
+§1.3 principle applied to type — on a record page the operator came for *Jane Doe*, not for
+the words *Contact details*. The heading is navigational furniture and should not outrank
+the data. Heading and value differ on two axes at once (weight and ink) and on none of the
+third (size), which is a stronger signal than the 2px it replaces and costs no vertical
+space.
+
+The one place a heading takes `text-copy-primary` is where **no value competes with it**:
+the title of a state rendered inside a container — an empty, error or permission-denied
+state inside a table body. Those keep the section-heading size and take primary ink,
+because at that moment they are the only content on the surface. A state that replaces the
+*whole route* is a surface title instead (§4.4).
+
+**Prose family** — anything that may wrap onto a second line: descriptions, helper text,
+empty-state copy, error explanations.
 
 | Class | Size / line-height |
 |---|---|
@@ -270,9 +350,15 @@ text, empty-state copy, error explanations.
 | `text-p-sm` | 14px / 1.55 |
 | `text-p-base` | 16px / 1.6 |
 
-Never hand-tune a line height (`text-sm leading-6`). If it wraps, it is prose; pick
-the prose token. Do not introduce sizes between these — if something needs to be
-"slightly bigger", it needs more weight or more space, not a new size.
+Never hand-tune a line height (`text-sm leading-6`). If it wraps, it is prose; pick the
+prose token. Do not introduce sizes between these — if something needs to be "slightly
+bigger", it needs more weight or more space, not a new size. That rule now has teeth,
+because there is no longer a step available between body and title to reach for.
+
+**One stat figure size.** Dashboard metrics ran `text-3xl` ×27, `text-2xl` ×18 and
+`text-xl` ×15 for one role. A metric is a number the eye lands on, not a competition
+between panels, and three sizes on one dashboard reads as three levels of importance that
+nothing supports. `text-2xl font-bold tabular-nums`, once.
 
 ### 3.4 Weight carries emphasis, not size
 
@@ -300,6 +386,34 @@ spec reads `text-transform`, which is `none` for text that was simply typed
 capitalised. The same applies to the `capitalize` class and to runtime title-casers
 that rebuild a label from a key. Until the Title Case check in
 `design-rules.spec.ts` lands, this one is enforced by reading.
+
+### 3.6 Values the operator did not supply
+
+An absent value had **six spellings** — `"—"` ×32, `"Unassigned"` ×25, `"-"` ×25,
+`"Not set"` ×21, `"Not recorded"` ×17, `"Not provided"` ×1 — and `ReadOnlyRecordLayout`,
+the primitive three pages share, emitted the one nobody else used.
+
+There is one answer per context, and **no call site chooses it**:
+
+| Context | Renders | Why |
+|---|---|---|
+| A field on a record, form or detail surface | `Not set` | The operator is reading one value and needs to know it is genuinely empty, not that the page failed to load. |
+| A cell in a table | `—` | A column of 25 rows each reading "Not set" is noise. Density is a feature (§1.5), and the column header already says what the field is. |
+
+This is the same shape as the status ruling in `rebuild.md` R5 — the *renderer* decides the
+treatment from context, and the call site supplies only the value. A hyphen-minus (`-`) is
+never correct; the character is an em dash.
+
+`"Unassigned"` survives in exactly one place: as the **label of a real filter bucket**
+("Owner: Unassigned"), where it names a set of records rather than the absence of a value.
+
+**Enum labels are sentence case, including the ones built at runtime.**
+`lib/statusStyles.ts` title-cases every unmapped value and hard-codes "Closed Won",
+"In Progress" and "To Do" — so §3.5 is broken on data that reaches every list page in the
+app, by a helper rather than by a designer. The correct forms are "Closed won", "In
+progress", "To do". `lib/module-display.ts#formatSnakeCaseLabel` is the one function
+allowed to build a label from a key; the 17 open-coded `charAt(0).toUpperCase()` repeats
+are drift.
 
 ---
 
@@ -387,6 +501,15 @@ nearest shipping screen rather than inventing one.
 | Dense table row | 40px |
 | Comfortable table row | 52px |
 | Toolbar row | `min-h-9` |
+| Context rail | `20rem` — the record spine and the form aside are the same width (§4.7) |
+| Nav rail | `16rem` — settings lateral navigation (§4.7) |
+| Page split | `lg:grid-cols-[minmax(0,1fr)_20rem]` — **one** ratio, **one** breakpoint |
+| Field grid inside a section | `md:grid-cols-2` |
+
+The last two replace measured drift, not a gap: the two-column split had **10 different
+ratios** with the breakpoint flipping between `lg` and `xl`, and the responsive field grid
+`grid gap-* sm|md:grid-cols-2` was hand-written **78 times**. A page split is `lg` because
+it reorders major regions; a field grid is `md` because it only reflows label/value pairs.
 
 `Card` carries **two** vertical values, not three. It ran `pt-6` / `py-5` / `py-4` —
 one step per slot, one of them the 5-step §4.1 rules off the ladder. 24px is the
@@ -530,6 +653,207 @@ selected settings row and a sticky editor bar had picked up `shadow-sm`/`shadow-
 those are gone. What floats: dialogs, sheets, popovers, dropdowns, listboxes, toasts.
 Everything else is on the page.
 
+### 4.7 The five page archetypes
+
+Every screen in Lynk is one of five shapes. This is the level §1.1 calls a redesign and
+§12 requires to be written down first, so it is written here before it is built.
+
+A screen that is none of these is not a sixth archetype — it is a screen that has not
+decided which of the five it is. The rulings behind them (`R1`–`R6`) are in
+[`rebuild.md`](./rebuild.md).
+
+---
+
+#### Archetype 1 — List
+
+Shipped. `PageShell variant="list"` + `ModuleListToolbar` + `RecordTable` + `Pagination`.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│ Leads                                          [Import] [New]    │  PageHeader
+├──────────────────────────────────────────────────────────────────┤
+│ [search]  [view ▾] [filters ②] [columns]              [density]  │  ModuleListToolbar  pinned
+├──────────────────────────────────────────────────────────────────┤
+│ ☐ │ Name        │ Status   │ Owner      │ Value    │ Updated     │  header  sticky top-0
+│ ☐ │ Acme Corp   │ Contacted│ P. Raman   │ $42,000  │ 2h ago      │
+│ ☐ │ Northwind   │ New      │ J. Silva   │ $18,400  │ 5h ago      │  ← the only scroller
+│   │ …                                                            │
+├──────────────────────────────────────────────────────────────────┤
+│ 1–25 of 412                                        ‹ 1 2 3 … ›   │  Pagination  pinned
+└──────────────────────────────────────────────────────────────────┘
+```
+
+Contract: full-height column, rows are the only scroller (§11.1), min-width derived from
+the visible column count, one row-open gesture bound to click/Enter/Space with a visible
+focus ring, all four §7.4 states supplied by the primitive. **Status renders as plain text**
+(`rebuild.md` R5) and **is not editable in a cell** (R6) — changing it means opening the
+record.
+
+---
+
+#### Archetype 2 — Record: the spine
+
+**The signature.** A fixed `20rem` rail carries the record's identity, state and
+relationships; the content region is the only scroller and carries one tab strip.
+
+```
+┌─ header ─────────────────────────────────────────────────────────────────┐
+│ ‹ Deals    Acme Corp — Q3 renewal                     [Edit]  [⋯]        │
+├──────────────────────┬───────────────────────────────────────────────────┤
+│ SPINE   20rem, fixed │ CONTENT — the only scroller                       │
+│                      │                                                   │
+│ State                │  Details │ Activity │ Tasks │ Files               │
+│   Stage      ⌄       │  ────────                                         │
+│   Owner      ⌄       │                                                   │
+│   Priority   ⌄       │  Commercial                    ← section heading   │
+│                      │    Amount           $42,000.00                    │
+│ Connected            │    Expected close   12 Sep 2026                   │
+│   Account       ›    │    Probability      60%                           │
+│   Contact       ›    │                                                   │
+│   Quotes        ›    │  Contact details                                  │
+│                      │    Email            jane.doe@acme.com             │
+│ Created 2 Aug        │    Phone            +1 555 0100                   │
+│ Updated 2h ago       │                                                   │
+└──────────────────────┴───────────────────────────────────────────────────┘
+```
+
+**The rule that makes it a signature rather than a layout:**
+
+> **The spine is the only editable region on the page.**
+> Every control that writes to the record is in it. Nothing in the content region edits.
+
+R2 draws a categorical boundary — dropdown-shaped fields hold *state* and edit in place,
+everything else holds *content* and is read-only until `/[id]/edit` — and then names its own
+risk: a half-editable page where nothing signals what is clickable is worse than either pure
+model. The spine answers that with **position** instead of with a convention. A boundary
+carried by a region is learnable in one glance, and it cannot drift, because a control that
+moves out of the rail is visibly in the wrong place.
+
+Contract:
+
+- **Blocks, in this order:** an optional lifecycle track (only where the record has a real
+  pipeline — lead, deal, quote, order), **State**, **Connected**, then created/updated
+  metadata. State fields are `InlineFieldEdit` and autosave (R1). Connected entries are
+  links, never free text.
+- **Every record type carries the spine.** Where a record has no state fields the State
+  block is omitted; the Connected block is not optional. A rail that ends up carrying only
+  "Created / Updated" is a signal that the record type is under-modelled — raise it, do not
+  answer it with a second archetype.
+- **The tab set is fixed and owned by the archetype:** `Details · Activity · Tasks · Files`,
+  in that order, on every record. Module-specific tabs append after `Files`. Because the
+  archetype owns the only strip, tabs cannot nest — the defect at
+  `opportunities/[opportunityId]` and `finance/pos/[invoiceId]` has nowhere to recur, and
+  contracts, contacts and accounts inherit the four panels instead of each page remembering
+  them.
+- **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
+  so this adds no exception to R3. Same mechanism as archetype 1.
+- **The `Edit` affordance is in the header row**, reachable from every tab, and
+  `/[id]/edit` preserves `?tab=` in both directions. Editing from Files returns to Files.
+- **Below `lg` the rail stacks above the content and the page reverts to a document
+  scroll.** That is the deliberate fallback, not a responsive feature: §4.4's gutters stand
+  and Lynk is a desktop product, so the narrow case only has to stay usable.
+
+The cost, recorded rather than discovered later: the rail spends ~320px on every record, so
+the content region is about 700px at a 1280px viewport. A two-column field grid fits; a
+three-column one does not. The three line-item documents (quote, order, invoice) are where
+this bites, and the answer is that `RecordTable variant="lineItems"` scrolls sideways inside
+the content region — the archetype does not bend for them.
+
+---
+
+#### Archetype 3 — Form
+
+`PageShell variant="document"` + `RecordFormLayout`. Applies to `/new` and `/[id]/edit`.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ New deal                                                                 │
+├────────────────────────────────────────────┬─────────────────────────────┤
+│ ┌ Commercial ──────────────────────────┐   │ ┌ Ownership ──────────────┐ │
+│ │  Name *          [                ]  │   │ │  Owner    [          ]  │ │
+│ │  Amount          [                ]  │   │ │  Team     [          ]  │ │
+│ │  Close date      [                ]  │   │ └─────────────────────────┘ │
+│ └──────────────────────────────────────┘   │        aside  20rem         │
+│ ┌ Contact ─────────────────────────────┐   │                             │
+│ │  Email           [                ]  │   │                             │
+│ └──────────────────────────────────────┘   │                             │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Unsaved changes                            [Cancel]  [Create deal]       │  ActionBar — not sticky
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Contract: sections are panels (`FormSection` → `Card`), the section title is the
+section-heading role, fields sit on `md:grid-cols-2`, every input has a visible label
+(§7.5), required sets match the backend exactly. **Manual save** (R1) — a create form and a
+line-item document both keep an explicit commit, because a half-formed autosaved record
+lands in lists, counts and reports.
+
+The action bar is **at the end of the document, not stuck to the viewport** (R3). It carries
+the dirty-state string and both actions, once — `insertion-orders` currently renders two
+Cancel buttons because the page header and the footer each supplied one.
+
+---
+
+#### Archetype 4 — Settings
+
+`app/dashboard/settings/layout.tsx` supplies a `16rem` nav rail; each page is a
+`PageShell variant="settings"` inside it.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Settings                                                                 │
+├────────────────┬─────────────────────────────────────────────────────────┤
+│ NAV   16rem    │ Authentication                                          │
+│                │ Sign-in methods and session policy for this workspace.  │
+│ Workspace      │                                                         │
+│  General       │ ┌ Multi-factor ──────────────────────────────────────┐  │
+│  Branding      │ │  Require MFA for all users        [ on  ]  Saved   │  │
+│ People         │ └───────────────────────────────────────────────────┘   │
+│  Users         │ ┌ Single sign-on ────────────────────────────────────┐  │
+│  Roles         │ │  Provider          [ Microsoft Entra ▾ ]  Saving…  │  │
+│ ▸Authentication│ └───────────────────────────────────────────────────┘   │
+│  …             │                                                         │
+└────────────────┴─────────────────────────────────────────────────────────┘
+```
+
+Contract: **every settings page has a visible title and a description** — none of the 19
+does today. **Autosave** (R1), because a settings control is one independent reversible
+field and a switch with a Save button is a UX smell; `SaveStateIndicator` replaces the
+removed footer, so the operator still gets feedback. All six sticky Save/Discard bars go
+(R3). `PermissionDeniedState` on **all 23** pages, not 1 — settings is entirely admin-gated,
+so a missing permission wall is exactly what a non-admin hits.
+
+The nav rail closes A8 and settles the IA: `SETTINGS_NAV_ITEMS` (flat, 18) and the hub's
+`SETTINGS_SECTIONS` (6 groups, 19) become **one** source, which is what currently leaks
+`record-layouts` — invisible to ⌘K and rendering Title Case from a label fallback.
+
+---
+
+#### Archetype 5 — Dashboard
+
+`PageShell variant="document"` — a metric row, then panels.
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ Dashboard                                                    [This week ▾]│
+├──────────────┬──────────────┬──────────────┬─────────────────────────────┤
+│ Open deals   │ Pipeline     │ Won this mo. │ Overdue invoices            │
+│ 38           │ $412,900     │ $86,400      │ 4                           │  StatTile
+├──────────────┴──────────────┴──────────────┴─────────────────────────────┤
+│ ┌ Pipeline by stage ───────────────┐ ┌ Tasks due today ────────────────┐ │
+│ │                                  │ │  Call Northwind      14:00      │ │
+│ │        (chart)                   │ │  Send Q3 quote       16:30      │ │  rows, divide-y
+│ └──────────────────────────────────┘ └─────────────────────────────────┘ │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Contract: one `StatTile`, one stat-figure size (§3.3), metrics on
+`md:grid-cols-2 xl:grid-cols-4`, panels on `xl:grid-cols-2`. Chart colour comes from
+`lib/chartColors.ts` and nowhere else (`tokens.md` §3.4). A metric is a **number plus its
+label** — a sparkline or a delta is allowed, a decorative gradient is not (§1.2).
+
+Load the `dataviz` skill before touching chart layout or stat-tile composition.
+
 ---
 
 ## 5. Icons
@@ -620,11 +944,15 @@ exists. The list-and-record language in particular is not optional:
 | Paging | `Pagination` |
 | Page root, title, actions and route states | `PageShell` (which renders `PageHeader`) |
 | Fast create | `QuickCreateSurface` |
-| Record detail sections | `RecordTabs` |
+| A record detail page | The §4.7 archetype — spine + `RecordTabs`. Not a hand-rolled root |
+| A record's state field | `InlineFieldEdit`, in the spine only (R6) |
+| An action row | `ActionBar` — it owns its children's control height (R4) |
+| A section heading | `SectionHeading` — 137 hand-written `<h2>`s |
+| Money | `<Money>` over `lib/currency.ts`. Never a local `Intl.NumberFormat` |
 | Nothing to show | `EmptyState` |
 | No permission | `PermissionDeniedState` |
 | Loading | `skeleton`, `ModuleTableLoading`, `RouteStates` |
-| Status label | `Pill` — **being retired.** See `rebuild.md` R5: colour marks exception, not state, and `StatusValue` replaces it. Do not add a new `Pill` call site |
+| Status label | `StatusValue`. **`Pill` is deleted** — see `rebuild.md` R5: colour marks exception, not state |
 | Linked record | `LinkedRecordPicker` |
 | Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 
