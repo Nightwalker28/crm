@@ -6,11 +6,12 @@ import { Plus, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
@@ -223,10 +224,13 @@ export function IntegrationWebhookWorkspace() {
                   </Field>
                   <Field>
                     <FieldLabel>Webhook availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Webhook availability">
-                      <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
-                      <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Webhook availability"
+                      value={draft.is_active}
+                      onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+                      trueLabel="Active"
+                      falseLabel="Inactive"
+                    />
                     <FieldDescription>Active webhooks can receive CRM event notifications immediately.</FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -269,13 +273,7 @@ export function IntegrationWebhookWorkspace() {
                   <TableCell className="text-copy-muted">{channel.channel_name || "-"}</TableCell>
                   <TableCell className="font-mono text-xs text-copy-muted">{channel.webhook_url_masked}</TableCell>
                   <TableCell>
-                    <Pill
-                      bg={channel.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"}
-                      text={channel.is_active ? "text-state-success" : "text-state-danger"}
-                      border={channel.is_active ? "border-state-success/40" : "border-state-danger/40"}
-                    >
-                      {channel.is_active ? "Active" : "Inactive"}
-                    </Pill>
+                    <StatusValue status={{ tone: channel.is_active ? "success" : "critical", label: channel.is_active ? "Active" : "Inactive" }} />
                   </TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">

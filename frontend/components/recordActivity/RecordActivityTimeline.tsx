@@ -4,11 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
 import { Card } from "@/components/ui/Card";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -58,12 +58,12 @@ export default function RecordActivityTimeline({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader title={title} description={description} icon={ClipboardList} />
+      <PanelHeader title={title} description={description} icon={ClipboardList} />
 
       {query.isLoading ? (
-        <div className="mt-4"><RecordPanelLoading label="Loading activity…" /></div>
+        <div className="mt-4"><PanelLoading label="Loading activity…" /></div>
       ) : query.error ? (
-        <div className="mt-4"><RecordPanelError message="Record activity could not be loaded." onRetry={() => void query.refetch()} /></div>
+        <div className="mt-4"><PanelError message="Record activity could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : query.data?.results.length ? (
         <ol className="mt-4 space-y-3" aria-label={`${title} entries`}>
           {query.data.results.map((item) => (
@@ -81,7 +81,7 @@ export default function RecordActivityTimeline({
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><RecordPanelEmpty icon={ClipboardList} title="No recorded activity yet" description="Record changes and collaboration events will appear here." /></div>
+        <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No recorded activity yet" description="Record changes and collaboration events will appear here." /></div>
       )}
     </Card>
   );

@@ -2,16 +2,16 @@
 
 import { useMemo, useState } from "react";
 import { AlertTriangle, GripVertical, Handshake, TriangleAlert } from "lucide-react";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import { formatDateOnly } from "@/lib/datetime";
 import {
   getOpportunityStageLabel,
-  getOpportunityStageStyle,
+  getOpportunityStage,
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
@@ -72,7 +72,7 @@ export default function OpportunitiesPipelineBoard({
     stage,
     label: stage === "unstaged" ? "Unstaged" : getOpportunityStageLabel(stage),
     items: grouped.get(stage) ?? [],
-    style: getOpportunityStageStyle(stage),
+    style: getOpportunityStage(stage),
   }));
 
   return (
@@ -153,13 +153,7 @@ export default function OpportunitiesPipelineBoard({
               >
                 <div className="border-b border-line-subtle px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Pill
-                      bg={entry.style.bg}
-                      text={entry.style.text}
-                      border={entry.style.border}
-                    >
-                      {entry.label}
-                    </Pill>
+                    <StatusValue status={entry.style} context="record" />
                     <span className="text-xs text-copy-muted">{entry.items.length}</span>
                   </div>
                 </div>

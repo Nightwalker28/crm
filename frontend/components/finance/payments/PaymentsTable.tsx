@@ -4,8 +4,9 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { CreditCard } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
+import { getPosPaymentStatus, type StatusTone } from "@/lib/statusStyles";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
@@ -59,12 +60,23 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 
 const MONEY_COLUMNS = new Set(["total_amount", "amount_paid", "balance_due"]);
 
-const STATUS_STYLE: Record<string, { bg: string; text: string; border: string; label: string }> = {
-  unpaid: { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Unpaid" },
-  partial: { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40", label: "Partially Paid" },
-  paid: { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Paid" },
-  refunded: { bg: "bg-surface-muted", text: "text-copy-secondary", border: "border-line-default", label: "Refunded" },
-};
+/**
+ * The AR list is the one place a tone is **derived rather than looked up** (R5).
+ *
+ * `unpaid` and `partial` are the *normal* state of a recent invoice, so classifying them as
+ * attention would make this list mostly amber and re-create exactly the noise R5 removes.
+ * What actually deserves an operator's attention is **overdue**, which no enum value can
+ * express because it depends on today's date.
+ */
+function overdueTone(invoice: { payment_status: string; due_date?: string | null }): StatusTone | undefined {
+  if (invoice.payment_status === "paid" || invoice.payment_status === "refunded") return undefined;
+  if (!invoice.due_date) return undefined;
+  const due = new Date(invoice.due_date);
+  if (Number.isNaN(due.getTime())) return undefined;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return due < today ? "critical" : undefined;
+}
 
 function money(amount: number, currency: string) {
   try {
@@ -81,8 +93,12 @@ function renderCell(invoice: PosInvoice, column: string) {
     case "customer_name":
       return <span className="text-sm font-medium text-copy-primary">{invoice.customer_name}</span>;
     case "payment_status": {
-      const style = STATUS_STYLE[invoice.payment_status] ?? STATUS_STYLE.unpaid;
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      return (
+        <StatusValue
+          status={getPosPaymentStatus(invoice.payment_status)}
+          tone={overdueTone(invoice)}
+        />
+      );
     }
     case "total_amount":
       return <span className="text-sm font-medium tabular-nums text-copy-primary">{money(invoice.total_amount, invoice.currency)}</span>;

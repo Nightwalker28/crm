@@ -420,8 +420,8 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await expect(tableRegion).toBeVisible();
   const tableBounds = await tableRegion.boundingBox();
   expect(tableBounds?.height).toBeLessThan(400);
-  await expect(tableRegion.locator("span.bg-state-success-muted", { hasText: "Qualified" })).toBeVisible();
-  await expect(tableRegion.locator("span.bg-state-warning-muted", { hasText: "Warm" })).toBeVisible();
+  await expect(tableRegion.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Qualified" })).toBeVisible();
+  await expect(tableRegion.locator('[data-slot="status-value"][data-tone="category"]', { hasText: "Warm" })).toBeVisible();
   const stickyPositions = await tableRegion.locator("thead th").evaluateAll((headers) =>
     headers.slice(0, 2).map((header) => window.getComputedStyle(header).position),
   );
@@ -487,7 +487,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByText("Enterprise", { exact: true })).toBeVisible();
   // "Warm" is both a tag and the score grade; this line is about the tag, like the one above.
   await expect(page.locator("[data-layout-field='tags']").getByText("Warm", { exact: true })).toBeVisible();
-  await expect(page.locator("div.bg-state-warning-muted", { hasText: "Lead Score" })).toBeVisible();
+  await expect(page.locator('[data-slot="lead-score"]')).toBeVisible();
   await expect(page.locator("[data-record-layout]").getByText("Next follow-up", { exact: true })).toBeVisible();
   const detailFields = page.locator("[data-layout-section='contact'] [data-layout-field]");
   await expect(detailFields.nth(0)).toHaveAttribute("data-layout-field", "company");

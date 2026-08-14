@@ -1,14 +1,15 @@
 "use client";
 
+import type { StatusTone } from "@/lib/statusStyles";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, RefreshCw } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
@@ -54,17 +55,17 @@ function formatActivityLabel(value: string) {
     .join(" ");
 }
 
-function actionPillStyle(action: string) {
+function actionTone(action: string): StatusTone {
   if (action === "create" || action === "restore" || action.endsWith(".created")) {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+    return "success";
   }
   if (action === "soft_delete" || action === "delete" || action.endsWith(".deleted") || action.endsWith(".failed")) {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+    return "critical";
   }
   if (action === "update" || action === "edit" || action.endsWith(".updated")) {
-    return { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" };
+    return "neutral";
   }
-  return {};
+  return "neutral";
 }
 
 async function fetchActivityLog(page: number, pageSize: number, action: string): Promise<ActivityResponse> {
@@ -124,7 +125,7 @@ export default function ActivityLogPage() {
       <RecordTable
         label="Activity"
         columns={[
-          { key: "action", label: "Action", size: "sm", render: (item) => <Pill {...actionPillStyle(item.action)}>{formatActivityLabel(item.action)}</Pill> },
+          { key: "action", label: "Action", size: "sm", render: (item) => <StatusValue status={{ tone: actionTone(item.action), label: formatActivityLabel(item.action) }} /> },
           { key: "module", label: "Module", render: (item) => <span className="font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span> },
           {
             key: "record",

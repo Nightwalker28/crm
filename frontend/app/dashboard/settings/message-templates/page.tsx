@@ -6,10 +6,10 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Edit3, FileText, Plus, Power, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -132,8 +132,8 @@ export default function MessageTemplatesPage() {
             sortable: true,
             render: (template) => (
               <div className="flex flex-wrap gap-2">
-                <Pill bg={template.is_active ? "bg-state-success-muted" : "bg-state-danger-muted"} text={template.is_active ? "text-state-success" : "text-state-danger"} border={template.is_active ? "border-state-success/40" : "border-state-danger/40"}>{template.is_active ? "Active" : "Inactive"}</Pill>
-                {template.is_system ? <Pill bg="bg-surface-muted" text="text-copy-secondary" border="border-line-default">System</Pill> : null}
+                <StatusValue status={{ tone: template.is_active ? "success" : "critical", label: template.is_active ? "Active" : "Inactive" }} />
+                {template.is_system ? <StatusValue status={{ tone: "neutral", label: "System" }} /> : null}
               </div>
             ),
           },

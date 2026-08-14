@@ -5,8 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { ImageIcon, Package, Wrench } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
 import type { TableColumnOption } from "@/types/table";
@@ -192,23 +192,13 @@ export default function CatalogRecordsTable({
               <span className="text-sm text-copy-secondary">{record.is_active ? "Active" : "Inactive"}</span>
             </div>
           ) : (
-            <Pill
-              bg={record.is_active ? "bg-state-success-muted" : "bg-surface-muted"}
-              text={record.is_active ? "text-state-success" : "text-copy-muted"}
-              border={record.is_active ? "border-state-success/40" : "border-line-default"}
-            >
-              {record.is_active ? "Active" : "Inactive"}
-            </Pill>
+            <StatusValue status={{ tone: record.is_active ? "success" : "neutral", label: record.is_active ? "Active" : "Inactive" }} />
           );
         case "is_public":
           return record.is_public ? (
-            <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-20">
-              Public
-            </Pill>
+            <StatusValue status={{ tone: "success", label: "Public" }} className="w-20" />
           ) : (
-            <Pill bg="bg-surface-muted" text="text-copy-muted" border="border-line-default" className="w-20">
-              Private
-            </Pill>
+            <StatusValue status={{ tone: "neutral", label: "Private" }} className="w-20" />
           );
         case "media_url":
           return record.media_url ? (

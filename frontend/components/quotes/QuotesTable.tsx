@@ -4,15 +4,15 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { FileText } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Quote } from "@/hooks/sales/useQuotes";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateOnly } from "@/lib/datetime";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
-import { getQuoteStatusStyle } from "@/lib/statusStyles";
+import { getQuoteStatus } from "@/lib/statusStyles";
 
 type QuotesTableProps = {
   quotes: Quote[];
@@ -74,8 +74,8 @@ function renderCell(quote: Quote, column: string) {
     case "quote_number":
       return <span className="text-sm font-medium tabular-nums text-copy-primary">{quote.quote_number}</span>;
     case "status": {
-      const style = getQuoteStatusStyle(quote.status ?? "");
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getQuoteStatus(quote.status ?? "");
+      return <StatusValue status={style} />;
     }
     case "issue_date":
     case "expiry_date":

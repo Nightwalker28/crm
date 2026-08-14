@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { ShoppingCart } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Order } from "@/hooks/sales/useOrders";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getOrderStatusStyle } from "@/lib/statusStyles";
+import { getOrderStatus } from "@/lib/statusStyles";
 
 type OrdersTableProps = {
   orders: Order[];
@@ -63,8 +63,8 @@ function renderCell(order: Order, column: string) {
     case "order_number":
       return <span className="text-sm font-medium tabular-nums text-copy-primary">{order.order_number}</span>;
     case "status": {
-      const style = getOrderStatusStyle(order.status);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getOrderStatus(order.status);
+      return <StatusValue status={style} />;
     }
     case "grand_total":
       return <span className="text-sm tabular-nums text-copy-primary">{formatMoney(order.grand_total, order.currency)}</span>;

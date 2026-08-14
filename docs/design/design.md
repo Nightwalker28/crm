@@ -200,8 +200,23 @@ of another and one of which had no call site at all. Measured across `app/` and
 | `destructiveGhost` | 17 | **Keep, renamed** from `dangerGhost`. |
 | ~~`primary`~~ | 0 | **Delete** — a duplicate of `default`. |
 | ~~`danger`~~ | 0 | **Delete** — a duplicate of `destructive`. |
-| ~~`secondary`~~ | 8 | **Delete** — `outline` at a different ground, for 8 call sites against 296. |
+| ~~`secondary`~~ | **47** | **Deleted — but it was not redundant.** See below. |
 | ~~`link`~~ | 0 | **Delete.** A link in body copy is an `<a>` (§2.2 above), not a button. |
+
+**Correction, made in rebuild 5.1.** The count of 8 above was measured on the literal
+`variant="secondary"` form only. The real figure is **47 across 16 files**, and **38 of them
+are the *selected* half of a two-state control** — `variant={isActive ? "secondary" :
+"outline"}`, thirteen of them carrying `aria-pressed`. Deleting it as originally ruled would
+have collapsed those pairs to `outline`/`outline`: visually identical, so the operator loses
+which option is on.
+
+So `secondary` was never "outline at a different ground". It was **a missing primitive wearing
+a button's clothes** — which is §7.3 at scale: three call sites passing the same override are a
+missing variant, and forty-seven are a missing component. The answer is `SegmentedControl`
+(§7.1), and the variant set still closes at six.
+
+The lesson is about the measurement, not the ruling: a grep for a literal prop value misses
+every ternary, and a variant that looks unused in one form can be load-bearing in another.
 
 The three destructive variants share one prefix on purpose: `destructive` /
 `destructiveOutline` / `destructiveGhost` is a legible ladder, where
@@ -952,7 +967,19 @@ exists. The list-and-record language in particular is not optional:
 | Nothing to show | `EmptyState` |
 | No permission | `PermissionDeniedState` |
 | Loading | `skeleton`, `ModuleTableLoading`, `RouteStates` |
+| A panel's four states | `PanelStates` — `PanelHeader` / `PanelLoading` / `PanelEmpty` / `PanelError` |
 | Status label | `StatusValue`. **`Pill` is deleted** — see `rebuild.md` R5: colour marks exception, not state |
+| A tag, a count, a "System" marker | `Chip`. **Not** `StatusValue` — see below |
+| Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle |
+| A person | `Avatar` |
+| An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
+| Autosave feedback | `SaveStateIndicator` (R1) |
+
+**`StatusValue` or `Chip`?** A **status** is one value from a closed set saying how a record is
+doing, so it renders as ink and only deviation is painted. A **tag** names what something *is* —
+a scope, a field type, a category — so it has no better or worse and never carries tone, but it
+does take a quiet edge because tags usually sit several in a row. If a tag seems to need
+colour, it is a status, and its classification belongs in `lib/statusStyles.ts`.
 | Linked record | `LinkedRecordPicker` |
 | Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 

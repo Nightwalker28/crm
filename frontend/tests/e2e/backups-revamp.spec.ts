@@ -105,10 +105,10 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   await page.getByRole("button", { name: "Configure" }).click();
   const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
   await expect(settingsDrawer).toBeVisible();
-  await expect(settingsDrawer.getByRole("button", { name: "Manual only", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await settingsDrawer.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await expect(settingsDrawer.getByRole("button", { name: "Scheduled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(settingsDrawer.getByRole("button", { name: "Include", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(settingsDrawer.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
+  await settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true }).click();
+  await expect(settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(settingsDrawer.getByRole("radio", { name: "Include", exact: true })).toHaveAttribute("aria-checked", "true");
 
   const scopeField = settingsDrawer.getByText("Scope", { exact: true }).locator("..");
   await scopeField.getByRole("combobox").click();
@@ -138,7 +138,7 @@ test("guards dirty backup configuration dismissal", async ({ page }) => {
 
   await page.getByRole("button", { name: "Configure" }).click();
   const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
-  await settingsDrawer.getByRole("button", { name: "Scheduled", exact: true }).click();
+  await settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true }).click();
   await settingsDrawer.getByRole("button", { name: "Cancel" }).click();
 
   await expect(page.getByRole("heading", { name: "Discard backup setting changes?" })).toBeVisible();

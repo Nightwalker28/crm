@@ -133,8 +133,8 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.getByRole("button", { name: "required", exact: true }).click();
   await page.getByRole("button", { name: /Contract Term/ }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
   await page.getByLabel("Label", { exact: true }).fill("Agreement Term");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
@@ -154,8 +154,8 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.getByRole("button", { name: "all", exact: true }).click();
   await page.getByRole("button", { name: /Email System.*Protected/ }).click();
   await expect(page.getByText(/protected field stays enabled/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Disabled", exact: true })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Disabled", exact: true })).toBeDisabled();
 });
 
 test("creates a required custom field and opens it in the inspector", async ({ page }) => {

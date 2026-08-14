@@ -5,7 +5,7 @@ import { Monitor, Smartphone } from "lucide-react";
 
 import { EMPTY_LEAD_FORM, type LeadFormValue } from "@/components/leads/LeadFormFields";
 import { LeadQuickCreateLayoutFields } from "@/components/leads/LeadQuickCreateLayoutFields";
-import { Button } from "@/components/ui/button";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { ResolvedRecordLayout } from "@/lib/contracts/recordLayouts";
 import { cn } from "@/lib/utils";
@@ -38,26 +38,10 @@ export function RecordLayoutPreview({
         <p className="text-p-xs text-copy-muted">
           Live preview of Quick Create. Nothing typed here is saved.
         </p>
-        <div className="inline-flex gap-1" role="group" aria-label="Preview viewport">
-          <Button
-            type="button"
-            size="sm"
-            variant={viewport === "desktop" ? "secondary" : "ghost"}
-            aria-pressed={viewport === "desktop"}
-            onClick={() => setViewport("desktop")}
-          >
-            <Monitor />Desktop
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant={viewport === "mobile" ? "secondary" : "ghost"}
-            aria-pressed={viewport === "mobile"}
-            onClick={() => setViewport("mobile")}
-          >
-            <Smartphone />Mobile
-          </Button>
-        </div>
+        <SegmentedControl aria-label="Preview viewport" value={viewport} onValueChange={setViewport}>
+          <SegmentedItem value="desktop"><Monitor />Desktop</SegmentedItem>
+          <SegmentedItem value="mobile"><Smartphone />Mobile</SegmentedItem>
+        </SegmentedControl>
       </div>
 
       {layout ? (

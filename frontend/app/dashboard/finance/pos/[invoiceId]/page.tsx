@@ -7,10 +7,10 @@ import { ExternalLink, Pencil, ReceiptText } from "lucide-react";
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import {
   RouteErrorState,
@@ -28,7 +28,7 @@ import {
 import { usePosInvoice } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
+import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 
 function money(amount: number, currency: string) {
   try {
@@ -64,8 +64,8 @@ export default function InvoiceDetailPage() {
   const actions = modules.find((module) => module.name === "finance_pos")?.actions;
   const canEdit = Boolean(actions?.can_edit);
   const canDelete = Boolean(actions?.can_delete);
-  const status = getPosInvoiceStatusStyle(invoice.status);
-  const paymentStatus = getPosPaymentStatusStyle(invoice.payment_status);
+  const status = getPosInvoiceStatus(invoice.status);
+  const paymentStatus = getPosPaymentStatus(invoice.payment_status);
   const overview = (
     <div className="grid gap-4 lg:grid-cols-[1.3fr_0.7fr]">
       <Card className="p-5">
@@ -81,9 +81,7 @@ export default function InvoiceDetailPage() {
                 : "date not recorded"}
             </p>
           </div>
-          <Pill bg={status.bg} text={status.text} border={status.border}>
-            {status.label}
-          </Pill>
+          <StatusValue status={status} />
         </div>
         <dl className="mt-5 grid gap-4 sm:grid-cols-2">
           <Summary label="Customer" value={invoice.customer_name} />

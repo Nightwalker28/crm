@@ -33,12 +33,13 @@ import {
   setFieldWidth,
   updateSection,
 } from "@/components/recordLayouts/recordLayoutDraft";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
@@ -100,22 +101,18 @@ function FieldRow({
     >
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-medium text-copy-primary">{label}</span>
-        {catalogField?.field_source === "custom_field" ? <Pill>Custom</Pill> : null}
+        {catalogField?.field_source === "custom_field" ? <Chip>Custom</Chip> : null}
         {isRequired ? (
-          <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">
-            {requiredLocked ? <Lock className="mr-1 inline h-3 w-3" aria-hidden="true" /> : null}Required
-          </Pill>
+          <Chip>{requiredLocked ? <Lock aria-hidden="true" /> : null}Required</Chip>
         ) : null}
         {!field.visible ? (
-          <Pill bg="bg-surface" text="text-copy-muted" border="border-line-default">Hidden</Pill>
+          <StatusValue status={{ tone: "neutral", label: "Hidden" }} />
         ) : null}
         {catalogField && !catalogField.enabled ? (
-          <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">
-            Off in Field Config
-          </Pill>
+          <StatusValue status={{ tone: "critical", label: "Off in Field Config" }} />
         ) : null}
         {isUnknown ? (
-          <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">Unknown field</Pill>
+          <StatusValue status={{ tone: "critical", label: "Unknown field" }} />
         ) : null}
       </div>
       <div className="mt-1 text-p-xs text-copy-muted">
@@ -140,7 +137,7 @@ function FieldRow({
         <Button
           type="button"
           size="sm"
-          variant={isRequired ? "secondary" : "outline"}
+          variant={isRequired ? "outline" : "ghost"}
           aria-pressed={isRequired}
           disabled={requiredLocked}
           title={requiredLocked ? catalogField?.locked_reason ?? "This field is always required." : undefined}
@@ -207,7 +204,7 @@ function FieldRow({
           <Button
             type="button"
             size="icon-sm"
-            variant="dangerGhost"
+            variant="destructiveGhost"
             aria-label={`Remove ${label} from the layout`}
             title="Remove from layout"
             onClick={() => onChange((definition) => removeField(definition, field.field_key))}
@@ -264,7 +261,7 @@ function SectionCard({
         <Button
           type="button"
           size="sm"
-          variant={section.collapsed_by_default ? "secondary" : "ghost"}
+          variant={section.collapsed_by_default ? "outline" : "ghost"}
           aria-pressed={section.collapsed_by_default}
           onClick={() =>
             onChange((definition) =>
@@ -301,7 +298,7 @@ function SectionCard({
           <Button
             type="button"
             size="icon-sm"
-            variant="dangerGhost"
+            variant="destructiveGhost"
             aria-label={`Delete section ${section.label}`}
             title={sectionCount <= 1 ? "A layout needs at least one section." : "Delete section"}
             disabled={sectionCount <= 1}
@@ -540,11 +537,9 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-medium text-copy-primary">{field.label}</span>
-                        {field.field_source === "custom_field" ? <Pill>Custom</Pill> : null}
+                        {field.field_source === "custom_field" ? <Chip>Custom</Chip> : null}
                         {!field.enabled ? (
-                          <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">
-                            Off in Field Config
-                          </Pill>
+                          <StatusValue status={{ tone: "critical", label: "Off in Field Config" }} />
                         ) : null}
                       </div>
                       <div className="mt-0.5 text-p-xs text-copy-muted">{friendlyFieldType(field.field_type)}</div>

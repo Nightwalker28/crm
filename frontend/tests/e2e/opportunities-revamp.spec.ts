@@ -24,8 +24,8 @@ test("Deals expose the shared table and pipeline controls", async ({ page }) => 
   await expect(page.getByRole("heading", { name: "Deals" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Add deal" })).toBeVisible();
   await expect(page.getByPlaceholder("Search deals")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Pipeline" }).click();
+  await expect(page.getByRole("radio", { name: "Table", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Pipeline" }).click();
   await expect(page.getByText(/Drag a card to another stage/)).toBeVisible();
 });
 
@@ -63,7 +63,7 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);
   await expect(page.getByRole("heading", { name: "Browser Deal" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("span.bg-action-primary-muted", { hasText: "Proposal" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Proposal" })).toBeVisible();
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Related/ }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/opportunities/${dealId}\\?tab=related$`));

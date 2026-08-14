@@ -85,14 +85,14 @@ export default function AuthenticationSettingsPage() {
                   <div className="mt-2 space-y-1"><p className="break-words">{settings.ssoSettings.last_failed_test.message}</p>{settings.ssoSettings.last_failed_test.errors.map((error) => <p key={error} className="break-words">{error}</p>)}</div>
                 </details>
               </div>
-              <Button variant="secondary" size="sm" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || draft.isDirty}>{settings.isTesting ? "Testing…" : "Retry"}</Button>
+              <Button variant="outline" size="sm" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || draft.isDirty}>{settings.isTesting ? "Testing…" : "Retry"}</Button>
             </div>
           ) : null}
         </div>
         <CardFooter className="sticky bottom-0 z-10 mt-4 flex flex-col gap-2 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-end">
           <span className="mr-auto text-sm text-copy-muted" aria-live="polite">{draft.isDirty ? "You have unsaved SSO changes." : "No unsaved SSO changes."}</span>
           <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
-          <Button variant="secondary" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || settings.isSaving || draft.isDirty} title={draft.isDirty ? "Save changes before testing" : undefined}>{settings.isTesting ? "Testing…" : "Test connection"}</Button>
+          <Button variant="outline" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || settings.isSaving || draft.isDirty} title={draft.isDirty ? "Save changes before testing" : undefined}>{settings.isTesting ? "Testing…" : "Test connection"}</Button>
           <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving || settings.isTesting}>{settings.isSaving ? "Saving…" : "Save SSO settings"}</Button>
         </CardFooter>
       </Card>

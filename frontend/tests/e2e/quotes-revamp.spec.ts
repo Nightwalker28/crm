@@ -68,7 +68,7 @@ test("Quotes list routes creation to the dedicated page", async ({ page }) => {
     }),
   );
   await page.goto("/dashboard/sales/quotes");
-  await expect(page.locator("span.bg-state-info-muted", { hasText: "Sent" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Sent" })).toBeVisible();
   const createLink = page.getByRole("link", { name: "Create quote" });
   await expect(createLink).toBeVisible();
   await createLink.click();

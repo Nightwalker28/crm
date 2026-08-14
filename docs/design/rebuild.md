@@ -1,7 +1,9 @@
 # Lynk frontend: the rebuild program
 
 **Status:** approved 2026-08-14. **Sub-phase 5.0 done** — direction, law and census landed;
-the owner took the record spine on 14 Aug 2026. **5.1 is next.**
+the owner took the record spine on 14 Aug 2026. **5.1 is in progress** — batches A and B
+(cross-cutting primitives, and the status sweep that deletes `Pill`) have landed; the route
+boundaries, the dialog migration and `InlineFieldEdit` remain.
 
 This is Phase 5 of [`consistency-pass.md`](./consistency-pass.md), expanded into its own
 programme because it outgrew the pass containing it — and because it carries scoping
@@ -694,6 +696,72 @@ it.
 **Files:** `components/ui/{button,Pill,dialog,sheet}.tsx`; new `components/ui/{Money,
 ActionBar,SectionHeading,Avatar,PanelStates}.tsx`; new `lib/currency.ts`;
 `lib/statusStyles.ts`.
+
+### Status: in progress — batches A and B landed
+
+Six batches, gated by `check-design.sh` + lint + build between each. **A and B are done; C, D
+and E are not started.** The source guard is unchanged at 3 of 14 — the same three — and no new
+e2e failure was introduced (verified by stashing and re-running: the reds below fail identically
+at HEAD).
+
+**Batch A — foundations.** `lib/currency.ts` + `<Money>` (formatters cached; a 50-row money
+column was constructing one `Intl.NumberFormat` per cell per render), `EmptyValue`,
+`SectionHeading`, `Avatar`, `SaveStateIndicator`, `ActionBar`/`FormFooter`, `PanelStates`
+promoted out of `recordActivity/`, `button.tsx` cut 9 variants → 6, rail-width tokens into
+`globals.css`.
+
+**Batch B — status.** `lib/statusStyles.ts` returns `{tone, label}` across all 13 maps per
+5.0's classification; `StatusValue` renders a tone per context and accepts the caller-computed
+override; `Chip` takes the tags and markers; **`Pill` is deleted** — 104 call sites in 52 files,
+zero remaining, including the local `StatusPill` / `CasePill` / `MfaStatusPill` wrappers whose
+names are gone too, so 5.10's source guard on the identifier is clean.
+
+**Three findings that change this document's assumptions.**
+
+1. **`secondary` was 47 call sites, not 8, and it carried a role.** design.md §2.2 measured
+   only the literal prop and ruled it a redundant `outline`; 38 of the 47 are the selected half
+   of a two-state control. Deleting it as specified would have made Active/Inactive pairs
+   visually identical. **The owner chose to build `SegmentedControl` in 5.1** rather than defer
+   it, so the variant set still closes at six and 5.6/5.7 inherit finished controls. It is
+   vendored from shadcn's `ToggleGroup`, which also fixes an a11y defect the hand-rolled version
+   had: every segment was its own tab stop, and a three-way switcher cost three tabs to pass.
+   The correction is written into §2.2.
+2. **`sheet.tsx` is already on radix.** This document scopes the dialog migration as "9 dialog
+   and 13 sheet call sites" — the 13 sheets need no work. The real headlessui surface is
+   `dialog.tsx` plus a `Menu` in the three import/export controls, which needs a vendored
+   `dropdown-menu`. `radix-ui` v1.4.3 is already a dependency, so **batch D adds no package, it
+   only removes one.** D is smaller than budgeted.
+3. **The rendered guard had a blind spot.** `design-rules.spec.ts` measured control height on
+   `[data-slot="button"|"input"|"select-trigger"]` only, so a segmented control would have
+   escaped it — and the first cut of `SegmentedItem` was 28px, off the closed set. Added
+   `segmented-item` to the selector. This is the one place 5.1 touches a spec: the testing
+   policy defers *new checks* to 5.10, but shipping a primitive the guard cannot see is a
+   defect, and the skill's build order ends with "the guard that keeps it".
+
+**Two pre-existing defects the guard surfaced, recorded rather than fixed here.** Both fail
+identically at HEAD:
+
+- `leads-revamp.spec.ts` "narrow viewport" — **table headers compute to `position: relative`,
+  not `sticky`.** R3 keeps `sticky top-0` on table headers as one of only two legitimate uses,
+  and it is not working. Owner: 5.5.
+- `leads-revamp.spec.ts` "denied and missing records" — `PermissionDeniedState titleAs="p"`
+  renders no heading, so the spec's `getByRole("heading")` cannot match. Owner: 5.6, which
+  already carries `PermissionDeniedState` forward from Phase 4.
+- `RecordTasksPanel:357` hand-wrote `h-7` (28px) on a Complete button, breaching §4.2. Fixed in
+  passing because it blocked the gate; nominally 5.3's file. It only surfaced once seeding made
+  the contact detail route reachable — a cold run reports those lists unreachable and audits 76
+  routes instead of 95, so **a green guard run is only evidence if the route count is 95**.
+
+**Spec updates, per the testing policy** ("existing specs get *updated* where a rebuild moves
+the thing they assert"). Ten assertions across five specs encoded the deleted pill colours
+(`span.bg-state-success-muted`); they now assert `[data-slot="status-value"][data-tone=…]`,
+which tests the classification rather than a Tailwind class. Nineteen `aria-pressed` assertions
+on hand-rolled switchers became `role="radio"` + `aria-checked`. Two label assertions moved to
+sentence case ("To Do" → "To do", "In Progress" → "In progress") — that is §3.6 being applied by
+`statusStyles.ts` rather than by a designer, and it is the intended change.
+
+**Still open in 5.1:** batch C (35 route boundaries in four shapes → one), batch D (the dialog
+migration, to be landed as a unit), batch E (`InlineFieldEdit`, `LinkedRecordPicker`).
 
 ---
 

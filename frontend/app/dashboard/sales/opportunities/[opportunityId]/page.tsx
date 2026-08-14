@@ -16,7 +16,7 @@ import { toast } from "sonner";
 
 import {
   getOpportunityStageLabel,
-  getOpportunityStageStyle,
+  getOpportunityStage,
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
@@ -24,10 +24,11 @@ import CommunicationActions from "@/components/recordActivity/CommunicationActio
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import {
@@ -191,7 +192,7 @@ export default function OpportunityDetailPage() {
     );
   const opportunity = summary.opportunity;
   const stage = normalizeOpportunityStage(opportunity.sales_stage) || "lead";
-  const stageStyle = getOpportunityStageStyle(stage);
+  const stageStyle = getOpportunityStage(stage);
   const overview = (
     <div className="grid gap-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -405,7 +406,7 @@ export default function OpportunityDetailPage() {
         <div className="mt-4 flex flex-wrap gap-2">
           {summary.inferred_services.length ? (
             summary.inferred_services.map((service) => (
-              <Pill key={service}>{service}</Pill>
+              <Chip key={service}>{service}</Chip>
             ))
           ) : (
             <span className="text-sm text-copy-muted">
@@ -455,13 +456,7 @@ export default function OpportunityDetailPage() {
       />
       <Card className="px-4 py-3">
         <div className="flex flex-wrap items-center gap-3">
-          <Pill
-            bg={stageStyle.bg}
-            text={stageStyle.text}
-            border={stageStyle.border}
-          >
-            {getOpportunityStageLabel(stage)}
-          </Pill>
+          <StatusValue status={{ ...stageStyle, label: String(getOpportunityStageLabel(stage)) }} />
           <CommunicationActions
             email={summary.contact?.primary_email}
             phone={summary.contact?.contact_telephone}

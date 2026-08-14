@@ -16,6 +16,7 @@ import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
@@ -194,11 +195,11 @@ export default function TasksPage() {
         viewControls={
           <>
             <SavedViewSelector moduleKey="tasks" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
-            <div className="inline-flex rounded-[var(--radius-card)] border border-line-default p-0.5" aria-label="Task display">
-              <Button type="button" variant={displayMode === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "list"} onClick={() => changeDisplayMode("list")}><Table2 />List</Button>
-              <Button type="button" variant={displayMode === "board" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "board"} onClick={() => changeDisplayMode("board")}><Columns3 />Board</Button>
-              <Button type="button" variant={displayMode === "calendar" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "calendar"} onClick={() => changeDisplayMode("calendar")}><CalendarDays />Calendar</Button>
-            </div>
+            <SegmentedControl aria-label="Task display" value={displayMode} onValueChange={changeDisplayMode}>
+              <SegmentedItem value="list"><Table2 />List</SegmentedItem>
+              <SegmentedItem value="board"><Columns3 />Board</SegmentedItem>
+              <SegmentedItem value="calendar"><CalendarDays />Calendar</SegmentedItem>
+            </SegmentedControl>
           </>
         }
         primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}

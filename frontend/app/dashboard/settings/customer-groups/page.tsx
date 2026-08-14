@@ -4,13 +4,14 @@ import { FormEvent, useMemo, useState } from "react";
 import { BadgePercent, Plus, RefreshCw, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -370,46 +371,24 @@ export default function CustomerGroupsSettingsPage() {
                 <FieldGroup className="mt-5 border-t border-line-subtle pt-5">
                   <Field>
                     <FieldLabel>Default assignment</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Default assignment">
-                      <Button
-                        type="button"
-                        variant={draft.is_default ? "secondary" : "outline"}
-                        aria-pressed={draft.is_default}
-                        onClick={() => setDraft((current) => ({ ...current, is_default: true }))}
-                      >
-                        Default group
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={!draft.is_default ? "secondary" : "outline"}
-                        aria-pressed={!draft.is_default}
-                        onClick={() => setDraft((current) => ({ ...current, is_default: false }))}
-                      >
-                        Not default
-                      </Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Default assignment"
+                      value={draft.is_default}
+                      onValueChange={(is_default) => setDraft((current) => ({ ...current, is_default }))}
+                      trueLabel="Default group"
+                      falseLabel="Not default"
+                    />
                     <FieldDescription>Use the default group when a customer has no explicit group assignment.</FieldDescription>
                   </Field>
                   <Field>
                     <FieldLabel>Group availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Group availability">
-                      <Button
-                        type="button"
-                        variant={draft.is_active ? "secondary" : "outline"}
-                        aria-pressed={draft.is_active}
-                        onClick={() => setDraft((current) => ({ ...current, is_active: true }))}
-                      >
-                        Active
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={!draft.is_active ? "secondary" : "outline"}
-                        aria-pressed={!draft.is_active}
-                        onClick={() => setDraft((current) => ({ ...current, is_active: false }))}
-                      >
-                        Inactive
-                      </Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Group availability"
+                      value={draft.is_active}
+                      onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+                      trueLabel="Active"
+                      falseLabel="Inactive"
+                    />
                     <FieldDescription>Active groups can be assigned and used for customer pricing.</FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -477,16 +456,10 @@ export default function CustomerGroupsSettingsPage() {
                   <TableCell className="text-xs text-copy-muted">{group.group_key}</TableCell>
                   <TableCell className="text-copy-secondary">{formatDiscount(group.discount_type, group.discount_value)}</TableCell>
                   <TableCell>
-                    <Pill
-                      bg={group.is_active ? "bg-state-success-muted" : undefined}
-                      text={group.is_active ? "text-state-success" : undefined}
-                      border={group.is_active ? "border-state-success/40" : undefined}
-                    >
-                      {group.is_active ? "Active" : "Inactive"}
-                    </Pill>
+                    <StatusValue status={{ tone: group.is_active ? "success" : "neutral", label: group.is_active ? "Active" : "Inactive" }} />
                   </TableCell>
                   <TableCell className="text-copy-secondary">
-                    {group.is_default ? <Pill bg="bg-state-info-muted" text="text-state-info" border="border-state-info/40">Default</Pill> : "-"}
+                    {group.is_default ? <StatusValue status={{ tone: "neutral", label: "Default" }} /> : "-"}
                   </TableCell>
                   <TableCell className="text-right">
                     <Button type="button" size="sm" variant="outline" onClick={() => void editGroup(group)}>

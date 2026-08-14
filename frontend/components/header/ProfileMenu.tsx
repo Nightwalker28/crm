@@ -1,40 +1,26 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { LogOut, Moon, Sun, UserRound } from "lucide-react";
 import { useTheme } from "next-themes";
 
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
-import { resolveMediaUrl } from "@/lib/media";
 
 export function ProfileMenu() {
   const { user, logout } = useSidebarUser();
   const { resolvedTheme, setTheme } = useTheme();
   const nextTheme = resolvedTheme === "light" ? "dark" : "light";
-  const displayName = `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim() || user?.email?.split("@")[0] || "User";
-  const initials = ((user?.first_name?.[0] ?? "") + (user?.last_name?.[0] ?? "")).toUpperCase() || "US";
+  const fullName = `${user?.first_name ?? ""} ${user?.last_name ?? ""}`.trim();
+  const displayName = fullName || user?.email?.split("@")[0] || "User";
 
   return (
     <Popover>
       <PopoverTrigger asChild>
         <Button type="button" variant="ghost" size="icon-sm" aria-label="Open profile menu" className="overflow-hidden">
-          {user?.photo_url ? (
-            <Image
-              src={resolveMediaUrl(user.photo_url)}
-              alt=""
-              width={32}
-              height={32}
-              unoptimized
-              className="h-8 w-8 rounded-[var(--radius-control-sm)] object-cover"
-            />
-          ) : initials !== "US" ? (
-            <span className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] bg-copy-primary text-[10px] font-bold text-app">{initials}</span>
-          ) : (
-            <UserRound />
-          )}
+          <Avatar name={fullName} email={user?.email} src={user?.photo_url} size="sm" />
         </Button>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 border-line-default bg-surface-raised p-2">

@@ -4,13 +4,14 @@ import { useParams, useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { ArrowLeft, Building2, Repeat2, Save, Users } from "lucide-react";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
@@ -120,8 +121,8 @@ function ModuleAccessEditor({
                   <TableCell className="text-copy-secondary">{department.description || "-"}</TableCell>
                   <TableCell>
                     {checked ? (
-                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-24">Allowed</Pill>
-                    ) : <Pill className="w-24">Blocked</Pill>}
+                      <StatusValue status={{ tone: "success", label: "Allowed" }} className="w-24" />
+                    ) : <Chip className="w-24">Blocked</Chip>}
                   </TableCell>
                   <TableCell className="text-right">
                     <Checkbox
@@ -187,12 +188,12 @@ function ModuleAccessEditor({
                   <TableCell className="text-copy-secondary">{team.description || "-"}</TableCell>
                   <TableCell>
                     {hasDepartment && !departmentAccess ? (
-                      <Pill className="w-44">Blocked by department.</Pill>
+                      <Chip className="w-44">Blocked by department.</Chip>
                     ) : teamAllowed ? (
-                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40" className="w-28">Team access</Pill>
+                      <StatusValue status={{ tone: "success", label: "Team access" }} className="w-28" />
                     ) : hasDepartment ? (
-                      <Pill className="w-32">Team blocked</Pill>
-                    ) : <Pill className="w-24">Blocked</Pill>}
+                      <Chip className="w-32">Team blocked</Chip>
+                    ) : <Chip className="w-24">Blocked</Chip>}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex flex-col items-end gap-1.5">

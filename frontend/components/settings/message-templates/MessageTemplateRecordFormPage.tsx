@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -163,10 +164,13 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
             </div>
             <Field>
               <FieldLabel>Template status</FieldLabel>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Template status">
-                <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
-                <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
-              </div>
+              <SegmentedBoolean
+                aria-label="Template status"
+                value={draft.is_active}
+                onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+                trueLabel="Active"
+                falseLabel="Inactive"
+              />
               <FieldDescription>Inactive templates remain saved but cannot be selected for new messages.</FieldDescription>
             </Field>
           </FieldGroup>

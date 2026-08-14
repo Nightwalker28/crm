@@ -300,7 +300,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | | |
 | `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | |
 | `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | |
-| `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | |
+| `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | **done** (A) — now `ui/PanelStates.tsx` |
 | `documents/RecordDocumentsPanel.tsx` | 132 | 5.3 | rebuild | The Files tab | |
 | `forms/ReadOnlyRecordLayout.tsx` | 58 | 5.3 | rebuild | Emits `"Not recorded"` — the string §3.6 rejects | |
 | `forms/ResolvedRecordLayout.tsx` | 126 | 5.3 | adopt | | |
@@ -335,7 +335,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunityQuickCreate.tsx` | 187 | 5.4 | adopt | **A3** — wired into contacts and accounts but *not* the deals list | |
 | `opportunities/OpportunityQuickCreateLayoutFields.tsx` | 291 | 5.4 | adopt | | |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | |
-| `opportunities/opportunityStages.ts` | 32 | 5.1 | rebuild | Tone classification (R5) | |
+| `opportunities/opportunityStages.ts` | 32 | 5.1 | rebuild | Tone classification (R5) | **done** (B) |
 | `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | |
 | `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | |
 | `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | |
@@ -460,14 +460,30 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Verdict | Note | Status |
 |---|---|---|---|---|
-| `button.tsx` | 63 | rebuild | 9 variants → 6 (§2.2) | |
-| `Pill.tsx` | 40 | **delete** | R5. 52 files and 107 call sites move to `StatusValue` | |
+| `button.tsx` | 63 | rebuild | 9 variants → 6 (§2.2) | **done** (A) |
+| `Pill.tsx` | 40 | **delete** | R5. 52 files and 107 call sites move to `StatusValue` | **done** (B) — deleted; 104 sites in 52 files moved |
 | `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | |
 | `sheet.tsx` | 236 | rebuild | Same migration | |
 | `dialog-layer.tsx` | 33 | adopt | | |
 | `DialogIconClose.tsx` | 20 | adopt | | |
 | `ExportControls.tsx` | 362 | rebuild | Headless UI `Menu` → radix | |
 | `ImportControls.tsx` | 442 | rebuild | Headless UI `Menu` → radix | |
+
+**Created by 5.1** — not in the original 54, because they did not exist when the census was
+taken. Counted here so the denominator stays honest.
+
+| Path | Verdict | Note | Status |
+|---|---|---|---|
+| `Money.tsx` | **new** | Over `lib/currency.ts`. Owns formatting and `tabular-nums`, never ink or size | **done** (A) |
+| `EmptyValue.tsx` | **new** | §3.6 in one place: `Not set` in a field, `—` in a cell. Makes 5.9's sweep one edit | **done** (A) |
+| `SectionHeading.tsx` | **new** | 137 hand-written `<h2>`s at four sizes; R7 fixes the role at 14px semibold `text-copy-label` | **done** (A) |
+| `Avatar.tsx` | **new** | Replaces 2 bespoke, one falling back to `"US"` and one to `"?"` | **done** (A) |
+| `SaveStateIndicator.tsx` | **new** | R1 requires it: autosave removes the button, which was the only feedback | **done** (A) |
+| `ActionBar.tsx` | **new** | `ActionBar` + `FormFooter`. Owns its children's control height (R4) via context; not sticky (R3) | **done** (A) |
+| `PanelStates.tsx` | **new** | Promoted from `recordActivity/`. Header steps down to R7; loading and empty stop being boxes (R8) | **done** (A) |
+| `StatusValue.tsx` | **new** | Renders a tone per context; accepts a caller-computed override for derived tones like overdue | **done** (B) |
+| `Chip.tsx` | **new** | The tag/count/marker R5 says needs "a different component with a different name" | **done** (B) |
+| `SegmentedControl.tsx` | **new** | **Not in the plan.** `secondary` was 47 sites carrying a role, not 8 carrying none — see `rebuild.md` 5.1 and §2.2 | **done** (A) |
 | `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | |
 | `Money.tsx` | — | **new** | Replaces 15 local formatters + 24 raw `Intl.NumberFormat` | |
 | `ActionBar.tsx` | — | **new** | 10 sticky footers on 3 recipes; owns child control height (R4); not sticky (R3) | |
@@ -476,7 +492,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `SectionHeading.tsx` | — | **new** | 137 hand-written `<h2>`s, 4 sizes | |
 | `Avatar.tsx` | — | **new** | 2 bespoke — one square, one circle | |
 | `StatusValue.tsx` | — | **new** | Renders a tone per context. **Must accept a caller-computed tone override** for derived states like overdue (R5) | |
-| `PanelStates.tsx` | — | **new** | Promoted from `recordActivity/RecordPanelStates.tsx`; reaches 5 of ~40 panels today | |
+| `PanelStates.tsx` | — | **new** | Promoted from `recordActivity/RecordPanelStates.tsx`; reaches 5 of ~40 panels today | **done** (A) |
 | `RecordSpine.tsx` | — | **new** | The signature (R9). Built in **5.3**, with its first real call site | |
 
 ### 3.2 Existing primitives
@@ -553,8 +569,8 @@ in `lib/` or `hooks/` is touched by this programme.
 
 | Path | Owner | Verdict | Note | Status |
 |---|---|---|---|---|
-| `lib/statusStyles.ts` | 5.1 | rebuild | Returns `{tone, label}`, not raw Tailwind strings. **R5's classification is in `rebuild.md`** | |
-| `lib/currency.ts` | 5.1 | **new** | Does not exist. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument | |
+| `lib/statusStyles.ts` | 5.1 | rebuild | Returns `{tone, label}`, not raw Tailwind strings. **R5's classification is in `rebuild.md`** | **done** (B) |
+| `lib/currency.ts` | 5.1 | **new** | Does not exist. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument | **done** (A) |
 | `lib/chartColors.ts` | 5.7 | adopt | Already correct; the only legal source of chart colour | |
 | `lib/datetime.ts` | — | unchanged | Already the single source for time | |
 | `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |

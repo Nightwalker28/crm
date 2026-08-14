@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { Users } from "lucide-react";
 
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/types/table";
@@ -117,7 +117,7 @@ function renderCell(contact: Contact, column: string) {
     case "created_time":
       return <span className="text-sm text-copy-muted">{contact.created_time ? formatDateTime(contact.created_time) : "-"}</span>;
     case "region":
-      return contact.region ? <Pill>{contact.region}</Pill> : <span className="text-sm text-copy-disabled">—</span>;
+      return contact.region ? <Chip>{contact.region}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
     case "country":
       return <span className="text-sm text-copy-muted">{contact.country || emptyValue()}</span>;
     case "linkedin_url":

@@ -74,12 +74,12 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
   await expect(page.getByRole("dialog", { name: "Edit booking link" })).toBeVisible();
 
   await page.getByLabel("Name", { exact: true }).fill("Customer discovery");
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
   await page.getByRole("button", { name: "Question", exact: true }).click();
   await page.getByLabel("Question 1 label").fill("What should we prepare?");
-  await expect(page.getByRole("button", { name: "Optional", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Required", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Optional", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Required", exact: true }).click();
   const updateRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/calendar/booking-types/17"),
   );

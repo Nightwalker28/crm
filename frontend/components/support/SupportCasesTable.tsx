@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { LifeBuoy } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { SupportCase } from "@/hooks/support/useCases";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
+import { getSupportCasePriority, getSupportCaseStatus } from "@/lib/statusStyles";
 
 type SupportCasesTableProps = {
   cases: SupportCase[];
@@ -68,12 +68,12 @@ function renderCell(item: SupportCase, column: string) {
     case "subject":
       return <span className="text-sm font-medium text-copy-primary">{item.subject}</span>;
     case "status": {
-      const style = getSupportCaseStatusStyle(item.status);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getSupportCaseStatus(item.status);
+      return <StatusValue status={style} />;
     }
     case "priority": {
-      const style = getSupportCasePriorityStyle(item.priority);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getSupportCasePriority(item.priority);
+      return <StatusValue status={style} />;
     }
     case "assigned_to_name":
       return (

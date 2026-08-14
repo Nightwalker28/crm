@@ -5,13 +5,14 @@ import { ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
 import TimezonePicker from "@/components/ui/TimezonePicker";
@@ -414,7 +415,7 @@ export default function ProfilePage() {
             <h2 id="profile-security-heading" className="text-lg font-semibold text-copy-primary">Account security</h2>
             <p className="mt-1 text-sm text-copy-muted">Manage multi-factor authentication for manual CRM sign-in.</p>
           </div>
-          <MfaStatusPill enabled={mfaEnabled} required={mfaRequired} />
+          <MfaStatus enabled={mfaEnabled} required={mfaRequired} />
         </CardHeader>
         <CardBody>
           {!mfaEnabled ? (
@@ -501,12 +502,12 @@ function SummaryTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function MfaStatusPill({ enabled, required }: { enabled: boolean; required: boolean }) {
+function MfaStatus({ enabled, required }: { enabled: boolean; required: boolean }) {
   if (enabled) {
-    return <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">MFA enabled</Pill>;
+    return <StatusValue status={{ tone: "success", label: "MFA enabled" }} />;
   }
   if (required) {
-    return <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">MFA required</Pill>;
+    return <StatusValue status={{ tone: "attention", label: "MFA required" }} />;
   }
-  return <Pill>MFA off</Pill>;
+  return <Chip>MFA off</Chip>;
 }

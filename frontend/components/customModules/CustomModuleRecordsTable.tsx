@@ -97,7 +97,7 @@ export default function CustomModuleRecordsTable({
           ? (record) => (
               <Button
                 type="button"
-                variant="dangerGhost"
+                variant="destructiveGhost"
                 size="icon-sm"
                 onClick={() => onDelete(record)}
                 disabled={isDeleting}

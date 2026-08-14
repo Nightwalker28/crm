@@ -7,10 +7,11 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import type { CatalogKind } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
@@ -130,11 +131,9 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                 )}
               </div>
               {record.is_active ? (
-                <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
-                  Active
-                </Pill>
+                <StatusValue status={{ tone: "success", label: "Active" }} />
               ) : (
-                <Pill>Inactive</Pill>
+                <Chip>Inactive</Chip>
               )}
             </CardHeader>
             <CardBody>
@@ -144,11 +143,9 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                   <dt className="text-xs font-medium text-copy-label">Website feed</dt>
                   <dd className="mt-1.5">
                     {record.is_public ? (
-                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
-                        Public
-                      </Pill>
+                      <StatusValue status={{ tone: "success", label: "Public" }} />
                     ) : (
-                      <Pill>Private</Pill>
+                      <Chip>Private</Chip>
                     )}
                   </dd>
                 </div>

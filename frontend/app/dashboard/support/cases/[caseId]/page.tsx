@@ -9,11 +9,11 @@ import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,7 +27,7 @@ import {
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
+import { getSupportCasePriority, getSupportCaseStatus } from "@/lib/statusStyles";
 
 const STATUSES = ["new", "open", "pending", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
@@ -140,8 +140,8 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
                 <FieldDescription className="mt-1">Manage the response state, urgency, and queue context.</FieldDescription>
               </div>
               <div className="flex gap-2">
-                <CasePill value={status} type="status" />
-                <CasePill value={priority} type="priority" />
+                <CaseStatus value={status} type="status" />
+                <CaseStatus value={priority} type="priority" />
               </div>
             </div>
             <FieldGroup className="mt-5 grid gap-4 md:grid-cols-3">
@@ -242,9 +242,9 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
   );
 }
 
-function CasePill({ value, type }: { value: string; type: "status" | "priority" }) {
-  const style = type === "priority" ? getSupportCasePriorityStyle(value) : getSupportCaseStatusStyle(value);
-  return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+function CaseStatus({ value, type }: { value: string; type: "status" | "priority" }) {
+  const style = type === "priority" ? getSupportCasePriority(value) : getSupportCaseStatus(value);
+  return <StatusValue status={style} />;
 }
 
 function SummaryTile({ label, value }: { label: string; value: string }) {

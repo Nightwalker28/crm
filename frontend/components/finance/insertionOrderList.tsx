@@ -5,16 +5,16 @@ import Image from "next/image";
 import Link from "next/link";
 import { FileSpreadsheet } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
+import { getInsertionOrderStatus } from "@/lib/statusStyles";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -135,8 +135,8 @@ function renderCell(order: InsertionOrder, column: string) {
       );
     case "status": {
       if (!order.status) return emptyValue();
-      const style = getInsertionOrderStatusStyle(order.status);
-      return <Pill bg={style.bg} text={style.text} border={style.border} className="w-24">{style.label}</Pill>;
+      const style = getInsertionOrderStatus(order.status);
+      return <StatusValue status={style} className="w-24" />;
     }
     case "currency":
       return (

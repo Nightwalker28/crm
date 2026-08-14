@@ -263,10 +263,9 @@ export default function CustomModuleRecordDetailPage() {
             {canDelete ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="destructiveGhost"
                 onClick={() => void handleDelete()}
                 disabled={recordQuery.isDeleting}
-                className="text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
               >
                 <Trash2 />
                 {recordQuery.isDeleting ? "Deleting…" : "Delete"}

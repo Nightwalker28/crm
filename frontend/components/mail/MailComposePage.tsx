@@ -165,7 +165,7 @@ export default function MailComposePage() {
                   <Button
                     key={token}
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={() => setBody((current) => `${current}${current ? " " : ""}${token}`)}
                   >

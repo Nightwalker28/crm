@@ -3,15 +3,17 @@
 import { useMemo } from "react";
 import { UserRoundPlus } from "lucide-react";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Lead } from "@/hooks/sales/useLeads";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
-import { getLeadScoreStyle, getLeadStatusStyle } from "@/lib/statusStyles";
+import { getLeadScoreGrade, getLeadStatus } from "@/lib/statusStyles";
 
 type LeadsTableProps = {
   leads: Lead[];
@@ -54,13 +56,6 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   score_grade: "sm",
 };
 
-function initials(lead: Lead) {
-  if (lead.first_name && lead.last_name) return `${lead.first_name[0]}${lead.last_name[0]}`.toUpperCase();
-  if (lead.first_name) return lead.first_name[0].toUpperCase();
-  if (lead.primary_email) return lead.primary_email[0].toUpperCase();
-  return "?";
-}
-
 function leadName(lead: Lead) {
   return [lead.first_name, lead.last_name].filter(Boolean).join(" ");
 }
@@ -72,9 +67,7 @@ function renderCell(lead: Lead, column: string) {
     case "first_name":
       return (
         <div className="flex h-8 items-center gap-2.5">
-          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-2xs font-semibold text-copy-secondary">
-            {initials(lead)}
-          </div>
+          <Avatar name={leadName(lead)} email={lead.primary_email} />
           <span className="truncate text-sm font-medium text-copy-primary">
             {leadName(lead) || <span className="text-copy-disabled">-</span>}
           </span>
@@ -83,16 +76,16 @@ function renderCell(lead: Lead, column: string) {
     case "primary_email":
       return <span className="text-sm text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span>;
     case "status": {
-      const style = getLeadStatusStyle(lead.status ?? "");
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getLeadStatus(lead.status ?? "");
+      return <StatusValue status={style} />;
     }
     case "score": {
-      const style = getLeadScoreStyle(lead.score_grade ?? "cold");
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{lead.score ?? 0}</Pill>;
+      const style = getLeadScoreGrade(lead.score_grade ?? "cold");
+      return <StatusValue status={{ ...style, label: String(lead.score ?? 0) }} />;
     }
     case "score_grade": {
-      const style = getLeadScoreStyle(lead.score_grade ?? "cold");
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getLeadScoreGrade(lead.score_grade ?? "cold");
+      return <StatusValue status={style} />;
     }
     case "created_time":
       return <span className="text-sm text-copy-muted">{lead.created_time ? formatDateTime(lead.created_time) : "-"}</span>;
@@ -112,7 +105,7 @@ function renderCell(lead: Lead, column: string) {
       return (
         <div className="flex max-w-64 flex-wrap gap-1">
           {(lead.tags ?? []).length
-            ? (lead.tags ?? []).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)
+            ? (lead.tags ?? []).map((tag) => <Chip key={tag.toLocaleLowerCase()}>{tag}</Chip>)
             : <span className="text-sm text-copy-disabled">No tags</span>}
         </div>
       );

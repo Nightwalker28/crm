@@ -6,11 +6,11 @@ import { MessageSquareText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -216,7 +216,7 @@ export default function RecordCommentsPanel({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader title={title} description={description} icon={MessageSquareText} />
+      <PanelHeader title={title} description={description} icon={MessageSquareText} />
 
       {canEdit ? <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
         <Field>
@@ -279,9 +279,9 @@ export default function RecordCommentsPanel({
       )}
 
       {query.isLoading ? (
-        <div className="mt-4"><RecordPanelLoading label="Loading notes…" /></div>
+        <div className="mt-4"><PanelLoading label="Loading notes…" /></div>
       ) : query.error ? (
-        <div className="mt-4"><RecordPanelError message="Record notes could not be loaded." onRetry={() => void query.refetch()} /></div>
+        <div className="mt-4"><PanelError message="Record notes could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : query.data?.results.length ? (
         <ol className="mt-4 space-y-3" aria-label="Record notes">
           {query.data.results.map((item) => (
@@ -308,7 +308,7 @@ export default function RecordCommentsPanel({
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><RecordPanelEmpty icon={MessageSquareText} title="No notes yet" description="Add internal context or mention a teammate to begin collaborating." /></div>
+        <div className="mt-4"><PanelEmpty icon={MessageSquareText} title="No notes yet" description="Add internal context or mention a teammate to begin collaborating." /></div>
       )}
     </Card>
   );

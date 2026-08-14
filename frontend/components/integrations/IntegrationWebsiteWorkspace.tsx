@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,13 +8,13 @@ import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, T
 import { toast } from "sonner";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -443,13 +444,7 @@ export function IntegrationWebsiteWorkspace() {
                     <TableCell className="text-copy-secondary">{key.scopes.join(", ")}</TableCell>
                     <TableCell className="max-w-[220px] truncate text-copy-muted">{key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}</TableCell>
                     <TableCell>
-                      <Pill
-                        bg={key.status === "active" ? "bg-state-success-muted" : "bg-state-danger-muted"}
-                        text={key.status === "active" ? "text-state-success" : "text-state-danger"}
-                        border={key.status === "active" ? "border-state-success/40" : "border-state-danger/40"}
-                      >
-                        {key.status}
-                      </Pill>
+                      <StatusValue status={{ tone: key.status === "active" ? "success" : "critical", label: formatSnakeCaseLabel(key.status) }} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-copy-muted">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</TableCell>
                     <TableCell>

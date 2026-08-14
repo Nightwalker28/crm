@@ -258,7 +258,7 @@ export function QuickCreateSurface({
                 {showCreateAndOpen ? (
                   <Button
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     size="lg"
                     disabled={isSubmitting || isLoading}
                     onClick={() => void submit("create-and-open")}

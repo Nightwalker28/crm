@@ -15,7 +15,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
-import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
+import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 import { fetchPosInvoice } from "@/hooks/finance/usePosInvoices";
 
 type CompanyProfile = {
@@ -99,8 +99,8 @@ export default function PosInvoicePrintPage() {
   const isCompact = invoice.template_id === "compact";
   const logoUrl = company.logo_url ? resolveMediaUrl(company.logo_url) : "";
   const accentColor = safeAccentColor(invoice.accent_color);
-  const invoiceStatus = getPosInvoiceStatusStyle(invoice.status);
-  const paymentStatus = getPosPaymentStatusStyle(invoice.payment_status);
+  const invoiceStatus = getPosInvoiceStatus(invoice.status);
+  const paymentStatus = getPosPaymentStatus(invoice.payment_status);
 
   // Printable customer documents use fixed colors so exports remain stable
   // regardless of the dashboard theme selected by the current CRM user.

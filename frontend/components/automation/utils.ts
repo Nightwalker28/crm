@@ -1,3 +1,5 @@
+import type { StatusTone } from "@/lib/statusStyles";
+
 import type {
   AutomationActionConfig,
   AutomationActionDefinition,
@@ -108,9 +110,9 @@ export function formatModuleLabel(moduleKey: string) {
   return moduleKey.split("_").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
 }
 
-export function statusPill(status: string) {
-  if (status === "succeeded" || status === "enabled") return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/30" };
-  if (status === "failed") return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/30" };
-  if (status === "skipped") return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/30" };
-  return {};
+export function statusToneFor(status: string): StatusTone {
+  if (status === "succeeded" || status === "enabled") return "success";
+  if (status === "failed") return "critical";
+  if (status === "skipped") return "attention";
+  return "neutral";
 }

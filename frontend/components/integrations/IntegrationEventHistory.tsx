@@ -1,13 +1,14 @@
 "use client";
 
+import type { StatusTone } from "@/lib/statusStyles";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { RefreshCw } from "lucide-react";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { apiFetch } from "@/lib/api";
@@ -72,14 +73,10 @@ function eventTitle(event: CrmEvent) {
   return typeof title === "string" ? title : `${event.entity_type} #${event.entity_id}`;
 }
 
-function deliveryStatusPill(status: string) {
-  if (status === "delivered") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
-  }
-  if (status === "failed") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
-  }
-  return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
+function deliveryStatusTone(status: string): StatusTone {
+  if (status === "delivered") return "success";
+  if (status === "failed") return "critical";
+  return "attention";
 }
 
 async function fetchCrmEvents(filters: EventFilters) {
@@ -177,13 +174,15 @@ export function IntegrationEventHistory() {
                       {event.deliveries.length ? (
                         <div className="flex flex-wrap gap-2">
                           {event.deliveries.map((delivery) => {
-                            const tone = deliveryStatusPill(delivery.status);
                             return (
-                              <Pill key={delivery.id} bg={tone.bg} text={tone.text} border={tone.border} className="max-w-[180px]">
-                                {delivery.provider}
-                                {delivery.channel_name ? ` - ${delivery.channel_name}` : ""}
-                                {` - ${delivery.status}`}
-                              </Pill>
+                              <StatusValue
+                                key={delivery.id}
+                                status={{
+                                  tone: deliveryStatusTone(delivery.status),
+                                  label: `${delivery.provider}${delivery.channel_name ? ` - ${delivery.channel_name}` : ""} - ${delivery.status}`,
+                                }}
+                                className="max-w-[180px] truncate"
+                              />
                             );
                           })}
                         </div>

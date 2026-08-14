@@ -322,8 +322,8 @@ export default function CalendarEventDialog({
             {event && onDelete && canManage ? (
               <Button
                 type="button"
-                variant="outline"
-                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
+                variant="destructiveOutline"
+                className="mr-auto"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >

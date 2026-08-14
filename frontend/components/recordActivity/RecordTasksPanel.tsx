@@ -7,17 +7,17 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -204,7 +204,7 @@ export default function RecordTasksPanel({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader
+      <PanelHeader
         title="Tasks & reminders"
         description="Follow-up tasks linked to this record."
         icon={ClipboardList}
@@ -285,9 +285,9 @@ export default function RecordTasksPanel({
             <Field className="md:col-span-2">
               <FieldLabel>Assigned user or team</FieldLabel>
               {optionsQuery.isLoading ? (
-                <RecordPanelLoading label="Loading assignees…" />
+                <PanelLoading label="Loading assignees…" />
               ) : optionsQuery.error ? (
-                <RecordPanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
+                <PanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
               ) : (
                 <TaskAssigneePicker
                   users={optionsQuery.data?.users ?? []}
@@ -319,9 +319,9 @@ export default function RecordTasksPanel({
       ) : null}
 
       {query.isLoading ? (
-        <div className="mt-4"><RecordPanelLoading label="Loading linked tasks…" /></div>
+        <div className="mt-4"><PanelLoading label="Loading linked tasks…" /></div>
       ) : query.error ? (
-        <div className="mt-4"><RecordPanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
+        <div className="mt-4"><PanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : tasks.length ? (
         <ol className="mt-4 space-y-3" aria-label="Linked tasks">
           {tasks.map((task) => (
@@ -338,8 +338,8 @@ export default function RecordTasksPanel({
                     {task.title}
                   </Link>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Pill>{statusLabel(task.status)}</Pill>
-                    <Pill>{task.priority} priority</Pill>
+                    <Chip>{statusLabel(task.status)}</Chip>
+                    <Chip>{task.priority} priority</Chip>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
@@ -354,9 +354,9 @@ export default function RecordTasksPanel({
                         void handleCompleteTask(task);
                       }}
                       disabled={completingTaskId === task.id}
-                      className="h-7 gap-1 border-state-success/40 bg-state-success-muted px-2 text-[11px] text-state-success hover:bg-state-success-muted hover:text-state-success"
+                      className="border-state-success/40 bg-state-success-muted text-state-success hover:bg-state-success-muted hover:text-state-success"
                     >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <CheckCircle2 />
                       {completingTaskId === task.id ? "Saving…" : "Complete"}
                     </Button>
                   ) : null}
@@ -367,7 +367,7 @@ export default function RecordTasksPanel({
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><RecordPanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
+        <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
       )}
     </Card>
   );

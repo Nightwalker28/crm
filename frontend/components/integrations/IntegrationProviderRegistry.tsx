@@ -1,10 +1,11 @@
+import type { StatusTone } from "@/lib/statusStyles";
 import Link from "next/link";
 import { PlugZap, RefreshCw } from "lucide-react";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { formatDateTime } from "@/lib/datetime";
 
 export type IntegrationRegistryHealth = {
@@ -43,17 +44,11 @@ export type IntegrationRegistryHealth = {
   };
 };
 
-function statusTone(status: string) {
-  if (status === "connected") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
-  }
-  if (status === "error" || status === "reconnect_required") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
-  }
-  if (status === "pending") {
-    return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
-  }
-  return { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
+function statusTone(status: string): StatusTone {
+  if (status === "connected") return "success";
+  if (status === "error" || status === "reconnect_required") return "critical";
+  if (status === "pending") return "attention";
+  return "neutral";
 }
 
 function formatStatus(value: string) {
@@ -137,7 +132,7 @@ export function IntegrationProviderRegistry({
                       <h3 className="mt-1 text-base font-semibold text-copy-primary">{provider.name}</h3>
                     </div>
                   </div>
-                  <Pill bg={tone.bg} text={tone.text} border={tone.border}>{formatStatus(connection.status)}</Pill>
+                  <StatusValue status={{ tone, label: formatStatus(connection.status) }} context="record" />
                 </div>
                 <p className="mt-3 text-p-sm text-copy-muted">{provider.description}</p>
                 <div className="mt-4 grid gap-2 text-xs text-copy-muted">

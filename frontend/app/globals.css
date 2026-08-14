@@ -307,6 +307,13 @@
   --size-control: 2.375rem;
   --size-control-lg: 2.75rem;
 
+  /* Rail widths are a closed set of two, named by what the rail carries rather than by how
+     wide it is. See docs/design/tokens.md 6.1. `nav` is a list of destinations; `context` sits
+     beside content and holds label/value pairs and inline controls, so the record spine and
+     the form aside are deliberately the same width. Ten hand-written ratios preceded these. */
+  --width-rail-nav: 16rem;
+  --width-rail-context: 20rem;
+
   --radius: 0.5rem;
   --radius-control-sm: 0.375rem;
   --radius-control: 0.5rem;

@@ -16,7 +16,7 @@ export const OPPORTUNITY_STAGE_LABELS: Record<string, string> = {
   closed_lost: "Closed Lost",
 };
 
-import { getOpportunityStageStyle as getCentralOpportunityStageStyle } from "@/lib/statusStyles";
+import { getOpportunityStage as getCentralOpportunityStageStyle } from "@/lib/statusStyles";
 
 export function normalizeOpportunityStage(stage?: string | null) {
   return (stage ?? "").toLowerCase().replace(/\s+/g, "_");
@@ -27,6 +27,6 @@ export function getOpportunityStageLabel(stage?: string | null) {
   return OPPORTUNITY_STAGE_LABELS[key] ?? stage ?? "Unstaged";
 }
 
-export function getOpportunityStageStyle(stage?: string | null) {
+export function getOpportunityStage(stage?: string | null) {
   return getCentralOpportunityStageStyle(normalizeOpportunityStage(stage) || "unstaged");
 }

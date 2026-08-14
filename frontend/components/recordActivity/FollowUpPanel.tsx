@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { RecordPanelHeader } from "@/components/recordActivity/RecordPanelStates";
+import { PanelHeader } from "@/components/ui/PanelStates";
 import { formatDateTime } from "@/lib/datetime";
 
 type Channel = "whatsapp" | "email" | "call";
@@ -93,7 +93,7 @@ export default function FollowUpPanel({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader
+      <PanelHeader
         title={title}
         description={
           lastContactedAt

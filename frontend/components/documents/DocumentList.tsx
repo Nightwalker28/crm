@@ -6,10 +6,10 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -84,10 +84,10 @@ function DocumentTitleCell({ document, highlighted }: { document: DocumentItem; 
         <div className="flex flex-wrap items-center gap-2">
           <div className="truncate text-sm font-semibold text-copy-primary">{document.title}</div>
           {document.is_template ? (
-            <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
-              <Tag className="h-3 w-3" />
+            <Chip>
+              <Tag aria-hidden="true" />
               {document.template_category || "Template"}
-            </Pill>
+            </Chip>
           ) : null}
         </div>
         <div className="mt-1 text-xs text-copy-muted">
@@ -95,8 +95,8 @@ function DocumentTitleCell({ document, highlighted }: { document: DocumentItem; 
         </div>
         {document.category || document.tags.length ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {document.category ? <Pill>{document.category}</Pill> : null}
-            {document.tags.slice(0, 3).map((tag) => <Pill key={tag.toLocaleLowerCase()}>{tag}</Pill>)}
+            {document.category ? <Chip>{document.category}</Chip> : null}
+            {document.tags.slice(0, 3).map((tag) => <Chip key={tag.toLocaleLowerCase()}>{tag}</Chip>)}
             {document.tags.length > 3 ? <span className="self-center text-xs text-copy-muted">+{document.tags.length - 3}</span> : null}
           </div>
         ) : null}
@@ -219,7 +219,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
             onClick={() => void handleTemplateUpdate(!document.is_template)}
             disabled={isUpdatingDocumentTemplate}
           >
-            <Tag className="h-4 w-4" />
+            <Tag />
             {document.is_template ? "Remove Template" : "Mark Template"}
           </Button>
           <div>
@@ -304,7 +304,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
                 </span>
               </div>
               {canEdit ? (
-                <Button type="button" variant="dangerGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
+                <Button type="button" variant="destructiveGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
                   <XCircle className="h-4 w-4" />
                   Revoke
                 </Button>
@@ -433,7 +433,7 @@ export default function DocumentList({
           </Button>
           <DocumentReferenceActions document={document} />
           {onDelete ? (
-            <Button type="button" variant="dangerGhost" onClick={() => onDelete(document)} disabled={isDeleting}>
+            <Button type="button" variant="destructiveGhost" onClick={() => onDelete(document)} disabled={isDeleting}>
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>

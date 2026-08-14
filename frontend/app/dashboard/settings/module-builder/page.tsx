@@ -17,13 +17,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -194,7 +194,7 @@ function FieldInspector({
           <div className="flex items-center gap-2">
             <SheetTitle className="text-base font-semibold text-copy-primary">Edit field</SheetTitle>
             {field.is_protected ? <LockKeyhole className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
-            <Pill>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Pill>
+            <Chip>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Chip>
           </div>
           <SheetDescription className="mt-1 break-all text-sm text-copy-muted">
             {field.key ?? "Configure the new field before saving the module."}
@@ -465,7 +465,7 @@ function ModuleWorkspace({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="truncate text-lg font-semibold text-copy-primary">{module.display_name || module.name}</h2>
-              <Pill>{deleted ? "Deleted" : draft.is_active ? "Active" : "Inactive"}</Pill>
+              <Chip>{deleted ? "Deleted" : draft.is_active ? "Active" : "Inactive"}</Chip>
             </div>
             <p className="mt-1 truncate text-sm text-copy-muted">{module.key}</p>
           </div>
@@ -555,13 +555,13 @@ function ModuleWorkspace({
                       <span className="flex items-center gap-2">
                         <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
                         {field.is_protected ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Protected" /> : null}
-                        {!field.serverId ? <Pill>Draft</Pill> : null}
+                        {!field.serverId ? <Chip>Draft</Chip> : null}
                       </span>
                       <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
                     </button>
                     <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.clientId, -1)} disabled={disabled || index === 0}><ChevronUp /></Button>
                     <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.clientId, 1)} disabled={disabled || index === fields.length - 1}><ChevronDown /></Button>
-                    <Button type="button" variant="dangerGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
+                    <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
                   </div>
                 )) : (
                   <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
@@ -596,7 +596,7 @@ function ModuleWorkspace({
               </div>
               <Button type="button" variant="outline" onClick={discard} disabled={disabled || !isDirty}>Discard</Button>
               <Button type="button" onClick={save} disabled={disabled || !isDirty}><Save />{disabled ? "Saving…" : "Save changes"}</Button>
-              <Button type="button" variant="dangerGhost" onClick={() => void onDelete().catch(() => undefined)} disabled={disabled}><Trash2 />Delete</Button>
+              <Button type="button" variant="destructiveGhost" onClick={() => void onDelete().catch(() => undefined)} disabled={disabled}><Trash2 />Delete</Button>
             </>
           )}
         </CardFooter>

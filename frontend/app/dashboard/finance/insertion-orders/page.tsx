@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Plus } from "lucide-react";
@@ -12,6 +13,7 @@ import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportCo
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageShell } from "@/components/ui/PageShell";
 import type { InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
@@ -162,24 +164,19 @@ export default function InsertionOrdersPage() {
           }
           actionControls={
             <>
-              <div className="flex flex-wrap gap-1" aria-label="Order status">
+              <SegmentedControl
+                aria-label="Order status"
+                value={statusFilter}
+                onValueChange={(status) =>
+                  setDraftConfig((current) => ({ ...current, filters: { ...current.filters, status } }))
+                }
+              >
                 {["all", "draft", "issued", "active", "completed", "cancelled"].map((status) => (
-                  <Button
-                    key={status}
-                    type="button"
-                    size="sm"
-                    variant={statusFilter === status ? "secondary" : "ghost"}
-                    onClick={() =>
-                      setDraftConfig((current) => ({
-                        ...current,
-                        filters: { ...current.filters, status },
-                      }))
-                    }
-                  >
-                    {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
-                  </Button>
+                  <SegmentedItem key={status} value={status}>
+                    {status === "all" ? "All" : formatSnakeCaseLabel(status)}
+                  </SegmentedItem>
                 ))}
-              </div>
+              </SegmentedControl>
               <ModuleImportExportControls
                 importEndpoint={canCreate ? "/finance/insertion-orders/import" : undefined}
                 exportEndpoint={canExport ? "/finance/insertion-orders/export" : undefined}

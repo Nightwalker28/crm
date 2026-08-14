@@ -303,7 +303,7 @@ test("Insertion Order list distinguishes filtered empty and fixed failure states
 
   await page.goto("/dashboard/finance/insertion-orders");
   await expect(page.getByText("No insertion orders yet")).toBeVisible();
-  await page.getByRole("button", { name: "Active" }).click();
+  await page.getByRole("radio", { name: "Active" }).click();
   await expect(page.getByText("No insertion orders match this view")).toBeVisible();
   await page.getByLabel("Insertion orders").getByRole("button", { name: "Clear filters" }).click();
 

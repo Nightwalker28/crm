@@ -5,6 +5,9 @@ import { Filter, Lock, MoreHorizontal, Plus, Settings2, Sparkles, X } from "luci
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean, SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -12,7 +15,6 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
@@ -34,7 +36,7 @@ import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField }
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
   CUSTOM_FIELD_SUPPORTED_MODULES,
   MODULE_VIEW_DEFINITIONS,
@@ -557,21 +559,14 @@ export default function FieldsPage() {
             <div className="border-b border-line-subtle p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <SearchBar value={search} onChange={setSearch} placeholder="Search fields" className="md:w-72" />
-                <div className="scrollbar-hide flex gap-1 overflow-x-auto" aria-label="Field filters">
+                <SegmentedControl aria-label="Field filters" value={filter} onValueChange={setFilter} className="scrollbar-hide max-w-full overflow-x-auto">
                   {FILTERS.map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="sm"
-                      variant={filter === value ? "secondary" : "ghost"}
-                      aria-pressed={filter === value}
-                      onClick={() => setFilter(value)}
-                      className="capitalize"
-                    >
-                      {value === "all" ? <Filter /> : null}{value}
-                    </Button>
+                    <SegmentedItem key={value} value={value}>
+                      {value === "all" ? <Filter /> : null}
+                      {formatSnakeCaseLabel(value)}
+                    </SegmentedItem>
                   ))}
-                </div>
+                </SegmentedControl>
               </div>
               <p className="mt-3 text-xs text-copy-muted">{filteredCatalog.length} of {catalog.length} fields shown</p>
             </div>
@@ -593,10 +588,10 @@ export default function FieldsPage() {
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-copy-primary">{field.label}</span>
-                        <Pill>{fieldSourceLabel(field.field_source)}</Pill>
-                        {field.is_required ? <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">Required</Pill> : null}
-                        {!field.is_enabled ? <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">Disabled</Pill> : null}
-                        {field.is_protected ? <Pill bg="bg-action-primary-muted" text="text-primary" border="border-primary/40"><Lock className="mr-1 h-3 w-3" />Protected</Pill> : null}
+                        <Chip>{fieldSourceLabel(field.field_source)}</Chip>
+                        {field.is_required ? <StatusValue status={{ tone: "attention", label: "Required" }} /> : null}
+                        {!field.is_enabled ? <StatusValue status={{ tone: "critical", label: "Disabled" }} /> : null}
+                        {field.is_protected ? <Chip><Lock />Protected</Chip> : null}
                       </div>
                       <div className="mt-1 text-xs text-copy-muted">{field.field_key} · {friendlyFieldType(field.field_type)}</div>
                       {field.is_protected ? <p className="mt-2 text-xs text-copy-secondary">Required by this module and cannot be disabled.</p> : null}
@@ -742,26 +737,14 @@ export default function FieldsPage() {
                   ) : null}
                   <Field>
                     <FieldLabel>Field availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Field availability">
-                      <Button
-                        type="button"
-                        variant={inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: true }))}
-                      >
-                        Enabled
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={!inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={!inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: false }))}
-                      >
-                        Disabled
-                      </Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Field availability"
+                      value={inspectorDraft.is_enabled}
+                      onValueChange={(is_enabled) => updateInspectorDraft((current) => ({ ...current, is_enabled }))}
+                      trueLabel="Enabled"
+                      falseLabel="Disabled"
+                      disabled={selectedField.is_protected || isSaving}
+                    />
                     <FieldDescription>
                       {selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
                     </FieldDescription>

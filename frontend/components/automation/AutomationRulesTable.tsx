@@ -3,11 +3,11 @@
 import { Copy, Edit3, History, MoreHorizontal, Power, PowerOff, Trash2, Workflow } from "lucide-react";
 
 import type { AutomationRule } from "./types";
-import { formatModuleLabel, statusPill } from "./utils";
+import { formatModuleLabel, statusToneFor } from "./utils";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/datetime";
@@ -68,7 +68,7 @@ export function AutomationRulesTable({
               </TableCell>
               <TableCell className="hidden md:table-cell">{rule.conditions_json.length || "Always"}</TableCell>
               <TableCell className="hidden md:table-cell">{rule.actions_json.length}</TableCell>
-              <TableCell><Pill {...statusPill(rule.enabled ? "enabled" : "disabled")}>{rule.enabled ? "Enabled" : "Disabled"}</Pill></TableCell>
+              <TableCell><StatusValue status={{ tone: statusToneFor(rule.enabled ? "enabled" : "disabled"), label: rule.enabled ? "Enabled" : "Disabled" }} /></TableCell>
               <TableCell className="hidden whitespace-nowrap lg:table-cell">{formatDateTime(rule.updated_at)}</TableCell>
               <TableCell className="text-right">
                 <Popover>
@@ -80,7 +80,7 @@ export function AutomationRulesTable({
                     <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onDuplicate(rule)}><Copy />Duplicate</Button>
                     <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onToggle(rule)}>{rule.enabled ? <PowerOff /> : <Power />}{rule.enabled ? "Disable" : "Enable"}</Button>
                     <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onViewRuns(rule)}><History />View runs</Button>
-                    <Button type="button" variant="dangerGhost" className="w-full justify-start" onClick={() => onDelete(rule)}><Trash2 />Delete</Button>
+                    <Button type="button" variant="destructiveGhost" className="w-full justify-start" onClick={() => onDelete(rule)}><Trash2 />Delete</Button>
                   </PopoverContent>
                 </Popover>
               </TableCell>

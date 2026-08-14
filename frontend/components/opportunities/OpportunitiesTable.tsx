@@ -4,15 +4,15 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { BriefcaseBusiness } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getOpportunityStageLabel, getOpportunityStageStyle } from "@/components/opportunities/opportunityStages";
+import { getOpportunityStageLabel, getOpportunityStage } from "@/components/opportunities/opportunityStages";
 
 type Props = {
   opportunities: Opportunity[];
@@ -96,11 +96,9 @@ function renderCell(opportunity: Opportunity, column: string) {
       return <span className="text-sm text-copy-secondary">{opportunity.assigned_to_name || "Unassigned"}</span>;
     case "sales_stage": {
       if (!opportunity.sales_stage) return <span className="text-sm text-copy-disabled">—</span>;
-      const style = getOpportunityStageStyle(opportunity.sales_stage);
+      const style = getOpportunityStage(opportunity.sales_stage);
       return (
-        <Pill bg={style.bg} text={style.text} border={style.border} className="w-28">
-          {getOpportunityStageLabel(opportunity.sales_stage)}
-        </Pill>
+        <StatusValue status={{ ...style, label: String(getOpportunityStageLabel(opportunity.sales_stage)) }} className="w-28" />
       );
     }
     case "expected_close_date": {

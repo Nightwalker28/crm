@@ -4,12 +4,12 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { FileText, Printer } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
+import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 
 type Props = {
   invoices: PosInvoice[];
@@ -80,12 +80,12 @@ function renderCell(invoice: PosInvoice, column: string) {
     case "customer_name":
       return <span className="text-sm font-medium text-copy-primary">{invoice.customer_name}</span>;
     case "status": {
-      const style = getPosInvoiceStatusStyle(invoice.status);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getPosInvoiceStatus(invoice.status);
+      return <StatusValue status={style} />;
     }
     case "payment_status": {
-      const style = getPosPaymentStatusStyle(invoice.payment_status);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getPosPaymentStatus(invoice.payment_status);
+      return <StatusValue status={style} />;
     }
     case "total_amount":
       return <span className="text-sm font-medium tabular-nums text-copy-primary">{money(invoice.total_amount, invoice.currency)}</span>;

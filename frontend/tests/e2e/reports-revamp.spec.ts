@@ -84,7 +84,7 @@ test("Reports expose every authorized module and guard unavailable forecasting",
 
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
   await expect(page.getByText("Forecast unavailable")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Bar" })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("radio", { name: "Bar" })).toHaveAttribute("aria-checked", "true");
 
   await page.getByRole("combobox", { name: "Report module" }).click();
   await expect(page.getByRole("option", { name: "Insertion Orders" })).toBeVisible();
@@ -170,7 +170,7 @@ test("Saved reports support keyboard opening, dirty saves, and confirmed deletio
   await row.press("Enter");
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 
-  await page.getByRole("button", { name: "Pie" }).click();
+  await page.getByRole("radio", { name: "Pie" }).click();
   await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
 
   await page.getByRole("button", { name: "Delete" }).click();

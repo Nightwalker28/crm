@@ -29,10 +29,10 @@ import {
   RecordWorkspacePrimary,
   RecordWorkspaceRegion,
 } from "@/components/recordWorkspace/RecordWorkspace";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { Pill } from "@/components/ui/Pill";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import {
@@ -51,7 +51,7 @@ import {
 } from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { getLeadScoreStyle, getLeadStatusStyle } from "@/lib/statusStyles";
+import { getLeadScoreGrade, getLeadStatus } from "@/lib/statusStyles";
 
 type LeadScoreFactor = {
   key: string;
@@ -160,7 +160,7 @@ export default function LeadDetailPage() {
       || summary.lead.primary_email
       || "Lead"
     : "Lead";
-  const leadStatusStyle = getLeadStatusStyle(summary?.lead.status || "new");
+  const leadStatusStyle = getLeadStatus(summary?.lead.status || "new");
   const summaryError = summaryQuery.error;
   const requestedTab = searchParams.get("tab");
 
@@ -226,7 +226,7 @@ export default function LeadDetailPage() {
                 )}
               />
             )}
-            badges={<Pill bg={leadStatusStyle.bg} text={leadStatusStyle.text} border={leadStatusStyle.border}>{leadStatusStyle.label}</Pill>}
+            badges={<StatusValue status={leadStatusStyle} />}
             metadata={(
               <>
                 {fieldEnabled("company") && summary.lead.company ? <span>{summary.lead.company}</span> : null}
@@ -520,22 +520,25 @@ function ScoreTile({
   factors: LeadScoreFactor[];
   calculatedAt?: string | null;
 }) {
-  const gradeStyle = getLeadScoreStyle(grade || "cold");
+  const gradeStyle = getLeadScoreGrade(grade || "cold");
+  // No tone: a lead's grade is a category, not an outcome — no value is better than another
+  // and none is a deviation, so painting the whole panel by grade says something colour is not
+  // entitled to say (R5). The figure takes the one stat-figure size (3.3).
   return (
-    <div className={`rounded-[var(--radius-control)] border px-4 py-4 ${gradeStyle.border} ${gradeStyle.bg} ${gradeStyle.text}`}>
+    <div data-slot="lead-score" className="rounded-[var(--radius-control)] border border-line-subtle px-4 py-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-xs font-medium opacity-75">
+          <div className="text-xs font-medium text-copy-label">
             Lead score
           </div>
           <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-semibold leading-none">
+            <span className="text-2xl font-bold tabular-nums leading-none text-copy-primary">
               {score ?? 0}
             </span>
-            <span className="text-sm font-medium">{gradeStyle.label}</span>
+            <span className="text-sm text-copy-secondary">{gradeStyle.label}</span>
           </div>
         </div>
-        <div className="text-right text-2xs opacity-70">
+        <div className="text-right text-2xs text-copy-muted">
           {calculatedAt ? formatDateTime(calculatedAt) : "Not calculated"}
         </div>
       </div>

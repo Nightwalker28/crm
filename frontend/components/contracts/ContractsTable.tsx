@@ -4,14 +4,14 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { FileSignature } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { Contract, ContractSortState } from "@/hooks/contracts/useContracts";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getContractStatusStyle } from "@/lib/statusStyles";
+import { getContractStatus } from "@/lib/statusStyles";
 
 type ContractsTableProps = {
   contracts: Contract[];
@@ -67,8 +67,8 @@ function renderCell(item: Contract, column: string) {
     case "title":
       return <span className="block max-w-[300px] truncate text-sm font-medium text-copy-primary">{item.title}</span>;
     case "status": {
-      const style = getContractStatusStyle(item.status);
-      return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
+      const style = getContractStatus(item.status);
+      return <StatusValue status={style} />;
     }
     case "value_amount":
       return <span className="text-sm tabular-nums text-copy-primary">{formatMoney(item.value_amount, item.currency)}</span>;

@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
@@ -780,11 +781,11 @@ export default function ReportsPage() {
               <h2 className="text-base font-semibold text-copy-primary">{selectedModule?.label ?? "Module"} report</h2>
               <FieldDescription className="mt-1">{report?.dimension.label ? `Grouped by ${report.dimension.label.toLowerCase()}.` : "Choose how to group and measure the authorized records."}</FieldDescription>
             </div>
-            <div className="inline-flex rounded-[var(--radius-control)] border border-line-default p-0.5" aria-label="Report display">
-              <Button type="button" variant={viewMode === "table" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><Table2 />Table</Button>
-              <Button type="button" variant={viewMode === "bar" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "bar"} onClick={() => setViewMode("bar")}><BarChart3 />Bar</Button>
-              <Button type="button" variant={viewMode === "pie" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "pie"} onClick={() => setViewMode("pie")}><PieChartIcon />Pie</Button>
-            </div>
+            <SegmentedControl aria-label="Report display" value={viewMode} onValueChange={setViewMode}>
+              <SegmentedItem value="table"><Table2 />Table</SegmentedItem>
+              <SegmentedItem value="bar"><BarChart3 />Bar</SegmentedItem>
+              <SegmentedItem value="pie"><PieChartIcon />Pie</SegmentedItem>
+            </SegmentedControl>
           </div>
           {reportQuery.isLoading ? (
             <Skeleton className="h-[24rem] w-full rounded-[var(--radius-control)]" />

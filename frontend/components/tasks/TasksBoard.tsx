@@ -3,14 +3,14 @@
 import { useState } from "react";
 import { AlertTriangle, GripVertical, TriangleAlert } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task, TaskStatus } from "@/hooks/useTasks";
 import { formatDateTime } from "@/lib/datetime";
-import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
+import { getTaskPriority, getTaskStatus } from "@/lib/statusStyles";
 
 type Props = {
   tasks: Task[];
@@ -75,7 +75,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, has
       <div className="flex min-w-max gap-4">
         {STATUSES.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.value);
-          const statusStyle = getTaskStatusStyle(column.value);
+          const statusStyle = getTaskStatus(column.value);
           return (
             <section
               key={column.value}
@@ -91,12 +91,12 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, has
               className={`min-w-[270px] w-[270px] rounded-[var(--radius-card)] border bg-surface-muted transition-colors ${dropStatus === column.value ? "border-action-primary bg-action-primary-muted/20" : "border-line-default"}`}
             >
               <div className="flex items-center justify-between border-b border-line-default px-3 py-3">
-                <Pill bg={statusStyle.bg} text={statusStyle.text} border={statusStyle.border}>{column.label}</Pill>
+                <StatusValue status={{ ...statusStyle, label: String(column.label) }} />
                 <span className="text-xs font-medium text-copy-muted">{columnTasks.length}</span>
               </div>
               <div className="flex min-h-48 flex-col gap-3 p-3">
                 {columnTasks.length ? columnTasks.map((task) => {
-                  const priorityStyle = getTaskPriorityStyle(task.priority);
+                  const priorityStyle = getTaskPriority(task.priority);
                   return (
                     <article
                       key={task.id}
@@ -112,7 +112,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, has
                         </button>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Pill bg={priorityStyle.bg} text={priorityStyle.text} border={priorityStyle.border}>{priorityStyle.label}</Pill>
+                        <StatusValue status={priorityStyle} />
                         {isOverdue(task) ? <span className="inline-flex items-center gap-1 text-xs text-state-warning"><AlertTriangle className="h-3.5 w-3.5" />Overdue</span> : null}
                       </div>
                       <div className="mt-3 space-y-1 text-xs text-copy-muted">

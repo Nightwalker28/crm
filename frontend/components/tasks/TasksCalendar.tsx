@@ -3,13 +3,13 @@
 import { useMemo, useState } from "react";
 import { CalendarDays, ChevronLeft, ChevronRight, TriangleAlert } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Pill } from "@/components/ui/Pill";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task } from "@/hooks/useTasks";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getTaskPriorityStyle } from "@/lib/statusStyles";
+import { getTaskPriority } from "@/lib/statusStyles";
 
 type Props = { tasks: Task[]; isLoading: boolean; isRefreshing?: boolean; hasError?: boolean; onRetry?: () => void; onOpen: (task: Task) => void };
 
@@ -123,7 +123,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
         <div className="space-y-2 p-3">
           <div className="px-1 text-sm font-medium text-copy-primary">{formatDateOnly(dateKey(selectedDay))}</div>
           {selectedTasks.length ? selectedTasks.map((task) => {
-            const priority = getTaskPriorityStyle(task.priority);
+            const priority = getTaskPriority(task.priority);
             return (
               <button
                 key={task.id}
@@ -133,7 +133,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
               >
                 <span className="block text-sm font-semibold text-copy-primary">{task.title}</span>
                 <span className="mt-1 block text-xs text-copy-muted">{task.due_at ? formatDateTime(task.due_at) : "No due date"}</span>
-                <Pill bg={priority.bg} text={priority.text} border={priority.border} className="mt-2">{priority.label}</Pill>
+                <StatusValue status={priority} className="mt-2" />
               </button>
             );
           }) : (
@@ -157,11 +157,11 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
                   <div className={`mb-2 flex h-6 w-6 items-center justify-center rounded-full text-xs ${today ? "bg-action-primary text-primary-foreground" : outsideMonth ? "text-copy-disabled" : "text-copy-muted"}`}>{date.getDate()}</div>
                   <div className="space-y-1.5">
                     {entries.slice(0, 3).map((task) => {
-                      const priority = getTaskPriorityStyle(task.priority);
+                      const priority = getTaskPriority(task.priority);
                       return (
                         <button key={task.id} type="button" onClick={() => onOpen(task)} className="block w-full rounded-[var(--radius-card)] border border-line-default bg-surface px-2 py-1.5 text-left hover:border-action-primary">
                           <span className="block truncate text-xs font-medium text-copy-primary">{task.title}</span>
-                          <Pill bg={priority.bg} text={priority.text} border={priority.border} className="mt-1">{priority.label}</Pill>
+                          <StatusValue status={priority} className="mt-1" />
                         </button>
                       );
                     })}

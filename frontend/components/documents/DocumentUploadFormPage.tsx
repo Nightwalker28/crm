@@ -20,12 +20,12 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type DocumentItem, useDocumentActions, useDocumentStorageConnections, useDocumentUploadLimits } from "@/hooks/useDocuments";
@@ -93,17 +93,11 @@ function statusLabel(status: QueueStatus) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function StatusPill({ status }: { status: QueueStatus }) {
+function QueueStatusValue({ status }: { status: QueueStatus }) {
   const failed = status === "failed" || status === "invalid";
   const complete = status === "complete";
   return (
-    <Pill
-      bg={complete ? "bg-state-success-muted" : failed ? "bg-state-danger-muted" : "bg-surface-muted"}
-      text={complete ? "text-state-success" : failed ? "text-state-danger" : "text-copy-secondary"}
-      border="border-line-default"
-    >
-      {statusLabel(status)}
-    </Pill>
+    <StatusValue status={{ tone: complete ? "success" : failed ? "critical" : "neutral", label: statusLabel(status) }} />
   );
 }
 
@@ -414,7 +408,7 @@ export default function DocumentUploadFormPage() {
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-copy-secondary"><ProviderIcon provider={resolvedProvider} />{providerLabel(resolvedProvider)}</div>
                         <div className="text-xs text-copy-secondary">{itemAssociations.length} {itemAssociations.length === 1 ? "record" : "records"}</div>
-                        <div className="flex justify-start md:justify-end"><StatusPill status={item.status} /></div>
+                        <div className="flex justify-start md:justify-end"><QueueStatusValue status={item.status} /></div>
                       </div>
 
                       {item.status === "uploading" ? <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label={`Uploading ${item.file.name}`} aria-valuenow={item.progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-primary motion-safe:transition-[width] motion-reduce:transition-none" style={{ width: `${item.progress}%` }} /></div> : null}

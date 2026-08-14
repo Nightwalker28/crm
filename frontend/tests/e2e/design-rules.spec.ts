@@ -173,7 +173,7 @@ test("design rule audit", async ({ page }) => {
       // Only real form controls carry the height contract - nav items, card-buttons,
       // sort headers, tabs and pills size to their content by design.
       document.querySelectorAll<HTMLElement>(
-        '[data-slot="button"], [data-slot="input"], [data-slot="select-trigger"], select',
+        '[data-slot="button"], [data-slot="input"], [data-slot="select-trigger"], [data-slot="segmented-item"], select',
       ).forEach((el) => {
         if (!visible(el)) return;
         if (/\bh-auto\b/.test(String((el as HTMLElement).className || ""))) return;

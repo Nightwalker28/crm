@@ -6,15 +6,15 @@ import { FileDown, Pencil } from "lucide-react";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
+import { getInsertionOrderStatus } from "@/lib/statusStyles";
 
 function formatMoney(amount?: number | null, currency?: string | null) {
   if (amount == null) return "Not set";
@@ -52,7 +52,7 @@ export default function InsertionOrderDetailPage() {
     return <RouteNotFoundState recordLabel="Insertion order" backHref="/dashboard/finance/insertion-orders" backLabel="Back to insertion orders" />;
   }
 
-  const status = getInsertionOrderStatusStyle(order.status);
+  const status = getInsertionOrderStatus(order.status);
   const customerHref = order.customer_organization_id
     ? `/dashboard/sales/organizations/${order.customer_organization_id}`
     : order.customer_contact_id
@@ -118,7 +118,7 @@ export default function InsertionOrderDetailPage() {
                 <h2 id="insertion-order-commercial-heading" className="text-lg font-semibold text-copy-primary">Commercial summary</h2>
                 <p className="mt-1 text-sm text-copy-muted">Current status and order value.</p>
               </div>
-              <Pill bg={status.bg} text={status.text} border={status.border}>{status.label}</Pill>
+              <StatusValue status={status} />
             </CardHeader>
             <CardBody>
               <dl className="grid gap-3 text-sm">

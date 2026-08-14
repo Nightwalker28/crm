@@ -3,12 +3,13 @@
 import { useMemo } from "react";
 import { ClipboardList } from "lucide-react";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { Task, TaskSortState } from "@/hooks/useTasks";
 import { formatDateTime } from "@/lib/datetime";
-import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
+import { getTaskPriority, getTaskStatus } from "@/lib/statusStyles";
 
 type Props = {
   tasks: Task[];
@@ -62,12 +63,12 @@ function renderCell(task: Task, column: string) {
         </div>
       );
     case "priority": {
-      const pill = getTaskPriorityStyle(task.priority);
-      return <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-20">{pill.label}</Pill>;
+      const pill = getTaskPriority(task.priority);
+      return <StatusValue status={pill} className="w-20" />;
     }
     case "status": {
-      const pill = getTaskStatusStyle(task.status);
-      return <Pill bg={pill.bg} text={pill.text} border={pill.border} className="w-28">{pill.label}</Pill>;
+      const pill = getTaskStatus(task.status);
+      return <StatusValue status={pill} className="w-28" />;
     }
     case "assigned_by_name":
       return (
@@ -97,9 +98,9 @@ function renderCell(task: Task, column: string) {
       return task.assignees.length ? (
         <div className="flex flex-wrap gap-1.5">
           {task.assignees.slice(0, 3).map((assignee) => (
-            <Pill key={assignee.assignee_key}>{assignee.label}</Pill>
+            <Chip key={assignee.assignee_key}>{assignee.label}</Chip>
           ))}
-          {task.assignees.length > 3 ? <Pill text="text-copy-muted">+{task.assignees.length - 3}</Pill> : null}
+          {task.assignees.length > 3 ? <Chip>+{task.assignees.length - 3}</Chip> : null}
         </div>
       ) : (
         <span className="text-sm text-copy-disabled">Unassigned</span>

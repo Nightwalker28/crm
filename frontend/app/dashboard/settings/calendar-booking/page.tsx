@@ -6,6 +6,7 @@ import { CalendarDays, Copy, ExternalLink, Plus, Trash2, X } from "lucide-react"
 import Link from "next/link";
 import { toast } from "sonner";
 
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -433,24 +434,13 @@ export default function CalendarBookingSettingsPage() {
             </Field>
             <Field>
               <FieldLabel>Link availability</FieldLabel>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Link availability">
-                <Button
-                  type="button"
-                  variant={draft.enabled ? "secondary" : "outline"}
-                  aria-pressed={draft.enabled}
-                  onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
-                >
-                  Enabled
-                </Button>
-                <Button
-                  type="button"
-                  variant={!draft.enabled ? "secondary" : "outline"}
-                  aria-pressed={!draft.enabled}
-                  onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
-                >
-                  Disabled
-                </Button>
-              </div>
+              <SegmentedBoolean
+                aria-label="Link availability"
+                value={draft.enabled}
+                onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+                trueLabel="Enabled"
+                falseLabel="Disabled"
+              />
               <FieldDescription>Enabled links accept new public bookings. Existing calendar events remain when a link is disabled.</FieldDescription>
             </Field>
           </FieldGroup>
@@ -507,26 +497,13 @@ export default function CalendarBookingSettingsPage() {
             {draft.questions.map((question, index) => (
               <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_12rem_auto]">
                 <Input aria-label={`Question ${index + 1} label`} value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
-                <div className="grid grid-cols-2 gap-2" role="group" aria-label={`Question ${index + 1} requirement`}>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={question.required ? "secondary" : "outline"}
-                    aria-pressed={question.required}
-                    onClick={() => updateQuestion(index, { required: true })}
-                  >
-                    Required
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={!question.required ? "secondary" : "outline"}
-                    aria-pressed={!question.required}
-                    onClick={() => updateQuestion(index, { required: false })}
-                  >
-                    Optional
-                  </Button>
-                </div>
+                <SegmentedBoolean
+                  aria-label={`Question ${index + 1} requirement`}
+                  value={question.required}
+                  onValueChange={(required) => updateQuestion(index, { required })}
+                  trueLabel="Required"
+                  falseLabel="Optional"
+                />
                 <Button aria-label={`Remove question ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>

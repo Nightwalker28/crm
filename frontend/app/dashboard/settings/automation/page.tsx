@@ -12,6 +12,7 @@ import { AutomationRunDetails } from "@/components/automation/AutomationRunDetai
 import { AutomationRunsTable } from "@/components/automation/AutomationRunsTable";
 import type { AutomationRule, AutomationRun } from "@/components/automation/types";
 import { formatModuleLabel, ruleToDraft, serializeDraft } from "@/components/automation/utils";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -130,8 +131,10 @@ export default function AutomationSettingsPage() {
    context={moduleLabel ? `${moduleLabel} automation` : "Automation workspace"}
    actions={(
      <>
-     <Button type="button" variant={workspace === "rules" ? "secondary" : "ghost"} size="sm" onClick={() => setWorkspace("rules")}><Workflow />Rules</Button>
-     <Button type="button" variant={workspace === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => viewRuns()}><History />Runs</Button>
+     <SegmentedControl aria-label="Automation workspace" value={workspace} onValueChange={(next) => (next === "runs" ? viewRuns() : setWorkspace("rules"))}>
+       <SegmentedItem value="rules"><Workflow />Rules</SegmentedItem>
+       <SegmentedItem value="runs"><History />Runs</SegmentedItem>
+     </SegmentedControl>
      {workspace === "rules" ? <Button type="button" onClick={() => openEditor()}><Plus />Create rule</Button> : null}
      </>
    )}

@@ -3,9 +3,9 @@
 import { useMemo } from "react";
 import { Building2 } from "lucide-react";
 
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/types/table";
@@ -103,7 +103,7 @@ function renderCell(org: Organization, column: string) {
         <span className="text-sm text-copy-disabled">—</span>
       );
     case "industry":
-      return org.industry ? <Pill className="max-w-36">{org.industry}</Pill> : <span className="text-sm text-copy-disabled">—</span>;
+      return org.industry ? <Chip className="max-w-36">{org.industry}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
     case "annual_revenue":
       return org.annual_revenue
         ? <span className="text-sm font-medium text-state-success">{org.annual_revenue}</span>

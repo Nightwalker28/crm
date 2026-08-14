@@ -64,13 +64,13 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
 
   await expect(page.getByRole("heading", { name: "Tasks" })).toBeVisible();
   await expect(page.getByPlaceholder("Search tasks")).toBeVisible();
-  await expect(page.getByRole("button", { name: "List" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.locator("span.bg-state-danger-muted", { hasText: "High" })).toBeVisible();
+  await expect(page.getByRole("radio", { name: "List" })).toHaveAttribute("aria-checked", "true");
+  await expect(page.locator('[data-slot="status-value"][data-tone="category"]', { hasText: "High" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Board" }).click();
+  await page.getByRole("radio", { name: "Board" }).click();
   await expect(page.getByText(/Drag cards between columns/)).toBeVisible();
-  await expect(page.getByRole("region", { name: "To Do tasks" })).toContainText("Prepare renewal brief");
-  await expect(page.getByRole("region", { name: "To Do tasks" }).locator("span.bg-surface-muted", { hasText: "To Do" })).toBeVisible();
+  await expect(page.getByRole("region", { name: "To do tasks" })).toContainText("Prepare renewal brief");
+  await expect(page.getByRole("region", { name: "To do tasks" }).locator('[data-slot="status-value"]', { hasText: "To do" })).toBeVisible();
   await page.getByRole("button", { name: "Prepare renewal brief" }).click();
   await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
   await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?taskId=${taskId}$`));
@@ -80,7 +80,7 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page).toHaveURL(/\/dashboard\/tasks$/);
 
-  await page.getByRole("button", { name: "Calendar" }).click();
+  await page.getByRole("radio", { name: "Calendar" }).click();
   await expect(page.getByRole("region", { name: "Task due date calendar" })).toBeVisible();
   await expect(page.getByText("1 of 1 loaded tasks have a due date")).toBeVisible();
   await expect(page.getByRole("button", { name: "Previous month" })).toBeVisible();
@@ -90,10 +90,10 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
 
 test("Board status menu updates a task", async ({ page }) => {
   await page.goto("/dashboard/tasks");
-  await page.getByRole("button", { name: "Board" }).click();
+  await page.getByRole("radio", { name: "Board" }).click();
   await page.getByRole("combobox", { name: "Change status for Prepare renewal brief" }).click();
-  await page.getByRole("option", { name: "In Progress" }).click();
-  await expect(page.getByRole("region", { name: "In Progress tasks" })).toContainText("Prepare renewal brief");
+  await page.getByRole("option", { name: "In progress" }).click();
+  await expect(page.getByRole("region", { name: "In progress tasks" })).toContainText("Prepare renewal brief");
   await expect(page.getByText("Task moved to in progress.")).toBeVisible();
 });
 

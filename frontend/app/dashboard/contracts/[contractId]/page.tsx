@@ -8,13 +8,14 @@ import { History, Pencil, UserRoundCheck, UsersRound } from "lucide-react";
 import { toast } from "sonner";
 
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -229,7 +230,7 @@ export default function ContractDetailPage() {
               <h2 id="contract-details-heading" className="text-lg font-semibold text-copy-primary">Contract details</h2>
               <FieldDescription className="mt-1">Lifecycle, ownership, value, and important dates.</FieldDescription>
             </div>
-            <StatusPill status={item.status} />
+            <ContractStatus status={item.status} />
           </CardHeader>
           <CardBody>
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
@@ -353,7 +354,7 @@ export default function ContractDetailPage() {
                           </Button>
                         </div>
                       ) : (
-                        <StatusPill status={signer.status} />
+                        <ContractStatus status={signer.status} />
                       )}
                     </div>
                   </div>
@@ -445,17 +446,17 @@ function statusLabel(status: string) {
     ?? status.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function StatusPill({ status }: { status: string }) {
+function ContractStatus({ status }: { status: string }) {
   if (status === "active" || status === "signed") {
-    return <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">{statusLabel(status)}</Pill>;
+    return <StatusValue status={{ tone: "success", label: statusLabel(status) }} context="record" />;
   }
   if (status === "cancelled" || status === "declined" || status === "voided" || status === "expired") {
-    return <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">{statusLabel(status)}</Pill>;
+    return <StatusValue status={{ tone: "critical", label: statusLabel(status) }} context="record" />;
   }
   if (status === "review" || status === "sent" || status === "partially_signed" || status === "viewed") {
-    return <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">{statusLabel(status)}</Pill>;
+    return <StatusValue status={{ tone: "attention", label: statusLabel(status) }} context="record" />;
   }
-  return <Pill>{statusLabel(status)}</Pill>;
+  return <Chip>{statusLabel(status)}</Chip>;
 }
 
 function SummaryTile({ label, value }: { label: string; value: string }) {

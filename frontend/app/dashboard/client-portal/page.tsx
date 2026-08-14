@@ -1,17 +1,19 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
+import type { StatusTone } from "@/lib/statusStyles";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import Link from "next/link";
 import { Copy, ExternalLink, KeyRound, Link2, RefreshCw, Send, Users } from "lucide-react";
 import { toast } from "sonner";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { Pill } from "@/components/ui/Pill";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
@@ -53,14 +55,14 @@ function actionLabel(action: string) {
   return action === "request_changes" ? "Requested changes" : action === "accept" ? "Accepted" : action;
 }
 
-function statusTone(status: string) {
+function statusTone(status: string): StatusTone {
   if (status === "active" || status === "published" || status === "accepted") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+    return "success";
   }
   if (status === "inactive" || status === "expired" || status === "revoked") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+    return "critical";
   }
-  return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
+  return "attention";
 }
 
 function nextSort(current: ClientPortalSortState, column: string): ClientPortalSortState {
@@ -354,7 +356,7 @@ export default function ClientPortalDashboardPage() {
                 <span className="text-copy-muted">No responses</span>
               ),
             },
-            { key: "status", label: "Status", size: "sm", sortable: true, render: (page) => <Pill {...statusTone(page.status)} className="capitalize">{page.status}</Pill> },
+            { key: "status", label: "Status", size: "sm", sortable: true, render: (page) => <StatusValue status={{ tone: statusTone(page.status), label: formatSnakeCaseLabel(page.status) }} /> },
             { key: "updated_at", label: "Updated", sortable: true, render: (page) => <span className="text-copy-muted">{formatDateTime(page.updated_at)}</span> },
           ]}
           rows={pages}

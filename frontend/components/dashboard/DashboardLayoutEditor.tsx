@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -190,27 +191,19 @@ function DashboardWidgetShell({
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
               <ArrowDown />
             </Button>
-            <div
-              role="group"
-              className="mx-1 flex rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted p-0.5"
+            <SegmentedControl
               aria-label={`Resize ${title}`}
+              value={widget.size}
+              onValueChange={(size) => onResize(widget.id, size as DashboardWidgetSize)}
+              className="mx-1"
             >
               {(Object.keys(SIZE_LABELS) as DashboardWidgetSize[]).map((size) => (
-                <Button
-                  key={size}
-                  type="button"
-                  variant={widget.size === size ? "primary" : "ghost"}
-                  size="icon-sm"
-                  aria-label={`Resize ${title} to ${size}`}
-                  aria-pressed={widget.size === size}
-                  onClick={() => onResize(widget.id, size)}
-                  className="h-7 min-w-7 rounded-[var(--radius-control-sm)] px-2 text-xs"
-                >
+                <SegmentedItem key={size} value={size} aria-label={`Resize ${title} to ${size}`}>
                   {SIZE_LABELS[size]}
-                </Button>
+                </SegmentedItem>
               ))}
-            </div>
-            <Button type="button" variant="dangerGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
+            </SegmentedControl>
+            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
               <Trash2 />
             </Button>
           </div>
@@ -339,7 +332,7 @@ export function DashboardLayoutEditor({
                 <Button
                   key={`${item.type}-${item.module_key ?? "base"}`}
                   type="button"
-                  variant="secondary"
+                  variant="outline"
                   onClick={() => onAdd(item)}
                   className="h-auto w-full items-start justify-start whitespace-normal px-4 py-4 text-left"
                 >

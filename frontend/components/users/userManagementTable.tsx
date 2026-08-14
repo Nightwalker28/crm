@@ -7,7 +7,7 @@ import Pagination from "../ui/Pagination";
 import UserFilters, {
   type UserFiltersValue,
 } from "@/components/users/userFilters";
-import { Pill } from "@/components/ui/Pill";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -118,49 +118,6 @@ function filtersEqual(a: UserFiltersValue, b: UserFiltersValue) {
 }
 
 // --- Color Configurations ---
-const ROLE_LEVEL_STYLES = {
-  admin: {
-    bg: "bg-state-danger-muted",
-    text: "text-state-danger",
-    border: "border-state-danger/40",
-  },
-  elevated: {
-    bg: "bg-state-warning-muted",
-    text: "text-state-warning",
-    border: "border-state-warning/40",
-  },
-  standard: {
-    bg: "bg-state-info-muted",
-    text: "text-state-info",
-    border: "border-state-info/40",
-  },
-  basic: {
-    bg: "bg-action-primary-muted",
-    text: "text-copy-primary",
-    border: "border-line-strong",
-  },
-  unassigned: {
-    bg: "bg-surface-muted",
-    text: "text-copy-muted",
-    border: "border-line-default",
-  },
-};
-
-const DEFAULT_ROLE_STYLE = {
-  bg: "bg-surface-muted",
-  text: "text-copy-secondary",
-  border: "border-line-default",
-};
-
-function getRolePillProps(roleName: string, roleLevel?: number | null) {
-  if (!roleName || roleName === "Unassigned")
-    return ROLE_LEVEL_STYLES.unassigned;
-  if (typeof roleLevel !== "number") return DEFAULT_ROLE_STYLE;
-  if (roleLevel >= 100) return ROLE_LEVEL_STYLES.admin;
-  if (roleLevel >= 90) return ROLE_LEVEL_STYLES.elevated;
-  if (roleLevel >= 10) return ROLE_LEVEL_STYLES.standard;
-  return ROLE_LEVEL_STYLES.basic;
-}
 
 // --- Fetcher Functions ---
 
@@ -438,7 +395,6 @@ export function UserManagementTable({
     const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
     const teamName = getTeamName(u);
     const roleName = getRoleName(u);
-    const roleProps = getRolePillProps(roleName, u.role_level);
 
     switch (column) {
       case "name":
@@ -478,14 +434,7 @@ export function UserManagementTable({
       case "role_name":
         return (
           <TableCell>
-            <Pill
-              bg={roleProps.bg}
-              text={roleProps.text}
-              border={roleProps.border}
-              className="w-22"
-            >
-              {roleName}
-            </Pill>
+            <span className="text-sm text-copy-secondary">{roleName}</span>
           </TableCell>
         );
       case "email":
@@ -506,29 +455,11 @@ export function UserManagementTable({
         return (
           <TableCell>
             {u.mfa_enabled ? (
-              <Pill
-                bg="bg-state-success-muted"
-                text="text-state-success"
-                border="border-state-success/40"
-              >
-                Enabled
-              </Pill>
+              <StatusValue status={{ tone: "success", label: "Enabled" }} />
             ) : u.mfa_required ? (
-              <Pill
-                bg="bg-state-warning-muted"
-                text="text-state-warning"
-                border="border-state-warning/40"
-              >
-                Required
-              </Pill>
+              <StatusValue status={{ tone: "attention", label: "Required" }} />
             ) : (
-              <Pill
-                bg="bg-surface-muted"
-                text="text-copy-muted"
-                border="border-line-default"
-              >
-                Off
-              </Pill>
+              <StatusValue status={{ tone: "neutral", label: "Off" }} />
             )}
           </TableCell>
         );
@@ -536,21 +467,9 @@ export function UserManagementTable({
         return (
           <TableCell>
             {u.is_active === "active" ? (
-              <Pill
-                bg="bg-state-success-muted"
-                text="text-state-success"
-                border="border-state-success/40"
-              >
-                Active
-              </Pill>
+              <StatusValue status={{ tone: "success", label: "Active" }} />
             ) : (
-              <Pill
-                bg="bg-surface-muted"
-                text="text-copy-muted"
-                border="border-line-default"
-              >
-                Inactive
-              </Pill>
+              <StatusValue status={{ tone: "neutral", label: "Inactive" }} />
             )}
           </TableCell>
         );

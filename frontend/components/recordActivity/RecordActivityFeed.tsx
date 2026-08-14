@@ -13,14 +13,14 @@ import {
 } from "lucide-react";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { useRecordActivity } from "@/hooks/useRecordActivity";
 import { formatDateTime } from "@/lib/datetime";
 import { cn } from "@/lib/utils";
@@ -203,7 +203,7 @@ function ActivityCard({ item }: { item: RecordActivityEnvelope }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <Pill>{TYPE_LABELS[item.type] ?? item.type}</Pill>
+            <Chip>{TYPE_LABELS[item.type] ?? item.type}</Chip>
             {item.direction ? <span className="text-p-xs text-copy-muted">{item.direction}</span> : null}
             {item.status ? <span className="text-p-xs text-copy-muted">{item.status.replace(/_/g, " ")}</span> : null}
             <span className="text-p-xs text-copy-muted">{formatDateTime(item.occurred_at)}</span>
@@ -238,7 +238,7 @@ export default function RecordActivityFeed({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader title={title} description={description} icon={History} />
+      <PanelHeader title={title} description={description} icon={History} />
 
       <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter activity by type">
         {FILTERS.map((option) => {
@@ -267,11 +267,11 @@ export default function RecordActivityFeed({
 
       {query.isLoading ? (
         <div className="mt-4">
-          <RecordPanelLoading label="Loading activity…" />
+          <PanelLoading label="Loading activity…" />
         </div>
       ) : query.error && !hasLoadedHistory ? (
         <div className="mt-4">
-          <RecordPanelError message="Activity could not be loaded." onRetry={() => void query.refetch()} />
+          <PanelError message="Activity could not be loaded." onRetry={() => void query.refetch()} />
         </div>
       ) : hasLoadedHistory ? (
         <>
@@ -303,7 +303,7 @@ export default function RecordActivityFeed({
         </>
       ) : (
         <div className={cn("mt-4")}>
-          <RecordPanelEmpty
+          <PanelEmpty
             icon={History}
             title={filter === "all" ? "No activity yet" : "No activity of this type"}
             description={
