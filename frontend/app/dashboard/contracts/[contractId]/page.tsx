@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Chip } from "@/components/ui/Chip";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
@@ -24,6 +25,7 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { getContractStatus } from "@/lib/statusStyles";
 
 const CONTRACT_STATUSES = [
   { value: "draft", label: "Draft" },
@@ -35,6 +37,11 @@ const CONTRACT_STATUSES = [
   { value: "expired", label: "Expired" },
   { value: "cancelled", label: "Cancelled" },
 ];
+
+const CONTRACT_STATUS_OPTIONS = CONTRACT_STATUSES.map(({ value }) => ({
+  value,
+  ...getContractStatus(value),
+}));
 
 const SIGNER_STATUSES = [
   { value: "pending", label: "Pending" },
@@ -60,8 +67,6 @@ export default function ContractDetailPage() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
   const { modules } = useAccessibleModules();
-  const [status, setStatus] = useState("draft");
-  const [saving, setSaving] = useState(false);
   const [partySaving, setPartySaving] = useState(false);
   const [signerSaving, setSignerSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -81,38 +86,30 @@ export default function ContractDetailPage() {
   useEffect(() => {
     if (!item) return;
     setError(null);
-    setStatus(item.status ?? "draft");
     setSignerStatusDrafts(Object.fromEntries((item.signers ?? []).map((signer) => [signer.id, signer.status])));
   }, [item]);
 
-  async function handleSaveStatus() {
-    if (!item || !canEdit || status === item.status) return;
-    const confirmed = await confirm({
+  async function confirmStatusChange(next: InlineFieldEditOption) {
+    if (!item) return false;
+    return confirm({
       title: "Change contract status?",
-      description: `Move ${item.contract_number} from ${statusLabel(item.status)} to ${statusLabel(status)}? This change is recorded in the contract event history.`,
+      description: `Move ${item.contract_number} from ${statusLabel(item.status)} to ${next.label}? This change is recorded in the contract event history.`,
       confirmLabel: "Change status",
     });
-    if (!confirmed) return;
-    try {
-      setSaving(true);
-      setError(null);
-      const res = await apiFetch(`/contracts/${params.contractId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error("Contract status update failed");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["contracts"] }),
-        queryClient.invalidateQueries({ queryKey: ["contract-edit", params.contractId] }),
-        contractQuery.refetch(),
-      ]);
-      toast.success("Contract status updated.");
-    } catch {
-      setError("We could not update the contract status. Try again.");
-    } finally {
-      setSaving(false);
-    }
+  }
+
+  async function updateStatus(next: string) {
+    const res = await apiFetch(`/contracts/${params.contractId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    if (!res.ok) throw new Error("Contract status update failed");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+      queryClient.invalidateQueries({ queryKey: ["contract-edit", params.contractId] }),
+      contractQuery.refetch(),
+    ]);
   }
 
   async function addParty() {
@@ -210,10 +207,7 @@ export default function ContractDetailPage() {
         backHref="/dashboard/contracts"
         backLabel="Back to Contracts"
         primaryAction={canEdit ? (
-          <>
-            <Button asChild variant="outline"><Link href={`/dashboard/contracts/${params.contractId}/edit`}><Pencil />Edit contract</Link></Button>
-            <Button onClick={() => void handleSaveStatus()} disabled={saving || status === item.status}>{saving ? "Saving…" : "Save status"}</Button>
-          </>
+          <Button asChild variant="outline"><Link href={`/dashboard/contracts/${params.contractId}/edit`}><Pencil />Edit contract</Link></Button>
         ) : undefined}
       />
 
@@ -236,12 +230,15 @@ export default function ContractDetailPage() {
             <FieldGroup className="grid gap-4 sm:grid-cols-2">
               {canEdit ? (
                 <Field>
-                  <FieldLabel htmlFor="contract-status">Status</FieldLabel>
-                  <Select value={status} onValueChange={setStatus}>
-                    <SelectTrigger id="contract-status"><SelectValue /></SelectTrigger>
-                    <SelectContent>{CONTRACT_STATUSES.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                  </Select>
-                  <FieldDescription>Status changes are saved explicitly and recorded in event history.</FieldDescription>
+                  <FieldLabel>Status</FieldLabel>
+                  <InlineFieldEdit
+                    fieldLabel="Status"
+                    value={item.status}
+                    options={CONTRACT_STATUS_OPTIONS}
+                    confirm={confirmStatusChange}
+                    onCommit={(next) => updateStatus(next.value)}
+                  />
+                  <FieldDescription>A status change is recorded in event history.</FieldDescription>
                 </Field>
               ) : null}
               <SummaryTile label="Owner" value={item.owner_id ? `User #${item.owner_id}` : "Unassigned"} />

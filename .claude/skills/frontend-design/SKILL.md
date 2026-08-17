@@ -177,14 +177,14 @@ the routes first; parallel runs add a dozen timeout failures that vanish seriall
 
 ## 6. Known baseline
 
-`./scripts/check-design.sh` fails **3 of 14 rules at HEAD**. "Green" means *no new failures
-and this slice's own rules cleared*, not a clean run:
+`./scripts/check-design.sh` fails **2 of 14 rules at HEAD**. "Green" means *no new failures
+and this slice's own rules cleared*, not a clean run. §7.2 (`@headlessui/react`) closed in
+rebuild 5.1 batch D — `dialog.tsx` and the import/export `Menu` call sites moved to Radix:
 
 | Failing rule | Site | Owner |
 |---|---|---|
 | §4.1 spacing on the 4px grid | `LynkSplash.tsx:58` — `pl-[0.2em]` | rebuild 5.9 |
 | §4.2 no call-site control heights | `ClientPageCreateForm.tsx:335` — `size-6` | rebuild 5.8 |
-| §7.2 shadcn is the only component library | `@headlessui/react` in `package.json` | rebuild 5.1 |
 
 ---
 

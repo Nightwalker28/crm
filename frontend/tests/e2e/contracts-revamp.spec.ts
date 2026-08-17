@@ -232,13 +232,13 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
   await expect(page.getByLabel("Email").first()).toBeVisible();
   await expect(page.getByText("Northwind Operations")).toBeVisible();
   await expect(page.getByText("Alex Morgan")).toBeVisible();
-  await page.getByLabel("Status", { exact: true }).first().click();
+  await page.getByRole("combobox", { name: "Status", exact: true }).first().click();
   await page.getByRole("option", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Save status" }).click();
 
   await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract event history.")).toBeVisible();
   await page.getByRole("button", { name: "Change status" }).click();
   await expect.poll(() => updatedPayload).toEqual({ status: "review" });
+  await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
 });
 
 test("Contract detail is read-only without edit permission", async ({ page }) => {
@@ -255,10 +255,9 @@ test("Contract detail is read-only without edit permission", async ({ page }) =>
 
   await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit contract" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Save status" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add party" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add signer" })).toHaveCount(0);
-  await expect(page.getByLabel("Status", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Status", exact: true })).toHaveCount(0);
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
 });
 

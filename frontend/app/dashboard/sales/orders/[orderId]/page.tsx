@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { Pencil } from "lucide-react";
-import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { InlineFieldEdit } from "@/components/ui/InlineFieldEdit";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -17,13 +17,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -40,13 +33,13 @@ import {
 import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { getOrderStatus } from "@/lib/statusStyles";
 
-const STATUSES = [
-  { value: "draft", label: "Draft" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "fulfilled", label: "Fulfilled" },
-  { value: "cancelled", label: "Cancelled" },
-];
+const ORDER_STATUS_VALUES = ["draft", "confirmed", "fulfilled", "cancelled"] as const;
+const ORDER_STATUS_OPTIONS = ORDER_STATUS_VALUES.map((value) => ({
+  value,
+  ...getOrderStatus(value),
+}));
 
 function formatMoney(
   value: string | number | null | undefined,
@@ -63,11 +56,8 @@ function formatMoney(
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
   const [order, setOrder] = useState<Order | null>(null);
-  const [status, setStatus] = useState("confirmed");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [loadError, setLoadError] = useState(false);
-  const [saveError, setSaveError] = useState(false);
 
   async function loadOrder(signal?: { cancelled: boolean }) {
     try {
@@ -78,7 +68,6 @@ export default function OrderDetailPage() {
       if (!res.ok) throw new Error("Unable to load order");
       if (signal?.cancelled) return;
       setOrder(body);
-      setStatus(body.status ?? "confirmed");
     } catch {
       if (!signal?.cancelled) setLoadError(true);
     } finally {
@@ -95,23 +84,22 @@ export default function OrderDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.orderId]);
 
-  async function handleSave() {
+  async function updateStatus(next: string) {
+    if (!order || order.status === next) return;
+    const previous = order;
+    setOrder({ ...order, status: next });
     try {
-      setSaving(true);
-      setSaveError(false);
       const res = await apiFetch(`/sales/orders/${params.orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
+        body: JSON.stringify({ status: next }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error("Unable to update order");
+      if (!res.ok || !body) throw new Error("Unable to update order");
       setOrder(body);
-      toast.success("Order updated.");
-    } catch {
-      setSaveError(true);
-    } finally {
-      setSaving(false);
+    } catch (error) {
+      setOrder(previous);
+      throw error;
     }
   }
 
@@ -135,28 +123,14 @@ export default function OrderDetailPage() {
         backHref="/dashboard/sales/orders"
         backLabel="Back to Orders"
         primaryAction={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/sales/orders/${params.orderId}/edit`}>
-                <Pencil />
-                Edit order
-              </Link>
-            </Button>
-            <Button onClick={handleSave} disabled={saving || loading}>
-              {saving ? "Saving..." : "Save status"}
-            </Button>
-          </>
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/sales/orders/${params.orderId}/edit`}>
+              <Pencil />
+              Edit order
+            </Link>
+          </Button>
         }
       />
-
-      {saveError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          We could not update this order. Check your connection and try again.
-        </div>
-      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
         <Card className="px-5 py-5">
@@ -169,18 +143,12 @@ export default function OrderDetailPage() {
           <FieldGroup className="mt-4 grid gap-4 md:grid-cols-2">
             <Field>
               <FieldLabel>Status</FieldLabel>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <InlineFieldEdit
+                fieldLabel="Status"
+                value={order.status}
+                options={ORDER_STATUS_OPTIONS}
+                onCommit={(next) => updateStatus(next.value)}
+              />
             </Field>
             <SummaryTile
               label="Total"

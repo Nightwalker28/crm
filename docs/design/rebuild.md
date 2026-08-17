@@ -1,9 +1,9 @@
 # Lynk frontend: the rebuild program
 
 **Status:** approved 2026-08-14. **Sub-phase 5.0 done** — direction, law and census landed;
-the owner took the record spine on 14 Aug 2026. **5.1 is in progress** — batches A and B
-(cross-cutting primitives, and the status sweep that deletes `Pill`) have landed; the route
-boundaries, the dialog migration and `InlineFieldEdit` remain.
+the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B, C, D and E
+(cross-cutting primitives, the status sweep that deletes `Pill`, the route-boundary sweep, the
+Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed.
 
 This is Phase 5 of [`consistency-pass.md`](./consistency-pass.md), expanded into its own
 programme because it outgrew the pass containing it — and because it carries scoping
@@ -760,8 +760,187 @@ on hand-rolled switchers became `role="radio"` + `aria-checked`. Two label asser
 sentence case ("To Do" → "To do", "In Progress" → "In progress") — that is §3.6 being applied by
 `statusStyles.ts` rather than by a designer, and it is the intended change.
 
-**Still open in 5.1:** batch C (35 route boundaries in four shapes → one), batch D (the dialog
-migration, to be landed as a unit), batch E (`InlineFieldEdit`, `LinkedRecordPicker`).
+**Still open in 5.1:** batch E (`InlineFieldEdit`, `LinkedRecordPicker`).
+
+### Status: batch C landed — the route boundaries
+
+**The four "sizes" were never four implementations — every one of the 35 files already
+called into `RouteStates`.** The drift was in the file shape around that call: some
+component definitions were compressed onto one line (up to 165 characters), some were
+idiomatic multi-line Next.js boundaries; 13 `error.tsx` files each redefined the same
+Next.js error-boundary prop type inline; five `loading.tsx` files omitted the `label` prop
+their siblings supplied, so `aria-label="Loading page"` announced on some routes and the
+real module name on others; three `error.tsx` files (`pos`, `orders`, `quotes`) explicitly
+restated `RouteErrorState`'s own defaults (`backHref="/dashboard"` /
+`backLabel="Return to dashboard"`) as if they were a deliberate choice, which made
+`payments/error.tsx`'s **genuine** override (`backHref="/dashboard/finance/pos"`, since
+payments has no list page of its own) unreadable as one.
+
+**The one shape**, now applied to all 35 rows the census assigns here:
+
+- One shared type — `RouteErrorBoundaryProps`, added to `RouteStates.tsx` — replaces 13
+  inline redefinitions of `{ error: Error & { digest?: string }; reset: () => void }`.
+- One naming convention — `{Module}Error` / `{Module}Loading` / `{Module}NotFound` — so a
+  stack trace or a search for the function name identifies the route without opening the
+  file. Generic names (`ErrorState`, `Loading`, `NotFound`) are gone.
+- One formatting convention — idiomatic multi-line JSX, no single-line component bodies.
+  A file's size still varies (7 lines for a bare title, 18 for one with a real `backHref`
+  override) — that variance is now content, not habit.
+- `backHref` / `backLabel` are supplied only where they differ from `RouteErrorState`'s own
+  default, so a reader can trust that a value present on the call site means something.
+- Every `loading.tsx` passes `label`, matching the module name already used in its sibling
+  `error.tsx` title.
+- `app/loading.tsx` (the cold-boot splash) and `dashboard/{loading,not-found}.tsx` needed no
+  content change — they were already the target shape, or (the splash) are a deliberately
+  different tier from the in-shell skeleton, per the comment already on
+  `dashboard/loading.tsx`. Recorded as `done` in the census rather than left unmarked.
+
+No behaviour change: every route still renders the same `RouteErrorState` /
+`RouteLoadingState` / `RouteNotFoundState`, with the same props, at the same routes — this
+is invisible unless a route actually errors, loads, or 404s. No new e2e coverage, per the
+testing policy; existing specs don't assert boundary-file internals. `check-design.sh` is
+unchanged at 3 of 14 failing — none of the three are here.
+
+**Files:** `components/ui/RouteStates.tsx`; all `error.tsx` / `loading.tsx` /
+`not-found.tsx` under `app/dashboard/{,finance/{pos,payments},sales/{leads,contacts,
+organizations,opportunities,quotes,orders},settings/{fields,permissions,users},
+views/[moduleKey]}`; `docs/design/rebuild-census.md` (35 rows marked `done`).
+
+### Status: batch D landed — the dialog migration
+
+`dialog.tsx` is now built on the same `radix-ui` package `sheet.tsx` already used, not
+`@headlessui/react`. `@headlessui/react` is removed from `package.json`; `check-design.sh`
+moves from 3 of 14 failing to **2 of 14** — §7.2 is closed, §4.1 and §4.2 (owned by 5.9 and
+5.8) are the remaining two.
+
+**The two headlessui `Menu` call sites moved to a new vendored primitive, not a bigger
+`dialog.tsx`.** `ExportControls` and `ImportControls` each render one menu item into
+`ModuleImportExportControls`' dropdown; that is a `DropdownMenu`, not a `Dialog`, and had no
+existing radix vendor in the repo (`select.tsx` and `popover.tsx` each vendor their own
+primitive directly rather than sharing one). `components/ui/dropdown-menu.tsx` is new:
+`DropdownMenu` / `DropdownMenuTrigger` / `DropdownMenuContent` / `DropdownMenuItem` only —
+no `Group`, `Label`, `Separator`, `Sub`, or checkbox/radio items, because nothing calls them
+yet. It follows `select.tsx`'s convention (`focus:` styling — radix moves real DOM focus to
+the highlighted item, so no `data-highlighted` variant is needed) rather than `dialog.tsx` /
+`sheet.tsx`'s `motion` treatment, matching its nearer sibling `popover.tsx`.
+
+**The behaviour change is real, and it is not confined to the Menu swap.** Headless UI's
+`Dialog` and Radix's `Dialog` both trap focus by default, and a second modal Dialog opening
+on top of an already-open one (the confirmation from `useConfirm`, stacked over `TaskDialog`,
+`CalendarEventDialog`, `ImportControls`' preview dialog, and others) is exactly the
+scenario `dialog-layer.tsx` exists for. Previously only `sheet.tsx` consumed
+`useDialogLayerCovered()`; `dialog.tsx`'s `Dialog` and `DialogPanel` now do too, releasing
+`modal` and guarding `onInteractOutside` / `onEscapeKeyDown` the same way `SheetContent`
+already did. Without this, a covered `Dialog` and the confirmation on top of it would fight
+over the same focus trap.
+
+**No `as` polymorphism, no `DialogPanel from=` flip-direction carried forward.** Neither was
+called anywhere in the nine dialog call sites, so the new implementation doesn't keep the
+dead surface — `DialogPanel` always flips in from the top, matching every existing call
+site's actual (default) behaviour. Visual output, sizes (`sm`/`md`/`xl`/`3xl` in active use),
+radii, shadows and the flip/blur entrance animation are unchanged.
+
+**`GlobalCommandPalette` gained a `DialogTitle`.** It never had one — Headless UI didn't
+require it. Radix's `DialogContent` warns without one, and screen reader users genuinely had
+no accessible name for the palette either way, so a `sr-only` title using the existing
+`SEARCH_LABEL` string closes that gap rather than silencing the warning.
+
+No new e2e coverage for the primitive swap itself, per the testing policy; existing specs
+exercise the same dialogs and now assert against Radix's rendered output
+(`role="dialog"`, `data-state`) instead of Headless UI's. `import-controls-revamp.spec.ts`
+does not click through the dropdown item to trigger the file input — it sets the file
+directly on the `aria-label="Import"` input once the menu is open — so it was unaffected by
+the primitive swap either way.
+
+**Files:** `components/ui/{dialog,dropdown-menu}.tsx` (new file); `components/ui/
+{ExportControls,ImportControls,ModuleImportExportControls}.tsx`;
+`components/search/GlobalCommandPalette.tsx`; `frontend/package.json` /
+`package-lock.json` (`@headlessui/react` removed); `docs/design/design.md` §11.3 (closed);
+`docs/design/rebuild-census.md` (5 rows marked `done`).
+
+### Status: batch E landed — `InlineFieldEdit`, and closing 5.1
+
+`InlineFieldEdit` is built on `Select` (radix) with a new `SelectTrigger variant="ghost"` —
+R6's affordance as a variant, not a second component, per §7.3. The closed value renders
+through `StatusValue context="record"`, so the field looks like any other status until the
+operator notices the chevron. Each field owns one `SaveStateIndicator`, and a `confirm` prop
+covers R1's "explicit confirm" row for a value that fires a side effect. Full contract now in
+`design.md`, archetype 2.
+
+**The five hand-rolled pages were never five implementations of one thing** — three shapes,
+not one:
+
+- **Opportunities' stage** was already the closest to correct (immediate commit, no button) —
+  swapped onto `InlineFieldEdit` directly. `updateStage` keeps its existing optimistic
+  `setQueryData` / rollback; it now throws on failure instead of swallowing it into a toast,
+  which is what `SaveStateIndicator` reads as `error`.
+- **Orders' status and contracts' status** were manual: a `Select` staged a draft value and a
+  header "Save status" button committed it. Both lost the button and the draft state — the
+  field commits on selection. Contracts' commit is gated by the existing `useConfirm` dialog
+  (R1's side-effect row), unchanged in copy, now called from `InlineFieldEdit`'s `confirm`
+  prop instead of before a button's `onClick`.
+- **Support cases bundled three fields — status, priority, category — behind one "Save
+  changes"** with an unsaved-changes guard. They are now three independent `InlineFieldEdit`s,
+  each autosaving on its own; the guard is gone because nothing stays dirty. This also removed
+  a remount-on-save wrinkle: the workspace was keyed by `` `${id}:${updated_at}` `` to reset
+  three local drafts whenever the record changed server-side. With no local drafts left to
+  reset, the key is just `id` — a per-field save no longer remounts the whole card and drops
+  an in-progress reply.
+
+**Quotes' status field is not migrated, on purpose.** It is not a hand-rolled inline edit in
+the same sense as the other four — it is one field inside the single `PUT` that saves the
+entire quote document, which is exactly the "quotes are secretly a form" defect 5.3 already
+owns (line-item content and state field are entangled in one manual save). Pulling the status
+field out now would be a partial version of 5.3's own restructuring landing early and outside
+its scope. It stays on `RecordFormLayout`'s manual save until 5.3 splits it.
+
+**Contracts' per-signer status list is out of scope**, for the same reason in miniature: it
+edits a child record in a list, not the contract's own top-level state field, and R2's
+categorical boundary is about the record being viewed, not every nested entity on the page.
+
+**Two findings recorded rather than expanded into new work:**
+
+- **A duplicate now exists on the deal page.** `StatusValue` in the summary strip
+  (`opportunities/[opportunityId]:442`) and `InlineFieldEdit`'s own closed-state display both
+  render the stage, because the strip badge predates this batch and sits near the quick
+  "Won"/"Lost" actions rather than beside the field it duplicates. Left as a product decision
+  outside batch E's scope (extraction of the five hand-rolled edits) rather than folded in
+  silently; `opportunities-revamp.spec.ts` now asserts `.first()` rather than assuming one match.
+- **`ContractStatus`/`statusLabel`** (`contracts/[contractId].tsx:444`) hand-classifies tone
+  with a raw if/else instead of `lib/statusStyles.ts`, because it serves both the contract's
+  own status and the signer sub-status — two enums `statusStyles.ts` has no shared shape for.
+  `InlineFieldEdit`'s own options use `getContractStatus` directly; the local classifier still
+  backs the read-only badges and the (out-of-scope) signer list. A pre-existing R5 gap, not
+  introduced here.
+
+**Found in passing, fixed because it was the same rule this batch is about.**
+`crm/RecordTagInput.tsx` hand-rolled its own removable tag chip — `rounded-full`, which §4.3
+reserves for avatars now that `Pill` is gone — instead of `Chip`. Swapped onto `Chip` with the
+existing remove button nested inside it; no visual contract change to `Chip` itself.
+
+**`LinkedRecordPicker` needed no change.** The batch E line item was to confirm it is ready to
+serve as the spine's Connected-block link control (per the census); it already renders through
+current tokens (`bg-surface-muted`, `bg-action-primary-muted`, `focus-visible:ring-focus`),
+the `overflow-hidden` clipping defect closed under Phase 2 stays closed, and it has no other
+open finding. Its dual role — editable picker in a form, read-only link in the Connected block
+— is unbuilt because the Connected block itself is 5.3's, with its first real call site; per
+scoping decision 4, the picker's link-rendering mode is not built ahead of that call site.
+
+Spec updates, per the testing policy: `contracts-revamp.spec.ts` and `support-revamp.spec.ts`
+drop their "Save status" / "Save changes" assertions and assert the autosave lifecycle
+(`[data-slot="save-state-indicator"][data-state="saved"]`) instead; both also switch from
+`getByLabel` to `getByRole("combobox", { name: … })` since the field label is no longer
+`htmlFor`-linked to the control (`InlineFieldEdit` names itself via `aria-label`, matching the
+other three call sites' existing convention).
+
+**Files:** `components/ui/{select,InlineFieldEdit}.tsx` (`InlineFieldEdit.tsx` new);
+`components/crm/RecordTagInput.tsx`;
+`app/dashboard/sales/opportunities/[opportunityId]/page.tsx`;
+`app/dashboard/sales/orders/[orderId]/page.tsx`;
+`app/dashboard/contracts/[contractId]/page.tsx`;
+`app/dashboard/support/cases/[caseId]/page.tsx`; `docs/design/design.md` (archetype 2);
+`docs/design/rebuild-census.md` (3 rows marked `done`); `tests/e2e/{contracts-revamp,
+support-revamp,opportunities-revamp}.spec.ts`.
 
 ---
 

@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
@@ -123,7 +124,7 @@ export default function RecordTagInput({
       {value.length ? (
         <div className="flex flex-wrap gap-2" aria-label="Selected tags">
           {value.map((tag) => (
-            <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
+            <Chip key={tag.toLocaleLowerCase()} className="gap-1 py-1 pr-1">
               {tag}
               <Button
                 type="button"
@@ -136,7 +137,7 @@ export default function RecordTagInput({
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </Button>
-            </span>
+            </Chip>
           ))}
         </div>
       ) : null}

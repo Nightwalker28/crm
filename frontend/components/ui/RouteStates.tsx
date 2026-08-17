@@ -17,6 +17,9 @@ import { Skeleton } from "@/components/ui/skeleton";
  */
 type RouteStateTitleProps = { titleAs?: "h1" | "p" };
 
+/** The props Next.js passes to every `error.tsx` boundary. One definition, not one per file. */
+export type RouteErrorBoundaryProps = { error: Error & { digest?: string }; reset: () => void };
+
 export function RouteLoadingState({ label = "page" }: { label?: string }) {
   return <div className="space-y-6" aria-label={`Loading ${label}`} aria-busy="true"><div><Skeleton className="h-7 w-40" /><Skeleton className="mt-3 h-4 w-full max-w-xl" /></div><Skeleton className="h-16 w-full rounded-[var(--radius-card)]" /><Skeleton className="h-[420px] w-full rounded-[var(--radius-card)]" /></div>;
 }

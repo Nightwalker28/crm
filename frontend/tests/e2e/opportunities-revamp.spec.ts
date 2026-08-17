@@ -63,7 +63,9 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);
   await expect(page.getByRole("heading", { name: "Browser Deal" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Proposal" })).toBeVisible();
+  // Two renderings now exist — the summary-strip badge and InlineFieldEdit's own closed-state
+  // display in the Stage progress card (R2/R6) — so this asserts at least one is visible.
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Proposal" }).first()).toBeVisible();
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Related/ }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/opportunities/${dealId}\\?tab=related$`));

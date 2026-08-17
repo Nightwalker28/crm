@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MenuItem } from "@headlessui/react";
 import { Download, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +16,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { type ExportMode, getFilenameFromDisposition } from "@/components/ui/importExportUtils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useJobPoller } from "@/hooks/useJobPoller";
@@ -164,21 +164,13 @@ export function ExportControls({
 
   return (
     <>
-      <MenuItem>
-        {({ focus }) => (
-          <button
-            type="button"
-            disabled={disabled || isExporting}
-            onClick={() => setIsExportDialogOpen(true)}
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:text-copy-disabled ${
-              focus ? "bg-action-primary-muted text-copy-primary" : ""
-            }`}
-          >
-            <Download aria-hidden="true" />
-            {isExporting ? "Preparing export..." : exportLabel}
-          </button>
-        )}
-      </MenuItem>
+      <DropdownMenuItem
+        disabled={disabled || isExporting}
+        onSelect={() => setIsExportDialogOpen(true)}
+      >
+        <Download aria-hidden="true" />
+        {isExporting ? "Preparing export..." : exportLabel}
+      </DropdownMenuItem>
 
       <Dialog open={isExportDialogOpen} onClose={() => { if (!isExporting) resetExportState(); }}>
         <DialogBackdrop />

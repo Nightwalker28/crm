@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { MenuItem } from "@headlessui/react";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +16,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -205,21 +205,10 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
         }}
       />
 
-      <MenuItem>
-        {({ focus }) => (
-          <button
-            type="button"
-            disabled={menuDisabled}
-            onClick={() => inputRef.current?.click()}
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:pointer-events-none disabled:text-copy-disabled ${
- focus ? "bg-action-primary-muted text-copy-primary" : ""
-            }`}
-          >
-            <Upload aria-hidden="true" />
-            {isPreviewing ? "Reading file..." : isImporting ? "Importing..." : importLabel}
-          </button>
-        )}
-      </MenuItem>
+      <DropdownMenuItem disabled={menuDisabled} onSelect={() => inputRef.current?.click()}>
+        <Upload aria-hidden="true" />
+        {isPreviewing ? "Reading file..." : isImporting ? "Importing..." : importLabel}
+      </DropdownMenuItem>
 
       <Dialog open={isImportDialogOpen} onClose={() => { if (!isImporting) resetImportState(); }}>
         <DialogBackdrop />

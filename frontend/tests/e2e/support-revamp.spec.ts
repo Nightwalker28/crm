@@ -110,7 +110,7 @@ test("Support creation uses a full page and does not offer service-owned SLA fie
   await expect(page.getByLabel("Subject")).toBeFocused();
 });
 
-test("Support detail prioritizes the requester and conversation with guarded saves", async ({ page }) => {
+test("Support detail prioritizes the requester and conversation, and its state fields autosave", async ({ page }) => {
   await page.goto(`/dashboard/support/cases/${caseId}`);
 
   await expect(page.getByRole("heading", { name: "CASE-2407-001" })).toBeVisible();
@@ -119,13 +119,16 @@ test("Support detail prioritizes the requester and conversation with guarded sav
   await expect(page.getByRole("link", { name: "Grace Buyer" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Conversation" })).toBeVisible();
   await expect(page.getByText("We are reviewing the account permissions.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
   await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Open" })).toBeVisible();
   await expect(page.locator('[data-slot="status-value"][data-tone="critical"]', { hasText: "Urgent" })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Priority" }).click();
   await page.getByRole("option", { name: "High" }).click();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="attention"]', { hasText: "High" })).toBeVisible();
+
+  // Status is unaffected — each state field autosaves independently.
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Open" })).toBeVisible();
 });
 
 test("Support failures do not expose backend details", async ({ page }) => {

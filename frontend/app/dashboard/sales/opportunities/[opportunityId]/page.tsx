@@ -12,7 +12,6 @@ import {
   UserRound,
   XCircle,
 } from "lucide-react";
-import { toast } from "sonner";
 
 import {
   getOpportunityStageLabel,
@@ -25,19 +24,13 @@ import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActiv
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import { Chip } from "@/components/ui/Chip";
+import { InlineFieldEdit } from "@/components/ui/InlineFieldEdit";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
@@ -167,17 +160,12 @@ export default function OpportunityDetailPage() {
           queryKey: ["sales-opportunity-summary", params.opportunityId],
         }),
       ]);
-      toast.success(
-        ["closed_won", "closed_lost"].includes(stage)
-          ? "Deal closed."
-          : "Deal stage updated.",
-      );
-    } catch {
+    } catch (error) {
       queryClient.setQueryData(
         ["sales-opportunity-summary", params.opportunityId],
         previous,
       );
-      toast.error("Deal stage could not be updated. Try again.");
+      throw error;
     }
   }
   if (query.isLoading) return <RouteLoadingState label="deal" />;
@@ -193,6 +181,10 @@ export default function OpportunityDetailPage() {
   const opportunity = summary.opportunity;
   const stage = normalizeOpportunityStage(opportunity.sales_stage) || "lead";
   const stageStyle = getOpportunityStage(stage);
+  const stageOptions = OPPORTUNITY_STAGE_ORDER.map((item) => ({
+    value: item,
+    ...getOpportunityStage(item),
+  }));
   const overview = (
     <div className="grid gap-5">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -237,21 +229,12 @@ export default function OpportunityDetailPage() {
               Move the deal through the pipeline as qualification advances.
             </p>
           </div>
-          <Select
+          <InlineFieldEdit
+            fieldLabel="Stage"
             value={stage}
-            onValueChange={(value) => void updateStage(value)}
-          >
-            <SelectTrigger className="w-44">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {OPPORTUNITY_STAGE_ORDER.map((item) => (
-                <SelectItem key={item} value={item}>
-                  {getOpportunityStageLabel(item)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            options={stageOptions}
+            onCommit={(next) => updateStage(next.value)}
+          />
         </div>
         <div className="grid gap-2 sm:grid-cols-6">
           {OPPORTUNITY_STAGE_ORDER.map((item, index) => {

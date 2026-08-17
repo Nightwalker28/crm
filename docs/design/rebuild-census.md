@@ -67,7 +67,7 @@ ones any sub-phase touches for design reasons.
 |---|---|---|---|---|---|
 | `layout.tsx` | 49 | 5.1 | adopt | Font and theme wiring | |
 | `page.tsx` | 36 | 5.8 | rebuild | The marketing/entry surface | |
-| `loading.tsx` | 11 | 5.1 | rebuild | One route-boundary shape | |
+| `loading.tsx` | 11 | 5.1 | rebuild | One route-boundary shape — the cold-boot splash, kept distinct from `RouteLoadingState` per dashboard/loading.tsx's own comment | done |
 | `providers.tsx` | 60 | 5.1 | adopt | `MotionConfig` lives here | |
 | `ClientLayout.tsx` | 16 | 5.1 | adopt | | |
 | `globals.css` | — | 5.1 | rebuild | Tokens: rail widths, the retired 5-step, `text-base` | |
@@ -130,39 +130,39 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `dashboard/layout.tsx` | 170 | 5.7 | adopt | The `h1` sequence is closed; the backdrop is §9 | |
 | `dashboard/page.tsx` | 475 | 5.7 | rebuild | Archetype 5. A9: an admin-only href with no `isAdmin` check at `:404` | |
-| `dashboard/error.tsx` | 7 | 5.1 | rebuild | | |
-| `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | |
-| `dashboard/not-found.tsx` | 5 | 5.1 | rebuild | | |
+| `dashboard/error.tsx` | 7 | 5.1 | rebuild | | done |
+| `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | done |
+| `dashboard/not-found.tsx` | 5 | 5.1 | rebuild | | done |
 | `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | |
 | `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | |
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | |
 | `sales/leads/[leadId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `sales/leads/[leadId]/convert/page.tsx` | 60 | 5.3 | rebuild | **A13** — no unsaved-changes guard | |
-| `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | |
-| `sales/leads/loading.tsx` | 2 | 5.1 | rebuild | | |
-| `sales/leads/not-found.tsx` | 2 | 5.1 | rebuild | | |
+| `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | done |
+| `sales/leads/loading.tsx` | 2 | 5.1 | rebuild | | done |
+| `sales/leads/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/contacts/page.tsx` | 111 | 5.5 | rebuild | | |
 | `sales/contacts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `sales/contacts/[contactId]/page.tsx` | 936 | 5.3 | rebuild | No `RecordActivityFeed` though leads have one | |
 | `sales/contacts/[contactId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `sales/contacts/error.tsx` | 3 | 5.1 | rebuild | | |
-| `sales/contacts/loading.tsx` | 2 | 5.1 | rebuild | | |
-| `sales/contacts/not-found.tsx` | 2 | 5.1 | rebuild | | |
+| `sales/contacts/error.tsx` | 3 | 5.1 | rebuild | | done |
+| `sales/contacts/loading.tsx` | 2 | 5.1 | rebuild | | done |
+| `sales/contacts/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/page.tsx` | 60 | 5.5 | rebuild | | |
 | `sales/organizations/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `sales/organizations/[orgId]/page.tsx` | 869 | 5.3 | rebuild | No activity feed | |
 | `sales/organizations/[orgId]/edit/page.tsx` | 9 | 5.4 | unchanged | Shim | |
-| `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | |
-| `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | |
-| `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | |
+| `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
+| `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
+| `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | | |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
 | `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | |
-| `sales/opportunities/error.tsx` | 3 | 5.1 | rebuild | | |
-| `sales/opportunities/loading.tsx` | 2 | 5.1 | rebuild | | |
-| `sales/opportunities/not-found.tsx` | 2 | 5.1 | rebuild | | |
+| `sales/opportunities/error.tsx` | 3 | 5.1 | rebuild | | done |
+| `sales/opportunities/loading.tsx` | 2 | 5.1 | rebuild | | done |
+| `sales/opportunities/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 
 ### 1.7 `app/dashboard/sales/` — quotes and orders (12)
 
@@ -172,16 +172,16 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/quotes/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
 | `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | |
 | `sales/quotes/[quoteId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `sales/quotes/error.tsx` | 18 | 5.1 | rebuild | | |
-| `sales/quotes/loading.tsx` | 5 | 5.1 | rebuild | | |
-| `sales/quotes/not-found.tsx` | 11 | 5.1 | rebuild | | |
+| `sales/quotes/error.tsx` | 18 | 5.1 | rebuild | | done |
+| `sales/quotes/loading.tsx` | 5 | 5.1 | rebuild | | done |
+| `sales/quotes/not-found.tsx` | 11 | 5.1 | rebuild | | done |
 | `sales/orders/page.tsx` | 68 | 5.5 | rebuild | | |
 | `sales/orders/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
 | `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | |
 | `sales/orders/[orderId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `sales/orders/error.tsx` | 18 | 5.1 | rebuild | | |
-| `sales/orders/loading.tsx` | 5 | 5.1 | rebuild | | |
-| `sales/orders/not-found.tsx` | 11 | 5.1 | rebuild | | |
+| `sales/orders/error.tsx` | 18 | 5.1 | rebuild | | done |
+| `sales/orders/loading.tsx` | 5 | 5.1 | rebuild | | done |
+| `sales/orders/not-found.tsx` | 11 | 5.1 | rebuild | | done |
 
 ### 1.8 `app/dashboard/finance/**` (16)
 
@@ -192,13 +192,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | |
 | `finance/pos/[invoiceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `finance/pos/[invoiceId]/print/page.tsx` | 349 | — | unchanged | **§2.5 exception 2** — its own document theme, must not follow the app theme | done |
-| `finance/pos/error.tsx` | 18 | 5.1 | rebuild | | |
-| `finance/pos/loading.tsx` | 5 | 5.1 | rebuild | | |
-| `finance/pos/not-found.tsx` | 11 | 5.1 | rebuild | | |
+| `finance/pos/error.tsx` | 18 | 5.1 | rebuild | | done |
+| `finance/pos/loading.tsx` | 5 | 5.1 | rebuild | | done |
+| `finance/pos/not-found.tsx` | 11 | 5.1 | rebuild | | done |
 | `finance/payments/page.tsx` | 80 | 5.5 | rebuild | **A6, A7** — the header button is the slower path | |
 | `finance/payments/record/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `finance/payments/error.tsx` | 18 | 5.1 | rebuild | | |
-| `finance/payments/loading.tsx` | 5 | 5.1 | rebuild | | |
+| `finance/payments/error.tsx` | 18 | 5.1 | rebuild | | done |
+| `finance/payments/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `finance/insertion-orders/page.tsx` | 241 | 5.5 | rebuild | | |
 | `finance/insertion-orders/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `finance/insertion-orders/[ioId]/page.tsx` | 222 | 5.3 | rebuild | Runtime title-caser at `:186` | |
@@ -233,8 +233,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | |
-| `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | |
-| `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | |
+| `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
+| `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | done |
 
 ### 1.10 `app/dashboard/` — mail, calendar, reports (3)
 
@@ -256,18 +256,18 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/general/page.tsx` | 357 | 5.6 | rebuild | | |
 | `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | |
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | |
-| `settings/users/error.tsx` | 14 | 5.1 | rebuild | | |
-| `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | |
+| `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
+| `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | |
 | `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `RecordTable` (R10) | |
-| `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | |
-| `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | |
+| `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
+| `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | |
 | `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | |
-| `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | |
-| `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | |
+| `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
+| `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | |
@@ -437,8 +437,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `crm/LinkedRecordPicker.tsx` | 389 | 5.1 | rebuild | The canonical relationship control; the spine's Connected block uses it | |
-| `crm/RecordTagInput.tsx` | 217 | 5.1 | adopt | Tags are not statuses — no tone (R5) | |
+| `crm/LinkedRecordPicker.tsx` | 389 | 5.1 | rebuild | The canonical relationship control; the spine's Connected block uses it | **done** (E) — audited against the Connected-block role; already compliant, no change needed. The link-display mode is built with its Connected block in 5.3, per scoping decision 4 |
+| `crm/RecordTagInput.tsx` | 217 | 5.1 | adopt | Tags are not statuses — no tone (R5) | **done** (E) — its hand-rolled `rounded-full` chip now renders through `Chip` (§4.3) |
 | `customFields/CustomFieldInputs.tsx` | 131 | 5.4 | adopt | | |
 | `customModules/CustomModuleFieldInput.tsx` | 172 | 5.4 | adopt | | |
 | `documents/DocumentReferenceActions.tsx` | 71 | 5.3 | adopt | | |
@@ -462,12 +462,12 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|
 | `button.tsx` | 63 | rebuild | 9 variants → 6 (§2.2) | **done** (A) |
 | `Pill.tsx` | 40 | **delete** | R5. 52 files and 107 call sites move to `StatusValue` | **done** (B) — deleted; 104 sites in 52 files moved |
-| `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | |
-| `sheet.tsx` | 236 | rebuild | Same migration | |
-| `dialog-layer.tsx` | 33 | adopt | | |
-| `DialogIconClose.tsx` | 20 | adopt | | |
-| `ExportControls.tsx` | 362 | rebuild | Headless UI `Menu` → radix | |
-| `ImportControls.tsx` | 442 | rebuild | Headless UI `Menu` → radix | |
+| `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | **done** (D) |
+| `sheet.tsx` | 236 | rebuild | Same migration | **done** (D) — already on radix; no change needed |
+| `dialog-layer.tsx` | 33 | adopt | | **done** (D) — no change needed |
+| `DialogIconClose.tsx` | 20 | adopt | | **done** (D) — no change needed |
+| `ExportControls.tsx` | 362 | rebuild | Headless UI `Menu` → radix | **done** (D) |
+| `ImportControls.tsx` | 442 | rebuild | Headless UI `Menu` → radix | **done** (D) |
 
 **Created by 5.1** — not in the original 54, because they did not exist when the census was
 taken. Counted here so the denominator stays honest.
@@ -484,16 +484,10 @@ taken. Counted here so the denominator stays honest.
 | `StatusValue.tsx` | **new** | Renders a tone per context; accepts a caller-computed override for derived tones like overdue | **done** (B) |
 | `Chip.tsx` | **new** | The tag/count/marker R5 says needs "a different component with a different name" | **done** (B) |
 | `SegmentedControl.tsx` | **new** | **Not in the plan.** `secondary` was 47 sites carrying a role, not 8 carrying none — see `rebuild.md` 5.1 and §2.2 | **done** (A) |
-| `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | |
-| `Money.tsx` | — | **new** | Replaces 15 local formatters + 24 raw `Intl.NumberFormat` | |
-| `ActionBar.tsx` | — | **new** | 10 sticky footers on 3 recipes; owns child control height (R4); not sticky (R3) | |
-| `SaveStateIndicator.tsx` | — | **new** | R1 requires it — autosave removes the button, which was the only feedback | |
-| `InlineFieldEdit.tsx` | — | **new** | The R2/R6 state-field control. 5 pages hand-roll this, each differently | |
-| `SectionHeading.tsx` | — | **new** | 137 hand-written `<h2>`s, 4 sizes | |
-| `Avatar.tsx` | — | **new** | 2 bespoke — one square, one circle | |
-| `StatusValue.tsx` | — | **new** | Renders a tone per context. **Must accept a caller-computed tone override** for derived states like overdue (R5) | |
-| `PanelStates.tsx` | — | **new** | Promoted from `recordActivity/RecordPanelStates.tsx`; reaches 5 of ~40 panels today | **done** (A) |
-| `RecordSpine.tsx` | — | **new** | The signature (R9). Built in **5.3**, with its first real call site | |
+| `dropdown-menu.tsx` | **new** | **Not in the plan.** No existing radix vendor for a menu; `ExportControls` / `ImportControls` needed one to leave `@headlessui/react` — see `rebuild.md` 5.1 batch D | **done** (D) |
+| `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | **done** (D) |
+| `InlineFieldEdit.tsx` | **new** | The R2/R6 state-field control. 5 pages hand-rolled this, each differently — see `rebuild.md` 5.1 batch E | **done** (E) |
+| `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | |
 
 ### 3.2 Existing primitives
 
@@ -524,7 +518,7 @@ taken. Counted here so the denominator stays honest.
 | `sonner.tsx` | 65 | 5.9 | adopt | Toast copy keeps the action's name | |
 | `input.tsx` | 25 | — | unchanged | Fixed in consistency Phase 2 | |
 | `textarea.tsx` | 20 | — | unchanged | same | |
-| `select.tsx` | 189 | — | unchanged | same | |
+| `select.tsx` | 189 | 5.1 | adopt | Gains `SelectTrigger variant="ghost"` — `InlineFieldEdit`'s R6 affordance, added to the primitive per §7.3 rather than styled at the call site | **done** (E) |
 | `input-group.tsx` | 171 | — | unchanged | same | |
 | `checkbox.tsx` | 142 | — | unchanged | same | |
 | `radio-group.tsx` | 130 | — | unchanged | | |

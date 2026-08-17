@@ -768,6 +768,31 @@ Contract:
   scroll.** That is the deliberate fallback, not a responsive feature: §4.4's gutters stand
   and Lynk is a desktop product, so the narrow case only has to stay usable.
 
+**`InlineFieldEdit`'s own contract**, built in rebuild 5.1 batch E ahead of the spine
+(5.3) landing:
+
+- The trigger is `Select` (radix, already vendored) with `SelectTrigger variant="ghost"`
+  — R6's affordance in one variant rather than a second component: no border at rest, the
+  ground only appears on `hover:bg-surface-muted`, the chevron is `text-copy-muted` and
+  always visible, and `focus-visible` takes the §2.3 ring. `size="sm"` — a state field is
+  a quiet affordance, not an input.
+- The closed value renders through `StatusValue status={…} context="record"` — the same
+  component a read-only status uses, so a field looks identical whether it turns out to be
+  editable or not until the operator notices the chevron. No call site invents its own ink.
+- Each field owns one `SaveStateIndicator`, inline beside the control (the archetype 4
+  wireframe's "`Provider [ Microsoft Entra ▾ ] Saving…`" row is the pattern — InlineFieldEdit
+  is that row's control-plus-feedback pair, generalised). `idle → saving → saved → idle`
+  auto-reverts 2s after a successful commit; `error` stays until retried, per
+  `SaveStateIndicator`'s own contract that an unretryable error is a dead end.
+- **A side-effecting change confirms first.** R1's "explicit confirm, never a silent
+  commit" row is a `confirm` prop the call site supplies when the value can fire an
+  automation or an email (the contract status change is the current example) — resolving
+  `false` cancels before `onCommit` runs, so nothing autosaves speculatively.
+- **Interim placement.** R9 makes the spine the record's only editable region once 5.3
+  lands it. Until then, batch E adopts `InlineFieldEdit` at its *current* location on the
+  five pages that already hand-roll this control — the control's own contract does not
+  change when 5.3 moves it into the State block, only its position on the page does.
+
 The cost, recorded rather than discovered later: the rail spends ~320px on every record, so
 the content region is about 700px at a 1280px viewport. A two-column field grid fits; a
 three-column one does not. The three line-item documents (quote, order, invoice) are where
@@ -1335,21 +1360,20 @@ measured them and they will otherwise read as still-open:
 - `custom-scrollbar` was used on three bounded pickers and defined nowhere. It is now
   a real utility — bounded overlay lists keep a quiet scrollbar, because it is the
   only cue that there is more below.
-### 11.3 `dialog` is built on Headless UI, not shadcn
+### 11.3 `dialog` was built on Headless UI, not shadcn — closed
 
-§7.2 makes shadcn the only component library, and `@headlessui/react` is still a live
-dependency behind four shared primitives: `components/ui/dialog.tsx`, `ExportControls`,
-`ImportControls`, and `ModuleImportExportControls`. The source guard fails on it.
+§7.2 makes shadcn the only component library. `@headlessui/react` was a live dependency
+behind four shared primitives — `components/ui/dialog.tsx`, `ExportControls`,
+`ImportControls`, and `ModuleImportExportControls` — recorded here as a named exception
+while it stood, so the failing source guard was understood rather than re-diagnosed.
 
-This is **consistency debt, not a defect**. Headless UI's dialog is a correct,
-accessible implementation — it traps focus and restores it, which is what §8 asks for.
-Nothing user-facing is wrong.
-
-It is also not a dependency to delete opportunistically: `dialog.tsx` backs every modal
-and sheet in the product, so swapping it changes focus-trap and close behaviour
-everywhere at once. That needs its own slice and its own e2e pass, not a line in an
-unrelated PR. Until then this is a **named exception to §7.2**, recorded here so the
-failing guard rule is understood rather than re-diagnosed.
+Closed in rebuild 5.1 batch D: `dialog.tsx` now vendors the Radix `Dialog` primitive
+(the same family `sheet.tsx` was already on), and the two `Menu` call sites
+(`ExportControls` / `ImportControls`, mounted by `ModuleImportExportControls`) moved to a
+new vendored `components/ui/dropdown-menu.tsx`. `@headlessui/react` is no longer a
+dependency. This was the behaviour-changing swap the note below described — focus-trap
+and close semantics moved at all nine dialog call sites in one slice, per the testing
+policy in `rebuild.md` 5.1.
 
 
 
