@@ -279,7 +279,7 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2">
+                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
                   <div>
                     <FieldLabel htmlFor="calendar-all-day">All-day event</FieldLabel>
                     <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
@@ -297,7 +297,7 @@ export default function CalendarEventDialog({
               </Field>
             </FieldGroup>
 
-            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
+            <div className="border-t border-line-subtle pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-copy-primary">Participants</div>

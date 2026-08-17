@@ -300,7 +300,7 @@ export default function TaskDialog({
               </Field>
             </FieldGroup>
 
-            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
+            <div className="border-t border-line-subtle pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-copy-primary">Assignments</div>

@@ -220,9 +220,9 @@ export default function TasksPage() {
       />
 
       {displayMode !== "list" ? (
-        <div className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+        <p className="text-sm text-copy-muted">
           Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
-        </div>
+        </p>
       ) : null}
 
       {displayMode === "list" ? (

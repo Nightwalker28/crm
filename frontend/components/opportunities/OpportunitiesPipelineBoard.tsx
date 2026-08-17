@@ -100,7 +100,7 @@ export default function OpportunitiesPipelineBoard({
         <div className="overflow-x-auto px-4 py-4">
           <div className="flex gap-4 overflow-x-auto">
             {Array.from({ length: 7 }).map((_, index) => (
-              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-[var(--radius-card)] border border-line-default bg-surface-muted">
+              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-[var(--radius-control)] bg-surface-muted">
                 <div className="border-b border-line-subtle px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <Skeleton className="h-6 w-24" />
@@ -109,7 +109,7 @@ export default function OpportunitiesPipelineBoard({
                 </div>
                 <div className="flex min-h-[12rem] flex-col gap-3 p-3">
                   {Array.from({ length: 3 }).map((__, cardIndex) => (
-                    <div key={`pipeline-card-${index}-${cardIndex}`} className="rounded-[var(--radius-card)] border border-line-default bg-surface p-3">
+                    <div key={`pipeline-card-${index}-${cardIndex}`} className="rounded-[var(--radius-control)] border border-line-subtle bg-surface p-3">
                       <Skeleton className="h-4 w-32" />
                       <Skeleton className="mt-2 h-3 w-24" />
                       <Skeleton className="mt-4 h-3 w-20" />
@@ -149,7 +149,7 @@ export default function OpportunitiesPipelineBoard({
                 onDragOver={(event) => { event.preventDefault(); setDropStage(entry.stage); }}
                 onDragLeave={() => setDropStage((current) => current === entry.stage ? null : current)}
                 onDrop={() => { const opportunity = opportunities.find((item) => item.opportunity_id === draggedId); setDropStage(null); setDraggedId(null); if (opportunity && entry.stage !== "unstaged" && normalizeOpportunityStage(opportunity.sales_stage) !== entry.stage) void onStageChange(opportunity, entry.stage); }}
-                className={`min-w-[240px] flex-shrink-0 rounded-[var(--radius-card)] border bg-surface-muted transition-colors motion-reduce:transition-none ${dropStage === entry.stage ? "border-action-primary bg-action-primary-muted/30" : "border-line-default"}`}
+                className={`min-w-[240px] flex-shrink-0 rounded-[var(--radius-control)] border bg-surface-muted transition-colors motion-reduce:transition-none ${dropStage === entry.stage ? "border-action-primary bg-action-primary-muted/30" : "border-transparent"}`}
               >
                 <div className="border-b border-line-subtle px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
@@ -166,7 +166,7 @@ export default function OpportunitiesPipelineBoard({
                         draggable
                         onDragStart={() => setDraggedId(opportunity.opportunity_id)}
                         onDragEnd={() => { setDraggedId(null); setDropStage(null); }}
-                        className={`rounded-[var(--radius-card)] border bg-surface p-3 text-left transition-colors hover:border-line-strong hover:bg-surface-raised motion-reduce:transition-none ${isOverdue(opportunity) ? "border-state-warning/50" : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? "border-state-info/50" : "border-line-default"}`}
+                        className={`rounded-[var(--radius-control)] border bg-surface p-3 text-left transition-colors hover:border-line-strong hover:bg-surface-raised motion-reduce:transition-none ${isOverdue(opportunity) ? "border-state-warning/50" : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? "border-state-info/50" : "border-line-subtle"}`}
                       >
                         <div className="flex items-start gap-2"><GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" /><button
                           type="button"
@@ -211,7 +211,7 @@ export default function OpportunitiesPipelineBoard({
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-[var(--radius-card)] border border-dashed border-line-default bg-surface px-3 py-6 text-center text-sm text-copy-muted">
+                    <div className="px-3 py-6 text-center text-sm text-copy-muted">
                       No opportunities in this stage.
                     </div>
                   )}

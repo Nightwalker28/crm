@@ -365,7 +365,7 @@ export default function CalendarPage() {
                             clickEvent.stopPropagation();
                             openEditDialog(event);
                           }}
-                          className={"block w-full rounded-[var(--radius-card)] border px-2.5 py-2 text-left text-xs focus:outline-none focus:ring-2 focus:ring-ring " + getEventTone(event)}
+                          className={"block w-full rounded-[var(--radius-control)] border px-2.5 py-2 text-left text-xs focus:outline-none focus:ring-2 focus:ring-ring " + getEventTone(event)}
                         >
                           <div className="truncate font-medium">{event.title}</div>
                           <div className="mt-1 truncate text-[11px] opacity-80">

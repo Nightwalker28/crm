@@ -159,7 +159,7 @@ export default function TasksCalendar({ tasks, isLoading, isRefreshing = false, 
                     {entries.slice(0, 3).map((task) => {
                       const priority = getTaskPriority(task.priority);
                       return (
-                        <button key={task.id} type="button" onClick={() => onOpen(task)} className="block w-full rounded-[var(--radius-card)] border border-line-default bg-surface px-2 py-1.5 text-left hover:border-action-primary">
+                        <button key={task.id} type="button" onClick={() => onOpen(task)} className="block w-full rounded-[var(--radius-control)] border border-line-subtle bg-surface px-2 py-1.5 text-left hover:border-action-primary">
                           <span className="block truncate text-xs font-medium text-copy-primary">{task.title}</span>
                           <StatusValue status={priority} className="mt-1" />
                         </button>
