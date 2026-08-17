@@ -154,7 +154,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </header>
           <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
             {isCheckingAccess ? (
-              <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-6 text-sm text-copy-muted">
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-6 text-sm text-copy-muted">
                 Checking access...
               </div>
             ) : isBlocked || isModuleBlocked ? (

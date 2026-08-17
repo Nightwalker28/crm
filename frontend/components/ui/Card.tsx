@@ -1,4 +1,5 @@
 import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
@@ -31,16 +32,21 @@ const cardVariants = cva(
   },
 );
 
-type CardProps = React.HTMLAttributes<HTMLDivElement> & VariantProps<typeof cardVariants>;
+type CardProps = React.HTMLAttributes<HTMLDivElement> &
+  VariantProps<typeof cardVariants> & { asChild?: boolean };
 
-export function Card({ className, children, variant, ...props }: CardProps) {
+// asChild lets a panel render as its own semantic element (a landmark
+// <section>, for instance) instead of forcing a wrapping div, matching the
+// asChild convention button.tsx already established.
+export function Card({ className, children, variant, asChild = false, ...props }: CardProps) {
+  const Comp = asChild ? Slot : "div";
   return (
-    <div
+    <Comp
       className={cn(cardVariants({ variant }), className)}
       {...props}
     >
       {children}
-    </div>
+    </Comp>
   );
 }
 

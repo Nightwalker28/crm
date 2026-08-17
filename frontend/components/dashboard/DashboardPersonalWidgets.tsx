@@ -147,7 +147,7 @@ export function DashboardModuleSummary({
   return (
     <Link
       href={href}
-      className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
+      className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
     >
       <div className="text-xs font-medium text-copy-label">{moduleName}</div>
       <div className="mt-3 text-3xl font-semibold text-copy-primary">{value}</div>

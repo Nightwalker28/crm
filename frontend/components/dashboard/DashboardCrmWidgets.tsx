@@ -89,7 +89,7 @@ export function formatDashboardCurrency(value: number | string | null | undefine
 
 function Metric({ label, value, helper }: { label: string; value: string | number; helper: string }) {
   return (
-    <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-3 text-3xl font-semibold text-copy-primary">{value}</div>
       <div className="mt-1 text-sm text-copy-secondary">{helper}</div>
@@ -157,9 +157,9 @@ function WeightedForecast({ forecast }: { forecast: CrmDashboardSummary["forecas
         <Metric label="Commit" value={formatDashboardCurrency(forecast.commit_amount)} helper="Expected pipeline commitment" />
         <Metric label="Best Case" value={formatDashboardCurrency(forecast.best_case_amount)} helper="Potential pipeline outcome" />
       </div>
-      <div className="space-y-2">
+      <div className="divide-y divide-line-subtle">
         {rows.length ? rows.map((row) => (
-          <div key={row.key} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
+          <div key={row.key} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
             <div className="min-w-0">
               <div className="truncate text-sm font-medium text-copy-primary">{row.label}</div>
               <div className="mt-1 text-xs text-copy-muted">{row.count} opportunities</div>
@@ -216,9 +216,9 @@ export function DashboardCrmWidget({
   if (type === "pipeline_funnel") return <PipelineFunnel rows={summary.deal_stages} />;
   if (type === "weighted_forecast") return <WeightedForecast forecast={summary.forecast_summary ?? null} />;
   return (
-    <div className="space-y-3">
+    <div className="divide-y divide-line-subtle">
       {summary.owner_performance.length ? summary.owner_performance.slice(0, 5).map((owner) => (
-        <div key={`${owner.owner_id ?? "unassigned"}-${owner.owner_name}`} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
+        <div key={`${owner.owner_id ?? "unassigned"}-${owner.owner_name}`} className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium text-copy-primary">{owner.owner_name}</div>
             <div className="mt-1 text-xs text-copy-muted">{owner.lead_count} leads / {owner.deal_count} deals / {owner.quote_count} quotes</div>
