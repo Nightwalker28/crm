@@ -269,7 +269,7 @@ export default function LoginPage() {
 
       {loginStep === "mfa_challenge" ? (
         <form className="space-y-4 text-left" onSubmit={handleMfaChallenge}>
-          <div className="rounded-[var(--radius-card)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
+          <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
             Enter your authenticator code or one recovery code to finish signing in.
           </div>
           <div className="space-y-2">
@@ -304,10 +304,10 @@ export default function LoginPage() {
         <form className="space-y-4 text-left" onSubmit={handleEnableMfa}>
           {mfaRecoveryCodes.length ? (
             <>
-              <div className="rounded-[var(--radius-card)] border border-state-success/40 bg-state-success-muted px-3 py-3 text-sm text-state-success">
+              <div className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-3 py-3 text-sm text-state-success">
                 MFA is enabled. Save these recovery codes before continuing.
               </div>
-              <div className="grid gap-2 rounded-[var(--radius-card)] border border-line-default bg-app/70 p-3 font-mono text-xs text-copy-secondary">
+              <div className="grid gap-2 rounded-[var(--radius-control)] border border-line-subtle bg-app/70 p-3 font-mono text-xs text-copy-secondary">
                 {mfaRecoveryCodes.map((code) => <div key={code}>{code}</div>)}
               </div>
               <Button
@@ -324,10 +324,10 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <div className="rounded-[var(--radius-card)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
+              <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
                 Your tenant requires MFA. Add this secret to an authenticator app, then enter the 6-digit code.
               </div>
-              <div className="rounded-[var(--radius-card)] border border-line-default bg-app/70 p-3">
+              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-app/70 p-3">
                 <div className="text-xs font-medium text-copy-label">Secret</div>
                 <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
               </div>

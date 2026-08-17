@@ -51,7 +51,7 @@ export default function ClientOrdersPage() {
         ) : (
           <div className="grid gap-3">
             {orders.map((order) => (
-              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <div className="text-xs font-medium text-copy-label">{order.external_reference}</div>

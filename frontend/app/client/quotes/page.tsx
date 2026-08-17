@@ -53,7 +53,7 @@ export default function ClientQuotesPage() {
         ) : (
           <div className="grid gap-3">
             {quotes.map((quote) => (
-              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-copy-label">{quote.quote_number}</div>

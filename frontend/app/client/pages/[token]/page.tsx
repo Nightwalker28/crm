@@ -114,9 +114,9 @@ export default function PublicClientPage() {
               </div>
 
               {page.proposal_sections.length ? (
-                <div className="mb-4 grid gap-3">
+                <div className="mb-4 divide-y divide-line-subtle rounded-[var(--radius-card)] border border-line-default bg-surface">
                   {page.proposal_sections.map((section) => (
-                    <div key={`${section.sort_order}-${section.title}`} className="rounded-[var(--radius-card)] border border-line-default bg-surface p-4">
+                    <div key={`${section.sort_order}-${section.title}`} className="p-4">
                       <h2 className="text-sm font-semibold text-copy-primary">{section.title}</h2>
                       <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{section.body}</p>
                     </div>
@@ -155,7 +155,7 @@ export default function PublicClientPage() {
                   <h2 className="text-sm font-semibold text-copy-primary">Documents</h2>
                   <div className="mt-3 grid gap-2">
                     {page.documents.map((document) => (
-                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-line-default bg-app px-3 py-3">
+                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-subtle bg-app px-3 py-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-medium text-copy-primary">
                             <FileText className="h-4 w-4 text-copy-muted" />

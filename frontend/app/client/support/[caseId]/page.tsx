@@ -75,7 +75,7 @@ export default function ClientSupportDetailPage() {
                   <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(item.created_at)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <div className="rounded-[var(--radius-card)] border border-line-default bg-app px-3 py-2 text-right">
+                  <div className="text-right">
                     <div className="capitalize text-copy-secondary">{statusLabel(item.status)}</div>
                     <div className="text-xs capitalize text-copy-muted">{item.category || "general"} · {item.priority}</div>
                   </div>
@@ -102,7 +102,7 @@ export default function ClientSupportDetailPage() {
               </div>
               <div className="mt-4 grid gap-3">
                 {item.comments.length ? item.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-[var(--radius-card)] border border-line-default bg-app p-4">
+                  <div key={comment.id} className="rounded-[var(--radius-control)] border border-line-subtle bg-app p-4">
                     <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-copy-muted">
                       <span>{comment.author_display_name || (comment.author_type === "team" ? "Support team" : "You")}</span>
                       <span>{formatDateTime(comment.created_at)}</span>

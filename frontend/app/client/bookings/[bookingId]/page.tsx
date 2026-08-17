@@ -62,21 +62,21 @@ export default function ClientBookingDetailPage() {
                 ) : null}
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <Clock className="h-3.5 w-3.5" />
                     Duration
                   </div>
                   <div className="mt-1 text-sm text-copy-secondary">{durationLabel(booking)}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <UserRound className="h-3.5 w-3.5" />
                     Host
                   </div>
                   <div className="mt-1 text-sm text-copy-secondary">{booking.owner_name || "Team member"}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <MapPin className="h-3.5 w-3.5" />
                     Location

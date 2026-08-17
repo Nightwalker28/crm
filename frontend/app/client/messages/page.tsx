@@ -89,7 +89,7 @@ export default function ClientMessagesPage() {
             ) : (
               <div className="grid gap-3">
                 {messages.map((item) => (
-                  <Link key={item.id} href={`/client/messages/${item.id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+                  <Link key={item.id} href={`/client/messages/${item.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
                         <div className="text-xs font-medium text-copy-label">{item.case_number}</div>

@@ -57,7 +57,7 @@ export default function ClientCatalogPage() {
         ) : (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {items.map((item) => (
-              <Link key={`${item.kind}-${item.id}`} href={`/client/catalog/${item.kind}/${item.id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={`${item.kind}-${item.id}`} href={`/client/catalog/${item.kind}/${item.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-copy-label">{item.kind}</div>

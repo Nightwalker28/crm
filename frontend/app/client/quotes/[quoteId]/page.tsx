@@ -90,15 +90,15 @@ export default function ClientQuoteDetailPage() {
                 </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Issued</div>
                   <div className="mt-1 text-sm text-copy-secondary">{quote.issue_date ? formatDateOnly(quote.issue_date) : "Not set"}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Expires</div>
                   <div className="mt-1 text-sm text-copy-secondary">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : "No expiry"}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Updated</div>
                   <div className="mt-1 text-sm text-copy-secondary">{formatDateTime(quote.updated_at ?? quote.created_time)}</div>
                 </div>
@@ -117,9 +117,9 @@ export default function ClientQuoteDetailPage() {
                 </Button>
               </div>
               {quote.proposal_content_text ? (
-                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-[var(--radius-card)] border border-line-default bg-app p-4 text-p-sm text-copy-secondary">{quote.proposal_content_text}</pre>
+                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-app p-4 text-p-sm text-copy-secondary">{quote.proposal_content_text}</pre>
               ) : (
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-4 text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
+                <div className="text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
               )}
             </section>
 

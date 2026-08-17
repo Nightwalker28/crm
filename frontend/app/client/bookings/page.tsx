@@ -51,7 +51,7 @@ export default function ClientBookingsPage() {
         ) : (
           <div className="grid gap-3">
             {bookings.map((booking) => (
-              <Link key={booking.id} href={`/client/bookings/${booking.id}`} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={booking.id} href={`/client/bookings/${booking.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
                     <div className="text-xs font-medium text-copy-label">{booking.status}</div>

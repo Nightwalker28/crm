@@ -73,7 +73,7 @@ export default function ClientPortalHomePage() {
             <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
               <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-card)] border border-line-strong bg-app">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-line-strong bg-app">
                     {profile.organization_id ? <Building2 className="h-5 w-5 text-copy-secondary" /> : <BriefcaseBusiness className="h-5 w-5 text-copy-secondary" />}
                   </div>
                   <div className="min-w-0">
@@ -95,9 +95,9 @@ export default function ClientPortalHomePage() {
                 const Icon = section.icon;
                 const metric = overview?.metrics.find((item) => item.key === section.key);
                 return (
-                  <Link key={section.key} href={section.href} className="group rounded-[var(--radius-card)] border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+                  <Link key={section.key} href={section.href} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-card)] border border-line-strong bg-app">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-strong bg-app">
                         <Icon className="h-4 w-4 text-copy-secondary" />
                       </span>
                       <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
@@ -121,7 +121,7 @@ export default function ClientPortalHomePage() {
               </div>
               <div className="grid gap-3">
                 {(overview?.next_actions ?? []).map((action) => (
-                  <Link key={action.key} href={action.href} className="group rounded-[var(--radius-card)] border border-line-default bg-app/60 p-4 transition-colors hover:border-line-strong">
+                  <Link key={action.key} href={action.href} className="group rounded-[var(--radius-control)] border border-line-subtle bg-app/60 p-4 transition-colors hover:border-line-strong">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="font-medium text-copy-primary">{action.label}</div>

@@ -74,15 +74,15 @@ export default function ClientCatalogItemPage() {
               <h1 className="mt-2 text-3xl font-semibold tracking-normal text-copy-primary">{item.name}</h1>
               {item.description ? <p className="mt-4 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p> : null}
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Availability</div>
                   <div className="mt-1 capitalize text-copy-primary">{item.kind === "service" ? "Available" : item.availability_status.replaceAll("_", " ")}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Public price</div>
                   <div className="mt-1 text-copy-primary">{money(item.public_unit_price, item.currency)}</div>
                 </div>
-                <div className="rounded-[var(--radius-card)] border border-line-default bg-app p-3">
+                <div>
                   <div className="text-xs font-medium text-copy-label">Your price</div>
                   <div className="mt-1 font-semibold text-copy-primary">{money(item.resolved_unit_price, item.currency)}</div>
                 </div>
