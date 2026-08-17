@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -101,13 +102,13 @@ export default function MessageTemplatesPage() {
       description="Reusable message bodies for mail and WhatsApp."
       actions={canCreate ? <Button asChild><Link href="/dashboard/settings/message-templates/new"><Plus />Create template</Link></Button> : null}
     >
-      <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
+      <Card className="flex flex-col gap-3 px-4 py-3 lg:flex-row lg:items-center lg:justify-between">
         <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search templates" className="lg:max-w-sm" />
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Select value={channelFilter} onValueChange={setChannelFilter}><SelectTrigger className="sm:w-40" aria-label="Channel filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All channels</SelectItem>{CHANNEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
           <Select value={moduleFilter} onValueChange={setModuleFilter}><SelectTrigger className="sm:w-48" aria-label="Module filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All modules</SelectItem>{MODULE_OPTIONS.map((moduleName) => <SelectItem key={moduleName} value={moduleName}>{getModuleDisplayName(moduleName)}</SelectItem>)}</SelectContent></Select>
         </div>
-      </div>
+      </Card>
       <RecordTable
         label="Templates"
         columns={[

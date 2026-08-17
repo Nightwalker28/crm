@@ -160,7 +160,7 @@ function ConditionGroupsContent({
                 return (
                   <div
                     key={condition.id ?? `${condition.field}-${index}`}
-                    className="grid gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
+                    className="grid gap-3 rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
                   >
                     <div className="space-y-2">
                       <Label>Field</Label>
@@ -218,7 +218,7 @@ function ConditionGroupsContent({
                     <div className="space-y-2">
                       <Label>Value</Label>
                       {hidesValue ? (
-                        <div className="flex h-10 items-center rounded-[var(--radius-card)] border border-line-default px-3 text-sm text-copy-muted">
+                        <div className="flex h-10 items-center rounded-[var(--radius-control)] border border-line-control bg-surface-muted px-3 text-sm text-copy-muted">
                           No value needed
                         </div>
                       ) : selectedField?.type === "relation" && selectedField.recordType ? (
@@ -301,7 +301,7 @@ function ConditionGroupsContent({
                 );
               })
             ) : (
-              <div className="rounded-[var(--radius-card)] border border-dashed border-line-default px-4 py-5 text-sm text-copy-muted">
+              <div className="rounded-[var(--radius-control)] border border-dashed border-line-subtle px-4 py-5 text-sm text-copy-muted">
                 No {groupKey === "all" ? "AND" : "OR"} conditions yet.
               </div>
             )}

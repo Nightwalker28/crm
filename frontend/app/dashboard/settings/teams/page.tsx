@@ -362,7 +362,7 @@ export default function TeamsAndDepartmentsPage() {
         <div className="px-5 py-5">
           {loading ? (
             <div className="space-y-4" aria-label="Loading organization structure" aria-busy="true">
-              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-card)]" />)}
+              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-control)]" />)}
             </div>
           ) : departments.length === 0 ? (
             <EmptyState
@@ -374,10 +374,10 @@ export default function TeamsAndDepartmentsPage() {
           ) : (
             <div className="space-y-4">
               {groupedTeams.map(({ department, teams: departmentTeams }) => (
-                <section key={department.id} className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface-muted" aria-labelledby={`department-${department.id}`}>
+                <section key={department.id} className="overflow-hidden rounded-[var(--radius-control)] bg-surface-muted" aria-labelledby={`department-${department.id}`}>
                   <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
+                      <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
                       <div className="min-w-0">
                         <h3 id={`department-${department.id}`} className="text-sm font-semibold text-copy-primary">{department.name}</h3>
                         <p className="mt-1 text-p-sm text-copy-secondary">{department.description || "No description"}</p>
@@ -397,7 +397,7 @@ export default function TeamsAndDepartmentsPage() {
                     ) : null}
                   </div>
 
-                  <div className="border-t border-line-default bg-surface-raised">
+                  <div className="border-t border-line-subtle bg-surface-raised">
                     {departmentTeams.length === 0 ? (
                       <div className="flex flex-col gap-3 px-4 py-4 text-sm text-copy-muted sm:flex-row sm:items-center sm:justify-between">
                         <span>No teams in this department.</span>
