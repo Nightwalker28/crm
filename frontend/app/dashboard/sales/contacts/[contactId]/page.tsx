@@ -863,7 +863,7 @@ function RelatedRecords({
                 <Link
                   key={opportunity.opportunity_id}
                   href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`}
-                  className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+                  className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
                 >
                   <div className="text-sm font-semibold text-copy-primary">{opportunity.opportunity_name}</div>
                   <div className="mt-1 text-sm text-copy-muted">
@@ -886,7 +886,7 @@ function RelatedRecords({
               <Link
                 key={quote.quote_id}
                 href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+                className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
               >
                 <div className="text-sm font-semibold text-copy-primary">{quote.quote_number}</div>
                 <div className="mt-1 text-sm text-copy-muted">
@@ -908,7 +908,7 @@ function RelatedRecords({
 
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-3">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
     </div>

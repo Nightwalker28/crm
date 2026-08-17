@@ -700,7 +700,7 @@ function AccountContactsPanel({
             <Link
               key={contact.contact_id}
               href={`/dashboard/sales/contacts/${contact.contact_id}`}
-              className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-3 hover:border-line-strong"
+              className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-muted"
             >
               <div className="text-sm font-semibold text-copy-primary">
                 {[contact.first_name, contact.last_name].filter(Boolean).join(" ") || contact.primary_email}
@@ -831,7 +831,7 @@ function RelatedLink({ href, title, detail }: { href: string; title: string; det
   return (
     <Link
       href={href}
-      className="block rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
+      className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
     >
       <div className="text-sm font-semibold text-copy-primary">{title}</div>
       <div className="mt-1 text-sm text-copy-muted">{detail}</div>
@@ -841,7 +841,7 @@ function RelatedLink({ href, title, detail }: { href: string; title: string; det
 
 function SummaryTile({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-3">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
     </div>

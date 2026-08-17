@@ -115,7 +115,7 @@ export default function InvoiceDetailPage() {
           />
         </dl>
         {invoice.customer_address ? (
-          <div className="mt-4 rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted p-4 text-sm text-copy-secondary">
+          <div className="mt-5 border-t border-line-subtle pt-4 text-sm text-copy-secondary">
             <div className="text-xs font-semibold text-copy-label">
               Billing address
             </div>

@@ -355,7 +355,7 @@ export default function OpportunityDetailPage() {
               <Link
                 key={quote.quote_id}
                 href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-3 hover:border-line-strong"
+                className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-muted"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div>

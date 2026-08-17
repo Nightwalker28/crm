@@ -327,7 +327,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                 ) : (
                   <>
                     {matchingQuickLinks.length ? (
-                      <Command.Group className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary">
+                      <Command.Group className="mb-3">
                         <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                           Modules
                         </div>
@@ -364,11 +364,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                       </div>
                     ) : groupedResults.length ? (
                       groupedResults.map(([group, items]) => (
-                        <Command.Group
-                          key={group}
-                          heading={group}
-                          className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary"
-                        >
+                        <Command.Group key={group} heading={group} className="mb-3">
                           <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                             {group}
                           </div>
