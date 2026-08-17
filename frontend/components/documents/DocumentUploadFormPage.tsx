@@ -387,17 +387,17 @@ export default function DocumentUploadFormPage() {
             <div ref={selectionStatusRef} tabIndex={-1} className="sr-only" aria-live="polite">{queue.length ? `${queue.length} files in the upload queue.` : "No files selected."}</div>
 
           {queue.length ? (
-            <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line-default" aria-label="Upload queue">
-              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-default bg-surface-muted px-4 py-2 text-xs font-medium text-copy-label md:grid">
+            <div className="mt-4 border-t border-line-subtle pt-4" aria-label="Upload queue">
+              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-subtle pb-2 text-xs font-medium text-copy-label md:grid">
                 <span>File</span><span>Destination</span><span>Links</span><span className="text-right">Status</span>
               </div>
-              <div className="divide-y divide-line-default">
+              <div className="divide-y divide-line-subtle">
                 {queue.map((item) => {
                   const canEdit = item.status === "queued" || item.status === "failed" || item.status === "invalid";
                   const itemAssociations = item.overrides?.associations ?? associations;
                   const resolvedProvider = item.document?.storage_provider ?? storageProvider;
                   return (
-                    <div key={item.id} className="px-4 py-3">
+                    <div key={item.id} className="py-3">
                       <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem]">
                         <div className="flex min-w-0 items-start gap-3">
                           {item.status === "complete" ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-state-success" aria-hidden="true" /> : <FileText className="mt-0.5 h-5 w-5 shrink-0 text-copy-muted" aria-hidden="true" />}

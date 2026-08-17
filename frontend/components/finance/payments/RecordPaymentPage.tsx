@@ -155,7 +155,7 @@ export default function RecordPaymentPage() {
                   type="button"
                   onClick={() => selectInvoice(item)}
                   aria-pressed={invoice?.id === item.id}
-                  className="grid gap-2 rounded-[var(--radius-card)] border border-line-default bg-surface p-4 text-left transition-colors hover:border-line-strong aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
+                  className="grid gap-2 rounded-[var(--radius-control)] border border-line-subtle p-4 text-left transition-colors hover:border-line-strong hover:bg-surface-muted aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
                 >
                   <span>
                     <span className="block font-medium text-copy-primary">{item.invoice_number} · {item.customer_name}</span>

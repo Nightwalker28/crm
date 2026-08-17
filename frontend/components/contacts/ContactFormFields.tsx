@@ -84,7 +84,7 @@ export function ContactFormMainFields({ value, onChange, customFields, customFie
           {enabled("contact_telephone") ? <TextField id="contact-phone" label="Phone" type="tel" value={value.contact_telephone} onChange={(next) => update("contact_telephone", next)} placeholder="+94 77 123 4567" /> : null}
         </div>
         {enabled("email_opt_out") ? (
-          <label className="mt-4 flex items-start gap-3 rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
+          <label className="mt-4 flex items-start gap-3 rounded-[var(--radius-control)] border border-line-subtle px-4 py-3 text-sm text-copy-secondary transition-colors hover:bg-surface-muted">
             <Checkbox
               checked={value.email_opt_out}
               onCheckedChange={(checked) => onChange({ ...value, email_opt_out: checked === true })}

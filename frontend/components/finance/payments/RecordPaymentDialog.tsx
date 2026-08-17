@@ -61,7 +61,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
           </DialogHeader>
           {invoice ? (
             <div className="mt-4 space-y-4">
-              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-4">
+              <div>
                 <div className="text-sm font-semibold text-copy-primary">{invoice.invoice_number}</div>
                 <div className="mt-1 text-sm text-copy-secondary">{invoice.customer_name}</div>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">

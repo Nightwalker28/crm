@@ -109,7 +109,7 @@ export default function CustomFieldInputs({ definitions, values, onChange }: Pro
   if (!definitions.length) return null;
 
   return (
-    <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4">
+    <div>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-copy-primary">Configured fields</h3>
         <p className="mt-1 text-p-sm text-copy-muted">These fields are managed by a workspace administrator.</p>
