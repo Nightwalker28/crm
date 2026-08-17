@@ -113,6 +113,16 @@ Two consequences worth stating, because both were live drift:
   hover it or focus it, it is a `divide-y` line in a stack. A border around static content
   inside a panel is the third level §1.3 forbids, wearing a smaller radius.
 
+**Primitives that draw a surface as their own job are exempt.** `Card` itself, and the
+handful of `components/ui/` files whose entire purpose *is* rendering a panel-or-raised-tier
+surface rather than borrowing one at a call site — `ModuleTableShell`'s `standalone` variant,
+`ModuleListToolbar`, `RouteStates`, `chart.tsx`'s tooltip, `dropdown-menu.tsx` — are not swept
+by the panel taxonomy the way application code is. The test is the same one §11.1 applies to
+`Table`'s own implementers: does this file's job start and end at drawing the surface, or is
+it a page/component *consuming* one? A `components/ui/` file that renders inside someone
+else's panel (an export dialog's radio option, a payment dialog's invoice picker) is a
+call site like any other and follows the rows above, not this exemption.
+
 ### 1.4 One theme, two weights
 
 Light is not a separate palette. Every non-neutral value in `.light` is derived from

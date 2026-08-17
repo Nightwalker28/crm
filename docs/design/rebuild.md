@@ -961,6 +961,59 @@ permits two levels of container and says to use ink instead.
 grep -rn 'rounded-\[var(--radius-card)\]' app components --include='*.tsx' | grep -c border   # 206 today
 ```
 
+### Status: done — all seven batches landed
+
+At 5.0's measurement this was 206 matches; by the time 5.2 started, 5.1's route-boundary and
+dialog work had already resolved some incidentally, so the working baseline was **184 matches
+across 74 files**. The sweep closes at **105 remaining matches**, none of them violations:
+**24** are the shared `role="alert"` state-banner idiom (unowned box shape, 5.4 consolidates
+the literal duplication); the rest are the client portal's already-correctly-tiered top-level
+panels (batch 6 fixed only the nested/repeated boxes inside them — the portal has never
+adopted `Card`, and giving it one is 5.8's job, not this sub-phase's), the primitive
+implementers §1.3 now names as exempt, two `rebuild-census.md` `unchanged` files, and two
+rows explicitly deferred to 5.5 (`DashboardSummaryTable`'s raw `Table` wrapper) and 5.7 (the
+deal-pipeline stage-summary KPI grid).
+
+Seven batches, gated by `check-design.sh` + lint + build between each, one commit per batch:
+dashboard shell & widgets, record detail pages, the `*RecordFormPage` family (where the local
+`SummaryTile` recipes were retired, per this section's brief), boards & calendar, settings,
+client portal + auth, and this close-out. `check-design.sh` is unchanged at **2 of 14**
+failing throughout — neither is here. The rendered guards
+(`design-rules.spec.ts`, `scroll-containers.spec.ts`) pass across all 95 routes at close, and
+`public-surfaces-design.spec.ts` passes across the 14 public/client routes batch 6 touched.
+
+**The taxonomy needed one addition, not a rewrite: kanban columns and cards.** §1.3's three
+roles assume a page with regions; a board is a row of lanes, each holding repeated draggable
+items — a shape the taxonomy didn't anticipate. The resolution keeps R8's actual test rather
+than stretching "panel" to fit: a column is a `bg-surface-muted` recessed strip (ground alone
+already separates it from the board's own `bg-surface`, so it carries no border at rest — the
+border reappears only as the active-drop-target signal, which *is* earned by an interaction),
+and each card is a `Row` since it is individually draggable and clickable. The empty-column
+notice ("No opportunities in this stage") dropped its box entirely, being nested and static.
+Applied identically to the deal pipeline and the task board.
+
+**A second, smaller pattern: dialogs and settings sections that nested a full panel one level
+too deep.** `TaskDialog`, `CalendarEventDialog`, and `RecordPaymentDialog` each hand-rolled a
+`Card`-shaped box directly in the dialog body for one labeled group (Assignments,
+Participants, an invoice summary); since the dialog panel itself is already the outer
+surface, these dropped to a plain `border-t` ink group, the same shape batch 2 established for
+a record page's own nested "billing address" block. Team management's per-department block
+followed the batch 4 kanban-column shape (borderless recessed strip) rather than a second
+nested panel, since it stacks vertically with no drop-target state to signal.
+
+**One violation surfaced only at close-out, outside the batch scan.** `ExportControls.tsx`'s
+`ExportModeOption` — a selectable radio-styled option inside the export dialog's body — lives
+in `components/ui/` but consumes `Dialog` rather than drawing its own surface, so it is not
+one of §1.3's primitive-implementer exemptions; it follows the same `Row` conversion as
+`RecordPaymentPage`'s invoice picker in batch 3. Caught because the close-out re-grep
+audited every remaining match by hand rather than assuming the seven batches' file lists were
+exhaustive.
+
+**Files:** `components/ui/Card.tsx` (`asChild` added); ~60 application files swept across
+`app/dashboard/**`, `app/client/**`, `app/auth/login/page.tsx`, and `components/**`; `docs/
+design/design.md` §1.3 (primitive-implementer exemption, written before this note); `docs/
+design/rebuild-census.md` (`Card.tsx` → `done`).
+
 ---
 
 ## 5.3 — Record detail: one archetype

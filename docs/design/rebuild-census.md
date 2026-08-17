@@ -495,7 +495,7 @@ taken. Counted here so the denominator stays honest.
 |---|---|---|---|---|---|
 | `PageShell.tsx` | 144 | 5.3 | adopt | Gains `variant="record"` | |
 | `PageHeader.tsx` | 71 | 5.1 | adopt | | |
-| `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy | |
+| `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels | done |
 | `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | |
 | `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. After 5.5 only 3 files may import it | |
 | `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | |

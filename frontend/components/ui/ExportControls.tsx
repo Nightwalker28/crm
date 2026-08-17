@@ -320,10 +320,10 @@ function ExportModeOption({
   return (
     <RadioGroupItem
       value={value}
-      className={`rounded-[var(--radius-card)] border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
+      className={`rounded-[var(--radius-control)] border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
         active
           ? "border-primary bg-action-primary-muted text-copy-primary"
-          : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface"
+          : "border-line-subtle bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface"
       }`}
     >
       <span className="block text-sm font-medium">{title}</span>
