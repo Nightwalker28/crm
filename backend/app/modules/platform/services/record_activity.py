@@ -36,6 +36,7 @@ from app.modules.calendar.models import CalendarEvent
 from app.modules.mail.models import MailMessage, MailRecordAssociation
 from app.modules.platform.models import RecordComment, RecordFollowUp
 from app.modules.platform.services.record_comments import get_record_reference
+from app.modules.support.models import SupportCaseComment
 from app.modules.tasks.models import Task
 from app.modules.user_management.models import User
 from app.modules.whatsapp.models import WhatsAppInteraction
@@ -413,6 +414,60 @@ def _fetch_whatsapp(db, *, tenant_id, module_key, entity_id, limit, cursor, view
     ]
 
 
+SUPPORT_CASES_MODULE_KEY = "support_cases"
+
+
+def _fetch_case_replies(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
+    """The support case conversation.
+
+    Linkage is the support domain's own ``case_id`` foreign key rather than the generic
+    ``module_key`` / ``entity_id`` pair the other record-scoped adapters use, so this
+    adapter answers for exactly one module and returns nothing for the rest.
+
+    It exists because a support case otherwise carries two comment systems on one screen —
+    this thread and ``RecordComment`` — and `design.md` §4.7 puts the composer at the top of
+    one feed. Internal notes and customer-facing replies stay distinguishable through
+    ``meta.is_internal``; they are the same conversation, read by different audiences.
+    """
+    if module_key != SUPPORT_CASES_MODULE_KEY:
+        return []
+    try:
+        case_id = int(entity_id)
+    except (TypeError, ValueError):
+        return []
+
+    occurred = SupportCaseComment.created_at
+    query = (
+        db.query(SupportCaseComment)
+        .options(joinedload(SupportCaseComment.author))
+        .filter(
+            SupportCaseComment.tenant_id == tenant_id,
+            SupportCaseComment.case_id == case_id,
+        )
+    )
+    predicate = _keyset_filter(occurred, SupportCaseComment.id, item_type="case_reply", cursor=cursor)
+    if predicate is not None:
+        query = query.filter(predicate)
+    rows = query.order_by(None).order_by(occurred.desc(), SupportCaseComment.id.desc()).limit(limit).all()
+
+    return [
+        ActivityItem(
+            type="case_reply",
+            source_id=row.id,
+            source_module_key=SUPPORT_CASES_MODULE_KEY,
+            occurred_at=_as_utc(row.created_at),
+            title="Internal note added" if row.is_internal else "Reply sent to customer",
+            summary=_clip(row.body),
+            actor_user_id=row.author_id,
+            actor_name=_user_label(row.author),
+            direction=None if row.is_internal else "outbound",
+            capabilities=(),
+            meta={"is_internal": bool(row.is_internal)},
+        )
+        for row in rows
+    ]
+
+
 @dataclass(frozen=True)
 class _Adapter:
     type: str
@@ -423,6 +478,9 @@ class _Adapter:
 
 
 ADAPTERS: tuple[_Adapter, ...] = (
+    # Record-scoped: the thread belongs to the case, so it inherits the case's own
+    # permission and the adapter is inert for every other module.
+    _Adapter("case_reply", _fetch_case_replies, None),
     _Adapter("email", _fetch_emails, "mail"),
     _Adapter("follow_up", _fetch_follow_ups, None),
     _Adapter("meeting", _fetch_meetings, "calendar"),

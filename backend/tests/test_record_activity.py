@@ -20,6 +20,7 @@ from app.modules.platform.services.record_activity import (
     parse_types,
 )
 from app.modules.sales.models import SalesContact, SalesLead
+from app.modules.support.models import SupportCase, SupportCaseComment
 from app.modules.tasks.models import Task
 from app.modules.user_management.models import Module, Role, User, UserStatus
 from app.modules.whatsapp.models import WhatsAppInteraction
@@ -559,6 +560,132 @@ class RecordActivityProjectionTests(unittest.TestCase):
         )
         self.db.commit()
         self.assertEqual(self._list()["items"], [])
+
+
+class SupportCaseReplyAdapterTests(unittest.TestCase):
+    """The case conversation reaches the feed through the support domain's own FK.
+
+    `design.md` §4.7 puts one composer at the top of one Timeline, and a support case was
+    the page carrying two comment systems at once. The reply thread is linked by
+    ``case_id`` rather than the generic module_key/entity_id pair, so this adapter has to
+    stay inert for every other record type — which is most of what these tests check.
+    """
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.SessionLocal = sessionmaker(bind=engine)
+        self.db = self.SessionLocal()
+
+        self._policy_patch = mock.patch.object(
+            record_activity, "PermissionPolicy", _AllowAllPolicy
+        )
+        self._policy_patch.start()
+        self.addCleanup(self._policy_patch.stop)
+
+        self.db.add_all(
+            [
+                Module(id=1, name="support_cases", base_route="support_cases", is_enabled=1),
+                Role(id=1, tenant_id=TENANT, name="Admin", level=100),
+                User(
+                    id=1,
+                    tenant_id=TENANT,
+                    email="agent@example.com",
+                    first_name="Sam",
+                    last_name="Agent",
+                    role_id=1,
+                    is_active=UserStatus.active,
+                ),
+            ]
+        )
+        for tenant_id in (TENANT, OTHER_TENANT):
+            self.db.add(
+                SupportCase(
+                    id=7 if tenant_id == TENANT else 8,
+                    tenant_id=tenant_id,
+                    case_number=f"CASE-{tenant_id}",
+                    subject="Cannot log in",
+                    status="open",
+                    priority="medium",
+                )
+            )
+        self.db.commit()
+        self.user = SimpleNamespace(id=1, tenant_id=TENANT, denied_modules=set())
+
+    def tearDown(self):
+        self.db.close()
+
+    def _reply(self, comment_id, *, tenant_id=TENANT, case_id=7, is_internal=False, body="Reset link sent.", minutes=10):
+        self.db.add(
+            SupportCaseComment(
+                id=comment_id,
+                tenant_id=tenant_id,
+                case_id=case_id,
+                author_id=1,
+                body=body,
+                is_internal=is_internal,
+                created_at=at(minutes),
+            )
+        )
+        self.db.commit()
+
+    def _list(self, module_key="support_cases", entity_id="7", **kwargs):
+        return list_record_activity(
+            self.db,
+            user=self.user,
+            module_key=module_key,
+            entity_id=entity_id,
+            **kwargs,
+        )
+
+    def test_a_customer_reply_reaches_the_feed(self):
+        self._reply(1)
+
+        items = self._list()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["type"], "case_reply")
+        self.assertEqual(items[0]["title"], "Reply sent to customer")
+        self.assertEqual(items[0]["summary"], "Reset link sent.")
+        self.assertEqual(items[0]["actor"], {"user_id": 1, "name": "Sam Agent"})
+        self.assertIs(items[0]["meta"]["is_internal"], False)
+
+    def test_an_internal_note_is_marked_rather_than_hidden(self):
+        self._reply(1, is_internal=True, body="Escalating to tier two.")
+
+        item = self._list()["items"][0]
+        self.assertEqual(item["title"], "Internal note added")
+        self.assertIs(item["meta"]["is_internal"], True)
+        # Direction is what the feed paints as outbound contact; an internal note is not.
+        self.assertIsNone(item["direction"])
+
+    def test_another_tenants_reply_on_the_same_case_id_is_invisible(self):
+        self._reply(1, tenant_id=OTHER_TENANT, case_id=7, body="Other tenant reply.")
+
+        self.assertEqual(self._list()["items"], [])
+
+    def test_a_reply_on_another_case_stays_there(self):
+        self._reply(1, case_id=8, body="Different case.")
+
+        self.assertEqual(self._list()["items"], [])
+
+    def test_the_adapter_is_inert_for_a_record_that_is_not_a_case(self):
+        # A lead's entity_id can collide with a case id; linkage is the FK, not the number.
+        self.db.add(
+            SalesLead(lead_id=7, tenant_id=TENANT, first_name="Ada", last_name="Lovelace", primary_email="ada@example.com")
+        )
+        self.db.add(Module(id=2, name="sales_leads", base_route="sales_leads", is_enabled=1))
+        self.db.commit()
+        self._reply(1)
+
+        self.assertEqual(self._list(module_key="sales_leads", entity_id="7")["items"], [])
+
+    def test_replies_are_a_filterable_type_like_every_other_source(self):
+        self._reply(1, minutes=10)
+        self._reply(2, is_internal=True, minutes=20)
+
+        self.assertIn("case_reply", ACTIVITY_TYPES)
+        items = self._list(types="case_reply")["items"]
+        self.assertEqual([item["id"] for item in items], ["case_reply:2", "case_reply:1"])
 
 
 class RecordFollowUpSourceTests(unittest.TestCase):
