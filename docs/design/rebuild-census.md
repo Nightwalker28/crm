@@ -158,7 +158,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | | |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
-| `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | |
+| `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | done |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | |
 | `sales/opportunities/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/opportunities/loading.tsx` | 2 | 5.1 | rebuild | | done |
@@ -219,7 +219,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `catalog/services/[serviceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `contracts/page.tsx` | 75 | 5.5 | rebuild | | |
 | `contracts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `contracts/[contractId]/page.tsx` | 479 | 5.3 | rebuild | **No activity, notes, tasks or documents.** Renders raw FKs at `:244,264,265` | |
+| `contracts/[contractId]/page.tsx` | 479 | 5.3 | rebuild | **No activity, notes, tasks or documents.** Renders raw FKs at `:244,264,265` | done |
 | `contracts/[contractId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `support/cases/page.tsx` | 117 | 5.5 | rebuild | | |
 | `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |

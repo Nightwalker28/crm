@@ -16,6 +16,11 @@ import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
+  RecordRelatedCard,
+  RecordRelatedLink,
+  RecordRelatedList,
+} from "@/components/recordWorkspace/RecordRelatedList";
+import {
   RecordWorkspace,
   recordEditHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
@@ -592,9 +597,9 @@ function RelatedRecords({
   onCreateOpportunity: () => void;
 }) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
+    <RecordRelatedList>
       {canViewContacts ? (
-        <RelatedCard
+        <RecordRelatedCard
           title="Contacts"
           empty={
             canCreateContact
@@ -611,7 +616,7 @@ function RelatedRecords({
           }
         >
           {summary.related_contacts.map((contact) => (
-            <RelatedLink
+            <RecordRelatedLink
               key={contact.contact_id}
               href={`/dashboard/sales/contacts/${contact.contact_id}`}
               title={
@@ -621,10 +626,10 @@ function RelatedRecords({
               detail={contact.current_title || contact.primary_email}
             />
           ))}
-        </RelatedCard>
+        </RecordRelatedCard>
       ) : null}
       {canViewOpportunities ? (
-        <RelatedCard
+        <RecordRelatedCard
           title="Deals"
           empty="No related deals yet."
           action={
@@ -637,93 +642,56 @@ function RelatedRecords({
           }
         >
           {summary.related_opportunities.map((deal) => (
-            <RelatedLink
+            <RecordRelatedLink
               key={deal.opportunity_id}
               href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
               title={deal.opportunity_name}
               detail={`${deal.sales_stage || "Unstaged"}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
             />
           ))}
-        </RelatedCard>
+        </RecordRelatedCard>
       ) : null}
-      <RelatedCard title="Quotes" empty="No related quotes yet.">
+      <RecordRelatedCard title="Quotes" empty="No related quotes yet.">
         {summary.related_quotes.map((quote) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={quote.quote_id}
             href={`/dashboard/sales/quotes/${quote.quote_id}`}
             title={quote.quote_number}
             detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard title="Orders" empty="No related orders yet.">
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Orders" empty="No related orders yet.">
         {summary.related_orders.map((order) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={order.id}
             href={`/dashboard/sales/orders/${order.id}`}
             title={order.order_number}
             detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard title="Invoices" empty="No related invoices yet.">
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Invoices" empty="No related invoices yet.">
         {summary.related_invoices.map((invoice) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={invoice.id}
             href={`/dashboard/finance/pos/${invoice.id}`}
             title={invoice.invoice_number}
             detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard title="Insertion orders" empty="No related insertion orders yet.">
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
         {summary.related_insertion_orders.map((order) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={order.id}
             href={`/dashboard/finance/insertion-orders/${order.id}`}
             title={order.io_number}
             detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-    </div>
-  );
-}
-
-function RelatedCard({
-  title,
-  empty,
-  action,
-  children,
-}: {
-  title: string;
-  empty: string;
-  action?: React.ReactNode;
-  children: React.ReactNode;
-}) {
-  const items = Array.isArray(children) ? children : [children];
-  return (
-    <Card className="px-5 py-5">
-      <div className="flex items-start justify-between gap-3">
-        <h2 className="text-base font-semibold text-copy-primary">{title}</h2>
-        {action}
-      </div>
-      <div className="mt-4 space-y-3">
-        {items.length && items.some(Boolean) ? children : <p className="text-sm text-copy-muted">{empty}</p>}
-      </div>
-    </Card>
-  );
-}
-
-function RelatedLink({ href, title, detail }: { href: string; title: string; detail: string }) {
-  return (
-    <Link
-      href={href}
-      className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
-    >
-      <div className="text-sm font-semibold text-copy-primary">{title}</div>
-      <div className="mt-1 text-sm text-copy-muted">{detail}</div>
-    </Link>
+      </RecordRelatedCard>
+    </RecordRelatedList>
   );
 }
 

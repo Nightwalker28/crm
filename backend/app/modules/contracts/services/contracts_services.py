@@ -217,6 +217,86 @@ def get_contract_or_404(db: Session, *, tenant_id: int, contract_id: int) -> Con
     return item
 
 
+def _linked_label(db: Session, model, *, tenant_id: int, id_column, record_id, label) -> str | None:
+    """The display name of one linked record, or `None` when it is gone or out of tenant.
+
+    Soft-deleted targets count as gone. Most of these modules are recoverable, and a link into
+    a record that reads "not found" is worse than no link at all — `SET NULL` only fires on a
+    hard delete, so the contract's column still points at the recycled row.
+    """
+
+    if not record_id:
+        return None
+    filters = [model.tenant_id == tenant_id, id_column == record_id]
+    deleted_at = getattr(model, "deleted_at", None)
+    if deleted_at is not None:
+        filters.append(deleted_at.is_(None))
+    row = db.query(model).filter(*filters).first()
+    return label(row) if row is not None else None
+
+
+def _person_label(row) -> str | None:
+    full_name = " ".join(part for part in [row.first_name, row.last_name] if part).strip()
+    return full_name or getattr(row, "primary_email", None) or getattr(row, "email", None) or None
+
+
+def resolve_contract_link_labels(db: Session, contract: Contract) -> dict[str, str | None]:
+    """Names for the six records a contract points at, plus its owner.
+
+    The detail page rendered `Contact #12` and `Deal #4` because the response carried only
+    foreign keys — a link whose text is an id tells the operator nothing about where it goes.
+    Resolving them here keeps the lookup tenant-scoped and in one place; a link whose target
+    was deleted or belongs to another tenant resolves to `None` and the page shows no link
+    rather than a dead one.
+    """
+
+    tenant_id = contract.tenant_id
+    return {
+        "organization_name": _linked_label(
+            db, SalesOrganization, tenant_id=tenant_id, id_column=SalesOrganization.org_id,
+            record_id=contract.organization_id, label=lambda row: row.org_name,
+        ),
+        "contact_name": _linked_label(
+            db, SalesContact, tenant_id=tenant_id, id_column=SalesContact.contact_id,
+            record_id=contract.contact_id, label=_person_label,
+        ),
+        "opportunity_name": _linked_label(
+            db, SalesOpportunity, tenant_id=tenant_id, id_column=SalesOpportunity.opportunity_id,
+            record_id=contract.opportunity_id, label=lambda row: row.opportunity_name,
+        ),
+        "quote_number": _linked_label(
+            db, SalesQuote, tenant_id=tenant_id, id_column=SalesQuote.quote_id,
+            record_id=contract.quote_id, label=lambda row: row.quote_number,
+        ),
+        "order_number": _linked_label(
+            db, SalesOrder, tenant_id=tenant_id, id_column=SalesOrder.id,
+            record_id=contract.order_id, label=lambda row: row.order_number,
+        ),
+        "document_name": _linked_label(
+            db, Document, tenant_id=tenant_id, id_column=Document.id,
+            record_id=contract.document_id, label=lambda row: row.display_name or row.title,
+        ),
+        "owner_name": _linked_label(
+            db, User, tenant_id=tenant_id, id_column=User.id,
+            record_id=contract.owner_id, label=_person_label,
+        ),
+    }
+
+
+def resolve_contract_actor_names(db: Session, contract: Contract) -> dict[int, str]:
+    """Display names for the users behind a contract's events, resolved in one query."""
+
+    actor_ids = {event.created_by_id for event in contract.events if event.created_by_id}
+    if not actor_ids:
+        return {}
+    rows = (
+        db.query(User)
+        .filter(User.tenant_id == contract.tenant_id, User.id.in_(actor_ids))
+        .all()
+    )
+    return {row.id: label for row in rows if (label := _person_label(row))}
+
+
 def get_contract_for_mutation_or_404(db: Session, *, tenant_id: int, contract_id: int) -> Contract:
     item = db.query(Contract).filter(Contract.id == contract_id, Contract.tenant_id == tenant_id).first()
     if not item:

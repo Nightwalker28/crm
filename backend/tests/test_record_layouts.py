@@ -279,15 +279,17 @@ class RecordLayoutResolverTests(unittest.TestCase):
             RecordLayoutDefinitionPayload.model_validate(payload)
 
     def test_module_and_surface_are_bounded_to_adopted_modules(self):
-        for module_key in ("sales_leads", "sales_contacts", "sales_organizations"):
+        for module_key in ("sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities"):
             for surface in ("quick_create", "detail"):
                 self.assertEqual(
                     validate_module_and_surface(module_key, surface),
                     (module_key, surface),
                 )
+        # Contracts adopt the record archetype's `Details` tab and nothing else — there is no
+        # contract Quick Create surface, so the module is deliberately detail-only.
         self.assertEqual(
-            validate_module_and_surface("sales_opportunities", "quick_create"),
-            ("sales_opportunities", "quick_create"),
+            validate_module_and_surface("contracts", "detail"),
+            ("contracts", "detail"),
         )
 
         with self.assertRaises(HTTPException) as unadopted_module:
@@ -298,9 +300,8 @@ class RecordLayoutResolverTests(unittest.TestCase):
             validate_module_and_surface("sales_leads", "full_form")
         self.assertEqual(future_surface.exception.status_code, 422)
 
-        # The Opportunity workspace, and so its detail layout, belongs to a later slice.
         with self.assertRaises(HTTPException) as unseeded_surface:
-            validate_module_and_surface("sales_opportunities", "detail")
+            validate_module_and_surface("contracts", "quick_create")
         self.assertEqual(unseeded_surface.exception.status_code, 422)
 
 

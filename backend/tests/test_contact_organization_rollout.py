@@ -129,15 +129,20 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
         # Quick Create stays quick: the guidance ceiling is 8 visible fields.
         self.assertLessEqual(len([field for field in fields.values() if field.visible]), 8)
 
-    def test_opportunity_quick_create_requires_a_contact_and_stays_create_only(self):
+    def test_opportunity_quick_create_requires_a_contact_and_detail_omits_the_spine(self):
         fields = resolved_fields(self.resolve("sales_opportunities", "quick_create"))
         self.assertTrue(fields["contact_id"].required)
         self.assertIn("organization_id", fields)
 
-        # The Opportunity workspace, and so its detail layout, is a later slice.
-        with self.assertRaises(HTTPException) as detail:
-            self.resolve("sales_opportunities", "detail")
-        self.assertEqual(detail.exception.status_code, 422)
+        # The Opportunity workspace landed in rebuild 5.3 batch 1, so `detail` resolves now.
+        # What it must not carry is the four fields the record spine owns — drawing an editable
+        # stage in the rail and a read-only copy in `Details` is the confusion R2 exists to
+        # avoid (design.md §4.7).
+        detail_fields = resolved_fields(self.resolve("sales_opportunities", "detail"))
+        for spine_owned in ("sales_stage", "assigned_to", "contact_id", "organization_id"):
+            self.assertNotIn(spine_owned, detail_fields)
+        self.assertIn("total_cost_of_project", detail_fields)
+        self.assertIn("expected_close_date", detail_fields)
 
     def test_disabled_field_config_hides_optional_fields_but_never_required_ones(self):
         self.db.add_all(

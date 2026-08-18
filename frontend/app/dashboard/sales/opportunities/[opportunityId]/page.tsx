@@ -1,41 +1,90 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CalendarClock,
-  CheckCircle2,
-  CircleDollarSign,
-  Edit3,
-  Percent,
-  UserRound,
-  XCircle,
-} from "lucide-react";
+import { Pencil } from "lucide-react";
 
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import {
-  getOpportunityStageLabel,
   getOpportunityStage,
+  getOpportunityStageLabel,
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { Chip } from "@/components/ui/Chip";
-import { InlineFieldEdit } from "@/components/ui/InlineFieldEdit";
-import { StatusValue } from "@/components/ui/StatusValue";
-import { PageShell } from "@/components/ui/PageShell";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import {
+  RecordRelatedCard,
+  RecordRelatedLink,
+  RecordRelatedList,
+} from "@/components/recordWorkspace/RecordRelatedList";
+import {
+  RecordWorkspace,
+  recordEditHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { RecordTabs } from "@/components/ui/RecordTabs";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import {
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineCollection,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+  RecordSpineTrack,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
-import { EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
-import { Money } from "@/components/ui/Money";
-import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
+import { formatDateTime } from "@/lib/datetime";
+
+type RelatedQuote = {
+  quote_id: number;
+  quote_number: string;
+  title?: string | null;
+  customer_name: string;
+  status?: string | null;
+  currency?: string | null;
+  total_amount?: number | string | null;
+};
+
+type RelatedInsertionOrder = {
+  id: number;
+  io_number: string;
+  customer_name?: string | null;
+  status?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
+};
+
+type ParticipantContact = {
+  id: number;
+  contact_id: number;
+  role_label: string;
+  is_primary: boolean;
+  contact_name?: string | null;
+  contact: {
+    contact_id: number;
+    first_name?: string | null;
+    last_name?: string | null;
+    primary_email?: string | null;
+    current_title?: string | null;
+  };
+};
 
 type OpportunitySummary = {
   opportunity: {
@@ -43,6 +92,11 @@ type OpportunitySummary = {
     opportunity_name: string;
     client?: string | null;
     sales_stage?: string | null;
+    contact_id?: number | null;
+    contact_name?: string | null;
+    organization_id?: number | null;
+    organization_name?: string | null;
+    assigned_to?: number | null;
     assigned_to_name?: string | null;
     start_date?: string | null;
     expected_close_date?: string | null;
@@ -57,10 +111,9 @@ type OpportunitySummary = {
     domain_cap?: string | null;
     tactics?: string | null;
     delivery_format?: string | null;
+    custom_fields?: Record<string, unknown> | null;
     created_time?: string | null;
     updated_at?: string | null;
-    last_contacted_at?: string | null;
-    last_contacted_channel?: string | null;
   };
   contact?: {
     contact_id: number;
@@ -70,466 +123,466 @@ type OpportunitySummary = {
     contact_telephone?: string | null;
     current_title?: string | null;
   } | null;
-  organization?: {
-    org_id: number;
-    org_name: string;
-    primary_email?: string | null;
-    website?: string | null;
-  } | null;
-  related_quotes: Array<{
-    quote_id: number;
-    quote_number: string;
-    title?: string | null;
-    customer_name: string;
-    status?: string | null;
-    currency?: string | null;
-    total_amount?: number | string | null;
-    expiry_date?: string | null;
-  }>;
+  organization?: { org_id: number; org_name: string } | null;
+  participant_contacts: ParticipantContact[];
+  can_view_contacts: boolean;
+  related_quotes: RelatedQuote[];
+  related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
+  insertion_order_count: number;
 };
+
+/**
+ * Fields the spine owns, which `Details` must not draw a second time (design.md §4.7).
+ *
+ * The seeded layout leaves these out too, but a tenant may add them back through the layout
+ * builder, so the page states the rule rather than trusting the seed.
+ */
+const SPINE_OWNED_FIELDS = [
+  "sales_stage",
+  "assigned_to",
+  "contact_id",
+  "organization_id",
+] as const;
+
+/**
+ * The track shows the pipeline, so the one stage that leaves it is not a step on it.
+ *
+ * `closed_won` is where the pipeline ends and stays on the track; `closed_lost` is an exit,
+ * and drawing it as the last step would say a lost deal is a completed one.
+ */
+const DEAL_TRACK_VALUES = ["lead", "qualified", "proposal", "negotiation", "closed_won"] as const;
+
+const DEAL_TRACK_STEPS = DEAL_TRACK_VALUES.map((value) => ({
+  id: value,
+  label: getOpportunityStageLabel(value),
+}));
+
+const DEAL_STAGE_OPTIONS: InlineFieldEditOption[] = OPPORTUNITY_STAGE_ORDER.map((value) => ({
+  value,
+  ...getOpportunityStage(value),
+  label: getOpportunityStageLabel(value),
+}));
+
+class OpportunitySummaryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 async function fetchSummary(id: string) {
   const res = await apiFetch(`/sales/opportunities/${id}/summary`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) {
+    throw new OpportunitySummaryRequestError(body?.detail ?? `Failed with ${res.status}`, res.status);
+  }
   return body as OpportunitySummary;
 }
-function displayContact(summary: OpportunitySummary) {
+
+function contactLabel(summary: OpportunitySummary) {
   return (
-    [summary.contact?.first_name, summary.contact?.last_name]
-      .filter(Boolean)
-      .join(" ") ||
-    summary.contact?.primary_email ||
-    summary.opportunity.client ||
-    "Unnamed contact"
+    [summary.contact?.first_name, summary.contact?.last_name].filter(Boolean).join(" ")
+    || summary.contact?.primary_email
+    || summary.opportunity.contact_name
+    || summary.opportunity.client
+    || null
   );
 }
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ opportunityId: string }>();
+  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const query = useQuery({
+  const activeTab = searchParams.get("tab");
+
+  const { modules } = useAccessibleModules();
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const opportunityActions = moduleActions("sales_opportunities");
+  const quoteActions = moduleActions("sales_quotes");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const canEditDeal = Boolean(opportunityActions?.can_edit);
+  const canDeleteDeal = Boolean(opportunityActions?.can_delete);
+  const canViewQuotes = Boolean(quoteActions?.can_view);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canCreateTasks = Boolean(taskActions?.can_create);
+  const canEditTasks = Boolean(taskActions?.can_edit);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+  const canCreateDocuments = Boolean(documentActions?.can_create);
+  const canEditDocuments = Boolean(documentActions?.can_edit);
+  const canDeleteDocuments = Boolean(documentActions?.can_delete);
+
+  const summaryQuery = useQuery({
     queryKey: ["sales-opportunity-summary", params.opportunityId],
     queryFn: () => fetchSummary(params.opportunityId),
     enabled: Boolean(params.opportunityId),
     refetchOnWindowFocus: false,
   });
-  const summary = query.data;
-  async function updateStage(stage: string) {
-    if (
-      !summary ||
-      normalizeOpportunityStage(summary.opportunity.sales_stage) === stage
-    )
-      return;
+  const detailLayoutQuery = useResolvedRecordLayout("sales_opportunities", "detail");
+
+  const summary = summaryQuery.data ?? null;
+  const deal = summary?.opportunity;
+  const summaryError = summaryQuery.error;
+  const notFound =
+    summaryError instanceof OpportunitySummaryRequestError && summaryError.status === 404;
+  const stage = normalizeOpportunityStage(deal?.sales_stage) || "lead";
+  const dealName = deal?.opportunity_name || "Deal";
+  const recordHref = `/dashboard/sales/opportunities/${params.opportunityId}`;
+  const relatedHref = `${recordHref}?tab=related`;
+
+  /**
+   * R1's autosave for the deal's one state field.
+   *
+   * The pre-5.3 page offered this same write from three places — a six-button stage grid, a
+   * `Won`/`Lost` pair in a summary strip, and an `InlineFieldEdit` — which is why §4.7 now
+   * says the rail is the only one.
+   */
+  async function updateStage(next: string) {
+    if (!summary || stage === next) return;
     const previous = summary;
-    queryClient.setQueryData(
-      ["sales-opportunity-summary", params.opportunityId],
-      {
-        ...summary,
-        opportunity: { ...summary.opportunity, sales_stage: stage },
-      },
-    );
+    queryClient.setQueryData(["sales-opportunity-summary", params.opportunityId], {
+      ...summary,
+      opportunity: { ...summary.opportunity, sales_stage: next },
+    });
     try {
-      const res = await apiFetch(
-        `/sales/opportunities/${params.opportunityId}/stage`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sales_stage: stage }),
-        },
-      );
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sales_stage: next }),
+      });
+      if (!res.ok) throw new Error("The deal stage could not be saved.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+        queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
         queryClient.invalidateQueries({
-          queryKey: ["sales-opportunities-pipeline-summary"],
-        }),
-        queryClient.invalidateQueries({
-          queryKey: ["sales-opportunity-summary", params.opportunityId],
+          queryKey: ["record-audit-history", "sales_opportunities", params.opportunityId],
         }),
       ]);
     } catch (error) {
-      queryClient.setQueryData(
-        ["sales-opportunity-summary", params.opportunityId],
-        previous,
-      );
+      queryClient.setQueryData(["sales-opportunity-summary", params.opportunityId], previous);
       throw error;
     }
   }
-  if (query.isLoading) return <RouteLoadingState label="deal" />;
-  if (!summary || query.error)
-    return (
-      <RouteErrorState
-        title="Unable to load this deal"
-        reset={() => void query.refetch()}
-        backHref="/dashboard/sales/opportunities"
-        backLabel="Back to deals"
-      />
-    );
-  const opportunity = summary.opportunity;
-  const stage = normalizeOpportunityStage(opportunity.sales_stage) || "lead";
-  const stageStyle = getOpportunityStage(stage);
-  const stageOptions = OPPORTUNITY_STAGE_ORDER.map((item) => ({
-    value: item,
-    ...getOpportunityStage(item),
-  }));
-  const overview = (
-    <div className="grid gap-5">
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          icon={CircleDollarSign}
-          label="Value"
-          value={
-            formatMoney(
-              opportunity.total_cost_of_project,
-              opportunity.currency_type,
-            ) ?? EMPTY_FIELD_VALUE
-          }
-        />
-        <MetricCard
-          icon={Percent}
-          label="Probability"
-          value={
-            opportunity.probability_percent !== null &&
-            opportunity.probability_percent !== undefined
-              ? `${Number(opportunity.probability_percent)}%`
-              : "Stage default"
-          }
-        />
-        <MetricCard
-          icon={CalendarClock}
-          label="Expected close"
-          value={
-            opportunity.expected_close_date
-              ? formatDateOnly(opportunity.expected_close_date)
-              : "Not set"
-          }
-        />
-        <MetricCard
-          icon={UserRound}
-          label="Owner"
-          value={opportunity.assigned_to_name || "Unassigned"}
-        />
-      </div>
-      <Card className="p-5">
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-semibold text-copy-primary">Stage progress</h2>
-            <p className="mt-1 text-sm text-copy-muted">
-              Move the deal through the pipeline as qualification advances.
-            </p>
-          </div>
-          <InlineFieldEdit
-            fieldLabel="Stage"
-            value={stage}
-            options={stageOptions}
-            onCommit={(next) => updateStage(next.value)}
-          />
-        </div>
-        <div className="grid gap-2 sm:grid-cols-6">
-          {OPPORTUNITY_STAGE_ORDER.map((item, index) => {
-            const activeIndex = OPPORTUNITY_STAGE_ORDER.indexOf(
-              stage as (typeof OPPORTUNITY_STAGE_ORDER)[number],
-            );
-            const active = item === stage;
-            const complete =
-              activeIndex >= 0 &&
-              index < activeIndex &&
-              !stage.startsWith("closed_");
-            return (
-              <button
-                type="button"
-                key={item}
-                onClick={() => void updateStage(item)}
-                className={`rounded-[var(--radius-control)] border px-3 py-2 text-left text-xs transition-colors ${active ? "border-action-primary bg-action-primary-muted text-copy-primary" : complete ? "border-state-success/40 bg-state-success-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-muted hover:border-line-strong"}`}
-              >
-                <span className="block font-medium">
-                  {getOpportunityStageLabel(item)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <Card className="p-5">
-          <h2 className="font-semibold text-copy-primary">Customer context</h2>
-          <div className="mt-4 space-y-4">
-            <div>
-              <div className="text-xs font-medium text-copy-label">
-                Contact
-              </div>
-              {summary.contact ? (
-                <Link
-                  href={`/dashboard/sales/contacts/${summary.contact.contact_id}`}
-                  className="mt-1 inline-block font-medium text-link hover:underline"
-                >
-                  {displayContact(summary)}
-                </Link>
-              ) : (
-                <p className="mt-1 text-sm text-copy-secondary">
-                  No linked contact
-                </p>
-              )}
-              {summary.contact?.current_title ? (
-                <p className="text-sm text-copy-muted">
-                  {summary.contact.current_title}
-                </p>
-              ) : null}
-              {summary.contact ? (
-                <div className="mt-3">
-                  <CommunicationActions
-                    email={summary.contact.primary_email}
-                    phone={summary.contact.contact_telephone}
-                    followUpTargetId="deal-activity"
-                  />
-                </div>
-              ) : null}
-            </div>
-            <div>
-              <div className="text-xs font-medium text-copy-label">
-                Account
-              </div>
-              {summary.organization ? (
-                <Link
-                  href={`/dashboard/sales/organizations/${summary.organization.org_id}`}
-                  className="mt-1 inline-block font-medium text-link hover:underline"
-                >
-                  {summary.organization.org_name}
-                </Link>
-              ) : (
-                <p className="mt-1 text-sm text-copy-secondary">
-                  No linked account
-                </p>
-              )}
-            </div>
-          </div>
-        </Card>
-        <Card className="p-5">
-          <h2 className="font-semibold text-copy-primary">Delivery context</h2>
-          <dl className="mt-4 grid gap-4 sm:grid-cols-2">
-            <Detail label="Campaign" value={opportunity.campaign_type} />
-            <Detail label="Geography" value={opportunity.target_geography} />
-            <Detail label="Audience" value={opportunity.target_audience} />
-            <Detail
-              label="Delivery format"
-              value={opportunity.delivery_format}
-            />
-            <Detail label="Total leads" value={opportunity.total_leads} />
-            <Detail label="Cost per lead" value={opportunity.cpl} />
-          </dl>
-          {opportunity.tactics ? (
-            <div className="mt-4 border-t border-line-subtle pt-4">
-              <div className="text-xs font-medium text-copy-label">
-                Tactics
-              </div>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-copy-secondary">
-                {opportunity.tactics}
-              </p>
-            </div>
-          ) : null}
-        </Card>
-      </div>
-    </div>
-  );
-  const related = (
-    <div className="grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
-      <Card className="p-5">
-        <h2 className="font-semibold text-copy-primary">Related quotes</h2>
-        <p className="mt-1 text-sm text-copy-muted">
-          Quotes explicitly linked to this deal.
-        </p>
-        <div className="mt-4 space-y-3">
-          {summary.related_quotes.length ? (
-            summary.related_quotes.map((quote) => (
-              <Link
-                key={quote.quote_id}
-                href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-3 transition-colors hover:border-line-strong hover:bg-surface-muted"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-medium text-copy-primary">
-                      {quote.quote_number}
-                    </div>
-                    <div className="mt-1 text-sm text-copy-muted">
-                      {quote.title || quote.customer_name}
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium text-copy-primary">
-                      <Money amount={quote.total_amount} currency={quote.currency} />
-                    </div>
-                    <div className="mt-1 text-xs text-copy-muted">
-                      {quote.status || "Unknown status"}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))
-          ) : (
-            <p className="px-4 py-8 text-center text-sm text-copy-muted">
-              No quotes are linked yet.
-            </p>
-          )}
-        </div>
-      </Card>
-      <Card className="p-5">
-        <h2 className="font-semibold text-copy-primary">Inferred services</h2>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {summary.inferred_services.length ? (
-            summary.inferred_services.map((service) => (
-              <Chip key={service}>{service}</Chip>
-            ))
-          ) : (
-            <span className="text-sm text-copy-muted">
-              No service details recorded.
-            </span>
-          )}
-        </div>
-        <div className="mt-6 border-t border-line-subtle pt-4 text-sm text-copy-muted">
-          Last modified{" "}
-          {opportunity.updated_at
-            ? formatDateTime(opportunity.updated_at)
-            : "date not recorded"}
-        </div>
-      </Card>
-    </div>
-  );
+
+  const dealValue = deal
+    ? formatMoney(deal.total_cost_of_project, deal.currency_type)
+    : null;
+
   return (
-    <PageShell
-      title={opportunity.opportunity_name}
-      description={`${summary.organization?.org_name || opportunity.client || "Unlinked customer"} · ${formatMoney(opportunity.total_cost_of_project, opportunity.currency_type) ?? EMPTY_FIELD_VALUE}`}
-    >
-      <RecordPageHeader
-        backHref="/dashboard/sales/opportunities"
-        backLabel="Back to deals"
-        primaryAction={
-          <>
-            <RecordDeleteButton
-              endpoint={`/sales/opportunities/${params.opportunityId}`}
-              label="Deal"
-              recordName={opportunity.opportunity_name}
-              redirectHref="/dashboard/sales/opportunities"
-              queryKeys={[
-                "sales-opportunities",
-                "sales-opportunities-pipeline-summary",
-              ]}
-            />
-            <Button asChild>
-              <Link
-                href={`/dashboard/sales/opportunities/${params.opportunityId}/edit`}
-              >
-                <Edit3 />
-                Edit deal
+    <RecordWorkspace
+      title={dealName}
+      description="Review the deal's stage, commercial terms, related quotes, and activity."
+      backHref="/dashboard/sales/opportunities"
+      backLabel="Deals"
+      isPermissionDenied={
+        summaryError instanceof OpportunitySummaryRequestError && summaryError.status === 403
+      }
+      isLoading={summaryQuery.isLoading || (!summary && !summaryError)}
+      hasError={Boolean(summaryError)}
+      onRetry={() => void summaryQuery.refetch()}
+      errorState={notFound ? (
+        <RouteNotFoundState
+          titleAs="p"
+          recordLabel="Deal"
+          backHref="/dashboard/sales/opportunities"
+          backLabel="Back to deals"
+        />
+      ) : undefined}
+      status={<StatusValue
+        status={{ ...getOpportunityStage(stage), label: getOpportunityStageLabel(stage) }}
+        context="record"
+      />}
+      subtitle={deal ? (
+        <>
+          {deal.organization_name || deal.client ? (
+            <span>{deal.organization_name || deal.client}</span>
+          ) : null}
+          {dealValue ? <span>{dealValue}</span> : null}
+        </>
+      ) : null}
+      /**
+       * No filled button, and that is the archetype rather than an omission (§4.7): a deal
+       * moves forward by changing its stage, and the rail owns that field.
+       */
+      actions={deal ? (
+        <>
+          <CommunicationActions
+            email={summary?.contact?.primary_email}
+            phone={summary?.contact?.contact_telephone}
+            showCopyActions={false}
+            emailContext={{
+              moduleKey: "sales_opportunities",
+              entityId: deal.opportunity_id,
+              recordLabel: dealName,
+            }}
+          />
+          {canEditDeal ? (
+            <Button asChild variant="outline">
+              <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+                <Pencil />
+                Edit
               </Link>
             </Button>
-          </>
-        }
-      />
-      <Card className="px-4 py-3">
-        <div className="flex flex-wrap items-center gap-3">
-          <StatusValue status={{ ...stageStyle, label: String(getOpportunityStageLabel(stage)) }} />
-          <CommunicationActions
-            email={summary.contact?.primary_email}
-            phone={summary.contact?.contact_telephone}
-            followUpTargetId="deal-activity"
-          />
-          <div className="ml-auto flex gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void updateStage("closed_won")}
-              disabled={stage === "closed_won"}
-            >
-              <CheckCircle2 />
-              Won
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => void updateStage("closed_lost")}
-              disabled={stage === "closed_lost"}
-            >
-              <XCircle />
-              Lost
-            </Button>
-          </div>
-        </div>
-      </Card>
-      <RecordTabs
-        urlParam="tab"
-        defaultTabId="overview"
-        tabs={[
-          { id: "overview", label: "Overview", content: overview },
-          {
-            id: "related",
-            label: `Related (${summary.related_quotes.length})`,
-            content: related,
-          },
-          {
-            id: "activity",
-            label: "Activity",
-            content: (
-              <div id="deal-activity" className="scroll-mt-6">
-                <CrmRecordActivitySection
-                  moduleKey="sales_opportunities"
-                  entityId={opportunity.opportunity_id}
-                  recordLabel="Deal-level"
-                  taskSourceLabel={opportunity.opportunity_name}
-                  followUp={{
-                    endpoint: `/sales/opportunities/${opportunity.opportunity_id}/follow-up`,
-                    lastContactedAt: opportunity.last_contacted_at,
-                    lastContactedChannel: opportunity.last_contacted_channel,
-                    email: summary.contact?.primary_email,
-                    phone: summary.contact?.contact_telephone,
-                    onLogged: async () => {
-                      await query.refetch();
-                    },
-                  }}
+          ) : null}
+        </>
+      ) : null}
+      overflowActions={deal && canDeleteDeal ? (
+        <RecordDeleteButton
+          as="menuItem"
+          endpoint={`/sales/opportunities/${params.opportunityId}`}
+          label="Deal"
+          recordName={dealName}
+          redirectHref="/dashboard/sales/opportunities"
+          queryKeys={["sales-opportunities", "sales-opportunities-pipeline-summary"]}
+        />
+      ) : null}
+      spine={
+        <RecordSpine>
+          {summary && deal ? (
+            <>
+              {DEAL_TRACK_VALUES.includes(stage as (typeof DEAL_TRACK_VALUES)[number]) ? (
+                <RecordSpineTrack
+                  steps={DEAL_TRACK_STEPS}
+                  currentId={stage}
+                  label="Deal pipeline"
                 />
-              </div>
-            ),
-          },
-        ]}
-      />
-    </PageShell>
+              ) : null}
+
+              <RecordSpineBlock title="State">
+                <RecordSpineField label="Stage">
+                  {canEditDeal ? (
+                    <InlineFieldEdit
+                      fieldLabel="Stage"
+                      value={stage}
+                      options={DEAL_STAGE_OPTIONS}
+                      onCommit={(next) => updateStage(next.value)}
+                    />
+                  ) : (
+                    <StatusValue
+                      status={{ ...getOpportunityStage(stage), label: getOpportunityStageLabel(stage) }}
+                      context="record"
+                    />
+                  )}
+                </RecordSpineField>
+              </RecordSpineBlock>
+
+              <RecordSpineBlock title="Connected">
+                <RecordSpineLink
+                  label="Contact"
+                  value={contactLabel(summary)}
+                  href={summary.contact ? `/dashboard/sales/contacts/${summary.contact.contact_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Account"
+                  value={summary.organization?.org_name ?? deal.organization_name}
+                  href={summary.organization ? `/dashboard/sales/organizations/${summary.organization.org_id}` : null}
+                />
+                <RecordSpineLink label="Owner" value={deal.assigned_to_name} />
+                {summary.can_view_contacts && summary.participant_contacts.length ? (
+                  <RecordSpineCollection
+                    label="Participants"
+                    count={summary.participant_contacts.length}
+                    href={relatedHref}
+                  />
+                ) : null}
+                {canViewQuotes ? (
+                  <RecordSpineCollection
+                    label="Quotes"
+                    count={summary.related_quotes.length}
+                    href={relatedHref}
+                  />
+                ) : null}
+                <RecordSpineCollection
+                  label="Insertion orders"
+                  count={summary.insertion_order_count}
+                  href={relatedHref}
+                />
+              </RecordSpineBlock>
+
+              {summary.inferred_services.length ? (
+                <RecordSpineBlock title="Services">
+                  <div className="text-sm text-copy-primary">
+                    {summary.inferred_services.join(", ")}
+                  </div>
+                </RecordSpineBlock>
+              ) : null}
+
+              <RecordSpineMeta
+                createdLabel={
+                  deal.created_time ? `Created ${formatDateTime(deal.created_time)}` : undefined
+                }
+                updatedLabel={
+                  deal.updated_at ? `Updated ${formatDateTime(deal.updated_at)}` : undefined
+                }
+                history={
+                  <RecordAuditHistory
+                    moduleKey="sales_opportunities"
+                    entityId={deal.opportunity_id}
+                  />
+                }
+              />
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={deal ? (
+        <DealOverview
+          deal={deal}
+          layout={detailLayoutQuery.data}
+          isLayoutLoading={detailLayoutQuery.isLoading}
+          layoutError={detailLayoutQuery.error}
+          onRetryLayout={() => void detailLayoutQuery.refetch()}
+        />
+      ) : null}
+      timeline={deal ? (
+        <RecordTimeline
+          moduleKey="sales_opportunities"
+          entityId={deal.opportunity_id}
+          canEdit={canEditDeal}
+          composer={{
+            followUp: canEditDeal
+              ? {
+                  endpoint: `/sales/opportunities/${deal.opportunity_id}/follow-up`,
+                  email: summary?.contact?.primary_email,
+                  phone: summary?.contact?.contact_telephone,
+                  canCreateTask: canViewTasks && canCreateTasks,
+                  onLogged: async () => {
+                    await summaryQuery.refetch();
+                  },
+                }
+              : undefined,
+          }}
+        />
+      ) : undefined}
+      tasks={deal && canViewTasks ? (
+        <RecordTasksPanel
+          moduleKey="sales_opportunities"
+          entityId={deal.opportunity_id}
+          sourceLabel={dealName}
+          canCreate={canCreateTasks}
+          canEdit={canEditTasks}
+          createActionVariant="outline"
+        />
+      ) : undefined}
+      files={deal && canViewDocuments ? (
+        <RecordDocumentsPanel
+          moduleKey="sales_opportunities"
+          entityId={deal.opportunity_id}
+          canUpload={canCreateDocuments && canEditDeal}
+          canEdit={canEditDocuments && canEditDeal}
+          canDelete={canDeleteDocuments && canEditDeal}
+        />
+      ) : undefined}
+      extraTabs={summary ? [
+        {
+          id: "related",
+          label: "Related records",
+          content: <RelatedRecords summary={summary} canViewQuotes={canViewQuotes} />,
+        },
+      ] : []}
+    />
   );
 }
 
-function MetricCard({
-  icon: Icon,
-  label,
-  value,
+function DealOverview({
+  deal,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
 }: {
-  icon: typeof CircleDollarSign;
-  label: string;
-  value: string;
+  deal: OpportunitySummary["opportunity"];
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
 }) {
+  if (isLayoutLoading || !layout) {
+    return (
+      <Card className="px-5 py-5">
+        {layoutError ? (
+          <PanelError message="The deal details layout could not be loaded." onRetry={onRetryLayout} />
+        ) : (
+          <PanelLoading label="Loading deal details…" />
+        )}
+      </Card>
+    );
+  }
+
   return (
-    <Card className="p-4">
-      <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
-        <Icon className="h-4 w-4" />
-        {label}
-      </div>
-      <div
-        className="mt-2 truncate text-lg font-semibold text-copy-primary"
-        title={value}
-      >
-        {value}
-      </div>
-    </Card>
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={deal as unknown as Record<string, unknown>}
+      customValues={deal.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) => {
+        if (field.field_key === "total_cost_of_project") {
+          return formatMoney(value as string | null, deal.currency_type) ?? undefined;
+        }
+        if (field.field_key !== "probability_percent") return undefined;
+        return value === null || value === undefined || value === ""
+          ? undefined
+          : `${Number(value)}%`;
+      }}
+    />
   );
 }
-function Detail({ label, value }: { label: string; value?: string | null }) {
+
+function RelatedRecords({
+  summary,
+  canViewQuotes,
+}: {
+  summary: OpportunitySummary;
+  canViewQuotes: boolean;
+}) {
   return (
-    <div>
-      <dt className="text-xs font-medium text-copy-label">
-        {label}
-      </dt>
-      <dd className="mt-1 text-sm text-copy-secondary">{value || "Not set"}</dd>
-    </div>
+    <RecordRelatedList>
+      {summary.can_view_contacts ? (
+        <RecordRelatedCard
+          title="Participants"
+          empty="No contacts are involved in this deal yet."
+        >
+          {summary.participant_contacts.map((participant) => (
+            <RecordRelatedLink
+              key={participant.id}
+              href={`/dashboard/sales/contacts/${participant.contact_id}`}
+              title={
+                participant.contact_name
+                || [participant.contact.first_name, participant.contact.last_name].filter(Boolean).join(" ")
+                || participant.contact.primary_email
+                || "Contact"
+              }
+              detail={`${participant.role_label}${participant.is_primary ? " · Primary" : ""}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewQuotes ? (
+        <RecordRelatedCard title="Quotes" empty="No quotes are linked to this deal yet.">
+          {summary.related_quotes.map((quote) => (
+            <RecordRelatedLink
+              key={quote.quote_id}
+              href={`/dashboard/sales/quotes/${quote.quote_id}`}
+              title={quote.quote_number}
+              detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
+        {summary.related_insertion_orders.map((order) => (
+          <RecordRelatedLink
+            key={order.id}
+            href={`/dashboard/finance/insertion-orders/${order.id}`}
+            title={order.io_number}
+            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
+          />
+        ))}
+      </RecordRelatedCard>
+    </RecordRelatedList>
   );
 }

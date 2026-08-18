@@ -26,15 +26,20 @@ from app.modules.platform.services.custom_fields import list_custom_field_defini
 from app.modules.platform.services.module_fields import module_field_enabled_map
 
 
-# Which (module, surface) pairs the runtime resolver will answer for. Opportunity is
-# deliberately quick_create-only: workstream 01 Phase 4 owns the Opportunity workspace and
-# therefore its `detail` surface, and this rollout only needs the contextual create surface
-# reachable from a Contact or Organization record.
+# Which (module, surface) pairs the runtime resolver will answer for. Opportunity's `detail`
+# surface was held back for "the Opportunity workspace slice" — that is rebuild 5.3 batch 1,
+# which lands the deal on the record archetype, so it opens here. Contracts join for the same
+# reason: the archetype's `Details` tab is `ReadOnlyRecordLayout` on the resolved layout, so a
+# record page without one would be the only page rendering its fields a private way.
+#
+# Contracts have no `custom_fields` column, which costs nothing: the catalog merges custom
+# definitions when a module has them and is simply system-only here.
 SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
     "sales_leads": {"quick_create", "detail"},
     "sales_contacts": {"quick_create", "detail"},
     "sales_organizations": {"quick_create", "detail"},
-    "sales_opportunities": {"quick_create"},
+    "sales_opportunities": {"quick_create", "detail"},
+    "contracts": {"detail"},
 }
 SUPPORTED_LAYOUT_MODULES = set(SUPPORTED_LAYOUT_SURFACES_BY_MODULE)
 SUPPORTED_LAYOUT_SURFACES = {"quick_create", "detail"}
@@ -125,15 +130,44 @@ ORGANIZATION_SYSTEM_FIELDS = _field_map(
 
 # Opportunity keeps the legacy single primary contact. Multi-contact participants are
 # workstream 05 and must not be anticipated here.
+#
+# The delivery fields below existed on the model and were drawn by a private renderer on the
+# deal page; opening the `detail` surface is what brings them into the shared catalog, so a
+# tenant can reorder or disable them like every other field.
 OPPORTUNITY_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("opportunity_name", "Deal name", "text", required=True),
     RuntimeFieldDefinition("contact_id", "Contact", "contact_reference", required=True),
     RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
     RuntimeFieldDefinition("sales_stage", "Stage", "select"),
+    RuntimeFieldDefinition("start_date", "Start date", "date"),
     RuntimeFieldDefinition("expected_close_date", "Expected close date", "date"),
+    RuntimeFieldDefinition("probability_percent", "Probability", "text"),
     RuntimeFieldDefinition("total_cost_of_project", "Deal value", "text"),
     RuntimeFieldDefinition("currency_type", "Currency", "select"),
     RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+    RuntimeFieldDefinition("campaign_type", "Campaign", "text"),
+    RuntimeFieldDefinition("target_geography", "Geography", "text"),
+    RuntimeFieldDefinition("target_audience", "Audience", "text"),
+    RuntimeFieldDefinition("delivery_format", "Delivery format", "text"),
+    RuntimeFieldDefinition("total_leads", "Total leads", "text"),
+    RuntimeFieldDefinition("cpl", "Cost per lead", "text"),
+    RuntimeFieldDefinition("domain_cap", "Domain cap", "text"),
+    RuntimeFieldDefinition("tactics", "Tactics", "long_text"),
+)
+
+# Contracts have no create-surface layout, so nothing here is `required`: the create schema is
+# enforced by `ContractCreateRequest` and this catalog only describes the read-only `detail`
+# surface the record archetype renders.
+CONTRACT_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("contract_number", "Contract number", "text"),
+    RuntimeFieldDefinition("title", "Title", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("value_amount", "Value", "text"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("effective_date", "Effective date", "date"),
+    RuntimeFieldDefinition("expiration_date", "Expiration date", "date"),
+    RuntimeFieldDefinition("renewal_date", "Renewal date", "date"),
+    RuntimeFieldDefinition("owner_id", "Owner", "user_reference"),
 )
 
 MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
@@ -141,6 +175,7 @@ MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
     "sales_contacts": CONTACT_SYSTEM_FIELDS,
     "sales_organizations": ORGANIZATION_SYSTEM_FIELDS,
     "sales_opportunities": OPPORTUNITY_SYSTEM_FIELDS,
+    "contracts": CONTRACT_SYSTEM_FIELDS,
 }
 
 
@@ -386,6 +421,71 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "Value and ownership",
                     1,
                     [("total_cost_of_project", "half"), ("assigned_to", "half")],
+                ),
+            ],
+        ),
+        # Stage, contact, account and owner are absent on purpose: the record spine owns them
+        # (design.md §4.7) and the page passes them to `omitFieldKeys` anyway. Leaving them out
+        # of the seed means the default layout an administrator opens matches the page.
+        "detail": _seed(
+            "sales_opportunities",
+            "detail",
+            "Deal Details",
+            [
+                _seed_section(
+                    "commercial",
+                    "Commercial",
+                    0,
+                    [
+                        ("total_cost_of_project", "half"),
+                        ("currency_type", "half"),
+                        ("probability_percent", "half"),
+                        ("expected_close_date", "half"),
+                        ("start_date", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "delivery",
+                    "Delivery",
+                    1,
+                    [
+                        ("campaign_type", "half"),
+                        ("delivery_format", "half"),
+                        ("target_geography", "half"),
+                        ("target_audience", "half"),
+                        ("total_leads", "half"),
+                        ("cpl", "half"),
+                        ("domain_cap", "half"),
+                        ("tactics", "full"),
+                    ],
+                ),
+            ],
+        ),
+    },
+    # `contract_number` is the record's name and `status` and `owner_id` are the spine's, so
+    # none of the three is seeded — the header and the rail already draw them (design.md §4.7).
+    # They stay in the catalog above so a tenant can add them back deliberately.
+    "contracts": {
+        "detail": _seed(
+            "contracts",
+            "detail",
+            "Contract Details",
+            [
+                _seed_section(
+                    "agreement",
+                    "Agreement",
+                    0,
+                    [("title", "full"), ("value_amount", "half"), ("currency", "half")],
+                ),
+                _seed_section(
+                    "dates",
+                    "Dates",
+                    1,
+                    [
+                        ("effective_date", "half"),
+                        ("expiration_date", "half"),
+                        ("renewal_date", "half"),
+                    ],
                 ),
             ],
         ),

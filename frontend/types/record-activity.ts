@@ -6,6 +6,7 @@ export type RecordModuleKey =
   | "sales_quotes"
   | "sales_orders"
   | "support_cases"
+  | "contracts"
   | "finance_io"
   | "finance_pos"
   | "catalog_products"

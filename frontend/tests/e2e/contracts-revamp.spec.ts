@@ -193,8 +193,8 @@ test("Contract detail and edit share a routed record workflow", async ({ page })
   });
 
   await page.goto(`/dashboard/contracts/${contractId}`);
-  await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
-  await page.getByRole("link", { name: "Edit contract" }).click();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("CTR-2407-001");
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/contracts/${contractId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit CTR-2407-001" })).toBeVisible();
@@ -227,15 +227,19 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/contracts/${contractId}`);
 
-  await expect(page.getByRole("heading", { name: "Contract details" })).toBeVisible();
+  // Parties and signers are related objects, so 5.3 moved them out of a stack of cards and
+  // into the archetype's one module tab. Status stayed in the spine, where every state field is.
+  await page.getByRole("tab", { name: "Signing" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/contracts/${contractId}\\?tab=signing$`));
   await expect(page.getByLabel("Name").first()).toBeVisible();
   await expect(page.getByLabel("Email").first()).toBeVisible();
   await expect(page.getByText("Northwind Operations")).toBeVisible();
   await expect(page.getByText("Alex Morgan")).toBeVisible();
+
   await page.getByRole("combobox", { name: "Status", exact: true }).first().click();
   await page.getByRole("option", { name: "Review" }).click();
 
-  await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract event history.")).toBeVisible();
+  await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract's history.")).toBeVisible();
   await page.getByRole("button", { name: "Change status" }).click();
   await expect.poll(() => updatedPayload).toEqual({ status: "review" });
   await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
@@ -251,14 +255,44 @@ test("Contract detail is read-only without edit permission", async ({ page }) =>
     });
   });
 
-  await page.goto(`/dashboard/contracts/${contractId}`);
+  await page.goto(`/dashboard/contracts/${contractId}?tab=signing`);
 
-  await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit contract" })).toHaveCount(0);
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("CTR-2407-001");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add party" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add signer" })).toHaveCount(0);
   await expect(page.getByRole("combobox", { name: "Status", exact: true })).toHaveCount(0);
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+});
+
+test("The contract spine links related records by name, not by id", async ({ page }) => {
+  await cacheContractPermissions(page, false);
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...contractFixture(),
+        contact_id: 41,
+        contact_name: "Grace Buyer",
+        organization_id: 51,
+        organization_name: "Northwind",
+        opportunity_id: 61,
+        opportunity_name: "Northwind renewal",
+        owner_id: 7,
+        owner_name: "Ada Owner",
+      }),
+    }),
+  );
+
+  await page.goto(`/dashboard/contracts/${contractId}`);
+
+  await expect(page.getByRole("link", { name: "Grace Buyer" })).toHaveAttribute("href", "/dashboard/sales/contacts/41");
+  await expect(page.getByRole("link", { name: "Northwind", exact: true })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
+  await expect(page.getByRole("link", { name: "Northwind renewal" })).toHaveAttribute("href", "/dashboard/sales/opportunities/61");
+  await expect(page.getByText("Ada Owner")).toBeVisible();
+  // A link with no target is not a broken link — the relationship simply has no value yet.
+  await expect(page.getByRole("link", { name: /Quote #/ })).toHaveCount(0);
 });
 
 test("Contract list uses permission-aware identity links and filtered empty states", async ({ page }) => {

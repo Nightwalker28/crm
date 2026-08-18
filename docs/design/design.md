@@ -839,7 +839,21 @@ Contract:
   either overturning that decision or interleaving two cursors client-side, which breaks
   "load more". Hanging it off `Updated 2h ago` puts the answer where the question is
   asked.
-- **A field the spine owns does not appear in `Details`.** Record layouts are configured
+- **A module that keeps its own event log renders it *inside* the History sheet, merged
+  into the audit list — never as a panel on the page.** Contracts and support cases both
+  write a domain event table (`contract_events`: created, status changed, party added,
+  signer signed) alongside `activity_logs`, and the pre-5.3 contract page drew it as a
+  full-width `Events` card at the bottom. Two immutable lists answering *what happened to
+  this record*, in two places, is the duplication the archetype exists to remove — and the
+  domain list is the one an operator actually needs, because it records the party and
+  signer changes `activity_logs` never sees. `RecordAuditHistory` takes `moduleEvents` and
+  interleaves them by timestamp. This is **not** the merge rejected above: those events
+  arrive whole with the record, so there is no second cursor and "load more" still belongs
+  to one store.
+- **A field the spine or the header already draws does not appear in `Details`.** That
+  covers the record's own name — the header's `h2` is the operator's answer to "which
+  record is this", and repeating it as a labelled field says nothing further. Record
+  layouts are configured
   server-side and predate the spine, so they still list status, owner and the rest; drawing
   them in both places puts an editable status in the rail and a read-only copy of the same
   value beside it, which is precisely the "nothing says what is clickable" failure R2 set
@@ -848,7 +862,12 @@ Contract:
 - **One filled button in the header** (§2.2), and it belongs to the record's primary
   workflow action — Convert, Send, Issue. Destructive and rarely-used actions go in the
   `[⋯]` menu the wireframe shows, which is what keeps Delete from setting a second fill
-  beside Convert.
+  beside Convert. **A record whose forward motion *is* its state field carries no filled
+  button at all**, and that is correct rather than a gap: a deal advances by changing its
+  stage, the rail owns that field, and a `Won` / `Lost` pair in the header would be a
+  second, louder control for a value the spine already edits — the defect the pre-5.3 deal
+  page shipped as a six-button stage grid *and* a header pair *and* an `InlineFieldEdit`,
+  three controls for one column.
 - **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
   so this adds no exception to R3. Same mechanism as archetype 1.
 - **The `Edit` affordance is in the header row**, reachable from every tab, and

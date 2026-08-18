@@ -1238,9 +1238,9 @@ it, hanging history off `Updated 2h ago` so the answer sits where the question i
 reads as a contradiction the moment the Tasks tab creates a task. The boundary is the
 record's own fields versus related objects, and §4.7 now carries the one-line test.
 
-### Status: in progress — the archetype, and three modules on it
+### Status: in progress — the archetype, and five modules on it
 
-Six commits. **Pick up at "What is left", below.**
+Seven commits. **Pick up at "What is left", below.**
 
 | Commit | What landed |
 |---|---|
@@ -1249,6 +1249,7 @@ Six commits. **Pick up at "What is left", below.**
 | `aea493d` | `RecordSpine`, `PageShell variant="record"`, the archetype shell, `RecordTimeline` + composer, `RecordAuditHistory`, and leads onto all of it |
 | `49e70ce` | Three defects the browser pass found, and the two §4.7 rules they produced |
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
+| _pending_ | deal + contract onto the archetype, with the backend slice each needed |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1329,6 +1330,78 @@ button — the record's primary workflow action — with destructive and rare ac
 a lead was offered a "Replies" filter that could never match. Adapters now declare
 `applies_to`, gating both the fetch and the reported types.
 
+**What batch 2 decided — deal and contract, and the backend slice each needed.** Both pages
+were archetype rebuilds that could not be done in the frontend alone, and both gaps were
+already written down as somebody's job:
+
+- **The deal's `detail` record layout was reserved for this slice in a code comment.**
+  `record_layouts.py` said Opportunity was "deliberately quick_create-only" because "the
+  Opportunity workspace owns its `detail` surface" — this is that workspace, so the surface
+  opens, and the eight delivery fields a private renderer used to draw (`campaign_type`,
+  `tactics`, `cpl`, …) join the shared catalog where a tenant can reorder or disable them.
+  The demo tenant has all eight disabled, which is how it was confirmed that a section left
+  with nothing renders nothing rather than an empty panel.
+- **Contracts had no entry in `RECORD_COMMENT_MODULES`**, and that one dict is what
+  comments, tasks, documents, mail association and the activity projection all resolve a
+  record through. The census row said "no activity, notes, tasks or documents"; the cause
+  was a missing 6-line registry entry, not four missing features. With it and
+  `TIMELINE_ALLOWED_MODULES` — the contract routes already wrote `activity_logs` — the
+  archetype's four tabs and the History sheet all came up at once.
+- **The raw FKs were a response-shape defect, not a page defect.** `ContractResponse`
+  carried six ids and no names, so `Contact #12` was the most the page could draw. The
+  service resolves them in-tenant now, and a link whose target no longer resolves renders as
+  `EmptyValue` rather than a dead link.
+
+**Two rules came out of it, both in §4.7 now.**
+
+- **A module's own event log renders *inside* the History sheet, merged into the audit list.**
+  Contracts write `contract_events` (created, status changed, party added, signer signed)
+  *and* `activity_logs`, and the old page drew the first as a full-width `Events` card at
+  the foot of the screen. Two immutable lists answering *what happened to this record* in
+  two places is the duplication the archetype removes — and the domain list is the one with
+  the coverage, because `activity_logs` never sees a signer sign. `RecordAuditHistory` takes
+  `moduleEvents`. This is **not** the merge §4.7 rejects for the interaction feed: these
+  arrive whole with the record, so there is no second cursor. **Batch 3 inherits it** — it is
+  exactly what that batch's row means by "`item.events` joins the History sheet".
+- **A record whose forward motion *is* its state field carries no filled button.** The deal
+  is the case, and it is the archetype rather than a gap: a deal advances by changing stage,
+  the rail owns that field, and the pre-5.3 page shipped *three* controls for that one
+  column — a six-button stage grid, a `Won`/`Lost` pair in a summary strip, and an
+  `InlineFieldEdit`. All three are gone; the header is `Email · WhatsApp · Call · Edit` plus
+  the overflow, and §2.2's one fill is simply unspent.
+
+**A third rule was a clarification.** "A field the spine owns does not appear in `Details`"
+now reads "the spine **or the header**". The contract exposed it: `contract_number` is the
+record's name in the header, and the first seed drew it again as a labelled field. Every
+existing detail seed already omits its module's name field, so this was an unwritten rule
+being followed by habit.
+
+**What went into the content region, and what did not.** Contract parties and signers are
+rows pointing at the contract rather than columns on it, so by §4.7's own test they are
+related objects: they became a `Signing` module tab after `Files`, and their two `Add` forms
+went with them. The deal's quotes, participants and insertion orders became a
+`Related records` tab plus `RecordSpineCollection` counts, the same shape accounts use — and
+that shape is now the shared `RecordRelatedList` / `RecordRelatedCard` / `RecordRelatedLink`
+rather than two copies. Extracting it fixed a real defect for free: the account's version had
+**no focus ring on its row links**, which no guard caught because the rule is about controls
+and this is an anchor.
+
+**The browser pass found the sixth defect across three batches, and this one was fatal.**
+`CONTRACT_TRACK_STEPS` is built at module scope from `statusLabel()`, which reads a `const`
+declared below it — a temporal-dead-zone `ReferenceError` that took the whole route to
+"Unable to load this dashboard page". Lint passed. `next build` passed. `check-design.sh`
+passed. Both rendered guards passed *because they only visit routes that render*. Only
+opening the page found it, which is the third time the note below has been right.
+
+**Two things left open deliberately.** The account-header note from batch 1 now covers the
+deal too: `CommunicationActions` puts Email, WhatsApp and Call in the header while the
+Timeline composer offers the same three as *log* modes. They are different actions — one
+performs, one records — and leads shipped the same pair, so this is consistent rather than
+new; whether a deal should offer channels at all is a product question. And a contract with
+no links shows six `Not set` rows in `Connected`, which is R9's "a thin rail is a signal the
+record type is under-modelled" arriving on schedule. Raise it; do not answer it with a
+second archetype.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1336,9 +1409,9 @@ each — the shape 5.2 used.
 
 | # | Batch | Notes |
 |---|---|---|
-| 1 | **deal + contract** | Deal has the nested tabs at `:507`; contract has no activity, notes, tasks or documents at all and renders raw FKs at `:244,264,265` |
+| ~~1~~ | ~~**deal + contract**~~ | **Done** — see "What batch 2 decided", above |
 | 2 | **quote, order, POS invoice** | Shell only. The existing line-item editor drops into `Details` behind a manual save (R1); `RecordTable variant="lineItems"` is 5.5's, per the owner's call. Quote is 1,335 lines and carries **A12** (quote → order needs 3 actions) |
-| 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline and `item.events` joins the History sheet. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
+| 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline, and `item.events` joins the History sheet through `RecordAuditHistory`'s `moduleEvents`, which batch 2 built for contract events. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
 | 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
 | 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
 | 6 | **Close-out** | All 34 census rows, the status note, and the full gate set |
@@ -1347,7 +1420,7 @@ each — the shape 5.2 used.
 
 - **`RecordWorkspaceLegacy.tsx` is gone** — deleted in batch 1 with its last two consumers,
   as planned. Nothing may reintroduce it.
-- **`CrmRecordActivitySection` still has 7 importers** and is the nested-tabs cause. It is
+- **`CrmRecordActivitySection` is down to 5 importers** — the deal left in batch 2 — and is the nested-tabs cause. It is
   a `delete`, not a rebuild — it dies when its last consumer migrates in what is now batch 3.
   `RecordCommentsPanel` and `FollowUpPanel` are **down to one importer each, and it is
   `CrmRecordActivitySection` itself**, so all three die together; their composers already
@@ -1356,12 +1429,17 @@ each — the shape 5.2 used.
 - **`leads-revamp.spec.ts` has 2 failures that predate this sub-phase** — narrow-viewport
   list, and denied/missing records (the route states render `titleAs="p"` and the spec asks
   for a heading). Measure the baseline by stashing before blaming a rebuild for a red.
-- **The browser pass is not optional. It has now found five defects across two batches**
-  while lint, build, both rendered guards and every module spec were green. Seed, then
-  drive a real record — and tab through it, which is what batch 1's two needed.
+- **The browser pass is not optional. It has now found six defects across three batches**
+  while lint, build, both rendered guards and every module spec were green — and batch 2's
+  was a `ReferenceError` that took the whole route down, which the rendered guards missed
+  because they only audit routes that render. Seed, then drive a real record — and tab
+  through it, which is what batch 1's two needed.
   `scripts/seed_demo_crm` seeds tenant 1 (`default`): leads at ids 3–5, and batch 1 used
   contact 23 and account 13, which carry a phone, an account, a customer group and related
-  records. The demo tenant's own records (ids 5–20) are **not** the admin's tenant and read
+  records. Batch 2 used deal 14 (a `proposal` with a contact, an account and an insertion
+  order) and contracts 1 and 3 — **3 is the only one with events**, so it is the one that
+  shows the merged History sheet. `scripts/seed_module_samples` is what creates the
+  contracts. The demo tenant's own records (ids 5–20) are **not** the admin's tenant and read
   as "not found".
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.

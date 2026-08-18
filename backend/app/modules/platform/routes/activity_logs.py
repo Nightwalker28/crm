@@ -19,6 +19,7 @@ TIMELINE_ALLOWED_MODULES = {
     "sales_quotes",
     "sales_orders",
     "support_cases",
+    "contracts",
     "finance_io",
     "finance_pos",
     "catalog_products",

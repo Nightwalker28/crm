@@ -12,9 +12,34 @@ type ActivityResponse = {
   results: ActivityItem[];
 };
 
+/**
+ * One entry from a module's own event table, normalized for the sheet.
+ *
+ * `occurredAt` is what it is merged on; `label` is the line the operator reads and `detail`
+ * the quieter line under it — the same two-line shape an audit row uses, so a merged list
+ * reads as one list rather than two pasted together.
+ */
+export type RecordModuleEvent = {
+  id: string;
+  occurredAt: string;
+  label: string;
+  detail?: string | null;
+};
+
 type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
+  /**
+   * A module's own immutable event log — `contract_events`, a support case's events —
+   * interleaved into the audit list by timestamp (design.md §4.7).
+   *
+   * These arrive whole with the record, so this is not the two-cursor merge §4.7 rejects for
+   * the interaction feed: nothing here paginates, and "load more" still belongs to one store.
+   * Merging matters because the two stores answer the same question with different coverage —
+   * `activity_logs` records the contract's own columns, and only the domain table sees a
+   * signer sign.
+   */
+  moduleEvents?: RecordModuleEvent[];
 };
 
 /**
@@ -33,7 +58,7 @@ type Props = {
  * Rows are `divide-y` lines, not boxes. R8: a repeated item that is not interactive is not
  * a box, and this list was one of the five files that ruling names.
  */
-export default function RecordAuditHistory({ moduleKey, entityId }: Props) {
+export default function RecordAuditHistory({ moduleKey, entityId, moduleEvents }: Props) {
   const query = useQuery({
     queryKey: ["record-audit-history", moduleKey, String(entityId)],
     queryFn: async () => {
@@ -60,7 +85,9 @@ export default function RecordAuditHistory({ moduleKey, entityId }: Props) {
       />
     );
   }
-  if (!query.data?.results.length) {
+  const entries = mergeEntries(query.data?.results ?? [], moduleEvents ?? []);
+
+  if (!entries.length) {
     return (
       <PanelEmpty
         icon={ClipboardList}
@@ -72,19 +99,35 @@ export default function RecordAuditHistory({ moduleKey, entityId }: Props) {
 
   return (
     <ol className="divide-y divide-line-subtle" aria-label="Record history">
-      {query.data.results.map((item) => (
-        <li key={item.id} className="py-3 first:pt-0 last:pb-0">
+      {entries.map((entry) => (
+        <li key={entry.id} className="py-3 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-sm text-copy-primary">
-              {item.description || `${item.entity_type} ${item.entity_id}`}
-            </span>
-            <time dateTime={item.created_at} className="text-xs text-copy-muted">
-              {formatDateTime(item.created_at)}
+            <span className="text-sm text-copy-primary">{entry.label}</span>
+            <time dateTime={entry.occurredAt} className="text-xs text-copy-muted">
+              {formatDateTime(entry.occurredAt)}
             </time>
           </div>
-          <div className="mt-1 text-xs text-copy-muted">{item.action.replace(/_/g, " ")}</div>
+          {entry.detail ? (
+            <div className="mt-1 text-xs text-copy-muted">{entry.detail}</div>
+          ) : null}
         </li>
       ))}
     </ol>
+  );
+}
+
+/** Newest first, over both stores. Ties keep the audit row above the domain event. */
+function mergeEntries(audit: ActivityItem[], moduleEvents: RecordModuleEvent[]) {
+  const entries: RecordModuleEvent[] = [
+    ...audit.map((item) => ({
+      id: `audit:${item.id}`,
+      occurredAt: item.created_at,
+      label: item.description || `${item.entity_type} ${item.entity_id}`,
+      detail: item.action.replace(/_/g, " "),
+    })),
+    ...moduleEvents.map((event) => ({ ...event, id: `module:${event.id}` })),
+  ];
+  return entries.sort(
+    (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime(),
   );
 }

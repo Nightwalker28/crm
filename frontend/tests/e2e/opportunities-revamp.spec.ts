@@ -7,6 +7,7 @@ const summary = {
   opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
   contact: { contact_id: 41, first_name: "Grace", last_name: "Buyer", primary_email: "grace@example.com", contact_telephone: "+94770000003", current_title: "COO" },
   organization: { org_id: 51, org_name: "Acme" },
+  participant_contacts: [], can_view_contacts: true,
   related_quotes: [], related_insertion_orders: [], inferred_services: ["Demand generation"], insertion_order_count: 0,
 };
 const pipelineSummary = {
@@ -61,11 +62,17 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await expect(page.getByLabel("Deal name")).toBeFocused();
 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);
-  await expect(page.getByRole("heading", { name: "Browser Deal" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  // Two renderings now exist — the summary-strip badge and InlineFieldEdit's own closed-state
-  // display in the Stage progress card (R2/R6) — so this asserts at least one is visible.
-  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Proposal" }).first()).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Deal");
+  // The archetype's fixed tab set, in order, and nothing nested inside it — the page used to
+  // render a second strip at `:507` through `CrmRecordActivitySection` (design.md §4.7).
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files", "Related records"]);
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // Stage lives in the spine and nowhere else. The pre-5.3 page offered it from three
+  // controls: a six-button grid, a Won/Lost pair, and this one.
+  await expect(page.getByRole("combobox", { name: "Stage" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Won" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Lost" })).toHaveCount(0);
+  await expect(page.locator('[data-slot="status-value"]', { hasText: "Proposal" }).first()).toBeVisible();
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Related/ }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/opportunities/${dealId}\\?tab=related$`));
