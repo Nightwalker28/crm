@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateOnly } from "@/lib/datetime";
 import { apiUrl } from "@/lib/runtime-config";
+import { formatMoney } from "@/lib/currency";
 
 type PublicQuoteProposal = {
   quote_number: string;
@@ -32,14 +33,7 @@ async function readJsonSafely(res: Response): Promise<unknown> {
 }
 
 function money(value: string | number | null | undefined, currency: string | null | undefined) {
-  const amount = Number(value);
-  const currencyCode = currency || "USD";
-  if (!Number.isFinite(amount)) return `${currencyCode} 0.00`;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode }).format(amount);
-  } catch {
-    return `${currencyCode} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(value, currency) ?? formatMoney(0, currency) ?? "";
 }
 
 function isPublicQuoteProposal(value: unknown): value is PublicQuoteProposal {

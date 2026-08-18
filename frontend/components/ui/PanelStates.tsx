@@ -57,6 +57,7 @@ export function PanelHeader({
 export function PanelLoading({ label }: { label: string }) {
   return (
     <div
+      data-slot="panel-loading"
       role="status"
       aria-busy="true"
       className="flex min-h-28 items-center justify-center gap-2 px-4 py-6 text-sm text-copy-muted"
@@ -70,6 +71,7 @@ export function PanelLoading({ label }: { label: string }) {
 export function PanelError({ message, onRetry }: { message: string; onRetry: () => void }) {
   return (
     <div
+      data-slot="panel-error"
       role="alert"
       className="flex min-h-28 flex-col items-center justify-center rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-6 text-center"
     >

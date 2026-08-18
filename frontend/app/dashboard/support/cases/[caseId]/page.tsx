@@ -215,20 +215,23 @@ function SupportCaseWorkspace({ item }: { item: SupportCase }) {
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-1 text-sm font-medium text-copy-primary">{value}</div>
+      <div className="mt-1 text-sm text-copy-primary">{value}</div>
     </div>
   );
 }
 
 function LinkedTile({ label, value, href }: { label: string; value: string; href: string | null }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-1 text-sm font-medium text-copy-primary">
+      <div className="mt-1 text-sm text-copy-primary">
         {href ? <Link href={href} className="hover:text-action-primary hover:underline">{value}</Link> : value}
       </div>
     </div>

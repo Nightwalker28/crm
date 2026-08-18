@@ -60,7 +60,9 @@ import {
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_CELL_VALUE, EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type QuoteProposal = {
   id: number;
@@ -212,18 +214,6 @@ const QUOTE_ALWAYS_INCLUDED_FIELDS = [
 
 function asInputValue(value: string | number | null | undefined) {
   return value == null ? "" : String(value);
-}
-
-function formatMoney(
-  value: string | number | null | undefined,
-  currency: string | null | undefined,
-) {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-  }).format(amount);
 }
 
 function getContactLabel(contact: QuoteSummary["contact"]) {
@@ -958,25 +948,25 @@ export default function QuoteDetailPage() {
                             {formatMoney(
                               item.unit_price,
                               summary.quote.currency,
-                            )}
+                            ) ?? EMPTY_CELL_VALUE}
                           </TableCell>
                           <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {formatMoney(
                               item.discount_amount,
                               summary.quote.currency,
-                            )}
+                            ) ?? EMPTY_CELL_VALUE}
                           </TableCell>
                           <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
                             {formatMoney(
                               item.tax_amount,
                               summary.quote.currency,
-                            )}
+                            ) ?? EMPTY_CELL_VALUE}
                           </TableCell>
                           <TableCell className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
                             {formatMoney(
                               item.line_total,
                               summary.quote.currency,
-                            )}
+                            ) ?? EMPTY_CELL_VALUE}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -1042,10 +1032,10 @@ export default function QuoteDetailPage() {
                 />
                 <SummaryTile
                   label="Total"
-                  value={formatMoney(
-                    summary.quote.total_amount,
-                    summary.quote.currency,
-                  )}
+                  value={
+                    formatMoney(summary.quote.total_amount, summary.quote.currency) ??
+                    EMPTY_FIELD_VALUE
+                  }
                 />
                 <SummaryTile
                   label="Expires"
@@ -1259,7 +1249,7 @@ export default function QuoteDetailPage() {
                 <SummaryTile
                   label="Total"
                   value={
-                    summary.related_order
+                    (summary.related_order
                       ? formatMoney(
                           summary.related_order.grand_total,
                           summary.related_order.currency,
@@ -1267,7 +1257,7 @@ export default function QuoteDetailPage() {
                       : formatMoney(
                           summary.quote.total_amount,
                           summary.quote.currency,
-                        )
+                        )) ?? EMPTY_FIELD_VALUE
                   }
                 />
               </div>
@@ -1296,13 +1286,14 @@ export default function QuoteDetailPage() {
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium text-copy-label">
-        {label}
-      </div>
-      <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>
+    <div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
+      <div className="mt-1 text-sm capitalize text-copy-primary">{value}</div>
     </div>
   );
 }
@@ -1317,11 +1308,9 @@ function LinkedRecordTile({
   href: string | null;
 }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium text-copy-label">
-        {label}
-      </div>
-      <div className="mt-2 text-sm text-copy-primary">
+    <div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
+      <div className="mt-1 text-sm text-copy-primary">
         {href ? (
           <Link href={href} className="hover:underline">
             {value}

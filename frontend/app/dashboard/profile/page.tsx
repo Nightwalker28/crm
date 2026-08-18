@@ -493,11 +493,14 @@ export default function ProfilePage() {
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+    <div>
       <dt className="text-xs font-medium text-copy-label">{label}</dt>
-      <dd className="mt-2 break-words text-sm text-copy-primary">{value}</dd>
+      <dd className="mt-1 break-words text-sm text-copy-primary">{value}</dd>
     </div>
   );
 }

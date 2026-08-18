@@ -15,6 +15,7 @@ import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleView
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getInsertionOrderStatus } from "@/lib/statusStyles";
+import { formatMoney } from "@/lib/currency";
 
 type InsertionOrdersListProps = {
   orders: InsertionOrder[];
@@ -82,14 +83,10 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 const MONEY_COLUMNS = new Set(["total_amount", "subtotal_amount", "tax_amount"]);
 const DATE_COLUMNS = new Set(["issue_date", "effective_date", "start_date", "end_date"]);
 
+// Empty string rather than a placeholder: the call site branches on it. Formatting is
+// lib/currency.ts's (design.md 7.1).
 function formatAmount(amount?: number | null, currency?: string): string {
-  if (amount == null) return "";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(amount);
+  return formatMoney(amount, currency, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) ?? "";
 }
 
 function isDuePast(dateStr?: string | null): boolean {

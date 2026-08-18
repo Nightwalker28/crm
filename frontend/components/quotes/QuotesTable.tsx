@@ -13,6 +13,7 @@ import type { TableColumnOption } from "@/types/table";
 import { formatDateOnly } from "@/lib/datetime";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { getQuoteStatus } from "@/lib/statusStyles";
+import { Money } from "@/components/ui/Money";
 
 type QuotesTableProps = {
   quotes: Quote[];
@@ -61,12 +62,6 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 
 const MONEY_COLUMNS = new Set(["subtotal_amount", "discount_amount", "tax_amount", "total_amount"]);
 
-function formatMoney(value: string | number | null | undefined, currency: string | null | undefined) {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
-}
-
 function renderCell(quote: Quote, column: string) {
   if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={quote.custom_fields} />;
 
@@ -89,8 +84,8 @@ function renderCell(quote: Quote, column: string) {
     case "tax_amount":
     case "total_amount":
       return (
-        <span className="text-sm tabular-nums text-copy-primary">
-          {formatMoney(quote[column as keyof Quote] as string | number | null, quote.currency)}
+        <span className="text-sm text-copy-primary">
+          <Money amount={quote[column as keyof Quote] as string | number | null} currency={quote.currency} />
         </span>
       );
     default:

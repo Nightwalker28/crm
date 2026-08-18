@@ -14,6 +14,8 @@ import {
   TableHeaderRow,
   TableRow,
 } from "@/components/ui/Table";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
 export type TransactionLineItem = { key: string; name: string; description: string; quantity: string; unit_price: string; discount_amount: string; tax_amount: string };
 export type TransactionTotals = { subtotal: number; discount: number; tax: number; total: number };
@@ -26,7 +28,7 @@ export function transactionLineTotal(item: TransactionLineItem) { return Math.ma
 export function calculateTransactionTotals(items: TransactionLineItem[]): TransactionTotals { return items.reduce((result, item) => { result.subtotal += transactionAmount(item.quantity) * transactionAmount(item.unit_price); result.discount += transactionAmount(item.discount_amount); result.tax += transactionAmount(item.tax_amount); result.total += transactionLineTotal(item); return result; }, { subtotal: 0, discount: 0, tax: 0, total: 0 }); }
 export function areTransactionItemsValid(items: TransactionLineItem[]) { return items.length > 0 && items.every((item) => item.name.trim() && transactionAmount(item.quantity) > 0 && transactionAmount(item.unit_price) >= 0 && transactionAmount(item.discount_amount) >= 0 && transactionAmount(item.tax_amount) >= 0 && transactionAmount(item.discount_amount) <= transactionAmount(item.quantity) * transactionAmount(item.unit_price) + transactionAmount(item.tax_amount)); }
 export function serializeTransactionItems(items: TransactionLineItem[]) { return items.map((item, index) => ({ name: item.name.trim(), description: item.description.trim() || null, quantity: item.quantity, unit_price: item.unit_price, discount_amount: item.discount_amount, tax_amount: item.tax_amount, sort_order: index })); }
-export function formatTransactionMoney(value: number, currency: string) { try { return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD", maximumFractionDigits: 2 }).format(value); } catch { return `${currency || "USD"} ${value.toFixed(2)}`; } }
+export function formatTransactionMoney(value: number, currency: string) { return formatMoney(value, currency, { maximumFractionDigits: 2 }) ?? EMPTY_CELL_VALUE; }
 
 export function TransactionLineItemsEditor({ items, onChange, currency, error, idPrefix, itemLabel = "Item", showDescription = true, showAdjustments = true }: { items: TransactionLineItem[]; onChange: (items: TransactionLineItem[]) => void; currency: string; error?: string | null; idPrefix: string; itemLabel?: string; showDescription?: boolean; showAdjustments?: boolean }) {
   function updateItem(index: number, field: ItemField, value: string) { onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item)); }

@@ -38,10 +38,18 @@ type CardProps = React.HTMLAttributes<HTMLDivElement> &
 // asChild lets a panel render as its own semantic element (a landmark
 // <section>, for instance) instead of forcing a wrapping div, matching the
 // asChild convention button.tsx already established.
+// `data-slot` is how the rendered guards recognise a panel (design.md 7.6). A class
+// selector cannot: the card radius plus a border matches a real Card and a hand-rolled
+// div identically, which is exactly the distinction 1.3 draws. 5.10's nesting-depth,
+// border-tier and archetype checks all key off this attribute.
+//
+// The class string is deliberately not spelled out above: rebuild.md 5.2 audits the panel
+// sweep by grepping for it, and a comment that matches inflates that count by one.
 export function Card({ className, children, variant, asChild = false, ...props }: CardProps) {
   const Comp = asChild ? Slot : "div";
   return (
     <Comp
+      data-slot="card"
       className={cn(cardVariants({ variant }), className)}
       {...props}
     >
@@ -56,11 +64,11 @@ export function Card({ className, children, variant, asChild = false, ...props }
 // is the action-bar padding a footer shares with a toolbar row (4.4).
 
 export function CardHeader({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("flex items-start justify-between gap-4 px-6 pt-6", className)} {...props} />;
+  return <div data-slot="card-header" className={cn("flex items-start justify-between gap-4 px-6 pt-6", className)} {...props} />;
 }
 
 export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn("px-6 py-6", className)} {...props} />;
+  return <div data-slot="card-body" className={cn("px-6 py-6", className)} {...props} />;
 }
 
 // The footer is always the card's last child, and five of the six in the app
@@ -69,6 +77,7 @@ export function CardBody({ className, ...props }: React.HTMLAttributes<HTMLDivEl
 export function CardFooter({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
     <div
+      data-slot="card-footer"
       className={cn(
         "rounded-b-[var(--radius-card)] border-t border-line-subtle px-6 py-4",
         className,

@@ -40,5 +40,5 @@ export function Money({
 
   if (formatted === null) return <EmptyValue context={context} />;
 
-  return <span className={cn("tabular-nums", className)}>{formatted}</span>;
+  return <span data-slot="money" className={cn("tabular-nums", className)}>{formatted}</span>;
 }

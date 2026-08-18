@@ -13,17 +13,10 @@ import { Button } from "@/components/ui/button";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 import { getInsertionOrderStatus } from "@/lib/statusStyles";
-
-function formatMoney(amount?: number | null, currency?: string | null) {
-  if (amount == null) return "Not set";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
 
 export default function InsertionOrderDetailPage() {
   const params = useParams<{ ioId: string }>();
@@ -122,9 +115,9 @@ export default function InsertionOrderDetailPage() {
             </CardHeader>
             <CardBody>
               <dl className="grid gap-3 text-sm">
-                <MoneyRow label="Subtotal" value={formatMoney(order.subtotal_amount, order.currency)} />
-                <MoneyRow label="Tax" value={formatMoney(order.tax_amount, order.currency)} />
-                <MoneyRow label="Total" value={formatMoney(order.total_amount, order.currency)} total />
+                <MoneyRow label="Subtotal" value={formatMoney(order.subtotal_amount, order.currency) ?? EMPTY_FIELD_VALUE} />
+                <MoneyRow label="Tax" value={formatMoney(order.tax_amount, order.currency) ?? EMPTY_FIELD_VALUE} />
+                <MoneyRow label="Total" value={formatMoney(order.total_amount, order.currency) ?? EMPTY_FIELD_VALUE} total />
               </dl>
               {order.updated_at ? <p className="mt-4 text-xs text-copy-muted">Updated {formatDateTime(order.updated_at)}</p> : null}
             </CardBody>

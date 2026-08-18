@@ -51,6 +51,8 @@ const moduleTableShellVariants = cva(
 export function ModuleTableShell({ children, className, isRefreshing = false, label = "Data table", variant }: Props) {
   return (
     <div
+      data-slot="module-table-shell"
+      data-variant={variant ?? "standalone"}
       className={cn(moduleTableShellVariants({ variant }), className)}
       role="region"
       aria-label={label}

@@ -32,7 +32,9 @@ import {
 } from "@/components/ui/Table";
 import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_CELL_VALUE, EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 import { getOrderStatus } from "@/lib/statusStyles";
 
 const ORDER_STATUS_VALUES = ["draft", "confirmed", "fulfilled", "cancelled"] as const;
@@ -40,18 +42,6 @@ const ORDER_STATUS_OPTIONS = ORDER_STATUS_VALUES.map((value) => ({
   value,
   ...getOrderStatus(value),
 }));
-
-function formatMoney(
-  value: string | number | null | undefined,
-  currency: string | null | undefined,
-) {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-  }).format(amount);
-}
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
@@ -152,19 +142,19 @@ export default function OrderDetailPage() {
             </Field>
             <SummaryTile
               label="Total"
-              value={formatMoney(order.grand_total, order.currency)}
+              value={formatMoney(order.grand_total, order.currency) ?? EMPTY_FIELD_VALUE}
             />
             <SummaryTile
               label="Subtotal"
-              value={formatMoney(order.subtotal, order.currency)}
+              value={formatMoney(order.subtotal, order.currency) ?? EMPTY_FIELD_VALUE}
             />
             <SummaryTile
               label="Tax"
-              value={formatMoney(order.tax_total, order.currency)}
+              value={formatMoney(order.tax_total, order.currency) ?? EMPTY_FIELD_VALUE}
             />
             <SummaryTile
               label="Discount"
-              value={formatMoney(order.discount_total, order.currency)}
+              value={formatMoney(order.discount_total, order.currency) ?? EMPTY_FIELD_VALUE}
             />
             <SummaryTile
               label="Created"
@@ -280,16 +270,16 @@ export default function OrderDetailPage() {
                       {String(item.quantity)}
                     </TableCell>
                     <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.unit_price, order.currency)}
+                      {formatMoney(item.unit_price, order.currency) ?? EMPTY_CELL_VALUE}
                     </TableCell>
                     <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.discount_amount, order.currency)}
+                      {formatMoney(item.discount_amount, order.currency) ?? EMPTY_CELL_VALUE}
                     </TableCell>
                     <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.tax_amount, order.currency)}
+                      {formatMoney(item.tax_amount, order.currency) ?? EMPTY_CELL_VALUE}
                     </TableCell>
                     <TableCell className="py-3 text-right tabular-nums text-copy-primary">
-                      {formatMoney(item.line_total, order.currency)}
+                      {formatMoney(item.line_total, order.currency) ?? EMPTY_CELL_VALUE}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -310,13 +300,14 @@ export default function OrderDetailPage() {
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium text-copy-label">
-        {label}
-      </div>
-      <div className="mt-2 text-sm text-copy-primary">{value}</div>
+    <div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
+      <div className="mt-1 text-sm text-copy-primary">{value}</div>
     </div>
   );
 }
@@ -331,11 +322,9 @@ function LinkedTile({
   href: string | null;
 }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs font-medium text-copy-label">
-        {label}
-      </div>
-      <div className="mt-2 text-sm text-copy-primary">
+    <div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
+      <div className="mt-1 text-sm text-copy-primary">
         {href ? (
           <Link href={href} className="hover:underline">
             {value}

@@ -12,6 +12,7 @@ import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { getContractStatus } from "@/lib/statusStyles";
+import { Money } from "@/components/ui/Money";
 
 type ContractsTableProps = {
   contracts: Contract[];
@@ -47,13 +48,6 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   currency: "sm",
 };
 
-function formatMoney(value: Contract["value_amount"], currency: string | null) {
-  if (value === null || value === undefined || value === "") return "—";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return `${currency || "USD"} ${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function renderPrimitive(value: unknown) {
   if (value == null || value === "") return "—";
   if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return String(value);
@@ -71,7 +65,7 @@ function renderCell(item: Contract, column: string) {
       return <StatusValue status={style} />;
     }
     case "value_amount":
-      return <span className="text-sm tabular-nums text-copy-primary">{formatMoney(item.value_amount, item.currency)}</span>;
+      return <span className="text-sm text-copy-primary"><Money amount={item.value_amount} currency={item.currency} /></span>;
     case "created_at":
     case "updated_at":
       return <span className="text-sm text-copy-muted">{item[column] ? formatDateTime(String(item[column])) : "—"}</span>;

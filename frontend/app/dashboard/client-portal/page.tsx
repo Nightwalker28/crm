@@ -20,6 +20,7 @@ import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState } from "@/hooks/useClientPortal";
 import { useConfirm } from "@/hooks/useConfirm";
+import { Money } from "@/components/ui/Money";
 import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
@@ -38,12 +39,6 @@ const emptyAccountForm: AccountForm = {
 
 function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
-}
-
-function formatMoney(value: string | number, currency: string) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return `${currency} 0.00`;
-  return `${currency} ${amount.toFixed(2)}`;
 }
 
 function customerLabel(item: { contact_id?: number | null; organization_id?: number | null; contact_name?: string | null; organization_name?: string | null }) {
@@ -339,7 +334,7 @@ export default function ClientPortalDashboardPage() {
               label: "Pricing",
               render: (page) => (
                 <span className="text-copy-secondary">
-                  {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
+                  {page.pricing_items[0] ? <Money amount={page.pricing_items[0].public_unit_price} currency={page.pricing_items[0].currency} /> : "No items"}
                 </span>
               ),
             },

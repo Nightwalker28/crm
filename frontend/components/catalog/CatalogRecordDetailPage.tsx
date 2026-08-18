@@ -19,22 +19,17 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   kind: CatalogKind;
   recordId: number;
 };
 
+// Empty string rather than a placeholder: both call sites already branch on it to decide
+// what to render instead. Formatting is lib/currency.ts's (design.md 7.1).
 function formatAmount(value: number | string | null | undefined, currency: string): string {
-  if (value == null || value === "") return "";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(numeric);
+  return formatMoney(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) ?? "";
 }
 
 function stockLabel(value?: string | null) {

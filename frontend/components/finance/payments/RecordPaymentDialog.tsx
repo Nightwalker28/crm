@@ -8,6 +8,8 @@ import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, Dialog
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { PosInvoice, RecordPaymentPayload } from "@/hooks/finance/usePosInvoices";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   open: boolean;
@@ -17,12 +19,10 @@ type Props = {
   onSubmit: (payload: RecordPaymentPayload) => Promise<void>;
 };
 
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
 export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClose, onSubmit }: Props) {
@@ -54,7 +54,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="md" className="rounded-[var(--radius-dialog)] border-line-default bg-surface-raised">
+        <DialogPanel size="md" aria-describedby={undefined} className="rounded-[var(--radius-dialog)] border-line-default bg-surface-raised">
           <DialogHeader>
             <DialogTitle>Record payment</DialogTitle>
             <DialogIconClose />

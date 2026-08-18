@@ -59,6 +59,7 @@ import {
   type CustomerGroup,
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
+import { Money } from "@/components/ui/Money";
 import { formatDateTime } from "@/lib/datetime";
 
 type RelatedOpportunity = {
@@ -893,7 +894,7 @@ function RelatedRecords({
                   {quote.title || quote.customer_name} · {quote.status || "Unknown status"}
                 </div>
                 <div className="mt-2 text-sm text-copy-secondary">
-                  {formatMoney(quote.total_amount, quote.currency)}
+                  <Money amount={quote.total_amount} currency={quote.currency} />
                 </div>
               </Link>
             ))
@@ -906,11 +907,14 @@ function RelatedRecords({
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
     <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
+      <div className="mt-1 text-sm text-copy-primary">{value}</div>
     </div>
   );
 }
@@ -925,12 +929,3 @@ function safeExternalUrl(value?: string | null) {
   }
 }
 
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}

@@ -3,7 +3,15 @@
 **Status:** approved 2026-08-14. **Sub-phase 5.0 done** — direction, law and census landed;
 the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B, C, D and E
 (cross-cutting primitives, the status sweep that deletes `Pill`, the route-boundary sweep, the
-Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed.
+Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2 is done.**
+
+A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
+container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
+been built but never reached its call sites. Both are written up under their sub-phase. The
+review's other finding — `SectionHeading`, `ActionBar`, `Avatar` and `PanelStates` are built
+and unadopted — is **the plan, not drift**: R7 assigns that sweep to the surface that owns
+each file. It is recorded at the end of 5.1 so 5.3–5.7 inherit the number rather than
+rediscover it.
 
 This is Phase 5 of [`consistency-pass.md`](./consistency-pass.md), expanded into its own
 programme because it outgrew the pass containing it — and because it carries scoping
@@ -942,6 +950,64 @@ other three call sites' existing convention).
 `docs/design/rebuild-census.md` (3 rows marked `done`); `tests/e2e/{contracts-revamp,
 support-revamp,opportunities-revamp}.spec.ts`.
 
+### Status: follow-up — `lib/currency.ts` reached its call sites, and two batch D nits
+
+From the same 2026-08-18 review pass. Two of these are corrections; the third is a
+measurement worth carrying into 5.3, not a defect.
+
+**`lib/currency.ts` had two consumers and 12 shadowing duplicates.** Batch A built it and
+stopped; the table above says it *replaces* 15 local formatters and 24 raw
+`Intl.NumberFormat`, and it had replaced neither. Worse, six files defined their own
+`formatMoney` — the same name the lib exports — so an import would have collided rather
+than resolved. All of them now delegate:
+
+- **Six spellings of absent collapsed to two.** The local formatters invented `"Not set"`,
+  `"-"`, `"—"`, `"Unspecified"`, `"USD 0.00"` and `0`. Call sites now take
+  `EMPTY_FIELD_VALUE` / `EMPTY_CELL_VALUE` from `EmptyValue` per §3.6, or render `<Money>`,
+  which picks by context. That is `EmptyValue`'s first adoption outside `Money`.
+- **The locale bug the lib was written for is actually fixed.** Ten of the twelve passed
+  `undefined` — the browser locale — so the same invoice total rendered `$1,234.50` for one
+  operator and `1.234,50 $` for another. Two files (`client-portal`, contracts) were not
+  using `Intl` at all and hand-built `"USD 1,234.50"`; those two change visibly, to `$1,234.50`.
+- **Four helpers keep a local name because their null semantics are genuinely different**,
+  and each says so on the line: `formatDashboardCurrency` and reports' `formatCurrency` want
+  zero (a forecast with no rows is a zero pipeline, not an absent field), the two catalog
+  `formatAmount` twins and `insertionOrderList`'s want `""` because their call sites branch
+  on it. They delegate the formatting and keep only the fallback.
+
+**Zero currency-style `Intl.NumberFormat` now exist outside `lib/currency.ts`** — 5.10's
+planned guard would pass today. The four remaining `Intl.NumberFormat` calls format plain
+numbers, not money. `finance/pos/[invoiceId]/print` is untouched: it is a census `unchanged`
+row, and it was already on the pinned `en-US`.
+
+**Batch D nits.** Five of the eleven dialogs rendered no `DialogDescription`, so Radix logged
+a missing-description warning on every open; they now pass `aria-describedby={undefined}`,
+Radix's documented opt-out, which asserts *named by its title alone* rather than silencing a
+real gap. Inventing description copy is 5.9's call, not a warning-suppression exercise. And
+`DialogPanel`'s `2xl` size was dead surface the migration said it would not carry forward —
+removed. `lg` stays: it is the default and is reached by call sites that pass no `size`.
+
+**Not fixed, and deliberately: the other five primitives are still unadopted.**
+
+| Primitive | App consumers | Named target |
+|---|---|---|
+| `SectionHeading` | **0** (only `PanelStates`) | 137 hand-written `<h2>` |
+| `ActionBar` / `FormFooter` | **0** (only `button.tsx` reads the context) | 10 footers, ~38 spacing overrides |
+| `Avatar` | 2 | 2 bespoke |
+| `PanelStates` | 5 — unchanged by the promotion | ~40 panels |
+
+This is the documented plan, not drift: **R7 assigns the `<h2>` sweep to "the surface that
+owns each file, not a separate pass"**, and the same logic carries the rest. `Pill` was
+*deleted*, which forced its 104 call sites; these were *added*, which forces nothing. Two
+consequences to carry forward rather than rediscover:
+
+- **R4 is not in force anywhere in the app.** `ActionBar` is the mechanism that makes mixed
+  control heights impossible, and nothing uses it — so 5.10's rendered sibling-height check
+  will be measuring a codebase that never received the fix. 5.4 and 5.6 own the adoption.
+- **Converting one `<h2>` in isolation makes a page worse, not better.** A `SectionHeading`
+  at 14px beside four hand-written `text-lg` siblings reads as a mistake. The swap has to be
+  per-surface, which is exactly why R7 scoped it that way.
+
 ---
 
 ## 5.2 — The panel language
@@ -1013,6 +1079,55 @@ exhaustive.
 `app/dashboard/**`, `app/client/**`, `app/auth/login/page.tsx`, and `components/**`; `docs/
 design/design.md` §1.3 (primitive-implementer exemption, written before this note); `docs/
 design/rebuild-census.md` (`Card.tsx` → `done`).
+
+### Status: reopened and closed — the sweep's instrument had a blind spot
+
+A review pass on 2026-08-18 found the sub-phase's second bullet unshipped. Recorded here
+rather than quietly fixed, because the *reason* it survived matters more than the fix.
+
+**The close-out grep only reads one radius tier.** Every count above —
+206 → 184 → 105 — comes from `rounded-[var(--radius-card)] | grep border`. The panel
+taxonomy has two drawing tiers, and the row tier takes `--radius-control`. So the
+"re-grep audited every remaining match by hand" claim above was true of what the grep
+returned and not of the codebase: **~159 `--radius-control` + `border-line-*` boxes were
+never in scope of any count this sub-phase ran.** Most are legitimate Rows. The ones that
+were not are exactly what this bullet named:
+
+> Retire the local `SummaryTile` **container** recipes here rather than in 5.3, since they
+> are panel decisions: `radius-card` + `line-subtle` vs `radius-control` + `line-default`
+> at `py-3` vs the same at `py-4`.
+
+**The named drift was still there, verbatim.** Seven page-local `SummaryTile`s and four
+`LinkedTile`s. Batch 2 converted contacts and organizations to borderless ink groups and
+left contracts, orders, quotes, support cases and profile as boxes — `radius-control` +
+`line-default`, at `py-4` on four of them and `py-3` on the fifth. Same component, same
+batch, two answers.
+
+They are also a §1.3 violation as 5.2 itself wrote that section: static, non-interactive
+content, sitting inside a `Card`, so *"a border around static content inside a panel is the
+third level §1.3 forbids, wearing a smaller radius"* — and on `line-default`, the panel tier,
+which the same paragraph names as reading one tier as the other.
+
+**All eleven now render as ink groups** on R7's ladder — label `text-xs font-medium
+text-copy-label`, value `mt-1 text-sm text-copy-primary`, no container. That also drops the
+`font-medium` three of them put on the value, which is off R7 (a value is normal weight;
+weight is what the *heading* gives up to sit below it). **Replacing the renderers with a
+shared primitive is still 5.3's**, per that sub-phase's own line item — this closes the
+container decision only, which is what 5.2 owns.
+
+**One nested static box outside the renderer family**, same rule: the deal page's "No quotes
+are linked yet" dashed box (`opportunities/[opportunityId]`), which is the shape batch 4
+already deleted on the kanban's empty-column notice. Now unboxed. Headline count 105 → 104.
+
+**Two remaining matches the close-out did not account for, deliberately left.**
+`app/dashboard/layout.tsx`'s "Checking access…" and `custom/[moduleKey]/[recordId]`'s
+"view-only access" notice are the same full-width state-banner idiom as the 24 counted
+`role="alert"` boxes, minus the role (correctly — neither is an alert). Both are level-1
+siblings of the page's panels, so both are earned by separation. They belong with the
+banner consolidation 5.4 carries, not with a new answer invented here.
+
+**Lesson for 5.10.** The nesting-depth guard has to read the DOM, not a class grep, or it
+inherits this blind spot. That is what §7.6 and `data-slot="card"` are now for.
 
 ---
 

@@ -1009,14 +1009,14 @@ exists. The list-and-record language in particular is not optional:
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | Autosave feedback | `SaveStateIndicator` (R1) |
+| Linked record | `LinkedRecordPicker` |
+| Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 
 **`StatusValue` or `Chip`?** A **status** is one value from a closed set saying how a record is
 doing, so it renders as ink and only deviation is painted. A **tag** names what something *is* —
 a scope, a field type, a category — so it has no better or worse and never carries tone, but it
 does take a quiet edge because tags usually sit several in a row. If a tag seems to need
 colour, it is a status, and its classification belongs in `lib/statusStyles.ts`.
-| Linked record | `LinkedRecordPicker` |
-| Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 
 A page-local table, dialog, or toolbar is a review failure unless the diff also
 explains why the primitive could not be extended.
@@ -1074,6 +1074,28 @@ their way around it.
   a red border with no message is invisible to a colourblind operator.
 - Destructive confirmations name the record and the consequence, and the confirm
   button uses the `danger` variant.
+
+### 7.6 A primitive that draws a container names itself with `data-slot`
+
+Every `components/ui/` file that renders a **container** — a panel, a shell, a state, an
+action row, a value wrapper — emits `data-slot="<kebab-case name>"` on its outermost
+element. `PageShell` already did this so the rendered guard could assert page rhythm
+(§4.4); the convention is now the rule rather than one component's habit.
+
+The reason is that the rendered guards check *composition*, and composition is invisible to
+a class selector. `.rounded-\[var\(--radius-card\)\].border` matches a real `<Card>` and a
+hand-rolled div identically — which is exactly the distinction §1.3 exists to draw, so a
+guard built on classes cannot tell a compliant page from a regressed one. `data-slot` is
+the only signal in the DOM that says *this container came from the primitive*.
+
+Three checks depend on it and cannot be written without it: nesting depth (§1.3's two-level
+budget), the panel border tier, and one-archetype-per-surface. All three are owned by
+`rebuild.md` 5.10; the attribute has to be in the primitives before that sub-phase can
+write them.
+
+The name is the component's own, in kebab-case — `card`, `card-header`, `empty-state`,
+`module-table-shell`. Sub-parts get their own slot rather than sharing the parent's. A
+call site never writes `data-slot`; if a page needs one, the page needed a primitive.
 
 ---
 

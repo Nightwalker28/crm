@@ -13,12 +13,14 @@ import { useDialogLayerCovered } from '@/components/ui/dialog-layer';
 import { useControlledState } from '@/hooks/use-controlled-state';
 import { cn } from "@/lib/utils";
 
+// `lg` is the default and is reached by call sites that pass no size, so it stays even
+// with no literal `size="lg"` in the app. `2xl` had neither, and the batch D migration
+// said it would not carry dead surface forward.
 const dialogPanelSizeClasses = {
   sm: "w-full max-w-sm",
   md: "w-full max-w-md",
   lg: "w-full max-w-lg",
   xl: "w-full max-w-xl",
-  "2xl": "w-full max-w-2xl",
   "3xl": "w-full max-w-3xl",
 } as const;
 
@@ -113,6 +115,13 @@ type DialogPanelProps = Omit<
     onEscapeKeyDown?: (event: KeyboardEvent) => void;
   };
 
+/**
+ * A dialog with no explanatory sentence passes `aria-describedby={undefined}`. Radix points
+ * `aria-describedby` at a `DialogDescription` it expects to find and warns on every open when
+ * there is none; the explicit `undefined` is its documented opt-out and says "this dialog is
+ * named by its title alone" rather than silencing a real gap. Inventing description copy to
+ * quiet the warning would be worse — that is the copy sweep's call (rebuild.md 5.9).
+ */
 function DialogPanel({
   children,
   transition = { type: 'spring', stiffness: 700, damping: 30 },

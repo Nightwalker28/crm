@@ -27,18 +27,15 @@ import {
 } from "@/components/ui/Table";
 import { usePosInvoice } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 
+// The unknown-code fallback lives in lib/currency.ts now, so this is only the
+// null spelling this surface wants (design.md 3.6, 7.1).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, {
-      style: "currency",
-      currency,
-    }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
 export default function InvoiceDetailPage() {

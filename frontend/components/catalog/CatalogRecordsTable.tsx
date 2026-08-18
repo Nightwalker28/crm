@@ -14,6 +14,7 @@ import type { CatalogKind, CatalogRecord } from "@/hooks/catalog/useCatalogRecor
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   kind: CatalogKind;
@@ -71,16 +72,10 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 
 const PRODUCT_ONLY_COLUMNS = new Set(["sku", "stock_status", "stock_quantity"]);
 
+// Empty string rather than a placeholder: both call sites already branch on it to decide
+// what to render instead. Formatting is lib/currency.ts's (design.md 7.1).
 function formatAmount(value: number | string | null | undefined, currency: string): string {
-  if (value == null || value === "") return "";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(numeric);
+  return formatMoney(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) ?? "";
 }
 
 function stockLabel(value?: string | null) {

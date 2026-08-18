@@ -56,7 +56,9 @@ import {
   type CustomerGroup,
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type RelatedContact = {
   contact_id: number;
@@ -764,7 +766,7 @@ function RelatedRecords({
             key={quote.quote_id}
             href={`/dashboard/sales/quotes/${quote.quote_id}`}
             title={quote.quote_number}
-            detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency)}`}
+            detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
       </RelatedCard>
@@ -774,7 +776,7 @@ function RelatedRecords({
             key={order.id}
             href={`/dashboard/sales/orders/${order.id}`}
             title={order.order_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency)}`}
+            detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
       </RelatedCard>
@@ -784,7 +786,7 @@ function RelatedRecords({
             key={invoice.id}
             href={`/dashboard/finance/pos/${invoice.id}`}
             title={invoice.invoice_number}
-            detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency)}`}
+            detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
       </RelatedCard>
@@ -794,7 +796,7 @@ function RelatedRecords({
             key={order.id}
             href={`/dashboard/finance/insertion-orders/${order.id}`}
             title={order.io_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency)}`}
+            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
       </RelatedCard>
@@ -839,11 +841,14 @@ function RelatedLink({ href, title, detail }: { href: string; title: string; det
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
+      <div className="mt-1 text-sm text-copy-primary">{value}</div>
     </div>
   );
 }
@@ -858,12 +863,3 @@ function safeExternalUrl(value?: string | null) {
   }
 }
 
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}

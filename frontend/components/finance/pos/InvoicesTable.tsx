@@ -10,6 +10,8 @@ import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   invoices: PosInvoice[];
@@ -65,12 +67,10 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 
 const MONEY_COLUMNS = new Set(["total_amount", "amount_paid", "balance_due"]);
 
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
 function renderCell(invoice: PosInvoice, column: string) {

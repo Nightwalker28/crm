@@ -30,6 +30,7 @@ import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateTime } from "@/lib/datetime";
+import { DEFAULT_CURRENCY, formatMoney } from "@/lib/currency";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { appendSavedViewFilterParams, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
@@ -284,9 +285,14 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
+// Zero, not `Not set`: a forecast figure with no rows is a zero pipeline rather than an
+// absent field, so this keeps its own fallback. The formatting itself is lib/currency.ts's
+// (design.md 7.1) — a local Intl.NumberFormat was also the only place in reports still on
+// the browser locale.
 function formatCurrency(value: number | string | null | undefined) {
   const amount = typeof value === "string" ? Number(value) : value;
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(amount ?? NaN) ? amount ?? 0 : 0);
+  const safe = Number.isFinite(amount ?? NaN) ? (amount as number) : 0;
+  return formatMoney(safe, DEFAULT_CURRENCY, { maximumFractionDigits: 0 }) ?? "";
 }
 
 function isoDateOffset(days: number) {
@@ -871,7 +877,7 @@ export default function ReportsPage() {
       <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-          <DialogPanel size="md">
+          <DialogPanel size="md" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Save report</DialogTitle>
               <DialogIconClose />

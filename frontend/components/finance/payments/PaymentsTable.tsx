@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   invoices: PosInvoice[];
@@ -78,12 +80,10 @@ function overdueTone(invoice: { payment_status: string; due_date?: string | null
   return due < today ? "critical" : undefined;
 }
 
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
 function renderCell(invoice: PosInvoice, column: string) {

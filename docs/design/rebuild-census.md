@@ -462,7 +462,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|
 | `button.tsx` | 63 | rebuild | 9 variants → 6 (§2.2) | **done** (A) |
 | `Pill.tsx` | 40 | **delete** | R5. 52 files and 107 call sites move to `StatusValue` | **done** (B) — deleted; 104 sites in 52 files moved |
-| `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | **done** (D) |
+| `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | **done** (D);`aria-describedby` opt-out + dead `2xl` removed 18 Aug |
 | `sheet.tsx` | 236 | rebuild | Same migration | **done** (D) — already on radix; no change needed |
 | `dialog-layer.tsx` | 33 | adopt | | **done** (D) — no change needed |
 | `DialogIconClose.tsx` | 20 | adopt | | **done** (D) — no change needed |
@@ -474,12 +474,12 @@ taken. Counted here so the denominator stays honest.
 
 | Path | Verdict | Note | Status |
 |---|---|---|---|
-| `Money.tsx` | **new** | Over `lib/currency.ts`. Owns formatting and `tabular-nums`, never ink or size | **done** (A) |
-| `EmptyValue.tsx` | **new** | §3.6 in one place: `Not set` in a field, `—` in a cell. Makes 5.9's sweep one edit | **done** (A) |
-| `SectionHeading.tsx` | **new** | 137 hand-written `<h2>`s at four sizes; R7 fixes the role at 14px semibold `text-copy-label` | **done** (A) |
+| `Money.tsx` | **new** | Over `lib/currency.ts`. Owns formatting and `tabular-nums`, never ink or size | **done** (A); call sites adopted 18 Aug |
+| `EmptyValue.tsx` | **new** | §3.6 in one place: `Not set` in a field, `—` in a cell. Makes 5.9's sweep one edit | **done** (A); first call sites 18 Aug |
+| `SectionHeading.tsx` | **new** | 137 hand-written `<h2>`s at four sizes; R7 fixes the role at 14px semibold `text-copy-label` | **done** (A) — built; **0 app consumers**, adoption is per-surface by R7 |
 | `Avatar.tsx` | **new** | Replaces 2 bespoke, one falling back to `"US"` and one to `"?"` | **done** (A) |
 | `SaveStateIndicator.tsx` | **new** | R1 requires it: autosave removes the button, which was the only feedback | **done** (A) |
-| `ActionBar.tsx` | **new** | `ActionBar` + `FormFooter`. Owns its children's control height (R4) via context; not sticky (R3) | **done** (A) |
+| `ActionBar.tsx` | **new** | `ActionBar` + `FormFooter`. Owns its children's control height (R4) via context; not sticky (R3) | **done** (A) — built; **0 app consumers**, so R4 is unenforced until 5.4/5.6 |
 | `PanelStates.tsx` | **new** | Promoted from `recordActivity/`. Header steps down to R7; loading and empty stop being boxes (R8) | **done** (A) |
 | `StatusValue.tsx` | **new** | Renders a tone per context; accepts a caller-computed override for derived tones like overdue | **done** (B) |
 | `Chip.tsx` | **new** | The tag/count/marker R5 says needs "a different component with a different name" | **done** (B) |
@@ -495,7 +495,7 @@ taken. Counted here so the denominator stays honest.
 |---|---|---|---|---|---|
 | `PageShell.tsx` | 144 | 5.3 | adopt | Gains `variant="record"` | |
 | `PageHeader.tsx` | 71 | 5.1 | adopt | | |
-| `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels | done |
+| `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels, and `data-slot="card"` so 5.10's nesting guard can see a panel (§7.6) | done |
 | `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | |
 | `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. After 5.5 only 3 files may import it | |
 | `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | |
@@ -564,7 +564,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | Path | Owner | Verdict | Note | Status |
 |---|---|---|---|---|
 | `lib/statusStyles.ts` | 5.1 | rebuild | Returns `{tone, label}`, not raw Tailwind strings. **R5's classification is in `rebuild.md`** | **done** (B) |
-| `lib/currency.ts` | 5.1 | **new** | Does not exist. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument | **done** (A) |
+| `lib/currency.ts` | 5.1 | **new** | Does not exist. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument | **done** (A); 12 shadowing duplicates removed 18 Aug, zero currency `Intl.NumberFormat` left outside it |
 | `lib/chartColors.ts` | 5.7 | adopt | Already correct; the only legal source of chart colour | |
 | `lib/datetime.ts` | — | unchanged | Already the single source for time | |
 | `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |

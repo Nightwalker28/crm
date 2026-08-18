@@ -185,7 +185,7 @@ export default function CalendarEventDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="3xl">
+        <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{event ? (canManage ? "Edit Event" : "Event details") : "Create Event"}</DialogTitle>
             <DialogIconClose />

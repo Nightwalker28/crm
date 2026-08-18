@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { DashboardEmptyMessage } from "@/components/dashboard/DashboardOperationalWidgets";
+import { DEFAULT_CURRENCY, formatMoney } from "@/lib/currency";
 
 export type CrmBucket = {
   key: string;
@@ -78,13 +79,12 @@ export function isCrmSummaryWidget(type: string): type is CrmSummaryWidgetType {
   return CRM_WIDGET_TYPES.has(type);
 }
 
+// Zero, not `Not set`: a dashboard figure with no rows is a zero total rather than an
+// absent field. Formatting is lib/currency.ts's (design.md 7.1).
 export function formatDashboardCurrency(value: number | string | null | undefined) {
   const amount = typeof value === "string" ? Number(value) : value;
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Number.isFinite(amount ?? NaN) ? amount ?? 0 : 0);
+  const safe = Number.isFinite(amount ?? NaN) ? (amount as number) : 0;
+  return formatMoney(safe, DEFAULT_CURRENCY, { maximumFractionDigits: 0 }) ?? "";
 }
 
 function Metric({ label, value, helper }: { label: string; value: string | number; helper: string }) {

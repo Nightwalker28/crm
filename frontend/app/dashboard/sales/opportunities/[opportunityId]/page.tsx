@@ -32,7 +32,10 @@ import { Card } from "@/components/ui/Card";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
+import { Money } from "@/components/ui/Money";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type OpportunitySummary = {
   opportunity: {
@@ -91,19 +94,6 @@ async function fetchSummary(id: string) {
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
   return body as OpportunitySummary;
-}
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = Number(value);
-  return value !== null &&
-    value !== undefined &&
-    value !== "" &&
-    Number.isFinite(amount)
-    ? new Intl.NumberFormat(undefined, {
-        style: "currency",
-        currency: currency || "USD",
-        maximumFractionDigits: 2,
-      }).format(amount)
-    : "Not set";
 }
 function displayContact(summary: OpportunitySummary) {
   return (
@@ -191,10 +181,12 @@ export default function OpportunityDetailPage() {
         <MetricCard
           icon={CircleDollarSign}
           label="Value"
-          value={formatMoney(
-            opportunity.total_cost_of_project,
-            opportunity.currency_type,
-          )}
+          value={
+            formatMoney(
+              opportunity.total_cost_of_project,
+              opportunity.currency_type,
+            ) ?? EMPTY_FIELD_VALUE
+          }
         />
         <MetricCard
           icon={Percent}
@@ -368,7 +360,7 @@ export default function OpportunityDetailPage() {
                   </div>
                   <div className="text-right">
                     <div className="font-medium text-copy-primary">
-                      {formatMoney(quote.total_amount, quote.currency)}
+                      <Money amount={quote.total_amount} currency={quote.currency} />
                     </div>
                     <div className="mt-1 text-xs text-copy-muted">
                       {quote.status || "Unknown status"}
@@ -378,7 +370,7 @@ export default function OpportunityDetailPage() {
               </Link>
             ))
           ) : (
-            <p className="rounded-[var(--radius-card)] border border-dashed border-line-default px-4 py-8 text-center text-sm text-copy-muted">
+            <p className="px-4 py-8 text-center text-sm text-copy-muted">
               No quotes are linked yet.
             </p>
           )}
@@ -409,7 +401,7 @@ export default function OpportunityDetailPage() {
   return (
     <PageShell
       title={opportunity.opportunity_name}
-      description={`${summary.organization?.org_name || opportunity.client || "Unlinked customer"} · ${formatMoney(opportunity.total_cost_of_project, opportunity.currency_type)}`}
+      description={`${summary.organization?.org_name || opportunity.client || "Unlinked customer"} · ${formatMoney(opportunity.total_cost_of_project, opportunity.currency_type) ?? EMPTY_FIELD_VALUE}`}
     >
       <RecordPageHeader
         backHref="/dashboard/sales/opportunities"

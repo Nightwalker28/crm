@@ -12,6 +12,7 @@ import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { getOrderStatus } from "@/lib/statusStyles";
+import { Money } from "@/components/ui/Money";
 
 type OrdersTableProps = {
   orders: Order[];
@@ -52,12 +53,6 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   opportunity_name: "lg",
 };
 
-function formatMoney(value: string | number | null | undefined, currency: string | null | undefined) {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: currency || "USD" }).format(amount);
-}
-
 function renderCell(order: Order, column: string) {
   switch (column) {
     case "order_number":
@@ -67,7 +62,7 @@ function renderCell(order: Order, column: string) {
       return <StatusValue status={style} />;
     }
     case "grand_total":
-      return <span className="text-sm tabular-nums text-copy-primary">{formatMoney(order.grand_total, order.currency)}</span>;
+      return <span className="text-sm text-copy-primary"><Money amount={order.grand_total} currency={order.currency} /></span>;
     case "organization_name":
       return <span className="text-sm text-copy-secondary">{order.organization_name || "—"}</span>;
     case "contact_name":

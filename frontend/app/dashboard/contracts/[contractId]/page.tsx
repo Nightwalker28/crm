@@ -24,7 +24,9 @@ import type { Contract } from "@/hooks/contracts/useContracts";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 import { getContractStatus } from "@/lib/statusStyles";
 
 const CONTRACT_STATUSES = [
@@ -242,7 +244,7 @@ export default function ContractDetailPage() {
                 </Field>
               ) : null}
               <SummaryTile label="Owner" value={item.owner_id ? `User #${item.owner_id}` : "Unassigned"} />
-              <SummaryTile label="Value" value={formatMoney(item.value_amount, item.currency)} />
+              <SummaryTile label="Value" value={formatMoney(item.value_amount, item.currency) ?? EMPTY_FIELD_VALUE} />
               <SummaryTile label="Effective" value={item.effective_date ?? "Not set"} />
               <SummaryTile label="Expires" value={item.expiration_date ?? "Not set"} />
               <SummaryTile label="Renewal" value={item.renewal_date ?? "Not set"} />
@@ -431,13 +433,6 @@ export default function ContractDetailPage() {
   );
 }
 
-function formatMoney(value: Contract["value_amount"], currency: string | null) {
-  if (value === null || value === undefined || value === "") return "Not set";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return `${currency || "USD"} ${numeric.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 function statusLabel(status: string) {
   return [...CONTRACT_STATUSES, ...SIGNER_STATUSES].find((option) => option.value === status)?.label
     ?? status.replace(/_/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
@@ -456,20 +451,23 @@ function ContractStatus({ status }: { status: string }) {
   return <Chip>{statusLabel(status)}</Chip>;
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-2 text-sm text-copy-primary">{value}</div>
+      <div className="mt-1 text-sm text-copy-primary">{value}</div>
     </div>
   );
 }
 
 function LinkedTile({ label, value, href }: { label: string; value: string; href: string | null }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
+    <div>
       <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-2 text-sm text-copy-primary">
+      <div className="mt-1 text-sm text-copy-primary">
         {href ? <Link href={href} className="rounded-[var(--radius-control-sm)] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">{value}</Link> : value}
       </div>
     </div>

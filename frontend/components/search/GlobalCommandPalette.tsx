@@ -256,7 +256,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
       <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
-          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[var(--shadow-panel)]">
+          <DialogPanel aria-describedby={undefined} className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[var(--shadow-panel)]">
             {/* Distinct from SEARCH_LABEL, which already names the combobox below — sharing
                 text would give the dialog and its input the same accessible name. */}
             <DialogTitle className="sr-only">Command palette</DialogTitle>

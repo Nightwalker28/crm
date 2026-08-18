@@ -24,5 +24,5 @@ export function emptyValueFor(context: EmptyValueContext) {
  * has no value yet (2.1).
  */
 export function EmptyValue({ context = "cell" }: { context?: EmptyValueContext }) {
-  return <span className="text-copy-muted">{emptyValueFor(context)}</span>;
+  return <span data-slot="empty-value" className="text-copy-muted">{emptyValueFor(context)}</span>;
 }
