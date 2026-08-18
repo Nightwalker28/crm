@@ -3,23 +3,38 @@
 import type { ReactNode } from "react";
 
 import { ResolvedRecordLayout } from "@/components/forms/ResolvedRecordLayout";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 
-function formatResolvedValue(field: ResolvedRecordLayoutField, value: unknown) {
-  if (value === null || value === undefined || value === "") return "Not recorded";
+/**
+ * The `Details` tab's field renderer — the read-only half of the record layout the three
+ * pages that already used it shared, and now the one every record page shares.
+ *
+ * It emitted `"Not recorded"` seven times: the seventh spelling of an absent value, and the
+ * one §3.6 rejects. Absence is `EmptyValue` at `context="field"` now, so 5.9's copy sweep is
+ * one edit rather than one per renderer.
+ */
+function formatResolvedValue(field: ResolvedRecordLayoutField, value: unknown): ReactNode {
+  if (value === null || value === undefined || value === "") return <EmptyValue context="field" />;
   if (field.field_type === "boolean") return value === true ? "Yes" : "No";
-  if (field.field_type === "date") return formatDateOnly(String(value)) || "Not recorded";
-  if (field.field_type === "datetime") return formatDateTime(String(value)) || "Not recorded";
+  if (field.field_type === "date") {
+    return formatDateOnly(String(value)) || <EmptyValue context="field" />;
+  }
+  if (field.field_type === "datetime") {
+    return formatDateTime(String(value)) || <EmptyValue context="field" />;
+  }
   if (field.field_type === "select") {
     const label = String(value).replace(/_/g, " ");
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
-  if (Array.isArray(value)) return value.length ? value.map(String).join(", ") : "Not recorded";
-  if (typeof value === "object") return "Not recorded";
+  if (Array.isArray(value)) {
+    return value.length ? value.map(String).join(", ") : <EmptyValue context="field" />;
+  }
+  if (typeof value === "object") return <EmptyValue context="field" />;
   return String(value);
 }
 
@@ -47,7 +62,9 @@ export function ReadOnlyRecordLayout({
         <div className="text-xs font-medium text-copy-label">
           {field.label}
         </div>
-        <div className="mt-1 whitespace-pre-wrap text-sm text-copy-secondary">
+        {/* R7: a value is `text-copy-primary` — one ink step *louder* than the label above
+            it and than the section heading over the group. */}
+        <div className="mt-1 whitespace-pre-wrap text-sm text-copy-primary">
           {renderedValue === undefined ? formatResolvedValue(field, value) : renderedValue}
         </div>
       </div>

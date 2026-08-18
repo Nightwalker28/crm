@@ -324,13 +324,17 @@ test("Lead journey behavior baseline: filter, create, open, and add a note", asy
     primary_email: createdLeadEmail,
   });
 
-  await page.getByRole("button", { name: "Note", exact: true }).click();
-  await expect(page.getByLabel("Add internal note")).toBeFocused();
+  // The note is written from the Timeline composer now, not a header button that focused a
+  // panel further down the page (design.md 4.7).
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await page.getByRole("radio", { name: "Note" }).click();
   await page.getByLabel("Add internal note").fill(noteBody);
   await page.getByRole("button", { name: "Add note" }).click();
 
-  await expect(page.getByText(noteBody)).toBeVisible();
+  await expect.poll(() => createdNotePayload).not.toBeNull();
   expect(createdNotePayload).toMatchObject({ body: noteBody, mentioned_user_ids: [] });
+  // The composer clears on success; the entry itself comes back through the feed.
+  await expect(page.getByLabel("Add internal note")).toHaveValue("");
 });
 
 test("Leads list keeps its controls usable in a narrow viewport", async ({ page }) => {
@@ -472,19 +476,19 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
   await expect(page.locator("[data-record-workspace-title]", { hasText: "Browser Fixture" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "Follow-up" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tasks & reminders" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Notes & Comments" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Relationship context" })).toBeVisible();
-  await page.getByRole("button", { name: "Follow-up", exact: true }).click();
-  await expect(page.getByLabel("Follow-up note")).toBeFocused();
-  await page.getByRole("button", { name: "Note", exact: true }).click();
-  await expect(page.getByLabel("Add internal note")).toBeFocused();
-  await page.getByRole("button", { name: "Task", exact: true }).click();
-  await expect(page.getByLabel("Task title")).toBeFocused();
+  // R9: state and relationships are in the spine, and the spine is the only editable
+  // region. Details carries read-only fields, and nothing else.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(spine.getByText("Revenue", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Relationship context" })).toHaveCount(0);
+  // The four tabs are fixed and owned by the archetype, so nothing nests inside them.
+  await expect(page.getByRole("tab")).toHaveCount(4);
   await expect(page.locator("[data-record-layout]").getByText("Ada Owner", { exact: true })).toBeVisible();
   await expect(page.locator("[data-record-layout]").getByText("Revenue", { exact: true })).toBeVisible();
-  await expect(page.getByText("Enterprise", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-record-layout]").getByText("Enterprise", { exact: true })).toBeVisible();
   // "Warm" is both a tag and the score grade; this line is about the tag, like the one above.
   await expect(page.locator("[data-layout-field='tags']").getByText("Warm", { exact: true })).toBeVisible();
   await expect(page.locator('[data-slot="lead-score"]')).toBeVisible();
@@ -501,10 +505,12 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=files$`));
   await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=audit$`));
-  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByRole("heading", { name: "Follow-up" })).toBeVisible();
+  // History is a sheet hung off the spine's "Updated" line rather than a fifth tab, so the
+  // tab set stays at the archetype's four (design.md 4.7).
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("dialog", { name: "History" })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit lead" })).toBeVisible();
@@ -574,16 +580,18 @@ test("Lead workspace gates mutation regions without hiding view-only context", a
   await expect(page.getByRole("link", { name: "Edit" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Convert" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Follow-up", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Note", exact: true })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Task", exact: true })).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Email", exact: true })).toBeVisible();
-  await expect(page.getByLabel("Follow-up note")).toHaveCount(0);
-  await expect(page.getByLabel("Add internal note")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add task" })).toHaveCount(0);
+  // View-only keeps the record readable and the spine's state field un-editable: the
+  // status renders as the same StatusValue, without the combobox R6 gives an editor.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Status" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
   await expect(page.getByRole("tab", { name: "Details" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Audit history" })).toBeVisible();
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByLabel("Add internal note")).toHaveCount(0);
+  await expect(page.getByLabel("Follow-up note")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add task" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Files" }).click();
   await expect(page.getByRole("button", { name: "Upload Document" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
@@ -720,7 +728,8 @@ test("Lead workspace fails optional fields closed and excludes disabled names fr
   await expect(page.getByText("Browser Fixture", { exact: true })).toHaveCount(0);
   await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
 
-  await page.getByRole("button", { name: "Task", exact: true }).click();
+  await page.getByRole("tab", { name: "Tasks" }).click();
+  await page.getByRole("button", { name: "Add task" }).click();
   await page.getByLabel("Task title").fill("Safe linked task");
   await page.getByRole("button", { name: "Create linked task" }).click();
   await expect.poll(() => createdTaskPayload).not.toBeNull();
@@ -731,7 +740,7 @@ test("Lead workspace fails optional fields closed and excludes disabled names fr
   });
 });
 
-test("Lead workspace stacks its relationship rail and keeps stable regions usable on mobile", async ({ page }) => {
+test("Lead workspace stacks its spine above the content region on mobile", async ({ page }) => {
   await stubEmptyWorkspacePanels(page);
   await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
@@ -740,39 +749,39 @@ test("Lead workspace stacks its relationship rail and keeps stable regions usabl
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
 
-  const primary = page.locator("[data-record-workspace-primary]");
-  const workRegion = primary.locator(":scope > div");
-  const relationshipRail = primary.locator("[data-record-workspace-relationship-rail]");
-  await expect(workRegion).toBeVisible();
-  await expect(relationshipRail).toBeVisible();
-  const workBounds = await workRegion.boundingBox();
-  const railBounds = await relationshipRail.boundingBox();
-  expect(railBounds?.y).toBeGreaterThan((workBounds?.y ?? 0) + (workBounds?.height ?? 0) - 1);
-  expect(Math.abs((railBounds?.x ?? 0) - (workBounds?.x ?? 0))).toBeLessThan(2);
+  // Below `lg` the spine stacks above the content region and the page reverts to a
+  // document scroll — design.md 4.7 calls that the deliberate fallback, not a feature.
+  const spine = page.locator('[data-slot="record-spine"]');
+  const content = page.locator('[data-slot="record-content"]');
+  await expect(spine).toBeVisible();
+  await expect(content).toBeVisible();
+  const spineBounds = await spine.boundingBox();
+  const contentBounds = await content.boundingBox();
+  expect(contentBounds?.y).toBeGreaterThan((spineBounds?.y ?? 0) + (spineBounds?.height ?? 0) - 1);
+  expect(Math.abs((contentBounds?.x ?? 0) - (spineBounds?.x ?? 0))).toBeLessThan(2);
   await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Audit history" })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
 });
 
-test("Legacy Lead workspace tabs land on stable regions without opening composers", async ({ page }) => {
+test("Lead workspace routes its tab set through ?tab= and falls back to Details", async ({ page }) => {
   await stubEmptyWorkspacePanels(page);
   await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
   );
 
-  // `activity` is now a real tab; the Follow-up region sits outside the tab set
-  // and stays reachable either way.
-  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=activity`);
-  await expect(page.getByRole("heading", { name: "Follow-up" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Activity" })).toHaveAttribute("aria-selected", "true");
-
-  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=related`);
-  await expect(page.getByRole("heading", { name: "Tasks & reminders" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Add task" })).toBeVisible();
-  await expect(page.getByLabel("Task title")).toHaveCount(0);
-
+  // The archetype owns the only strip, so the pre-5.3 region anchors (`activity`,
+  // `related`, `notes`) are no longer tab ids. An unknown one is not an error state — it
+  // falls back to the first tab rather than rendering nothing.
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=notes`);
-  await expect(page.getByRole("heading", { name: "Notes & Comments" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=tasks`);
+  await expect(page.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "true");
+  // R2: Edit carries the tab across the round trip, so editing from Tasks returns to Tasks.
+  await expect(page.getByRole("link", { name: "Edit" })).toHaveAttribute("href", /\?tab=tasks$/);
 });
 
 test("Lead workspace distinguishes denied and missing records", async ({ page }) => {
@@ -803,15 +812,16 @@ test("Lead detail layout failure stays contained to Details", async ({ page }) =
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
 
-  await expect(page.getByRole("heading", { name: "Follow-up" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Tasks & reminders" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Notes & Comments" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Lead details are unavailable" })).toBeVisible();
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page.getByRole("heading", { name: "Audit history" })).toBeVisible();
+  // The layout only feeds Details. The spine and the other three tabs are unaffected —
+  // that containment is the point of the archetype owning the regions.
+  await expect(page.locator('[data-slot="record-spine"]')).toBeVisible();
+  await expect(page.getByText("The lead details layout could not be loaded.")).toBeVisible();
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("The lead details layout could not be loaded.")).toHaveCount(0);
 });
 
-test("Lead relationship activity renders each source and stays separate from audit", async ({ page }) => {
+test("Lead timeline renders each source and stays separate from audit", async ({ page }) => {
   await stubEmptyWorkspacePanels(page);
   await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
@@ -872,28 +882,31 @@ test("Lead relationship activity renders each source and stays separate from aud
     });
   });
 
-  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=activity`);
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
 
-  const feed = page.getByRole("list", { name: "Activity entries" });
+  const feed = page.getByRole("list", { name: "Timeline entries" });
   await expect(feed.getByRole("listitem")).toHaveCount(3);
   // Domain-specific bodies, not flattened generic rows.
   await expect(feed.getByText("ada@example.com")).toBeVisible();
   await expect(feed.getByText("Zoom")).toBeVisible();
   await expect(feed.getByText("Left a voicemail.")).toBeVisible();
 
-  // The Follow-up panel also has an "Email" button, so scope to the filter group.
-  const filters = page.getByRole("group", { name: "Filter activity by type" });
-  await filters.getByRole("button", { name: "Email", exact: true }).click();
+  // The composer also offers an "Email" mode, so scope to the filter strip.
+  const filters = page.getByRole("group", { name: "Filter the timeline by type" });
+  await filters.getByRole("radio", { name: "Email", exact: true }).click();
   await expect(feed.getByRole("listitem")).toHaveCount(1);
   await expect(feed.getByText("Proposal", { exact: true })).toBeVisible();
 
-  // Audit history remains its own region and does not absorb the feed.
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page.getByRole("heading", { name: "Audit history" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Activity entries" })).toHaveCount(0);
+  // Audit history is a separate store and still never mixes into the feed — it opens from
+  // the spine rather than owning a tab (design.md 4.7).
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  const history = page.getByRole("dialog", { name: "History" });
+  await expect(history).toBeVisible();
+  await expect(history.getByRole("list", { name: "Timeline entries" })).toHaveCount(0);
 });
 
-test("Lead activity keeps loaded history when the projection fails", async ({ page }) => {
+test("Lead timeline keeps loaded history when the projection fails", async ({ page }) => {
   await stubEmptyWorkspacePanels(page);
   await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
@@ -902,8 +915,8 @@ test("Lead activity keeps loaded history when the projection fails", async ({ pa
     route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "boom" }) }),
   );
 
-  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=activity`);
-  await expect(page.getByText("Activity could not be loaded.")).toBeVisible();
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
+  await expect(page.getByText("The timeline could not be loaded.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 

@@ -1,29 +1,30 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   CalendarDays,
   CheckSquare,
   History,
   Mail,
   MessageCircle,
+  MessagesSquare,
   PhoneCall,
   StickyNote,
+  Trash2,
   type LucideIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 
-import {
-  PanelEmpty,
-  PanelError,
-  PanelHeader,
-  PanelLoading,
-} from "@/components/ui/PanelStates";
-import { Chip } from "@/components/ui/Chip";
+import RecordTimelineComposer from "@/components/recordActivity/RecordTimelineComposer";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordActivity } from "@/hooks/useRecordActivity";
+import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { cn } from "@/lib/utils";
 import type {
   RecordActivityEnvelope,
   RecordActivityType,
@@ -31,37 +32,47 @@ import type {
 } from "@/types/record-activity";
 
 /**
- * Relationship activity for one record.
+ * The `Timeline` tab — one composer over one feed.
  *
- * Each source keeps its own card body so an email or a WhatsApp message stays
- * readable rather than collapsing into a generic row. Immutable audit history
- * lives in its own region and is never mixed in here.
+ * This was `RecordActivityFeed`, and the rebuild is structural rather than cosmetic.
+ * `CrmRecordActivitySection` used to render Activity, Notes, Documents and Tasks as a
+ * *second* tab strip inside the page's own — the nested-tabs defect at
+ * `opportunities/[opportunityId]` and `finance/pos/[invoiceId]`. The archetype owns the
+ * only strip now, so those panels are the archetype's tabs and the notes list is gone:
+ * the feed already emits `type="note"`, and rendering the same rows twice was the
+ * duplication this sub-phase was called on to remove.
+ *
+ * Entries are `divide-y` lines, not cards. R8 names this list directly — a repeated item
+ * that is not interactive is not a box — and it was one of the five files split between
+ * two different box recipes for one role.
+ *
+ * Immutable audit history is still a separate store and still not mixed in here; it lives
+ * in the spine's `History` sheet (§4.7).
  */
 
 type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
-  title?: string;
-  description?: string;
+  /** Enables the composer's note mode, and deleting a note from its own entry. */
+  canEdit?: boolean;
+  composer?: Omit<ComponentProps<typeof RecordTimelineComposer>, "moduleKey" | "entityId" | "canAddNote">;
 };
 
 type Filter = "all" | RecordActivityType;
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
+  { id: "note", label: "Notes" },
+  { id: "case_reply", label: "Replies" },
   { id: "email", label: "Email" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "follow_up", label: "Follow-ups" },
   { id: "meeting", label: "Meetings" },
   { id: "task", label: "Tasks" },
-  { id: "note", label: "Notes" },
 ];
 
-// `case_reply` is carried here only so this file type-checks while contacts and
-// organizations finish migrating to `RecordTimeline`, which replaces it. Neither page
-// renders a support case, so the entry is unreachable in practice.
 const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
-  case_reply: MessageCircle,
+  case_reply: MessagesSquare,
   email: Mail,
   follow_up: PhoneCall,
   meeting: CalendarDays,
@@ -105,7 +116,7 @@ function DetailLine({ label, value }: { label: string; value: string }) {
   );
 }
 
-/** Domain-specific body per activity type. */
+/** Domain-specific body per activity type — an email must not read like a note. */
 function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
   switch (item.type) {
     case "email": {
@@ -187,49 +198,69 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
         </div>
       );
     }
+    case "case_reply":
     case "note":
     default:
       return item.summary ? (
-        <p className="mt-2 text-p-sm text-copy-secondary">{item.summary}</p>
+        <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.summary}</p>
       ) : null;
   }
 }
 
-function ActivityCard({ item }: { item: RecordActivityEnvelope }) {
+function ActivityRow({
+  item,
+  onDelete,
+}: {
+  item: RecordActivityEnvelope;
+  onDelete?: () => void;
+}) {
   const Icon = TYPE_ICONS[item.type] ?? History;
   return (
-    <li className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="flex min-w-0 items-start gap-3">
-        <span
-          className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-default bg-surface-raised"
-          aria-hidden="true"
-        >
-          <Icon className="h-3.5 w-3.5 text-copy-muted" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex flex-wrap items-center gap-2">
-            <Chip>{TYPE_LABELS[item.type] ?? item.type}</Chip>
-            {item.direction ? <span className="text-p-xs text-copy-muted">{item.direction}</span> : null}
-            {item.status ? <span className="text-p-xs text-copy-muted">{item.status.replace(/_/g, " ")}</span> : null}
-            <span className="text-p-xs text-copy-muted">{formatDateTime(item.occurred_at)}</span>
-          </div>
-          <p className="mt-2 min-w-0 break-words text-sm font-medium text-copy-primary">{item.title}</p>
-          {item.actor?.name ? (
-            <p className="mt-0.5 text-p-xs text-copy-muted">{item.actor.name}</p>
-          ) : null}
-          <ActivityBody item={item} />
+    <li className="flex min-w-0 items-start gap-3 py-4 first:pt-0 last:pb-0">
+      <span
+        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-subtle"
+        aria-hidden="true"
+      >
+        <Icon className="h-3.5 w-3.5 text-copy-muted" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+          <p className="min-w-0 break-words text-sm text-copy-primary">{item.title}</p>
+          <time dateTime={item.occurred_at} className="shrink-0 text-p-xs text-copy-muted">
+            {formatDateTime(item.occurred_at)}
+          </time>
         </div>
+        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-p-xs text-copy-muted">
+          <span>{TYPE_LABELS[item.type] ?? item.type}</span>
+          {item.actor?.name ? <span>· {item.actor.name}</span> : null}
+          {item.meta.is_internal === true ? <span>· Internal</span> : null}
+        </div>
+        <ActivityBody item={item} />
       </div>
+      {onDelete ? (
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          className="shrink-0 text-copy-muted hover:bg-state-danger-muted hover:text-state-danger"
+          onClick={onDelete}
+          aria-label={`Delete ${TYPE_LABELS[item.type]?.toLocaleLowerCase() ?? "entry"}`}
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
+      ) : null}
     </li>
   );
 }
 
-export default function RecordActivityFeed({
+export default function RecordTimeline({
   moduleKey,
   entityId,
-  title = "Activity",
-  description = "Emails, messages, meetings, tasks, notes, and follow-ups for this record.",
+  canEdit = false,
+  composer,
 }: Props) {
+  const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const [filter, setFilter] = useState<Filter>("all");
   const types = filter === "all" ? null : [filter];
   const query = useRecordActivity({ moduleKey, entityId, types });
@@ -241,27 +272,65 @@ export default function RecordActivityFeed({
   const omittedTypes = query.data?.pages[0]?.omitted_types ?? [];
   const hasLoadedHistory = items.length > 0;
 
+  // `available_types` is per record, so a lead never offers a Replies filter and a case
+  // never offers WhatsApp. Held across filtered fetches: narrowing to Notes must not
+  // collapse the strip to "All · Notes" and strand the operator there.
+  const [availableTypes, setAvailableTypes] = useState<RecordActivityType[]>([]);
+  const reportedTypes = query.data?.pages[0]?.available_types;
+  if (reportedTypes && filter === "all" && reportedTypes.join() !== availableTypes.join()) {
+    setAvailableTypes(reportedTypes);
+  }
+  const availableFilters = FILTERS.filter(
+    (option) => option.id === "all" || availableTypes.includes(option.id),
+  );
+
+  // A note is the one entry the operator authored and can take back. It moved here with
+  // the notes list it used to live in — dropping the affordance along with the panel would
+  // have made a note permanent, which is not a design decision anyone took.
+  async function deleteNote(item: RecordActivityEnvelope) {
+    const confirmed = await confirm({
+      title: "Delete note?",
+      description: "Delete this internal note? This action cannot be undone.",
+      confirmLabel: "Delete note",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    try {
+      const res = await apiFetch(`/record-comments/${item.source.record_id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("not-deleted");
+      await queryClient.invalidateQueries({
+        queryKey: ["record-activity", moduleKey, String(entityId)],
+      });
+      toast.success("Note deleted.");
+    } catch {
+      toast.error("The note could not be deleted. Try again.");
+    }
+  }
+
   return (
     <Card className="px-5 py-5">
-      <PanelHeader title={title} description={description} icon={History} />
+      <RecordTimelineComposer
+        moduleKey={moduleKey}
+        entityId={entityId}
+        canAddNote={canEdit}
+        {...composer}
+      />
 
-      <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter activity by type">
-        {FILTERS.map((option) => {
-          const active = filter === option.id;
-          return (
-            <Button
-              key={option.id}
-              type="button"
-              size="sm"
-              variant={active ? "default" : "outline"}
-              aria-pressed={active}
-              onClick={() => setFilter(option.id)}
-            >
-              {option.label}
-            </Button>
-          );
-        })}
-      </div>
+      {/* Only the sources this record actually has. The backend already reports them, and
+          eight fixed filters on a record with two of them is furniture — it also kept the
+          strip from fitting the content region beside the spine. */}
+      <SegmentedControl
+        value={filter}
+        onValueChange={(next: Filter) => setFilter(next)}
+        aria-label="Filter the timeline by type"
+        className="mt-5"
+      >
+        {availableFilters.map((option) => (
+          <SegmentedItem key={option.id} value={option.id}>
+            {option.label}
+          </SegmentedItem>
+        ))}
+      </SegmentedControl>
 
       {omittedTypes.length ? (
         <p className="mt-3 text-p-xs text-copy-muted" role="status">
@@ -272,24 +341,30 @@ export default function RecordActivityFeed({
 
       {query.isLoading ? (
         <div className="mt-4">
-          <PanelLoading label="Loading activity…" />
+          <PanelLoading label="Loading the timeline…" />
         </div>
       ) : query.error && !hasLoadedHistory ? (
         <div className="mt-4">
-          <PanelError message="Activity could not be loaded." onRetry={() => void query.refetch()} />
+          <PanelError message="The timeline could not be loaded." onRetry={() => void query.refetch()} />
         </div>
       ) : hasLoadedHistory ? (
         <>
-          <ol className="mt-4 grid gap-3" aria-label={`${title} entries`}>
+          <ol className="mt-4 divide-y divide-line-subtle" aria-label="Timeline entries">
             {items.map((item) => (
-              <ActivityCard key={item.id} item={item} />
+              <ActivityRow
+                key={item.id}
+                item={item}
+                onDelete={
+                  canEdit && item.type === "note" ? () => void deleteNote(item) : undefined
+                }
+              />
             ))}
           </ol>
 
           {/* A failed "load more" keeps the history already on screen. */}
           {query.error ? (
             <p className="mt-3 text-p-xs text-state-danger" role="alert">
-              More activity could not be loaded.
+              More of the timeline could not be loaded.
             </p>
           ) : null}
 
@@ -307,13 +382,13 @@ export default function RecordActivityFeed({
           ) : null}
         </>
       ) : (
-        <div className={cn("mt-4")}>
+        <div className="mt-4">
           <PanelEmpty
             icon={History}
-            title={filter === "all" ? "No activity yet" : "No activity of this type"}
+            title={filter === "all" ? "Nothing on the timeline yet" : "Nothing of this type yet"}
             description={
               filter === "all"
-                ? "Log a follow-up, add a note, or create a task and it will appear here."
+                ? "Add a note or log a call above and it will appear here."
                 : "Try a different filter to see the rest of this record's history."
             }
           />

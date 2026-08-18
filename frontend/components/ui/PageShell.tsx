@@ -18,6 +18,10 @@ import { cn } from "@/lib/utils";
  *   `ModuleTableShell`'s `flex-1` takes the rest, so the rows are the only scroller.
  *   `min-h-0` is load-bearing: without it the flex child refuses to shrink and the whole
  *   page scrolls again.
+ * - `record` — archetype 2's full-height column, on the same mechanism as `list`: the
+ *   header row is pinned and the spine and content region split what is left, so the
+ *   content region is the only scroller (R9). The height only applies from `lg`, because
+ *   below it the rail stacks and the page deliberately reverts to a document scroll.
  * - `document` — a scrolling form or detail page at the documented section stack.
  * - `settings` — the same, at the wider settings stack.
  */
@@ -25,6 +29,7 @@ const pageShellVariants = cva("flex min-w-0 flex-col", {
   variants: {
     variant: {
       list: "h-full min-h-0 gap-4",
+      record: "gap-4 lg:h-full lg:min-h-0",
       document: "gap-6",
       settings: "gap-8",
     },

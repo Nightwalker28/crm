@@ -152,7 +152,7 @@ test.beforeEach(async ({ page }) => {
   await stubWorkspace(page);
 });
 
-test("Lead email composes, sends, and lands in relationship activity", async ({ page }) => {
+test("Lead email composes, sends, and lands on the timeline", async ({ page }) => {
   let sendCount = 0;
   await page.route("**/mail/context", (route) => route.fulfill(json(connectedMailbox)));
   await page.route("**/records/sales_leads/*/activity?**", (route) =>
@@ -186,7 +186,7 @@ test("Lead email composes, sends, and lands in relationship activity", async ({ 
   await composer.getByRole("button", { name: "Send email" }).click();
 
   await expect(composer).toBeHidden();
-  await page.getByRole("tab", { name: "Activity" }).click();
+  await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByText("Renewal review")).toBeVisible();
   expect(sendCount).toBe(1);
 });

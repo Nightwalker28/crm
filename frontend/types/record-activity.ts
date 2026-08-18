@@ -29,6 +29,8 @@ export type ActivityItem = {
  * The two are deliberately separate surfaces; do not merge them.
  */
 export const RECORD_ACTIVITY_TYPES = [
+  // Kept in the order the backend registers its adapters.
+  "case_reply",
   "email",
   "follow_up",
   "meeting",

@@ -17,13 +17,13 @@ import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import {
-  RecordRelationshipField,
-  RecordRelationshipRail,
-  RecordWorkspace,
-  RecordWorkspaceHeader,
-  RecordWorkspacePrimary,
-  RecordWorkspaceRegion,
-} from "@/components/recordWorkspace/RecordWorkspace";
+  LegacyRecordRelationshipField as RecordRelationshipField,
+  LegacyRecordRelationshipRail as RecordRelationshipRail,
+  LegacyRecordWorkspaceHeader as RecordWorkspaceHeader,
+  LegacyRecordWorkspacePrimary as RecordWorkspacePrimary,
+  LegacyRecordWorkspaceRegion as RecordWorkspaceRegion,
+  LegacyRecordWorkspace as RecordWorkspace,
+} from "@/components/recordWorkspace/RecordWorkspaceLegacy";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
