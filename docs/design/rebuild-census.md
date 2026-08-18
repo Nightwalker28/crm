@@ -136,7 +136,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | |
 | `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | |
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | |
+| `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit |
 | `sales/leads/[leadId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `sales/leads/[leadId]/convert/page.tsx` | 60 | 5.3 | rebuild | **A13** — no unsaved-changes guard | |
 | `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | done |
@@ -290,20 +290,20 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `recordWorkspace/RecordWorkspace.tsx` | 142 | 5.3 | rebuild | `RecordWorkspace` itself is nearly a no-op forwarding to `PageShell`. The real targets are its header/primary/region/rail exports → the spine | |
+| `recordWorkspace/RecordWorkspace.tsx` | 142 | 5.3 | rebuild | `RecordWorkspace` itself is nearly a no-op forwarding to `PageShell`. The real targets are its header/primary/region/rail exports → the spine | **done** — now the archetype: header, spine, content region, and the only tab strip (named slots, not an array) |
 | `recordActivity/RecordPageHeader.tsx` | 46 | 5.3 | adopt | | |
 | `recordActivity/CrmRecordActivitySection.tsx` | 76 | 5.3 | **delete** | **This is a `RecordTabs` rendered inside another one.** The nested-tabs cause. The archetype owns the only strip, so this has nothing left to be | |
-| `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | rebuild | The `Timeline` tab. Gains the composer at its top (§4.7) | |
-| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | |
+| `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | **delete** | Replaced by `RecordTimeline` — composer on top, `divide-y` rows (R8) | **done** — file deleted, 0 importers |
+| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | `RecordAuditHistory` built; the old file dies with its last 2 importers in batch 1 |
 | `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | |
 | `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | |
 | `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | |
 | `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | |
-| `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | |
+| `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | **done** — gained the `menuItem` presentation for the header's `[⋯]` (§2.2) |
 | `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | **done** (A) — now `ui/PanelStates.tsx` |
 | `documents/RecordDocumentsPanel.tsx` | 132 | 5.3 | rebuild | The Files tab | |
-| `forms/ReadOnlyRecordLayout.tsx` | 58 | 5.3 | rebuild | Emits `"Not recorded"` — the string §3.6 rejects | |
-| `forms/ResolvedRecordLayout.tsx` | 126 | 5.3 | adopt | | |
+| `forms/ReadOnlyRecordLayout.tsx` | 58 | 5.3 | rebuild | Emits `"Not recorded"` — the string §3.6 rejects | **done** — `EmptyValue`, R7 value ink, and `omitFieldKeys` for spine-owned fields |
+| `forms/ResolvedRecordLayout.tsx` | 126 | 5.3 | adopt | | **done** — gained `omitFieldKeys`, filtered where sections are built so an emptied section disappears |
 
 ### 2.2 Forms, quick-create and record form pages (32) — owner 5.4
 
@@ -487,13 +487,13 @@ taken. Counted here so the denominator stays honest.
 | `dropdown-menu.tsx` | **new** | **Not in the plan.** No existing radix vendor for a menu; `ExportControls` / `ImportControls` needed one to leave `@headlessui/react` — see `rebuild.md` 5.1 batch D | **done** (D) |
 | `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | **done** (D) |
 | `InlineFieldEdit.tsx` | **new** | The R2/R6 state-field control. 5 pages hand-rolled this, each differently — see `rebuild.md` 5.1 batch E | **done** (E) |
-| `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | |
+| `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | **done** — rail, lifecycle track, State/Connected blocks, and the meta foot carrying the History sheet |
 
 ### 3.2 Existing primitives
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `PageShell.tsx` | 144 | 5.3 | adopt | Gains `variant="record"` | |
+| `PageShell.tsx` | 144 | 5.3 | adopt | Gains `variant="record"` | **done** — full-height column from `lg`; below it the page reverts to a document scroll |
 | `PageHeader.tsx` | 71 | 5.1 | adopt | | |
 | `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels, and `data-slot="card"` so 5.10's nesting guard can see a panel (§7.6) | done |
 | `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | |
@@ -508,7 +508,7 @@ taken. Counted here so the denominator stays honest.
 | `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | |
 | `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | |
 | `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | |
-| `RecordTabs.tsx` | 94 | 5.3 | adopt | Radix, correct. **Do not re-fix** | |
+| `RecordTabs.tsx` | 94 | 5.3 | adopt | Radix, correct. **Do not re-fix** | **done** — unchanged. The archetype builds its own strip because its tab must live in `?tab=` unconditionally (R2); `RecordTabs` keeps its opt-in `urlParam` and its other call sites |
 | `QuickCreateSurface.tsx` | 315 | 5.4 | adopt | **A3** — both create paths on all 15 modules | |
 | `EmptyState.tsx` | 29 | 5.9 | adopt | Copy: an invitation to act | |
 | `PermissionDeniedState.tsx` | 36 | 5.6 | adopt | Reaches 1 of 23 settings pages | |
