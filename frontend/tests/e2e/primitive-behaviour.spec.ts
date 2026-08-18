@@ -1,57 +1,65 @@
-// Guards the two primitives that were rebuilt on Radix in August 2026.
+// Guards the primitives that were rebuilt on Radix in August 2026.
 //
-// Both were hand-rolled and both had real defects: RecordTabs announced role="tablist"
+// All were hand-rolled and all had real defects: the tab strips announced role="tablist"
 // with no arrow-key navigation and no roving tabindex, and ColumnPicker was an
 // absolutely-positioned panel with no Escape handler and no outside-click dismissal.
 // These assert the behaviour, not the implementation, so they stay valid if the
 // primitives change again.
 //
-// See docs/design/design.md 7.2.
+// The tabs test runs over EVERY tab strip in the app, not just the record page. That is
+// the lesson of rebuild 5.3 batch 5: a single-route test proved the archetype's strip was
+// correct while two more strips shipped the role with none of the contract behind it, for
+// as long as nobody opened those two pages. A new strip is added to the table below.
+//
+// See docs/design/design.md 7.2 and 7.7.
 import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
-test("record tabs support the ARIA tabs keyboard pattern", async ({ page }) => {
-  test.setTimeout(5 * 60 * 1000);
-  await loginAsAdmin(page);
-  await page.goto("/dashboard/sales/contacts/23", { waitUntil: "domcontentloaded" });
-  await page.locator('[role="tab"]').first().waitFor({ state: "visible", timeout: 30000 });
+const TAB_STRIPS = [
+  { name: "record archetype", url: "/dashboard/sales/contacts/23" },
+  { name: "saved view editor", url: "/dashboard/views/sales_leads" },
+  { name: "module builder", url: "/dashboard/settings/module-builder" },
+  { name: "module access rules", url: "/dashboard/settings/modules/1" },
+];
 
-  const tabs = page.locator('[role="tab"]');
-  const count = await tabs.count();
-  console.log(`tabs found: ${count}`);
+for (const strip of TAB_STRIPS) {
+  test(`${strip.name} tabs support the ARIA tabs keyboard pattern`, async ({ page }) => {
+    test.setTimeout(5 * 60 * 1000);
+    await loginAsAdmin(page);
+    await page.goto(strip.url, { waitUntil: "domcontentloaded" });
+    await page.locator('[role="tab"]').first().waitFor({ state: "visible", timeout: 30000 });
 
-  const first = tabs.first();
-  await first.focus();
-  await page.waitForTimeout(200);
+    const tabs = page.locator('[role="tab"]');
+    console.log(`[${strip.name}] tabs found: ${await tabs.count()}`);
 
-  // roving tabindex: read after focus, since the roving group initialises on focus
-  const tabindexes = await tabs.evaluateAll((els) => els.map((e) => e.getAttribute("tabindex")));
-  console.log("tabindex per tab:", JSON.stringify(tabindexes));
-  const beforeSelected = await tabs.evaluateAll((els) => els.map((e) => e.getAttribute("aria-selected")));
-  await page.keyboard.press("ArrowRight");
-  await page.waitForTimeout(600);
-  const afterSelected = await tabs.evaluateAll((els) => els.map((e) => e.getAttribute("aria-selected")));
-  const focusedAfter = await page.evaluate(() => {
-    const el = document.activeElement;
-    return el ? `${el.tagName}[role=${el.getAttribute("role")}] "${(el.textContent ?? "").trim().slice(0, 30)}"` : "none";
+    await tabs.first().focus();
+    await page.waitForTimeout(200);
+
+    // roving tabindex: read after focus, since the roving group initialises on focus
+    const tabindexes = await tabs.evaluateAll((els) => els.map((e) => e.getAttribute("tabindex")));
+    console.log(`[${strip.name}] tabindex per tab:`, JSON.stringify(tabindexes));
+
+    await page.keyboard.press("ArrowRight");
+    // A web-first assertion rather than a fixed wait: the record archetype pushes its tab
+    // through `router.replace`, so its selection lands a frame or several later than the
+    // three card strips, which are local state. A sleep long enough for one is a flake for
+    // the other.
+    await expect(tabs.nth(1), "ArrowRight moves the selection to the next tab")
+      .toHaveAttribute("aria-selected", "true");
+    await expect(tabs.first(), "and off the first").toHaveAttribute("aria-selected", "false");
+
+    // aria-controls must point at a real panel
+    const controls = await tabs.first().getAttribute("aria-controls");
+    const panelExists = await page.evaluate(
+      (id) => (id ? (document.getElementById(id) ? 1 : 0) : 0),
+      controls,
+    );
+    console.log(`[${strip.name}] aria-controls -> "${controls}", panel present: ${panelExists > 0}`);
+
+    expect(tabindexes.filter((value) => value === "0").length, "exactly one tab in the tab order").toBe(1);
+    expect(panelExists, "aria-controls must resolve to a panel").toBeGreaterThan(0);
   });
-
-  console.log("aria-selected before ArrowRight:", JSON.stringify(beforeSelected));
-  console.log("aria-selected after  ArrowRight:", JSON.stringify(afterSelected));
-  console.log("focused element after ArrowRight:", focusedAfter);
-
-  // aria-controls must point at a real panel
-  const controls = await tabs.first().getAttribute("aria-controls");
-  const panelExists = await page.evaluate(
-    (id) => (id ? (document.getElementById(id) ? 1 : 0) : 0),
-    controls,
-  );
-  console.log(`aria-controls -> "${controls}", panel present: ${panelExists > 0}`);
-
-  expect(afterSelected, "ArrowRight must move the selected tab").not.toEqual(beforeSelected);
-  expect(tabindexes.filter((t) => t === "0").length, "exactly one tab in the tab order").toBe(1);
-  expect(panelExists, "aria-controls must resolve to a panel").toBeGreaterThan(0);
-});
+}
 
 test("column picker closes on Escape and on outside click", async ({ page }) => {
   test.setTimeout(5 * 60 * 1000);

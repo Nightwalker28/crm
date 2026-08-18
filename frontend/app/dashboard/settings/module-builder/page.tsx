@@ -21,6 +21,7 @@ import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionTabs } from "@/components/ui/SectionTabs";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
@@ -75,8 +76,7 @@ const HIDDEN_SIDEBAR_TAB: SidebarTab = {
   is_system: true,
 };
 
-const EDITOR_TABS = ["general", "fields", "layout"] as const;
-type EditorTab = typeof EDITOR_TABS[number];
+type EditorTab = "general" | "fields" | "layout";
 
 type EditableField = {
   clientId: string;
@@ -456,7 +456,91 @@ function ModuleWorkspace({
     }
   }
 
-  const tabLabel = (value: EditorTab) => value.charAt(0).toUpperCase() + value.slice(1);
+  const generalPanel = (
+    <FieldGroup>
+      <Field>
+        <FieldLabel htmlFor="builder-module-name">Module name <RequiredMark /></FieldLabel>
+        <Input id="builder-module-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} disabled={disabled} />
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="builder-module-display">Display name</FieldLabel>
+        <Input id="builder-module-display" value={draft.display_name} onChange={(event) => setDraft((current) => ({ ...current, display_name: event.target.value }))} disabled={disabled} />
+        <FieldDescription>Used in the sidebar while the stable module key and route remain unchanged.</FieldDescription>
+      </Field>
+      <Field>
+        <FieldLabel htmlFor="builder-module-description">Description</FieldLabel>
+        <Textarea id="builder-module-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} disabled={disabled} />
+      </Field>
+      <SettingsSwitchRow id="builder-module-active" label="Module enabled" description="Make this module available to users who have access to it." checked={draft.is_active} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} disabled={disabled} />
+    </FieldGroup>
+  );
+
+  const fieldsPanel = (
+    <div>
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-copy-primary">Fields</h3>
+          <p className="text-sm text-copy-secondary">Drag rows or use the arrow controls to set record and list order.</p>
+        </div>
+        <Button type="button" size="sm" onClick={addField} disabled={disabled}><Plus />Add field</Button>
+      </div>
+      <div className="grid gap-2">
+        {fields.length ? fields.map((field, index) => (
+          <div
+            key={field.clientId}
+            data-testid={`module-field-${field.clientId}`}
+            draggable={!disabled}
+            onDragStart={(event) => event.dataTransfer.setData("text/plain", field.clientId)}
+            onDragOver={(event) => event.preventDefault()}
+            onDrop={(event) => dropField(event.dataTransfer.getData("text/plain"), field.clientId)}
+            className={cn(
+              "flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2",
+              selectedFieldId === field.clientId && "border-primary bg-action-primary-muted",
+            )}
+          >
+            <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedFieldId(field.clientId);
+                setInspectorOpen(true);
+              }}
+              className="min-w-0 flex-1 text-left"
+              aria-label={`Edit ${field.label || "untitled field"}`}
+            >
+              <span className="flex items-center gap-2">
+                <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
+                {field.is_protected ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Protected" /> : null}
+                {!field.serverId ? <Chip>Draft</Chip> : null}
+              </span>
+              <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
+            </button>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.clientId, -1)} disabled={disabled || index === 0}><ChevronUp /></Button>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.clientId, 1)} disabled={disabled || index === fields.length - 1}><ChevronDown /></Button>
+            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
+          </div>
+        )) : (
+          <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
+        )}
+      </div>
+    </div>
+  );
+
+  const layoutPanel = (
+    <FieldGroup>
+      <Field>
+        <FieldLabel>Sidebar group</FieldLabel>
+        <Select value={draft.sidebar_tab_key} onValueChange={(value) => setDraft((current) => ({ ...current, sidebar_tab_key: value }))} disabled={disabled}>
+          <SelectTrigger aria-label="Sidebar group"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {placementOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <FieldDescription>Choose where the module appears. “None” keeps the runtime available without a sidebar link.</FieldDescription>
+      </Field>
+      <SidebarGroupManager tabs={sidebarTabs} disabled={disabled} onCreate={onCreateTab} onRename={onRenameTab} />
+    </FieldGroup>
+  );
 
   return (
     <div className="grid min-w-0 gap-4">
@@ -476,114 +560,25 @@ function ModuleWorkspace({
           ) : null}
         </CardHeader>
 
-        <div className="overflow-x-auto border-y border-line-subtle px-3" role="tablist" aria-label="Module editor">
-          <div className="flex min-w-max gap-1 py-2">
-            {EDITOR_TABS.map((value) => (
-              <button
-                key={value}
-                type="button"
-                role="tab"
-                aria-selected={tab === value}
-                onClick={() => {
-                  setTab(value);
-                  if (value !== "fields") setInspectorOpen(false);
-                }}
-                className={cn(
-                  "rounded-[var(--radius-control-sm)] px-3 py-2 text-sm font-medium text-copy-secondary hover:bg-surface-muted hover:text-copy-primary",
-                  tab === value && "bg-action-primary-muted text-primary",
-                )}
-              >
-                {tabLabel(value)}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <CardBody>
-          {deleted ? (
+        {deleted ? (
+          <CardBody>
             <EmptyState icon={Trash2} title="Module is deleted" description="Restore it before editing fields or runtime settings." />
-          ) : tab === "general" ? (
-            <FieldGroup>
-              <Field>
-                <FieldLabel htmlFor="builder-module-name">Module name <RequiredMark /></FieldLabel>
-                <Input id="builder-module-name" value={draft.name} onChange={(event) => setDraft((current) => ({ ...current, name: event.target.value }))} disabled={disabled} />
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="builder-module-display">Display name</FieldLabel>
-                <Input id="builder-module-display" value={draft.display_name} onChange={(event) => setDraft((current) => ({ ...current, display_name: event.target.value }))} disabled={disabled} />
-                <FieldDescription>Used in the sidebar while the stable module key and route remain unchanged.</FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="builder-module-description">Description</FieldLabel>
-                <Textarea id="builder-module-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} disabled={disabled} />
-              </Field>
-              <SettingsSwitchRow id="builder-module-active" label="Module enabled" description="Make this module available to users who have access to it." checked={draft.is_active} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} disabled={disabled} />
-            </FieldGroup>
-          ) : tab === "fields" ? (
-            <div>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div>
-                  <h3 className="font-semibold text-copy-primary">Fields</h3>
-                  <p className="text-sm text-copy-secondary">Drag rows or use the arrow controls to set record and list order.</p>
-                </div>
-                <Button type="button" size="sm" onClick={addField} disabled={disabled}><Plus />Add field</Button>
-              </div>
-              <div className="grid gap-2">
-                {fields.length ? fields.map((field, index) => (
-                  <div
-                    key={field.clientId}
-                    data-testid={`module-field-${field.clientId}`}
-                    draggable={!disabled}
-                    onDragStart={(event) => event.dataTransfer.setData("text/plain", field.clientId)}
-                    onDragOver={(event) => event.preventDefault()}
-                    onDrop={(event) => dropField(event.dataTransfer.getData("text/plain"), field.clientId)}
-                    className={cn(
-                      "flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2",
-                      selectedFieldId === field.clientId && "border-primary bg-action-primary-muted",
-                    )}
-                  >
-                    <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedFieldId(field.clientId);
-                        setInspectorOpen(true);
-                      }}
-                      className="min-w-0 flex-1 text-left"
-                      aria-label={`Edit ${field.label || "untitled field"}`}
-                    >
-                      <span className="flex items-center gap-2">
-                        <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
-                        {field.is_protected ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Protected" /> : null}
-                        {!field.serverId ? <Chip>Draft</Chip> : null}
-                      </span>
-                      <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
-                    </button>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.clientId, -1)} disabled={disabled || index === 0}><ChevronUp /></Button>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.clientId, 1)} disabled={disabled || index === fields.length - 1}><ChevronDown /></Button>
-                    <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
-                  </div>
-                )) : (
-                  <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
-                )}
-              </div>
-            </div>
-          ) : tab === "layout" ? (
-            <FieldGroup>
-              <Field>
-                <FieldLabel>Sidebar group</FieldLabel>
-                <Select value={draft.sidebar_tab_key} onValueChange={(value) => setDraft((current) => ({ ...current, sidebar_tab_key: value }))} disabled={disabled}>
-                  <SelectTrigger aria-label="Sidebar group"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {placementOptions.map((option) => <SelectItem key={option.key} value={option.key}>{option.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>Choose where the module appears. “None” keeps the runtime available without a sidebar link.</FieldDescription>
-              </Field>
-              <SidebarGroupManager tabs={sidebarTabs} disabled={disabled} onCreate={onCreateTab} onRename={onRenameTab} />
-            </FieldGroup>
-          ) : null}
-        </CardBody>
+          </CardBody>
+        ) : (
+          <SectionTabs
+            aria-label="Module editor"
+            value={tab}
+            onValueChange={(next) => {
+              setTab(next as EditorTab);
+              if (next !== "fields") setInspectorOpen(false);
+            }}
+            tabs={[
+              { id: "general", label: "General", content: generalPanel },
+              { id: "fields", label: "Fields", content: fieldsPanel },
+              { id: "layout", label: "Layout", content: layoutPanel },
+            ]}
+          />
+        )}
 
         <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 bg-surface/95 backdrop-blur">
           {deleted ? (

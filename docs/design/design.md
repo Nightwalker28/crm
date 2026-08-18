@@ -34,7 +34,7 @@ These are ordered. When two conflict, the earlier one wins.
 ### 1.1 Improve the foundation, do not replace it
 
 Lynk already has a coherent shell: sidebar, `PageHeader`, `ModuleTableShell`,
-`ModuleListToolbar`, `RecordTabs`, `QuickCreateSurface`. Design work means making
+`ModuleListToolbar`, `SectionTabs`, `QuickCreateSurface`. Design work means making
 these sharper — correcting a contrast failure, unifying a fragmented scale, removing
 a decorative flourish that carries no information. It does not mean re-imagining the
 shell.
@@ -1140,7 +1140,7 @@ exists. The list-and-record language in particular is not optional:
 | Paging | `Pagination` |
 | Page root, title, actions and route states | `PageShell` (which renders `PageHeader`) |
 | Fast create | `QuickCreateSurface` |
-| A record detail page | The §4.7 archetype — spine + `RecordTabs`. Not a hand-rolled root |
+| A record detail page | The §4.7 archetype — spine + its own tab strip. Not a hand-rolled root |
 | A record's state field | `InlineFieldEdit`, in the spine only (R6) |
 | An action row | `ActionBar` — it owns its children's control height (R4) |
 | A section heading | `SectionHeading` — 137 hand-written `<h2>`s |
@@ -1151,7 +1151,8 @@ exists. The list-and-record language in particular is not optional:
 | A panel's four states | `PanelStates` — `PanelHeader` / `PanelLoading` / `PanelEmpty` / `PanelError` |
 | Status label | `StatusValue`. **`Pill` is deleted** — see `rebuild.md` R5: colour marks exception, not state |
 | A tag, a count, a "System" marker | `Chip`. **Not** `StatusValue` — see below |
-| Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle |
+| Panels inside a card | `SectionTabs`. Never a hand-written `role="tablist"` — see §7.7 |
+| Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle. **Not** a tab strip (§7.7) |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | Autosave feedback | `SaveStateIndicator` (R1) |
@@ -1242,6 +1243,50 @@ write them.
 The name is the component's own, in kebab-case — `card`, `card-header`, `empty-state`,
 `module-table-shell`. Sub-parts get their own slot rather than sharing the parent's. A
 call site never writes `data-slot`; if a page needs one, the page needed a primitive.
+
+### 7.7 A tab strip is never hand-rolled, and "tabs" is not a look
+
+Two controls in this app change what the operator is looking at, and they are not
+interchangeable:
+
+| The strip changes | Pattern | Primitive |
+|---|---|---|
+| Which **panel of content** is on screen | ARIA tabs — `tablist` / `tab` / `tabpanel`, `aria-controls`, a roving tabindex, ←/→/Home/End | `SectionTabs` inside a card; the §4.7 archetype's own strip on a record page |
+| A **value** one region re-renders from — a density, a display mode, Active/Inactive | Toggle group, no panel relationship | `SegmentedControl` / `SegmentedBoolean` |
+
+Pick by what the strip *does*, not by how much room it needs. If choosing an option
+replaces the region below it, it is tabs; if it re-renders the same region with
+different data, it is a segmented control.
+
+**`role="tablist"` is never written at a call site.** It is not a styling hook — it is a
+promise of a keyboard contract, and three of the four strips in this app announced the
+role while supplying none of it. A `tablist` whose arrow keys do nothing, whose segments
+are each their own tab stop, and whose `tab` points at no `tabpanel` reads *worse* to a
+screen reader than the plain buttons it is made of, because the operator is told to expect
+arrow keys that are not there. Radix supplies the whole contract; the primitives above are
+the only two places it is configured.
+
+**Tabs are underlined. The pill shape belongs to the segmented control.** The two
+hand-rolled strips picked different skins for the same job — one underline, one filled
+pill — and the pill is the shape §7.1 already gave to `SegmentedControl` (in its own
+`bg-surface-raised` tint, not the `bg-action-primary-muted` one the builder invented).
+One dialect per pattern is what makes the pattern legible: an operator who learns that a
+pill means "this value is selected" should not meet the same pill one screen later
+meaning "there is other content behind this" (§1.6).
+
+**The strip's divider tier follows what it divides.** A band inside a panel takes
+`border-line-subtle`, the row-divider tier, because that is what it is — a divider between
+a card's header and its body. A strip that bounds a *page* region, like the record
+archetype's, takes `border-line-default`, the panel-edge tier. The active trigger's 2px
+underline sits directly above that hairline, and it stays there: lifting it onto the rule
+with `-mb-px` looks tidier and silently makes the band a vertical scroller, because
+`overflow-x-auto` computes `overflow-y` to `auto` as well (the trap `check-design.sh`
+names, which `RecordSpine` paid for once in rebuild 5.3).
+
+**A panel takes the card's content padding unless it holds a full-bleed table.**
+`SectionTabs` defaults its panel to the `CardBody` inset so a tabbed card and an untabbed
+one line up; `panelPadding="none"` is for the case where the panel *is* a
+`ModuleTableShell`, which owns its own edges.
 
 ---
 
@@ -1399,9 +1444,9 @@ they are ordered by that rather than by size.
 
 | Component | Built as | Consequence |
 |---|---|---|
-| ~~`RecordTabs`~~ | radix `Tabs` | **Resolved** in `e6a53f8`. Keyboard navigation, roving `tabIndex` and the ARIA wiring come from radix. Do not re-fix this. |
+| ~~`RecordTabs`~~ | radix `Tabs` | **Resolved** in `e6a53f8`. Keyboard navigation, roving `tabIndex` and the ARIA wiring come from radix. Renamed `SectionTabs` in rebuild 5.3 batch 5, when the record archetype stopped using it. |
 | ~~`ColumnPicker`~~ | shadcn `Popover` | **Resolved** in `e6a53f8`. Escape and outside-click are handled by the primitive. Do not re-fix this. |
-| Hand-rolled tablists | raw `<button role="tab">` + `useState` | **The defect `RecordTabs` had, reappearing at two new call sites**: `app/dashboard/views/[moduleKey]/page.tsx:141` and `app/dashboard/settings/module-builder/page.tsx:480`. Both announce `role="tablist"` with no `onKeyDown`, no roving `tabIndex` and no `aria-controls`. `SavedViewSelector.tsx:26` is the correct hand-rolled reference if a radix `Tabs` genuinely does not fit — it implements arrow/Home/End, roving `tabIndex` and a focus ring. |
+| ~~Hand-rolled tablists~~ | raw `<button role="tab">` + `useState` | **Resolved** in rebuild 5.3 batch 5. Both sites — `views/[moduleKey]` and `settings/module-builder` — are on `SectionTabs`, and so is the third strip the row did not know about (`settings/modules/[moduleId]`, which was already on the primitive but drew a different tab). §7.7 is the rule that replaces this row, and `primitive-behaviour.spec.ts` now asserts the ARIA contract on *every* strip rather than one route. |
 | `Table` | raw `<table>` | Consistency only; it works. shadcn has a Table to build on. It is a **cell** primitive — everything above the cell belongs to `RecordTable` (§4.4). |
 | Card-shaped boxes | hand-rolled `rounded-card + border + bg` | **206** such boxes against **65** files using `<Card>`, up from 93/63 when this was first recorded. The drift is accelerating: a change to `Card` now reaches well under half of the things that look like one. Phase 2 moved `Card` onto `border-line-default`; the hand-rolled boxes did not follow, so the tier split is now *between* `Card` and its imitators rather than inside `Card`. |
 
@@ -1410,10 +1455,11 @@ primitives and are fine as they are. The remaining `components/ui/` files are
 Lynk-specific compositions (`ModuleTableShell`, `SavedViewSelector`, `PageHeader` and
 so on) that shadcn has no equivalent for — those are correct, not drift.
 
-The two hand-rolled tablists are accessibility defects rather than style, and come
+The two hand-rolled tablists were accessibility defects rather than style, and came
 first. That they reappeared *after* `RecordTabs` was fixed is the lesson in this
-table: fixing an instance does not fix the pattern, which is why the rule now lives in
-§4.4 and the check lives in the rendered guard.
+table: fixing an instance does not fix the pattern. Closing them in rebuild 5.3 batch 5
+took all three parts — the rule (§7.7), one primitive behind it, and a guard that visits
+every strip instead of the one route somebody remembered.
 
 ### 11.1 List pages are full-height — do not put a max-height back
 

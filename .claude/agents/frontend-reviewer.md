@@ -28,7 +28,7 @@ Review for design conformance (`docs/design/design.md`):
 - a change that contradicts a design rule without updating `docs/design/design.md` in the same slice (§12)
 
 Review for:
-- reuse of shared primitives and hooks (`ModuleTableShell`, `ModuleListToolbar`, `Table`, `Pagination`, `SearchBar`, `SavedViewSelector`, `InlineSavedViewFilters`, `ColumnPicker`, `QuickCreateSurface`, `RecordTabs`, `ImportControls`/`ExportControls`, `usePagedList`, `useSavedViews`, etc.) instead of page-local copies
+- reuse of shared primitives and hooks (`ModuleTableShell`, `ModuleListToolbar`, `Table`, `Pagination`, `SearchBar`, `SavedViewSelector`, `InlineSavedViewFilters`, `ColumnPicker`, `QuickCreateSurface`, `SectionTabs`, `ImportControls`/`ExportControls`, `usePagedList`, `useSavedViews`, etc.) instead of page-local copies
 - consistency with shared list/table, saved-view, filter, search, and detail-page patterns
 - full sticky page/module headers on operational pages, which should be avoided unless intentionally compact
 - record tables relying on action columns instead of row/name-cell navigation where detail pages exist

@@ -233,7 +233,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | |
+| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5** — on `SectionTabs`; the three panels became named consts |
 | `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | done |
 
@@ -264,8 +264,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
-| `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | |
-| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | |
+| `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | **strip only, batch 5** — the third card-scoped tab strip; moved to `SectionTabs` so all three share one dialect. The raw `Table` stays 5.6's |
+| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5** — on `SectionTabs`, controlled so the page can still gate its field inspector. The rest of the page stays 5.6's |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -510,7 +510,7 @@ taken. Counted here so the denominator stays honest.
 | `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | |
 | `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | |
 | `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | |
-| `RecordTabs.tsx` | 94 | 5.3 | adopt | Radix, correct. **Do not re-fix** | **done** — unchanged. The archetype builds its own strip because its tab must live in `?tab=` unconditionally (R2); `RecordTabs` keeps its opt-in `urlParam` and its other call sites |
+| `SectionTabs.tsx` (was `RecordTabs.tsx`) | 94 | 5.3 | rebuild | Radix, correct. Was marked **do not re-fix** | **done, batch 5** — renamed, and the note above was wrong on two counts. Its `Tabs.Content` carried `focus-visible:outline-none` with nothing behind it (§2.3), and its trigger class list was a byte-identical duplicate of the archetype's. It had one call site left, none of them a record, and the name is why two more pages hand-rolled a strip. It is the card-scoped strip now, on all three such pages |
 | `QuickCreateSurface.tsx` | 315 | 5.4 | adopt | **A3** — both create paths on all 15 modules | |
 | `EmptyState.tsx` | 29 | 5.9 | adopt | Copy: an invitation to act | |
 | `PermissionDeniedState.tsx` | 36 | 5.6 | adopt | Reaches 1 of 23 settings pages | |

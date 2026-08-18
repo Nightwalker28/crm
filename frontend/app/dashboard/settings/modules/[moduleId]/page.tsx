@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageShell } from "@/components/ui/PageShell";
-import { RecordTabs } from "@/components/ui/RecordTabs";
+import { SectionTabs } from "@/components/ui/SectionTabs";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { ModuleAccessConflictError, type ModuleAccess, useModuleAccessAdmin } from "@/hooks/admin/useModulesAdmin";
@@ -262,12 +262,13 @@ function ModuleAccessEditor({
       ) : null}
 
       <Card className="min-w-0 overflow-hidden">
-        <div className="border-b border-line-subtle px-5 py-4">
+        <div className="px-6 py-4">
           <h2 className="font-semibold text-copy-primary">Access rules</h2>
           <p className="mt-1 text-sm text-copy-muted">Departments are the parent gate. Teams inside an allowed department remain individually selectable.</p>
         </div>
-        <RecordTabs
-          className="gap-0"
+        <SectionTabs
+          aria-label="Module access"
+          panelPadding="none"
           tabs={[
             { id: "departments", label: `Departments (${access.departments.length})`, content: departmentsPanel },
             { id: "teams", label: `Teams (${access.teams.length})`, content: teamsPanel },

@@ -13,6 +13,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { PageShell } from "@/components/ui/PageShell";
+import { sectionTabTriggerClassName } from "@/components/ui/SectionTabs";
 import { cn } from "@/lib/utils";
 
 /**
@@ -229,9 +230,11 @@ function RecordWorkspaceHeader({
  * for its toolbar (§11.1): nothing is `position: sticky`, nothing overlaps, and a long
  * Details tab cannot scroll its own tabs out of reach.
  *
- * Built on Radix rather than `RecordTabs` because the URL contract is different — the
+ * Built on Radix rather than `SectionTabs` because the URL contract is different — the
  * archetype's strip *must* survive the `/[id]/edit` round trip (R2), which means the tab
- * lives in `?tab=` unconditionally rather than only when a caller opts in.
+ * lives in `?tab=` unconditionally rather than only when a caller opts in. The *trigger* is
+ * shared with it, though: the two class lists were byte-identical, and a tab that looks
+ * different on a record page than in a card is the drift §1.6 rules out.
  */
 function RecordContent({ tabs }: { tabs: RecordExtraTab[] }) {
   const router = useRouter();
@@ -264,16 +267,7 @@ function RecordContent({ tabs }: { tabs: RecordExtraTab[] }) {
       <div className="shrink-0 overflow-x-auto border-b border-line-default">
         <Tabs.List className="flex min-w-max gap-2">
           {tabs.map((tab) => (
-            <Tabs.Trigger
-              key={tab.id}
-              value={tab.id}
-              className={cn(
-                "border-b-2 border-transparent px-3 py-2 text-sm font-medium text-copy-muted transition-colors",
-                "hover:text-copy-primary",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-                "data-[state=active]:border-primary data-[state=active]:text-copy-primary",
-              )}
-            >
+            <Tabs.Trigger key={tab.id} value={tab.id} className={sectionTabTriggerClassName}>
               {tab.label}
             </Tabs.Trigger>
           ))}

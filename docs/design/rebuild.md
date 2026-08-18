@@ -1168,9 +1168,10 @@ inherits this blind spot. That is what §7.6 and `data-slot="card"` are now for.
   `finance/pos/[invoiceId]:268`. The audit overstated this by four pages.
 - **Replace the 9–12 private field renderers** with the 5.1/5.2 family +
   `ReadOnlyRecordLayout` (used by only 3 pages today).
-- **Fix both hand-rolled `role="tablist"`** — `views/[moduleKey]:162`,
-  `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the correct reference if
-  radix genuinely does not fit.
+- ~~**Fix both hand-rolled `role="tablist"`**~~ (**closed in batch 5** — it was three
+  strips wearing three skins, not two broken ones: `settings/modules/[moduleId]` was
+  already on `RecordTabs`, which is `SectionTabs` now and carries all three. Radix fit, so
+  `SavedViewSelector.tsx:26` was not needed as a reference and is untouched).
 - **Fill the holes the archetype exposes.** Contracts have no activity, notes, documents
   or tasks. Contacts and accounts have no `RecordActivityFeed` though leads do. Support
   cases carry two comment systems and two histories on one screen.
@@ -1239,9 +1240,9 @@ it, hanging history off `Updated 2h ago` so the answer sits where the question i
 reads as a contradiction the moment the Tasks tab creates a task. The boundary is the
 record's own fields versus related objects, and §4.7 now carries the one-line test.
 
-### Status: in progress — the archetype, and five modules on it
+### Status: in progress — the archetype, fourteen modules on it, and the tab strips
 
-Ten commits. **Pick up at "What is left", below.**
+Eleven commits. **Pick up at "What is left", below.** Rows 5 and 6 remain.
 
 | Commit | What landed |
 |---|---|
@@ -1253,6 +1254,7 @@ Ten commits. **Pick up at "What is left", below.**
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
 | `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
 | `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
+| _pending_ | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1321,6 +1323,8 @@ appends after `Files`, and a tab whose slot is omitted is not rendered, so permi
 is "pass nothing". It builds its own Radix strip rather than using `RecordTabs`, because the
 archetype's tab must live in `?tab=` unconditionally for R2's round trip; `RecordTabs` keeps
 its opt-in `urlParam` and its other call sites, and is still **not** to be re-fixed.
+(**Superseded in batch 5**: it had one call site left and none of them a record, so it is
+`SectionTabs` now and owns the card-scoped strip. The `urlParam` contract is unchanged.)
 
 **Two rules came out of looking at the first rebuilt page, and both are now in §4.7.** A
 field the spine owns is not drawn again in `Details` (`ReadOnlyRecordLayout` /
@@ -1614,6 +1618,79 @@ and now on the insertion order. It is one seed line per module to change and no 
 special case would be right, so it is recorded here for 5.9's copy sweep rather than churned
 now.
 
+**What batch 5 decided — the two hand-rolled `role="tablist"`, and the primitive that was
+already there.** The row named two sites. Looking at them found a third, and the third is
+what turned two local fixes into one decision: `settings/modules/[moduleId]` is the same
+composition — a `Card`, a header, a full-bleed strip, panels, a sticky footer — and it was
+*already* on `RecordTabs`. So the app had one job wearing three skins, and fixing only the
+two broken ones would have left the third.
+
+- **`RecordTabs` is `SectionTabs`, and the rename is the fix rather than a tidy-up.** The
+  §4.7 archetype builds its own strip (R2 needs its tab in `?tab=` unconditionally), so no
+  record page has used this file since batch 1 — it had **one** call site left, and that one
+  is a settings page. A primitive named for a surface it no longer serves is a primitive the
+  next author does not find, which is exactly what happened twice. What it actually owns is
+  the card-scoped case, and it is named for that now. **This contradicts the census note
+  that said "do not re-fix"**, which was written when the file was believed to have several
+  record call sites; the row is corrected rather than left to mislead.
+- **§7.7 is the rule the sub-phase was missing.** Two controls in this app change what the
+  operator is looking at, and nothing said which was which: tabs (a panel switcher — the
+  ARIA pattern, `SectionTabs` or the archetype's strip) and `SegmentedControl` (a value
+  switcher — a toggle group, no panel relationship). The module builder's strip had picked
+  the second one's *skin* for the first one's *job*, which is §1.6 inverted. Tabs are
+  underlined; the recessed pill belongs to the segmented control.
+- **`role="tablist"` is not a styling hook, and that is now written down.** All three
+  hand-rolled strips announced the role with no arrow keys, no roving tabindex and no
+  `tabpanel` behind `aria-controls` — a strip that promises a keyboard contract and supplies
+  none of it reads *worse* to a screen reader than the plain buttons it is made of.
+- **What went into the primitive rather than a call site.** `panelPadding` — a panel takes
+  the card's content inset unless it *is* a `ModuleTableShell`, which owns its own edges
+  (module access is the case). And a controlled `value`/`onValueChange`, because the module
+  builder gates a field inspector on which tab is open; without it the page would have kept
+  a second copy of the tab state beside the primitive's.
+
+**Two defects, both in the primitive, both shipped for four batches.** Neither is in the
+pages the row named:
+
+- **`Tabs.Content` had `focus-visible:outline-none` with nothing behind it** — §2.3, and
+  the *identical* defect batch 1 found and fixed in `RecordWorkspace`. The fix went to the
+  archetype's copy and not to the file the archetype was copied from, so it survived in the
+  primitive while the rendered guard visited only the archetype.
+- **The trigger's class list was a byte-identical duplicate** across `RecordWorkspace` and
+  `RecordTabs`. It is `sectionTabTriggerClassName`, exported and shared, so the record page
+  and a settings card cannot drift into two underlines.
+
+**One thing rejected in writing, because it looked like a refinement.** The active trigger's
+2px underline sits directly on the band's own hairline, and `-mb-px` would have lifted it
+onto the rule so the strip read as one line rather than two. That walks straight into the
+trap `check-design.sh` names and 5.3 already paid for once in `RecordSpine`:
+`overflow-x-auto` computes `overflow-y` to `auto` as well, so a 1px overhang becomes
+scrollable overflow with a scrollbar under it. The band keeps the honest two lines.
+
+**Two small things the rendered pass turned up, both fixed here.** The module-access card
+hand-rolls its header row at `px-5` instead of using `CardHeader`, so the strip's 24px
+label inset — the thing §7.7 says lines up with the header — was 4px off on exactly one of
+the three pages. It is `px-6` now; the rest of that page's drift stays 5.6's. And a spec
+that was red at HEAD, `view-manager-revamp.spec.ts:123`, passes with the change: the run
+is **8 failed / 7 passed** against a stashed baseline of **9 failed / 6 passed**.
+
+**The guard is the finding, not the fix.** `primitive-behaviour.spec.ts` has asserted the
+full ARIA tabs contract since 5.1 — arrow keys move the selection, exactly one trigger is in
+the tab order, `aria-controls` resolves to a real panel — and it passed every run for four
+batches **while two strips in the app satisfied none of it**, because it visited one route.
+It is parameterised over every strip now (`TAB_STRIPS`), and a new strip is a row in that
+table. Parameterising it exposed a flake in the assertion itself: the archetype pushes its
+tab through `router.replace` while the three card strips are local state, so the fixed
+600ms wait that had always been long enough for one route was not long enough for that one
+under load. It is a web-first `toHaveAttribute` now, which retries. This is the rendered-guard blind spot batch 4 found in a different shape: a guard
+that visits a route list only guards the routes somebody remembered.
+
+**The browser pass ran through Playwright, not the extension** — the Chrome extension was
+not connected this session. That is not a downgrade for what had to be measured here: the
+method the traps section prescribes is *drive the keyboard, do not script it*, and
+Playwright's `keyboard.press` is a real key event, so `:focus-visible` behaves as it does
+for an operator. Both themes and 768px were checked the same way.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1624,7 +1701,7 @@ each — the shape 5.2 used.
 | ~~1~~ | ~~**deal + contract**~~ | **Done** — see "What batch 2 decided", above |
 | ~~2~~ | ~~**quote, order, POS invoice**~~ | **Done** — see "What batch 3 decided", above. A12 closed; the second nested tab strip died with it |
 | ~~3~~ | ~~**insertion order, support case, custom record, catalog product/service**~~ | **Done** — see "What batch 4 decided", above. `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in `RecordSpine` |
-| 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
+| ~~4~~ | ~~**The two hand-rolled `role="tablist"`**~~ | **Done** — see "What batch 5 decided", above. It was three strips, not two: `RecordTabs` is `SectionTabs` and all three are on it. `SavedViewSelector.tsx:26` is untouched and stays 5.5's |
 | 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
 | 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links. Batch 4 adds two more: a support case has **no `/[id]/edit` route at all**, so its subject, description and relationships have never been editable after create — a product gap that predates the rebuild, not something a migration should answer by inventing a form; and `sla_due_at` is on the model, in the response, in the automation registry and in list filters, and **no code path writes it**, so every case shows an SLA that will never arrive |
 
@@ -1671,6 +1748,11 @@ each — the shape 5.2 used.
   the rail is broken.
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.
+- **The three tab-strip specs have 8 failures that predate this sub-phase**, all of them
+  already written up in `docs/e2e-suite-status.md`: `module-builder-revamp` `:132`/`:163`/`:182`
+  (an ambiguous `getByLabel('Label')`), `settings-modules-revamp` `:93`/`:209`/`:242`
+  (Headless UI's zero-box dialog root, and the route announcer matching `getByRole('alert')`),
+  and `view-manager-revamp` `:91`/`:141`. Measured by stashing, as the note above says to.
 
 ---
 

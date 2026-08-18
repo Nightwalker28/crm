@@ -86,7 +86,7 @@ Auth alone is never sufficient: service-layer queries must scope by `tenant_id` 
 - `lib/api.ts` — `apiFetch` is the only HTTP entry point: cookie auth, single-flight refresh on 401, GET deduplication, transient 5xx retry. Only GET/HEAD are retried; write operations are never replayed automatically.
 - `contracts/` — generated OpenAPI artifacts for the record-layout API family, committed and drift-checked (`./scripts/generate-contracts.sh --check`). They are types, not a client: `lib/contracts/recordLayouts.ts` is the only importer and still calls `apiFetch`. See `frontend/contracts/README.md`.
 - `lib/module-registry.ts` — the client-side registry of module key → route, group, tier, and quick action. `lib/routes.ts`, `lib/moduleViewConfigs.ts`, `lib/module-display.ts` are the sibling registries a new module must be added to.
-- `components/ui/` — shared list/record language: `ModuleTableShell`, `ModuleListToolbar`, `Table`, `Pagination`, `SearchBar`, `SavedViewSelector`, `InlineSavedViewFilters`, `ColumnPicker`, `QuickCreateSurface`, `RecordTabs`, `ImportControls`/`ExportControls`. Use these instead of per-module tables or dialogs.
+- `components/ui/` — shared list/record language: `ModuleTableShell`, `ModuleListToolbar`, `Table`, `Pagination`, `SearchBar`, `SavedViewSelector`, `InlineSavedViewFilters`, `ColumnPicker`, `QuickCreateSurface`, `SectionTabs`, `ImportControls`/`ExportControls`. Use these instead of per-module tables or dialogs.
 - `hooks/` — shared data hooks (`usePagedList`, `useSavedViews`, `useModuleFieldConfigs`, `useModuleCustomFields`, `useResolvedRecordLayout`, `useJobPoller`, `useRealtime*`).
 - `proxy.ts` — Next middleware guarding `/dashboard` on the `lynk_access_token` / `lynk_refresh_token` cookies.
 
