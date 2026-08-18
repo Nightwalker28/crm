@@ -1393,14 +1393,24 @@ declared below it — a temporal-dead-zone `ReferenceError` that took the whole 
 passed. Both rendered guards passed *because they only visit routes that render*. Only
 opening the page found it, which is the third time the note below has been right.
 
-**Two things left open deliberately.** The account-header note from batch 1 now covers the
-deal too: `CommunicationActions` puts Email, WhatsApp and Call in the header while the
-Timeline composer offers the same three as *log* modes. They are different actions — one
-performs, one records — and leads shipped the same pair, so this is consistent rather than
-new; whether a deal should offer channels at all is a product question. And a contract with
-no links shows six `Not set` rows in `Connected`, which is R9's "a thin rail is a signal the
-record type is under-modelled" arriving on schedule. Raise it; do not answer it with a
-second archetype.
+**Two things left open, and the owner confirmed both deferrals on 2026-08-18.** Neither is a
+defect; both are product questions a migration is not entitled to answer by trimming.
+They are batch 6's, and the row below carries them so they cannot be lost in prose:
+
+- **Header channels on records that are not a person.** The account-header note from batch 1
+  now covers the deal too: `CommunicationActions` puts Email, WhatsApp and Call in the header
+  while the Timeline composer offers the same three as *log* modes. They are different
+  actions — one performs, one records — and leads shipped the same pair, so this is
+  consistent rather than new. Whether a deal or an account should offer channels *at all*,
+  when the person lives on the contact record, is the open question. If the answer is no it
+  is a three-line deletion per page, and it would apply to leads too.
+- **Contracts are under-modelled.** A contract with no links shows six `Not set` rows in
+  `Connected` — six optional foreign keys and almost no state of its own. That is R9's "a
+  thin rail is a signal the record type is under-modelled" arriving exactly where it said it
+  would. **Rejected in the moment:** hiding unlinked relationships, which fixes the density
+  and costs the operator the ability to see what a contract *can* link to. Raise it; do not
+  answer it with a second archetype, and do not answer it with real contract state inside a
+  rebuild sub-phase.
 
 ### What is left, in order
 
@@ -1414,7 +1424,7 @@ each — the shape 5.2 used.
 | 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline, and `item.events` joins the History sheet through `RecordAuditHistory`'s `moduleEvents`, which batch 2 built for contract events. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
 | 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
 | 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
-| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set |
+| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links |
 
 ### Traps already paid for once
 
