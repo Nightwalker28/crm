@@ -1249,7 +1249,7 @@ Seven commits. **Pick up at "What is left", below.**
 | `aea493d` | `RecordSpine`, `PageShell variant="record"`, the archetype shell, `RecordTimeline` + composer, `RecordAuditHistory`, and leads onto all of it |
 | `49e70ce` | Three defects the browser pass found, and the two §4.7 rules they produced |
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
-| _pending_ | deal + contract onto the archetype, with the backend slice each needed |
+| `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
