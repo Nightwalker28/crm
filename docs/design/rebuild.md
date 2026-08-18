@@ -1254,7 +1254,7 @@ Eleven commits. **Pick up at "What is left", below.** Rows 5 and 6 remain.
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
 | `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
 | `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
-| _pending_ | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
+| `4967bf2` | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
