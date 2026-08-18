@@ -292,12 +292,12 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `recordWorkspace/RecordWorkspace.tsx` | 142 | 5.3 | rebuild | `RecordWorkspace` itself is nearly a no-op forwarding to `PageShell`. The real targets are its header/primary/region/rail exports → the spine | |
 | `recordActivity/RecordPageHeader.tsx` | 46 | 5.3 | adopt | | |
-| `recordActivity/CrmRecordActivitySection.tsx` | 76 | 5.3 | rebuild | **This is a `RecordTabs` rendered inside another one.** The nested-tabs cause | |
-| `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | rebuild | | |
-| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | | |
-| `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | | |
+| `recordActivity/CrmRecordActivitySection.tsx` | 76 | 5.3 | **delete** | **This is a `RecordTabs` rendered inside another one.** The nested-tabs cause. The archetype owns the only strip, so this has nothing left to be | |
+| `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | rebuild | The `Timeline` tab. Gains the composer at its top (§4.7) | |
+| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | |
+| `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | |
 | `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | |
-| `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | | |
+| `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | |
 | `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | |
 | `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | |
 | `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | **done** (A) — now `ui/PanelStates.tsx` |

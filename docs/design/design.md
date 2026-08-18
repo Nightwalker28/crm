@@ -727,7 +727,7 @@ relationships; the content region is the only scroller and carries one tab strip
 ├──────────────────────┬───────────────────────────────────────────────────┤
 │ SPINE   20rem, fixed │ CONTENT — the only scroller                       │
 │                      │                                                   │
-│ State                │  Details │ Activity │ Tasks │ Files               │
+│ State                │  Details │ Timeline │ Tasks │ Files               │
 │   Stage      ⌄       │  ────────                                         │
 │   Owner      ⌄       │                                                   │
 │   Priority   ⌄       │  Commercial                    ← section heading   │
@@ -738,7 +738,28 @@ relationships; the content region is the only scroller and carries one tab strip
 │   Quotes        ›    │  Contact details                                  │
 │                      │    Email            jane.doe@acme.com             │
 │ Created 2 Aug        │    Phone            +1 555 0100                   │
-│ Updated 2h ago       │                                                   │
+│ Updated 2h ago · ⏱   │                                                   │
+└──────────────────────┴───────────────────────────────────────────────────┘
+```
+
+…and the Timeline tab, where the composer sits above the feed:
+
+```
+├──────────────────────┬───────────────────────────────────────────────────┤
+│ State                │  Details │ Timeline │ Tasks │ Files               │
+│   Status  Contacted ⌄│            ────────                               │
+│   Owner   P. Raman  ⌄│  ┌─────────────────────────────────────────────┐  │
+│                      │  │ Note   Call   Email   WhatsApp              │  │
+│ Connected            │  │ [ Capture the outcome and next action…    ] │  │
+│   Company  Acme    › │  │ ☐ Create reminder task            [ Log ]   │  │
+│   Contact  —         │  └─────────────────────────────────────────────┘  │
+│                      │                                                   │
+│ Created 2 Aug        │   Note      P. Raman                     2h ago   │
+│ Updated 2h ago · ⏱   │     Left voicemail, retry Thursday                │
+│                      │   Call      P. Raman                     2h ago   │
+│           ⏱ = History│   Email ↗   Quote follow-up               1d ago  │
+│           opens the  │   Task      Send pricing deck             2d ago  │
+│           audit sheet│                                                   │
 └──────────────────────┴───────────────────────────────────────────────────┘
 ```
 
@@ -754,22 +775,51 @@ model. The spine answers that with **position** instead of with a convention. A 
 carried by a region is learnable in one glance, and it cannot drift, because a control that
 moves out of the rail is visibly in the wrong place.
 
+**What "editable" means here**, because the Tasks tab creates tasks and the Files tab
+uploads files, and neither is a violation: the spine owns **the record's own fields**; the
+content region hosts **related objects** — tasks, files, notes, logged interactions — which
+are records in their own right and keep their own create affordances.
+
+> Does the control write a column on *this* row? It belongs in the spine.
+> Does it create or edit a row that points at this one? It belongs in the content region.
+
+Denormalised stamps follow the event that produced them, not the rail. Logging a follow-up
+writes `last_contacted_at`, but the operator is recording that something happened rather
+than changing what the record is, so the composer stays in `Timeline` — and a field derived
+from an event is read-only everywhere in any case.
+
 Contract:
 
 - **Blocks, in this order:** an optional lifecycle track (only where the record has a real
   pipeline — lead, deal, quote, order), **State**, **Connected**, then created/updated
-  metadata. State fields are `InlineFieldEdit` and autosave (R1). Connected entries are
-  links, never free text.
+  metadata carrying the `History` disclosure. State fields are `InlineFieldEdit` and
+  autosave (R1). Connected entries are links, never free text.
 - **Every record type carries the spine.** Where a record has no state fields the State
   block is omitted; the Connected block is not optional. A rail that ends up carrying only
   "Created / Updated" is a signal that the record type is under-modelled — raise it, do not
   answer it with a second archetype.
-- **The tab set is fixed and owned by the archetype:** `Details · Activity · Tasks · Files`,
+- **The tab set is fixed and owned by the archetype:** `Details · Timeline · Tasks · Files`,
   in that order, on every record. Module-specific tabs append after `Files`. Because the
   archetype owns the only strip, tabs cannot nest — the defect at
   `opportunities/[opportunityId]` and `finance/pos/[invoiceId]` has nowhere to recur, and
   contracts, contacts and accounts inherit the four panels instead of each page remembering
   them.
+- **The composer is the first thing in `Timeline`**, above the feed, and it is the only
+  place a record's history is written from. Its modes are the interaction kinds the record
+  supports — note, call, email, WhatsApp — so "log what happened" and "read what happened"
+  are one surface rather than a panel and a tab that never see each other. A separate
+  `Notes` tab is not an option: `record_activity.py` already emits notes into the feed as
+  `type="note"`, so a Notes tab renders the same rows twice and asks the operator which
+  copy is authoritative.
+- **Audit history is not a tab.** It hangs off the spine's `Updated` line and opens in a
+  sheet. Two reasons, and the second is the load-bearing one. First, it is a reference
+  surface consulted occasionally, and a tab that is always present but rarely opened is
+  furniture competing with three tabs that are opened constantly. Second, `activity_logs`
+  and the `record_activity` projection are **deliberately separate stores** — that
+  module's docstring says so — with different permission surfaces, so a merged feed means
+  either overturning that decision or interleaving two cursors client-side, which breaks
+  "load more". Hanging it off `Updated 2h ago` puts the answer where the question is
+  asked.
 - **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
   so this adds no exception to R3. Same mechanism as archetype 1.
 - **The `Edit` affordance is in the header row**, reachable from every tab, and

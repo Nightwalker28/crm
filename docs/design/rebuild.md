@@ -313,8 +313,9 @@ The owner's call, 14 Aug 2026, against two alternatives (see 5.0). Full contract
 wireframe in `design.md` §4.7, archetype 2.
 
 A fixed `20rem` rail carries the record's identity, state and relationships. The content
-region is the only scroller and carries one tab strip — `Details · Activity · Tasks · Files`,
-in that order, on every record type.
+region is the only scroller and carries one tab strip — `Details · Timeline · Tasks · Files`,
+in that order, on every record type. (R9 wrote that second tab as `Activity`; the owner
+renamed it during 5.3, which is recorded there with the rest of the tab-set decisions.)
 
 > **The spine is the only editable region on the page.**
 > Every control that writes to the record is in it. Nothing in the content region edits.
@@ -1187,6 +1188,41 @@ returns to its starting value inside the window collapses to nothing. Scope it w
 `backend-change`, and keep it tenant-scoped like every other write. Client-side debounce
 on the autosave itself is necessary but not sufficient — two operators, or one operator
 across a debounce boundary, still generate the noise.
+
+### Decided before the first line — the tab set, and what the archetype absorbs
+
+Settled with the owner 2026-08-18. R9 fixed the tab strip at four but did not say where
+today's extras land, and 5.3 cannot start without that answer: `CrmRecordActivitySection`
+supplies a second strip (Activity · Notes · Documents · Tasks · Follow-up), leads carry an
+`Audit history` tab, and support cases carry two comment systems and three histories on
+one screen. All of it is now in `design.md` §4.7.
+
+**The tab is `Timeline`, not `Activity`.** The owner's call on the name. It also removes a
+collision the rename exposed: `RecordActivityTimeline` is the *audit* component, so
+"timeline" already meant the opposite thing in the code. That component is renamed with
+the surface it moves to.
+
+**Four decisions, and what each rejected:**
+
+| | Decided | Rejected, and why |
+|---|---|---|
+| Notes | No tab. The composer moves to the top of `Timeline` | A `Notes` tab renders rows the feed already emits as `type="note"` — the same content twice, with nothing saying which copy is authoritative |
+| Follow-up | A composer mode in `Timeline` | A spine block. It reads like state, but it creates a `RecordFollowUp` row and only *stamps* `last_contacted_at`; it is an event, and it does not fit a rail built from `InlineFieldEdit` dropdowns |
+| Audit history | A sheet off the spine's `Updated` line | A fifth tab (cheapest, but breaks the fixed four on day one and parks a rarely-opened tab beside three constant ones); a filter inside the feed (best to use — Pipedrive's answer — but `activity_logs` and `record_activity` are deliberately separate stores with different permission surfaces, so it means a backend merge or two interleaved cursors) |
+| Support-case replies | A `support_case_reply` feed adapter, so the conversation *is* the Timeline | A `Replies` module tab after `Files` — free, but the two comment systems survive; and leaving the conversation as a Details panel, which is the defect the census names |
+
+**The precedent was checked, and the archetype is not unusual.** HubSpot, Pipedrive,
+Dynamics and Attio all put notes *in* the timeline and the composer at its top; Salesforce
+is the only one that separates collaboration (Chatter) from Activity. None of the six
+gives field/audit history a top-level tab beside the timeline — it is a related list
+(Salesforce, Dynamics), a link off the property (HubSpot), or a filter (Pipedrive). The
+spine itself is the HubSpot/Attio consensus. What is Lynk's, and what the calibration test
+turns on, is the rule that the rail is the *only* place fields change — and, downstream of
+it, hanging history off `Updated 2h ago` so the answer sits where the question is asked.
+
+**One clarification R9 needed and did not have.** "Nothing in the content region edits"
+reads as a contradiction the moment the Tasks tab creates a task. The boundary is the
+record's own fields versus related objects, and §4.7 now carries the one-line test.
 
 ---
 
