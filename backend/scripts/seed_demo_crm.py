@@ -796,8 +796,11 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
 
         subtotal = sum(quantity * price for _, _, quantity, price in line_items)
         discount = Decimal("0") if idx % 3 else Decimal("5000")
-        tax_rate = Decimal("0.15")
-        tax_amount = (subtotal - discount) * tax_rate
+        # `tax_rate` is a percentage, not a fraction: `pos_invoice_services._recalculate`
+        # divides by 100, and the invoice form's own preview does the same. Seeding `0.15`
+        # here produced records that read "0.15%" beside 15% of tax on every demo invoice.
+        tax_rate = Decimal("15")
+        tax_amount = (subtotal - discount) * tax_rate / Decimal("100")
         total = subtotal - discount + tax_amount
         paid = total if idx % 4 in (0, 1) else (total / Decimal("2") if idx % 4 == 2 else Decimal("0"))
 

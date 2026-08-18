@@ -868,6 +868,33 @@ Contract:
   second, louder control for a value the spine already edits — the defect the pre-5.3 deal
   page shipped as a six-button stage grid *and* a header pair *and* an `InlineFieldEdit`,
   three controls for one column.
+- **A workflow action that only exists in one state is rendered only in that state — not
+  drawn permanently and disabled.** `Convert to order` requires an accepted quote, and the
+  pre-5.3 page shipped it as a button that was disabled most of the time with its reason
+  written into a summary tile several inches away. That is **A12**: the operator sees a
+  control, cannot use it, and has to hunt for why. The header shows it when the quote is
+  accepted and unconverted, and shows nothing otherwise — the quote's route forward in
+  every other state is the status field the rail owns, which is visible in the same glance.
+  Rejected: keeping the disabled button and moving its explanation next to it (a control
+  that is inert nine visits out of ten is furniture, and the explanation is only ever read
+  once); and letting the button accept the quote *and* convert it in one click (cheaper
+  still, but it makes an irreversible two-record change out of one press, which is R1's
+  side-effect row).
+- **A field the record's own write path maintains is read-only in the rail, dropdown shape
+  notwithstanding.** R2 draws its boundary by shape because shape is learnable, and this is
+  the one exception the shape rule cannot see: a POS invoice's `payment_status` is an enum,
+  but it is written by recording a payment, from `amount_paid`. An `InlineFieldEdit` on it
+  would let the rail say `Paid` over a balance of $400. It renders as a plain
+  `StatusValue` beside the status it qualifies, and the catalog marks it `readonly` so a
+  tenant adding it to `Details` does not get an editable copy either. The test is not "is
+  it a dropdown" but **"is this column written by an operator, or derived by a service?"**
+- **A line-item document's items are the document body, and they render in `Details` under
+  the layout — read-only.** Quote, order and invoice all keep their editor on `/[id]/edit`
+  behind a manual save, because R1 will not autosave totals derived from lines, discount
+  and tax. Items are rows pointing at the document, so §4.7's own test would allow an
+  editor in the content region; what forbids it here is that the write is a whole-document
+  `PUT`, so an in-place editor is `/[id]/edit` rebuilt inside the record page — which is
+  the "the detail page is secretly a form" defect this archetype exists to remove.
 - **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
   so this adds no exception to R3. Same mechanism as archetype 1.
 - **The `Edit` affordance is in the header row**, reachable from every tab, and

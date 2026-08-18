@@ -13,6 +13,9 @@ from app.modules.platform.record_layout_schema import RecordLayoutDefinitionPayl
 from app.modules.platform.routes.record_layouts import get_resolved_record_layout, router as record_layouts_router
 from app.modules.platform.services.record_layouts import (
     LEAD_LAYOUT_SEEDS,
+    MODULE_LAYOUT_SEEDS,
+    MODULE_SYSTEM_FIELDS,
+    SUPPORTED_LAYOUT_SURFACES_BY_MODULE,
     resolve_record_layout,
     validate_layout_definition,
     validate_module_and_surface,
@@ -278,6 +281,22 @@ class RecordLayoutResolverTests(unittest.TestCase):
         with self.assertRaises(ValidationError):
             RecordLayoutDefinitionPayload.model_validate(payload)
 
+    def test_every_seeded_field_exists_in_its_module_catalog(self):
+        """A seed naming a field the catalog does not carry resolves to a layout with a hole.
+
+        Nothing else catches it: `validate_layout_definition` guards what an administrator
+        submits, and the seeds bypass that path by construction. Batch 3 added three modules
+        at once, which is exactly when a typo in a `field_key` gets shipped.
+        """
+
+        for module_key, surfaces in MODULE_LAYOUT_SEEDS.items():
+            catalog = MODULE_SYSTEM_FIELDS[module_key]
+            self.assertEqual(set(surfaces), SUPPORTED_LAYOUT_SURFACES_BY_MODULE[module_key])
+            for surface, seed in surfaces.items():
+                for section in seed.sections:
+                    for field in section.fields:
+                        self.assertIn(field.field_key, catalog, f"{module_key}/{surface}")
+
     def test_module_and_surface_are_bounded_to_adopted_modules(self):
         for module_key in ("sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities"):
             for surface in ("quick_create", "detail"):
@@ -285,24 +304,27 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     validate_module_and_surface(module_key, surface),
                     (module_key, surface),
                 )
-        # Contracts adopt the record archetype's `Details` tab and nothing else — there is no
-        # contract Quick Create surface, so the module is deliberately detail-only.
-        self.assertEqual(
-            validate_module_and_surface("contracts", "detail"),
-            ("contracts", "detail"),
-        )
+        # Contracts and the three line-item documents adopt the record archetype's `Details`
+        # tab and nothing else — none of the four has a Quick Create surface, so all four are
+        # deliberately detail-only.
+        for module_key in ("contracts", "sales_quotes", "sales_orders", "finance_pos"):
+            self.assertEqual(
+                validate_module_and_surface(module_key, "detail"),
+                (module_key, "detail"),
+            )
 
         with self.assertRaises(HTTPException) as unadopted_module:
-            validate_module_and_surface("sales_quotes", "detail")
+            validate_module_and_surface("support_cases", "detail")
         self.assertEqual(unadopted_module.exception.status_code, 404)
 
         with self.assertRaises(HTTPException) as future_surface:
             validate_module_and_surface("sales_leads", "full_form")
         self.assertEqual(future_surface.exception.status_code, 422)
 
-        with self.assertRaises(HTTPException) as unseeded_surface:
-            validate_module_and_surface("contracts", "quick_create")
-        self.assertEqual(unseeded_surface.exception.status_code, 422)
+        for module_key in ("contracts", "sales_quotes", "sales_orders", "finance_pos"):
+            with self.assertRaises(HTTPException) as unseeded_surface:
+                validate_module_and_surface(module_key, "quick_create")
+            self.assertEqual(unseeded_surface.exception.status_code, 422)
 
 
 class RecordLayoutRouteTests(unittest.TestCase):

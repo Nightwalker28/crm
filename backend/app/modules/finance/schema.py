@@ -230,6 +230,7 @@ class PosInvoiceResponse(BaseModel):
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     user_name: Optional[str] = None
+    created_at: Optional[str] = None
     updated_at: Optional[str] = None
     lines: list[PosInvoiceLineResponse] = Field(default_factory=list)
 

@@ -385,6 +385,7 @@ class SalesQuoteResponse(SalesQuoteBase):
     quote_id: int
     quote_number: str
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     created_time: datetime
     updated_at: datetime | None = None
     items: list[SalesQuoteItemResponse] = Field(default_factory=list)
@@ -575,6 +576,7 @@ class SalesOrderResponse(BaseModel):
     id: int
     order_number: str
     quote_id: int | None = None
+    quote_number: str | None = None
     organization_id: int | None = None
     contact_id: int | None = None
     opportunity_id: int | None = None

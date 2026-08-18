@@ -33,13 +33,19 @@ from app.modules.platform.services.module_fields import module_field_enabled_map
 # record page without one would be the only page rendering its fields a private way.
 #
 # Contracts have no `custom_fields` column, which costs nothing: the catalog merges custom
-# definitions when a module has them and is simply system-only here.
+# definitions when a module has them and is simply system-only here — as do orders and POS
+# invoices, which batch 3 adds alongside quotes for the same reason. All four are
+# `detail`-only: their create and edit surfaces keep `RecordFormLayout` and a manual save,
+# because R1 does not autosave a document whose totals derive from its line items.
 SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
     "sales_leads": {"quick_create", "detail"},
     "sales_contacts": {"quick_create", "detail"},
     "sales_organizations": {"quick_create", "detail"},
     "sales_opportunities": {"quick_create", "detail"},
     "contracts": {"detail"},
+    "sales_quotes": {"detail"},
+    "sales_orders": {"detail"},
+    "finance_pos": {"detail"},
 }
 SUPPORTED_LAYOUT_MODULES = set(SUPPORTED_LAYOUT_SURFACES_BY_MODULE)
 SUPPORTED_LAYOUT_SURFACES = {"quick_create", "detail"}
@@ -170,12 +176,83 @@ CONTRACT_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("owner_id", "Owner", "user_reference"),
 )
 
+# The three line-item documents. Like contracts, none of them has a create-surface layout —
+# `/new` and `/[id]/edit` stay on `RecordFormLayout` because R1 keeps a document body on an
+# explicit save — so nothing here is `required` and these catalogs describe only the
+# read-only `detail` surface the record archetype renders.
+#
+# Line items are absent on purpose: they are rows pointing at the document, not columns on
+# it, so the page draws them under the layout rather than the layout listing them.
+QUOTE_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("quote_number", "Quote number", "text"),
+    RuntimeFieldDefinition("title", "Title", "text"),
+    RuntimeFieldDefinition("customer_name", "Customer", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("issue_date", "Issue date", "date"),
+    RuntimeFieldDefinition("expiry_date", "Expiry date", "date"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("subtotal_amount", "Subtotal", "text"),
+    RuntimeFieldDefinition("discount_amount", "Discount", "text"),
+    RuntimeFieldDefinition("tax_amount", "Tax", "text"),
+    RuntimeFieldDefinition("total_amount", "Total", "text"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("contact_id", "Contact", "contact_reference"),
+    RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
+    RuntimeFieldDefinition("opportunity_id", "Deal", "text"),
+    RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
+)
+
+ORDER_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("order_number", "Order number", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("subtotal", "Subtotal", "text"),
+    RuntimeFieldDefinition("discount_total", "Discount", "text"),
+    RuntimeFieldDefinition("tax_total", "Tax", "text"),
+    RuntimeFieldDefinition("grand_total", "Total", "text"),
+    RuntimeFieldDefinition("delivery_date", "Delivery date", "date"),
+    RuntimeFieldDefinition("delivery_address", "Delivery address", "long_text"),
+    RuntimeFieldDefinition("payment_terms", "Payment terms", "text"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("owner_id", "Owner", "user_reference"),
+)
+
+# `balance_due` and `payment_status` are maintained by the payment path rather than written
+# by an operator, so they are `readonly` in the catalog as well as absent from the seed: a
+# tenant may add them to `Details`, and adding them must not imply they can be edited.
+POS_INVOICE_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("invoice_number", "Invoice number", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("payment_status", "Payment status", "select", readonly=True),
+    # `select`, not `text`: the values are a closed set (`card`, `cash`, `bank_transfer`) and
+    # the read-only renderer only sentence-cases a `select`, so as `text` the page drew `card`.
+    RuntimeFieldDefinition("payment_method", "Payment method", "select"),
+    RuntimeFieldDefinition("customer_name", "Customer", "text"),
+    RuntimeFieldDefinition("customer_email", "Customer email", "email"),
+    RuntimeFieldDefinition("customer_address", "Billing address", "long_text"),
+    RuntimeFieldDefinition("issue_date", "Issue date", "date"),
+    RuntimeFieldDefinition("due_date", "Due date", "date"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("subtotal_amount", "Subtotal", "text"),
+    RuntimeFieldDefinition("discount_amount", "Discount", "text"),
+    RuntimeFieldDefinition("tax_rate", "Tax rate", "text"),
+    RuntimeFieldDefinition("tax_amount", "Tax", "text"),
+    RuntimeFieldDefinition("total_amount", "Total", "text"),
+    RuntimeFieldDefinition("amount_paid", "Paid", "text", readonly=True),
+    RuntimeFieldDefinition("balance_due", "Balance due", "text", readonly=True),
+    RuntimeFieldDefinition("payment_terms", "Payment terms", "long_text"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+)
+
 MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
     "sales_leads": LEAD_SYSTEM_FIELDS,
     "sales_contacts": CONTACT_SYSTEM_FIELDS,
     "sales_organizations": ORGANIZATION_SYSTEM_FIELDS,
     "sales_opportunities": OPPORTUNITY_SYSTEM_FIELDS,
     "contracts": CONTRACT_SYSTEM_FIELDS,
+    "sales_quotes": QUOTE_SYSTEM_FIELDS,
+    "sales_orders": ORDER_SYSTEM_FIELDS,
+    "finance_pos": POS_INVOICE_SYSTEM_FIELDS,
 }
 
 
@@ -486,6 +563,118 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("expiration_date", "half"),
                         ("renewal_date", "half"),
                     ],
+                ),
+            ],
+        ),
+    },
+    # The three line-item documents. Each omits the fields the record page already draws
+    # elsewhere (design.md §4.7): the document number is the header's name, `status` is the
+    # rail's one editable field, and the relationships are the rail's `Connected` block.
+    # `customer_name` is the header subtitle on all three, so it is not seeded either.
+    #
+    # Money is seeded as a `Totals` section rather than left to the page, because the totals
+    # *are* the document's summary — the pre-5.3 pages each drew their own private version of
+    # this block, which is three renderers for one thing.
+    "sales_quotes": {
+        "detail": _seed(
+            "sales_quotes",
+            "detail",
+            "Quote Details",
+            [
+                _seed_section(
+                    "quote",
+                    "Quote",
+                    0,
+                    [("title", "full"), ("issue_date", "half"), ("expiry_date", "half")],
+                ),
+                _seed_section(
+                    "totals",
+                    "Totals",
+                    1,
+                    [
+                        ("subtotal_amount", "half"),
+                        ("discount_amount", "half"),
+                        ("tax_amount", "half"),
+                        ("total_amount", "half"),
+                        ("currency", "half"),
+                    ],
+                ),
+                _seed_section("notes", "Notes", 2, [("notes", "full")]),
+            ],
+        ),
+    },
+    "sales_orders": {
+        "detail": _seed(
+            "sales_orders",
+            "detail",
+            "Order Details",
+            [
+                _seed_section(
+                    "fulfillment",
+                    "Fulfillment",
+                    0,
+                    [
+                        ("delivery_date", "half"),
+                        ("payment_terms", "half"),
+                        ("delivery_address", "full"),
+                    ],
+                ),
+                _seed_section(
+                    "totals",
+                    "Totals",
+                    1,
+                    [
+                        ("subtotal", "half"),
+                        ("discount_total", "half"),
+                        ("tax_total", "half"),
+                        ("grand_total", "half"),
+                        ("currency", "half"),
+                    ],
+                ),
+                _seed_section("notes", "Notes", 2, [("notes", "full")]),
+            ],
+        ),
+    },
+    # `payment_status` and `balance_due` sit in the rail beside the status they qualify, so
+    # neither is seeded here; `amount_paid` is seeded because the totals column is where an
+    # operator reconciles the document, and it is read-only in the catalog either way.
+    "finance_pos": {
+        "detail": _seed(
+            "finance_pos",
+            "detail",
+            "Invoice Details",
+            [
+                _seed_section(
+                    "billing",
+                    "Billing",
+                    0,
+                    [
+                        ("customer_email", "half"),
+                        ("payment_method", "half"),
+                        ("issue_date", "half"),
+                        ("due_date", "half"),
+                        ("customer_address", "full"),
+                    ],
+                ),
+                _seed_section(
+                    "totals",
+                    "Totals",
+                    1,
+                    [
+                        ("subtotal_amount", "half"),
+                        ("discount_amount", "half"),
+                        ("tax_rate", "half"),
+                        ("tax_amount", "half"),
+                        ("total_amount", "half"),
+                        ("amount_paid", "half"),
+                        ("currency", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "terms",
+                    "Terms and notes",
+                    2,
+                    [("payment_terms", "full"), ("notes", "full")],
                 ),
             ],
         ),

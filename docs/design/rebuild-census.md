@@ -170,14 +170,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `sales/quotes/page.tsx` | 87 | 5.5 | rebuild | | |
 | `sales/quotes/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
-| `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | |
+| `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | done |
 | `sales/quotes/[quoteId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `sales/quotes/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `sales/quotes/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `sales/quotes/not-found.tsx` | 11 | 5.1 | rebuild | | done |
 | `sales/orders/page.tsx` | 68 | 5.5 | rebuild | | |
 | `sales/orders/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
-| `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | |
+| `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | done |
 | `sales/orders/[orderId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `sales/orders/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `sales/orders/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -189,7 +189,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `finance/pos/page.tsx` | 65 | 5.5 | rebuild | **A6** — selection with no verb | |
 | `finance/pos/new/page.tsx` | 3 | 5.4 | unchanged | Shim | |
-| `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | |
+| `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | done |
 | `finance/pos/[invoiceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `finance/pos/[invoiceId]/print/page.tsx` | 349 | — | unchanged | **§2.5 exception 2** — its own document theme, must not follow the app theme | done |
 | `finance/pos/error.tsx` | 18 | 5.1 | rebuild | | done |

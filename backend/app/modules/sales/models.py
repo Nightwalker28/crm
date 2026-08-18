@@ -372,6 +372,16 @@ class SalesQuote(Base):
     organization = relationship("SalesOrganization", lazy="selectin")
     opportunity = relationship("SalesOpportunity", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+
+    @property
+    def assigned_to_name(self) -> str | None:
+        """The owner's name, so the record spine draws a person rather than `assigned_to: 7`."""
+
+        if not self.assigned_user:
+            return None
+        return " ".join(
+            part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part
+        ).strip() or self.assigned_user.email
     items = relationship("SalesQuoteItem", back_populates="quote", cascade="all, delete-orphan", order_by="SalesQuoteItem.sort_order")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
 
@@ -544,6 +554,12 @@ class SalesOrder(Base):
     @property
     def opportunity_name(self) -> str | None:
         return self.opportunity.opportunity_name if self.opportunity else None
+
+    @property
+    def quote_number(self) -> str | None:
+        """The originating quote's number. Without it the rail can only draw `Quote #12`."""
+
+        return self.quote.quote_number if self.quote else None
 
     @property
     def owner_name(self) -> str | None:

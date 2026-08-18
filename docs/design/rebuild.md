@@ -1187,8 +1187,9 @@ inherits this blind spot. That is what §7.6 and `data-slot="card"` are now for.
 - Give leads' tab order a default that matches its first tab.
 
 **Appendix A here:** A4 (partly closed by R2 — a workflow change is one click; a typo fix
-stays a page trip, deliberately), A12 (quote → order needs 3 actions), A13 (lead convert
-has no unsaved-changes guard).
+stays a page trip, deliberately), ~~A12~~ (**closed in batch 3** — three actions became two,
+and the disabled-button-with-a-distant-explanation became a button that is only there when
+it works), A13 (lead convert has no unsaved-changes guard — still open, batch 5's).
 
 **Backend slice — approved, and it lands before the first module ships inline edit.**
 R1's autosave turns every state change into an activity entry, and this app renders
@@ -1240,7 +1241,7 @@ record's own fields versus related objects, and §4.7 now carries the one-line t
 
 ### Status: in progress — the archetype, and five modules on it
 
-Seven commits. **Pick up at "What is left", below.**
+Eight commits. **Pick up at "What is left", below.**
 
 | Commit | What landed |
 |---|---|
@@ -1250,6 +1251,7 @@ Seven commits. **Pick up at "What is left", below.**
 | `49e70ce` | Three defects the browser pass found, and the two §4.7 rules they produced |
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
+| `PENDING3` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1412,6 +1414,95 @@ They are batch 6's, and the row below carries them so they cannot be lost in pro
   answer it with a second archetype, and do not answer it with real contract state inside a
   rebuild sub-phase.
 
+**What batch 3 decided — quote, order and POS invoice, the three line-item documents.**
+All three needed the same backend slice and for the same reason batch 2 met twice: the
+archetype's `Details` tab is `ReadOnlyRecordLayout` over a resolved layout, so a module
+without a `detail` surface would be the only page still rendering its fields a private way.
+`sales_quotes`, `sales_orders` and `finance_pos` join `contracts` as **detail-only** modules
+— none of them gains a Quick Create, because R1 keeps a document body on an explicit save.
+
+- **Quote was the largest file in `app/` and is now the smallest of the three rebuilds.**
+  1,335 lines went to ~640. Almost all of the deletion is one thing: the page was an edit
+  form with fifteen inputs, three `LinkedRecordPicker`s, a custom-field block, an unsaved
+  changes guard and a header `Save Quote`. R2 sends every one of those to `/[id]/edit`,
+  and what is left is a status field in the rail.
+- **`payment_status` is the exception R2's shape rule cannot see, and it is now a §4.7
+  rule.** A POS invoice's payment status is enum-shaped, so the categorical boundary says
+  "editable". It is written by recording a payment, from `amount_paid` — so an
+  `InlineFieldEdit` on it could put `Paid` in the rail above a balance of $400. It renders
+  read-only beside the status it qualifies, and the field catalog marks it `readonly` so a
+  tenant adding it to `Details` does not get an editable copy either. The test the rule
+  states is **"is this column written by an operator, or derived by a service?"**
+- **A12 closes, and the shape of the close is also a rule.** Convert took three actions
+  because the status select was not persisted by the convert button, and the button itself
+  was drawn permanently, disabled, with its reason in a summary tile on the far side of the
+  screen. The rail autosaves the status, so that is one action; the header renders `Convert
+  to order` **only when the quote is accepted and unconverted**, so the second is a press
+  rather than a hunt. Rejected in writing: a disabled button with the explanation moved
+  next to it (still furniture nine visits out of ten), and one button that accepts *and*
+  converts (cheapest, but it makes an irreversible two-record change out of one press,
+  which is R1's side-effect row).
+- **Three response-shape defects, all the same class batch 2 found on the contract.** An
+  order carried `quote_id` and no `quote_number`, so the rail could only have drawn `Quote
+  #12`; a quote carried `assigned_to` and no name; a POS invoice had no `created_at` at all,
+  so its spine had no `Created` line. Each is a property and a schema field, resolved
+  in-tenant through relationships the models already load.
+- **Two module event logs joined the History sheet**, which is batch 2's rule paying off
+  twice. The quote's `proposal_events` were a `Lifecycle` tile inside the Proposal card;
+  they are `moduleEvents` now. That leaves the Proposal itself — a `QuoteDocument` row
+  pointing at the quote, so a related object, so a `Proposal` tab after `Files` with the
+  recipient, `Generate`, `Send` and the signed link.
+
+**The nested tab strip at `finance/pos/[invoiceId]` is gone**, which was the second of the
+two §4.7 named. `opportunities/[opportunityId]` went in batch 2; there is now no page in
+`app/dashboard` that nests a strip inside a strip.
+
+**What went into the rail rather than a panel.** The invoice's `Balance` card was six money
+rows and a button. Its rows are the seeded layout's `Totals` section; the two figures an
+operator acts on — payment status and balance due — moved into `State` beside the status
+they qualify; and `Open payments` went to the `[⋯]` menu with `Print`, which is what keeps
+the header to one `Edit` and §2.2's one fill unspent. All three of these records advance by
+changing their status, so none of them carries a filled button except the quote at the one
+moment `Convert` exists.
+
+**The browser pass found three, and for the first time in four batches none of them was
+structural.** The archetype held: every stop in the tab-through rang, including the tab
+panel's inset ring, the History sheet restored focus to its trigger, and the rail stacked
+cleanly at 768px in both themes. What it found instead was three ways a *value* was drawn
+wrong, and only one of the three was in this batch's code:
+
+- **`capitalize` turned "Not sent" into "Not Sent"** in the Proposal panel — §3.5, on a
+  string a source-level grep cannot see because the shouting is applied by CSS. Only the
+  status is an enum, so only the status is cased now.
+- **`payment_method` drew `card`.** It was `text` in the field catalog, and
+  `ReadOnlyRecordLayout` sentence-cases a `select` and nothing else. The values are a closed
+  set, so the catalog was wrong, not the renderer.
+- **The demo seed's `tax_rate` contradicts the service.** `seed_demo_crm.py` wrote
+  `Decimal("0.15")` and multiplied by it directly; `pos_invoice_services._recalculate`
+  divides by 100, as does the invoice form's own preview. So every demo invoice read
+  `0.15%` beside 15% of tax. Fixed in the seed. **Records seeded before this are not
+  corrected** — `get_or_create` is a no-op on an existing invoice number — so an old demo
+  invoice still shows `0.15%` until its row is rebuilt.
+
+**One thing the pass proved was *not* a defect, recorded because it cost half an hour.**
+Measuring a focus ring by calling `element.focus()` from the console and reading
+`--tw-ring-shadow` reports `0 0 #0000` on elements that ring perfectly under a real `Tab`:
+Chrome's `:focus-visible` heuristic does not survive scripted focus, and the computed
+custom property follows it. `a.matches(':focus-visible')` returns `true` while the ring is
+absent, which makes the reading look like a genuine finding. **Drive the keyboard, do not
+script it** — press `Tab` through the extension and read `document.activeElement` after each
+press.
+
+**Line items stay read-only, and §4.7 now says why.** The batch row below reads "the
+existing line-item editor drops into `Details` behind a manual save", and the editor it
+names lives on `/[id]/edit`, not on the detail page — all three detail pages rendered a
+read-only table. They still do, under the layout, and 5.5 restyles them as `RecordTable
+variant="lineItems"`. What settles it is not the census wording but the write: items are
+saved by a whole-document `PUT`, so an in-place editor is `/[id]/edit` rebuilt inside the
+record page — the "the detail page is secretly a form" defect this sub-phase removes. Items
+being *rows pointing at the document* would otherwise let §4.7's own test wave them through,
+so the rule is written down rather than left to the next reader.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1420,7 +1511,7 @@ each — the shape 5.2 used.
 | # | Batch | Notes |
 |---|---|---|
 | ~~1~~ | ~~**deal + contract**~~ | **Done** — see "What batch 2 decided", above |
-| 2 | **quote, order, POS invoice** | Shell only. The existing line-item editor drops into `Details` behind a manual save (R1); `RecordTable variant="lineItems"` is 5.5's, per the owner's call. Quote is 1,335 lines and carries **A12** (quote → order needs 3 actions) |
+| ~~2~~ | ~~**quote, order, POS invoice**~~ | **Done** — see "What batch 3 decided", above. A12 closed; the second nested tab strip died with it |
 | 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline, and `item.events` joins the History sheet through `RecordAuditHistory`'s `moduleEvents`, which batch 2 built for contract events. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
 | 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
 | 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
@@ -1430,7 +1521,10 @@ each — the shape 5.2 used.
 
 - **`RecordWorkspaceLegacy.tsx` is gone** — deleted in batch 1 with its last two consumers,
   as planned. Nothing may reintroduce it.
-- **`CrmRecordActivitySection` is down to 5 importers** — the deal left in batch 2 — and is the nested-tabs cause. It is
+- **`CrmRecordActivitySection` is down to 3 importers** — the deal left in batch 2, and the
+  quote, order and POS invoice in batch 3 — and is the nested-tabs cause. What is left is
+  exactly batch 3's row: `insertion-orders/[ioId]`, `support/cases/[caseId]` and
+  `CatalogRecordDetailPage`. It is
   a `delete`, not a rebuild — it dies when its last consumer migrates in what is now batch 3.
   `RecordCommentsPanel` and `FollowUpPanel` are **down to one importer each, and it is
   `CrmRecordActivitySection` itself**, so all three die together; their composers already
@@ -1450,7 +1544,13 @@ each — the shape 5.2 used.
   order) and contracts 1 and 3 — **3 is the only one with events**, so it is the one that
   shows the merged History sheet. `scripts/seed_module_samples` is what creates the
   contracts. The demo tenant's own records (ids 5–20) are **not** the admin's tenant and read
-  as "not found".
+  as "not found". Batch 3 used quote 3 (`SAMPLE-QT-0002`, the only `accepted` one, so the only
+  one that can show `Convert to order`), quote 2 (the only one with proposal events, so the
+  one that shows them merged into the History sheet), and POS invoice 15 (`issued` /
+  `partial`, so the only one with a real balance due). **The sample quotes and orders seed
+  flat** — no items, no contact, no account, no deal — so a rail and a line-item table are
+  both empty on them; batch 3 filled quote 3 by hand before driving it, and `Convert to
+  order` then rejects unless the quote's account matches its deal's.
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.
 
