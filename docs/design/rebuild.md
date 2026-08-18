@@ -1251,7 +1251,7 @@ Eight commits. **Pick up at "What is left", below.**
 | `49e70ce` | Three defects the browser pass found, and the two §4.7 rules they produced |
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
-| `PENDING3` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
+| `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
