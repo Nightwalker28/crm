@@ -25,6 +25,12 @@ type Props = {
   invalidFieldKeys?: string[];
   fixedSidebar?: ReactNode;
   viewport?: ResolvedRecordLayoutViewport;
+  /**
+   * Fields another region already owns. Filtered here rather than by returning `null` from
+   * `renderField`, so an omitted field takes its grid cell with it and a section left with
+   * nothing disappears instead of drawing an empty panel.
+   */
+  omitFieldKeys?: readonly string[];
 };
 
 function LayoutSection({
@@ -32,14 +38,16 @@ function LayoutSection({
   renderField,
   invalidFieldKeys,
   viewport,
+  omitted,
 }: {
   section: ResolvedRecordLayoutSection;
   renderField: Props["renderField"];
   invalidFieldKeys: Set<string>;
   viewport: ResolvedRecordLayoutViewport;
+  omitted: Set<string>;
 }) {
   const fields = [...section.fields]
-    .filter((field) => field.visible)
+    .filter((field) => field.visible && !omitted.has(field.field_key))
     .sort((left, right) => left.position - right.position);
   if (!fields.length) return null;
   const hasInvalidField = fields.some((field) => invalidFieldKeys.has(field.field_key));
@@ -89,12 +97,14 @@ export function ResolvedRecordLayout({
   invalidFieldKeys = [],
   fixedSidebar,
   viewport = "auto",
+  omitFieldKeys,
 }: Props) {
   const sections = [...layout.sections].sort((left, right) => left.position - right.position);
   const mainSections = sections.filter((section) => section.region === "main");
   const sidebarSections = sections.filter((section) => section.region === "sidebar");
   const hasSidebar = sidebarSections.length > 0 || Boolean(fixedSidebar);
   const invalidFields = new Set(invalidFieldKeys);
+  const omitted = new Set(omitFieldKeys ?? []);
 
   return (
     <div
@@ -110,13 +120,13 @@ export function ResolvedRecordLayout({
     >
       <div className="grid min-w-0 gap-4">
         {mainSections.map((section) => (
-          <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} />
+          <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} omitted={omitted} />
         ))}
       </div>
       {hasSidebar ? (
         <aside className="grid gap-4">
           {sidebarSections.map((section) => (
-            <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} />
+            <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} omitted={omitted} />
           ))}
           {fixedSidebar}
         </aside>

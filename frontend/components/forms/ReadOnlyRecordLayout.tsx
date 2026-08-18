@@ -44,12 +44,22 @@ export function ReadOnlyRecordLayout({
   customValues = {},
   renderValue,
   fixedSidebar,
+  omitFieldKeys,
 }: {
   layout: ResolvedRecordLayoutContract;
   values: Record<string, unknown>;
   customValues?: Record<string, unknown>;
   renderValue?: (field: ResolvedRecordLayoutField, value: unknown) => ReactNode | undefined;
   fixedSidebar?: ReactNode;
+  /**
+   * Fields the spine already owns, which `Details` must not repeat (design.md §4.7).
+   *
+   * The record layout is configured server-side and still lists status, owner and the rest,
+   * because it predates the spine. Rendering them in both places puts an editable status in
+   * the rail and a read-only copy of the same value ten centimetres to its right — which is
+   * precisely the "nothing tells the operator what is clickable" failure R2 set out to avoid.
+   */
+  omitFieldKeys?: readonly string[];
 }) {
   function renderField(field: ResolvedRecordLayoutField) {
     const rawCustomKey = field.field_key.startsWith("custom:")
@@ -71,5 +81,12 @@ export function ReadOnlyRecordLayout({
     );
   }
 
-  return <ResolvedRecordLayout layout={layout} renderField={renderField} fixedSidebar={fixedSidebar} />;
+  return (
+    <ResolvedRecordLayout
+      layout={layout}
+      renderField={renderField}
+      fixedSidebar={fixedSidebar}
+      omitFieldKeys={omitFieldKeys}
+    />
+  );
 }

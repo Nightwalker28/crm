@@ -272,9 +272,9 @@ export default function RecordTimeline({
   const omittedTypes = query.data?.pages[0]?.omitted_types ?? [];
   const hasLoadedHistory = items.length > 0;
 
-  // `available_types` is per record, so a lead never offers a Replies filter and a case
-  // never offers WhatsApp. Held across filtered fetches: narrowing to Notes must not
-  // collapse the strip to "All · Notes" and strand the operator there.
+  // `available_types` is what this record type *can* have and the viewer may see, so a
+  // lead never offers a Replies filter. Held across filtered fetches: narrowing to Notes
+  // must not collapse the strip to "All · Notes" and strand the operator there.
   const [availableTypes, setAvailableTypes] = useState<RecordActivityType[]>([]);
   const reportedTypes = query.data?.pages[0]?.available_types;
   if (reportedTypes && filter === "all" && reportedTypes.join() !== availableTypes.join()) {
@@ -319,18 +319,20 @@ export default function RecordTimeline({
       {/* Only the sources this record actually has. The backend already reports them, and
           eight fixed filters on a record with two of them is furniture — it also kept the
           strip from fitting the content region beside the spine. */}
-      <SegmentedControl
-        value={filter}
-        onValueChange={(next: Filter) => setFilter(next)}
-        aria-label="Filter the timeline by type"
-        className="mt-5"
-      >
-        {availableFilters.map((option) => (
-          <SegmentedItem key={option.id} value={option.id}>
-            {option.label}
-          </SegmentedItem>
-        ))}
-      </SegmentedControl>
+      {availableFilters.length > 1 ? (
+        <SegmentedControl
+          value={filter}
+          onValueChange={(next: Filter) => setFilter(next)}
+          aria-label="Filter the timeline by type"
+          className="mt-5"
+        >
+          {availableFilters.map((option) => (
+            <SegmentedItem key={option.id} value={option.id}>
+              {option.label}
+            </SegmentedItem>
+          ))}
+        </SegmentedControl>
+      ) : null}
 
       {omittedTypes.length ? (
         <p className="mt-3 text-p-xs text-copy-muted" role="status">

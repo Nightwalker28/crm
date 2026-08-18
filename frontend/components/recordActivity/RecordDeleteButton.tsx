@@ -7,6 +7,7 @@ import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch } from "@/lib/api";
 
@@ -16,9 +17,16 @@ type Props = {
   recordName: string;
   redirectHref: string;
   queryKeys?: string[];
+  /**
+   * `menuItem` for the record header's overflow menu (§4.7). §2.2 allows one filled button
+   * per view, and a record page's primary workflow action — Convert, Send, Issue — has a
+   * better claim on it than Delete does. The confirm, the request and the redirect stay
+   * here either way; only the trigger changes.
+   */
+  as?: "button" | "menuItem";
 };
 
-export default function RecordDeleteButton({ endpoint, label, recordName, redirectHref, queryKeys = [] }: Props) {
+export default function RecordDeleteButton({ endpoint, label, recordName, redirectHref, queryKeys = [], as = "button" }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
@@ -45,6 +53,24 @@ export default function RecordDeleteButton({ endpoint, label, recordName, redire
     } finally {
       setIsDeleting(false);
     }
+  }
+
+  if (as === "menuItem") {
+    return (
+      <DropdownMenuItem
+        // Radix closes the menu on select and would steal focus from the confirmation the
+        // handler is about to open, so the close is prevented and the dialog owns focus.
+        onSelect={(event) => {
+          event.preventDefault();
+          void handleDelete();
+        }}
+        disabled={isDeleting}
+        className="text-state-danger focus:bg-state-danger-muted focus:text-state-danger"
+      >
+        <Trash2 />
+        {isDeleting ? "Deleting…" : `Delete ${label.toLowerCase()}`}
+      </DropdownMenuItem>
+    );
   }
 
   return (

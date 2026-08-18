@@ -679,6 +679,25 @@ class SupportCaseReplyAdapterTests(unittest.TestCase):
 
         self.assertEqual(self._list(module_key="sales_leads", entity_id="7")["items"], [])
 
+    def test_a_lead_is_never_offered_a_replies_filter(self):
+        # `available_types` is what the UI builds its filter strip from. A source that can
+        # never apply to this record type is not an empty source — offering it puts a
+        # filter on screen that cannot ever match, which is what the browser pass caught.
+        self.db.add(
+            SalesLead(lead_id=7, tenant_id=TENANT, first_name="Ada", last_name="Lovelace", primary_email="ada@example.com")
+        )
+        self.db.add(Module(id=2, name="sales_leads", base_route="sales_leads", is_enabled=1))
+        self.db.commit()
+
+        lead_types = self._list(module_key="sales_leads", entity_id="7")["available_types"]
+        case_types = self._list()["available_types"]
+
+        self.assertNotIn("case_reply", lead_types)
+        self.assertIn("case_reply", case_types)
+        # Everything not module-specific is offered on both.
+        self.assertIn("note", lead_types)
+        self.assertIn("note", case_types)
+
     def test_replies_are_a_filterable_type_like_every_other_source(self):
         self._reply(1, minutes=10)
         self._reply(2, is_internal=True, minutes=20)

@@ -84,6 +84,15 @@ type LeadSummary = {
 
 const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "unqualified", "converted"] as const;
 
+/**
+ * Fields the spine owns, which `Details` must not draw a second time (design.md §4.7).
+ *
+ * The record layout is configured server-side and still lists these, because it predates
+ * the spine — so without this the page renders an editable status in the rail and a
+ * read-only copy of it in the tab beside, which is the exact confusion R2 exists to avoid.
+ */
+const SPINE_OWNED_FIELDS = ["status", "assigned_to", "team_id", "next_follow_up_at"] as const;
+
 /** The track shows a pipeline, so the one status that leaves it is not a step on it. */
 const LEAD_TRACK_VALUES = ["new", "contacted", "qualified", "converted"] as const;
 
@@ -255,16 +264,17 @@ export default function LeadDetailPage() {
               </Link>
             </Button>
           ) : null}
-          {canDeleteLead ? (
-            <RecordDeleteButton
-              endpoint={`/sales/leads/${params.leadId}`}
-              label="Lead"
-              recordName={leadName}
-              redirectHref="/dashboard/sales/leads"
-              queryKeys={["sales-leads"]}
-            />
-          ) : null}
         </>
+      ) : null}
+      overflowActions={lead && canDeleteLead ? (
+        <RecordDeleteButton
+          as="menuItem"
+          endpoint={`/sales/leads/${params.leadId}`}
+          label="Lead"
+          recordName={leadName}
+          redirectHref="/dashboard/sales/leads"
+          queryKeys={["sales-leads"]}
+        />
       ) : null}
       spine={
         <RecordSpine>
@@ -425,6 +435,7 @@ function LeadOverview({
         layout={layout}
         values={layoutValues}
         customValues={summary.lead.custom_fields ?? {}}
+        omitFieldKeys={SPINE_OWNED_FIELDS}
         renderValue={(field, value) => {
           if (field.field_key === "tags" && Array.isArray(value)) {
             return value.length ? (

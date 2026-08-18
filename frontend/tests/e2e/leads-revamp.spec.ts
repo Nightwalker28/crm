@@ -486,13 +486,16 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByRole("heading", { name: "Relationship context" })).toHaveCount(0);
   // The four tabs are fixed and owned by the archetype, so nothing nests inside them.
   await expect(page.getByRole("tab")).toHaveCount(4);
-  await expect(page.locator("[data-record-layout]").getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(page.locator("[data-record-layout]").getByText("Revenue", { exact: true })).toBeVisible();
+  // Owner, team, status and next follow-up are the spine's, and design.md 4.7 says a field
+  // the spine owns is not drawn again in Details — so they are asserted above, not here.
+  await expect(page.locator("[data-record-layout]").getByText("Ada Owner", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-record-layout]").getByText("Revenue", { exact: true })).toHaveCount(0);
   await expect(page.locator("[data-record-layout]").getByText("Enterprise", { exact: true })).toBeVisible();
   // "Warm" is both a tag and the score grade; this line is about the tag, like the one above.
   await expect(page.locator("[data-layout-field='tags']").getByText("Warm", { exact: true })).toBeVisible();
   await expect(page.locator('[data-slot="lead-score"]')).toBeVisible();
-  await expect(page.locator("[data-record-layout]").getByText("Next follow-up", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-record-layout]").getByText("Next follow-up", { exact: true })).toHaveCount(0);
+  await expect(spine.getByText("Next follow-up", { exact: true })).toBeVisible();
   const detailFields = page.locator("[data-layout-section='contact'] [data-layout-field]");
   await expect(detailFields.nth(0)).toHaveAttribute("data-layout-field", "company");
   await expect(detailFields.nth(1)).toHaveAttribute("data-layout-field", "primary_email");

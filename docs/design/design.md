@@ -820,6 +820,16 @@ Contract:
   either overturning that decision or interleaving two cursors client-side, which breaks
   "load more". Hanging it off `Updated 2h ago` puts the answer where the question is
   asked.
+- **A field the spine owns does not appear in `Details`.** Record layouts are configured
+  server-side and predate the spine, so they still list status, owner and the rest; drawing
+  them in both places puts an editable status in the rail and a read-only copy of the same
+  value beside it, which is precisely the "nothing says what is clickable" failure R2 set
+  out to avoid. `ReadOnlyRecordLayout` takes `omitFieldKeys` and a section left with
+  nothing renders nothing. Found by looking at the first rebuilt page, not by an assertion.
+- **One filled button in the header** (§2.2), and it belongs to the record's primary
+  workflow action — Convert, Send, Issue. Destructive and rarely-used actions go in the
+  `[⋯]` menu the wireframe shows, which is what keeps Delete from setting a second fill
+  beside Convert.
 - **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
   so this adds no exception to R3. Same mechanism as archetype 1.
 - **The `Edit` affordance is in the header row**, reachable from every tab, and

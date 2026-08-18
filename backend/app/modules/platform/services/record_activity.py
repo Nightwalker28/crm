@@ -475,12 +475,20 @@ class _Adapter:
     # Module the viewer additionally needs `view` on. None means the item is
     # record-scoped and inherits the record's own module permission.
     permission_module_key: str | None
+    # Record modules this source can ever apply to. None means every module. A
+    # source that cannot apply is not "empty" — it does not exist for this record,
+    # and reporting it in `available_types` offers the UI a filter that can never
+    # match anything.
+    applies_to: frozenset[str] | None = None
+
+    def applies(self, module_key: str) -> bool:
+        return self.applies_to is None or module_key in self.applies_to
 
 
 ADAPTERS: tuple[_Adapter, ...] = (
     # Record-scoped: the thread belongs to the case, so it inherits the case's own
     # permission and the adapter is inert for every other module.
-    _Adapter("case_reply", _fetch_case_replies, None),
+    _Adapter("case_reply", _fetch_case_replies, None, frozenset({SUPPORT_CASES_MODULE_KEY})),
     _Adapter("email", _fetch_emails, "mail"),
     _Adapter("follow_up", _fetch_follow_ups, None),
     _Adapter("meeting", _fetch_meetings, "calendar"),
@@ -593,6 +601,8 @@ def list_record_activity(
     for adapter in ADAPTERS:
         if adapter.type not in requested_types:
             continue
+        if not adapter.applies(module_key):
+            continue
         if adapter.permission_module_key and not (
             policy.can_view_module(adapter.permission_module_key)
             and policy.can_perform_action(adapter.permission_module_key, "view")
@@ -641,6 +651,8 @@ def list_record_activity(
         "next_cursor": next_cursor,
         "has_more": has_more,
         "limit": limit,
-        "available_types": list(ACTIVITY_TYPES),
+        "available_types": [
+            adapter.type for adapter in ADAPTERS if adapter.applies(module_key)
+        ],
         "omitted_types": omitted_types,
     }

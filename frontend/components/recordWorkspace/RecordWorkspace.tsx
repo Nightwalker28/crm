@@ -3,9 +3,15 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, MoreHorizontal } from "lucide-react";
 import { Tabs } from "radix-ui";
 
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { PageShell } from "@/components/ui/PageShell";
 import { cn } from "@/lib/utils";
 
@@ -46,6 +52,12 @@ type RecordWorkspaceProps = {
   subtitle?: ReactNode;
   /** The header's action group. `Edit` belongs here, reachable from every tab (R2). */
   actions?: ReactNode;
+  /**
+   * The `[⋯]` menu in §4.7's header wireframe. Destructive and rarely-used actions go here
+   * so the action row keeps to §2.2's one filled button — the record's primary workflow
+   * action — instead of setting a second one beside it.
+   */
+  overflowActions?: ReactNode;
 
   /** `RecordSpine` and its blocks. The page's only editable region (R9). */
   spine: ReactNode;
@@ -76,6 +88,7 @@ export function RecordWorkspace({
   status,
   subtitle,
   actions,
+  overflowActions,
   spine,
   details,
   timeline,
@@ -120,6 +133,7 @@ export function RecordWorkspace({
         status={status}
         subtitle={subtitle}
         actions={actions}
+        overflowActions={overflowActions}
       />
       {/* Below `lg` this is a plain stack and the page scrolls as a document; from `lg` it
           is the two-column split where only the content region scrolls (R9). */}
@@ -145,6 +159,7 @@ function RecordWorkspaceHeader({
   status,
   subtitle,
   actions,
+  overflowActions,
 }: {
   title: string;
   backHref: string;
@@ -152,6 +167,7 @@ function RecordWorkspaceHeader({
   status?: ReactNode;
   subtitle?: ReactNode;
   actions?: ReactNode;
+  overflowActions?: ReactNode;
 }) {
   return (
     <div data-slot="record-header" className="flex min-w-0 flex-col gap-3">
@@ -183,12 +199,22 @@ function RecordWorkspaceHeader({
             </div>
           ) : null}
         </div>
-        {actions ? (
+        {actions || overflowActions ? (
           <div
             data-record-workspace-actions
             className="flex min-w-0 flex-wrap items-center gap-2"
           >
             {actions}
+            {overflowActions ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`More ${title} actions`}>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>{overflowActions}</DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
           </div>
         ) : null}
       </div>
