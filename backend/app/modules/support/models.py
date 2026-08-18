@@ -136,3 +136,15 @@ class SupportCaseEvent(Base):
 
     case = relationship("SupportCase", back_populates="events")
     created_by = relationship("User", lazy="select")
+
+    @property
+    def created_by_name(self) -> str | None:
+        """Who caused the event, for the record page's merged History sheet.
+
+        The sheet needs a name, not an id — without one every operator-caused event reads as
+        "Unknown user", which is the same response-shape defect the contract rebuild found.
+        A null actor is a client-portal or system event and stays null: that is a different
+        fact from a user the lookup could not resolve.
+        """
+
+        return _display_user_name(self.created_by)

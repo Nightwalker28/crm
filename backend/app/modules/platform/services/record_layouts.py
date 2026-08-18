@@ -46,6 +46,10 @@ SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
     "sales_quotes": {"detail"},
     "sales_orders": {"detail"},
     "finance_pos": {"detail"},
+    "finance_io": {"detail"},
+    "support_cases": {"detail"},
+    "catalog_products": {"detail"},
+    "catalog_services": {"detail"},
 }
 SUPPORTED_LAYOUT_MODULES = set(SUPPORTED_LAYOUT_SURFACES_BY_MODULE)
 SUPPORTED_LAYOUT_SURFACES = {"quick_create", "detail"}
@@ -244,6 +248,80 @@ POS_INVOICE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("notes", "Notes", "long_text"),
 )
 
+# Batch 4's four. None of them has a create-surface layout either, for the same reason the
+# four above do not: their `/new` and `/[id]/edit` pages stay on `RecordFormLayout`, so these
+# catalogs describe only the read-only `detail` surface.
+#
+# An insertion order carries `custom_fields`, so its catalog is merged with the tenant's
+# custom definitions at resolve time — which is what retires the page's private
+# "Custom fields" card rather than porting it.
+INSERTION_ORDER_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("io_number", "IO number", "text"),
+    RuntimeFieldDefinition("customer_name", "Customer", "text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("external_reference", "External reference", "text"),
+    RuntimeFieldDefinition("counterparty_reference", "Counterparty reference", "text"),
+    RuntimeFieldDefinition("issue_date", "Issue date", "date"),
+    RuntimeFieldDefinition("effective_date", "Effective date", "date"),
+    RuntimeFieldDefinition("due_date", "Due date", "date"),
+    RuntimeFieldDefinition("start_date", "Start date", "date"),
+    RuntimeFieldDefinition("end_date", "End date", "date"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("subtotal_amount", "Subtotal", "text"),
+    RuntimeFieldDefinition("tax_amount", "Tax", "text"),
+    RuntimeFieldDefinition("total_amount", "Total", "text"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    # The imported source document's filename. The download itself is a header action, not a
+    # field, so this is `readonly`: nothing on the record page writes it.
+    RuntimeFieldDefinition("file_name", "Source file", "text", readonly=True),
+)
+
+# `first_response_at`, `resolved_at` and `closed_at` are stamped by `cases_services` when a
+# reply lands or the status moves, so they are `readonly` by §4.7's "written by an operator,
+# or derived by a service?" test. `sla_due_at` is `readonly` for a blunter reason recorded in
+# `rebuild.md`: no code path writes it at all yet.
+SUPPORT_CASE_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("case_number", "Case number", "text"),
+    RuntimeFieldDefinition("subject", "Subject", "text"),
+    RuntimeFieldDefinition("description", "Description", "long_text"),
+    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("priority", "Priority", "select"),
+    RuntimeFieldDefinition("category", "Category", "select"),
+    RuntimeFieldDefinition("source", "Source", "select"),
+    RuntimeFieldDefinition("assigned_to_id", "Assignee", "user_reference"),
+    RuntimeFieldDefinition("sla_due_at", "SLA due", "datetime", readonly=True),
+    RuntimeFieldDefinition("first_response_at", "First response", "datetime", readonly=True),
+    RuntimeFieldDefinition("resolved_at", "Resolved", "datetime", readonly=True),
+    RuntimeFieldDefinition("closed_at", "Closed", "datetime", readonly=True),
+)
+
+# `is_active` and `is_public` are booleans whose values are named states, so the rail edits
+# them (design.md §4.7) and neither is seeded here. `media_url` is absent on purpose: the
+# catalog image is the record's public body and renders under the layout, the same shape the
+# three line-item documents use for their items.
+CATALOG_PRODUCT_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("name", "Name", "text"),
+    RuntimeFieldDefinition("sku", "SKU", "text"),
+    RuntimeFieldDefinition("slug", "Public slug", "text"),
+    RuntimeFieldDefinition("description", "Description", "long_text"),
+    RuntimeFieldDefinition("public_unit_price", "Public base price", "text"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("stock_status", "Stock status", "select"),
+    RuntimeFieldDefinition("stock_quantity", "Stock quantity", "text"),
+    RuntimeFieldDefinition("is_public", "Website feed", "boolean"),
+    RuntimeFieldDefinition("is_active", "Active", "boolean"),
+)
+
+CATALOG_SERVICE_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("name", "Name", "text"),
+    RuntimeFieldDefinition("slug", "Public slug", "text"),
+    RuntimeFieldDefinition("description", "Description", "long_text"),
+    RuntimeFieldDefinition("public_unit_price", "Public base price", "text"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("is_public", "Website feed", "boolean"),
+    RuntimeFieldDefinition("is_active", "Active", "boolean"),
+)
+
 MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
     "sales_leads": LEAD_SYSTEM_FIELDS,
     "sales_contacts": CONTACT_SYSTEM_FIELDS,
@@ -253,6 +331,10 @@ MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
     "sales_quotes": QUOTE_SYSTEM_FIELDS,
     "sales_orders": ORDER_SYSTEM_FIELDS,
     "finance_pos": POS_INVOICE_SYSTEM_FIELDS,
+    "finance_io": INSERTION_ORDER_SYSTEM_FIELDS,
+    "support_cases": SUPPORT_CASE_SYSTEM_FIELDS,
+    "catalog_products": CATALOG_PRODUCT_SYSTEM_FIELDS,
+    "catalog_services": CATALOG_SERVICE_SYSTEM_FIELDS,
 }
 
 
@@ -675,6 +757,127 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "Terms and notes",
                     2,
                     [("payment_terms", "full"), ("notes", "full")],
+                ),
+            ],
+        ),
+    },
+    # Batch 4's four. Each omits what the record page already draws elsewhere (design.md
+    # §4.7): the header's name, the rail's State fields, and the rail's `Connected` links.
+    #
+    # `io_number` is the header's name and `customer_name` its subtitle, `status` is the
+    # rail's one editable field, and `file_name` is unseeded because the download is a header
+    # action — the filename alone is not worth a field.
+    "finance_io": {
+        "detail": _seed(
+            "finance_io",
+            "detail",
+            "Insertion Order Details",
+            [
+                _seed_section(
+                    "references",
+                    "References",
+                    0,
+                    [("external_reference", "half"), ("counterparty_reference", "half")],
+                ),
+                _seed_section(
+                    "period",
+                    "Dates",
+                    1,
+                    [
+                        ("issue_date", "half"),
+                        ("effective_date", "half"),
+                        ("due_date", "half"),
+                        ("start_date", "half"),
+                        ("end_date", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "totals",
+                    "Totals",
+                    2,
+                    [
+                        ("subtotal_amount", "half"),
+                        ("tax_amount", "half"),
+                        ("total_amount", "half"),
+                        ("currency", "half"),
+                    ],
+                ),
+                _seed_section("notes", "Notes", 3, [("notes", "full")]),
+            ],
+        ),
+    },
+    # `subject` is the case's name in the header and `case_number` its subtitle; status,
+    # priority and category are the rail's, and every relationship is `Connected`.
+    #
+    # `sla_due_at` is unseeded: nothing writes it, so seeding it would put a permanently empty
+    # row on every case. It stays in the catalog so the field exists when an SLA policy does.
+    "support_cases": {
+        "detail": _seed(
+            "support_cases",
+            "detail",
+            "Case Details",
+            [
+                _seed_section(
+                    "request",
+                    "Request",
+                    0,
+                    [("description", "full"), ("source", "half")],
+                ),
+                _seed_section(
+                    "response",
+                    "Response",
+                    1,
+                    [
+                        ("first_response_at", "half"),
+                        ("resolved_at", "half"),
+                        ("closed_at", "half"),
+                    ],
+                ),
+            ],
+        ),
+    },
+    # `name` is the header's, and `is_active`, `is_public` and `stock_status` are the rail's
+    # three State fields, so none of the four is seeded. The catalog image is not a field at
+    # all — it renders under the layout.
+    "catalog_products": {
+        "detail": _seed(
+            "catalog_products",
+            "detail",
+            "Product Details",
+            [
+                _seed_section(
+                    "catalog",
+                    "Catalog",
+                    0,
+                    [("sku", "half"), ("slug", "half"), ("description", "full")],
+                ),
+                _seed_section(
+                    "pricing",
+                    "Pricing",
+                    1,
+                    [("public_unit_price", "half"), ("currency", "half")],
+                ),
+                _seed_section("inventory", "Inventory", 2, [("stock_quantity", "half")]),
+            ],
+        ),
+    },
+    "catalog_services": {
+        "detail": _seed(
+            "catalog_services",
+            "detail",
+            "Service Details",
+            [
+                _seed_section(
+                    "catalog",
+                    "Catalog",
+                    0,
+                    [("slug", "half"), ("description", "full")],
+                ),
+                _seed_section(
+                    "pricing",
+                    "Pricing",
+                    1,
+                    [("public_unit_price", "half"), ("currency", "half")],
                 ),
             ],
         ),

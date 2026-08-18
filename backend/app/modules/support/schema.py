@@ -61,6 +61,7 @@ class SupportCaseEventResponse(BaseModel):
     event_type: str
     payload_json: dict[str, Any]
     created_by_id: int | None = None
+    created_by_name: str | None = None
     created_at: datetime
 
     model_config = ConfigDict(from_attributes=True)

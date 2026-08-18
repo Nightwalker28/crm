@@ -114,7 +114,7 @@ async function createCatalogRecord(kind: CatalogKind, payload: CatalogRecordPayl
   return parseJsonResponse<CatalogRecord>(res, `Failed to create catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
 }
 
-async function updateCatalogRecord(kind: CatalogKind, id: number, payload: CatalogRecordPayload): Promise<CatalogRecord> {
+async function updateCatalogRecord(kind: CatalogKind, id: number, payload: Partial<CatalogRecordPayload>): Promise<CatalogRecord> {
   const res = await apiFetch(pathFor(kind, `/${id}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -236,7 +236,7 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: CatalogRecordPayload }) => updateCatalogRecord(kind, id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<CatalogRecordPayload> }) => updateCatalogRecord(kind, id, payload),
     onSuccess: async (_record, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
@@ -268,6 +268,14 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   return {
     createRecord: (payload: CatalogRecordPayload) => createMutation.mutateAsync(payload),
     updateRecord: (id: number, payload: CatalogRecordPayload) => updateMutation.mutateAsync({ id, payload }),
+    /**
+     * A single-field write, for the record rail's `InlineFieldEdit`s.
+     *
+     * Separate from `updateRecord` so the create/edit form keeps its whole-payload type: the
+     * route is `exclude_unset`, so a partial body is a partial write, and letting the form
+     * send one too would make an omitted field indistinguishable from an unchanged one.
+     */
+    patchRecord: (id: number, payload: Partial<CatalogRecordPayload>) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
     isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,

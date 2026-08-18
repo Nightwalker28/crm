@@ -29,6 +29,7 @@ export type SupportCaseEvent = {
   event_type: string;
   payload_json: Record<string, unknown>;
   created_by_id: number | null;
+  created_by_name?: string | null;
   created_at: string;
 };
 

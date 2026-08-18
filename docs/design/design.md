@@ -804,9 +804,17 @@ Contract:
   the counts into `Details` (they are derived volume, not fields, and R2's read-only
   content region is not where navigation belongs).
 - **Every record type carries the spine.** Where a record has no state fields the State
-  block is omitted; the Connected block is not optional. A rail that ends up carrying only
-  "Created / Updated" is a signal that the record type is under-modelled — raise it, do not
-  answer it with a second archetype.
+  block is omitted, and where the record type has **no relationship columns at all** the
+  Connected block is omitted too. That second half is narrow and deliberate: a relationship
+  that exists and is unset still draws — `EmptyValue` tells the operator what this record
+  *can* link to, which is why hiding a contract's six unset foreign keys was rejected. A
+  catalog product and a custom-module record are the other case: neither schema has a
+  relationship to draw, so a `Connected` heading over nothing would be a promise the data
+  model does not make. Rejected: inventing the relationship to fill the block — a
+  `POS invoices 3` collection on a product, which only `finance_pos_items` carries a foreign
+  key for, so quote and order lines would silently not count and the number would be wrong.
+  A rail that ends up carrying only "Created / Updated" is a signal that the record type is
+  under-modelled — raise it, do not answer it with a second archetype.
 - **The tab set is fixed and owned by the archetype:** `Details · Timeline · Tasks · Files`,
   in that order, on every record. Module-specific tabs append after `Files`. Because the
   archetype owns the only strip, tabs cannot nest — the defect at
@@ -888,6 +896,19 @@ Contract:
   `StatusValue` beside the status it qualifies, and the catalog marks it `readonly` so a
   tenant adding it to `Details` does not get an editable copy either. The test is not "is
   it a dropdown" but **"is this column written by an operator, or derived by a service?"**
+- **A boolean whose two values are named states is a state field, and it edits in the
+  rail.** R2's shape test reads "dropdown-shaped", and taken literally that sends a catalog
+  product's `is_active` to `/[id]/edit` — a page trip to flip one switch, on a column that
+  is state by any reading. What the shape test is really about is a *closed set the
+  operator picks from*, and two is a closed set. So `Active` / `Inactive` and `Public` /
+  `Private` are `InlineFieldEdit` option pairs, and they render through the same
+  `StatusValue` a read-only status uses, so nothing about them looks like a new control.
+  **Rejected: a `Switch` in the rail.** It is a second control shape for the job
+  `InlineFieldEdit` already does, its `SaveStateIndicator` pairing would have to be
+  re-solved, and a toggle commits on a click where a select commits on a choice — which is
+  a different feel for the same autosave. The naming is what qualifies a boolean: a field
+  whose honest labels are "Yes" and "No" is answering a question about the record rather
+  than naming a state it is in, and it stays content.
 - **A line-item document's items are the document body, and they render in `Details` under
   the layout — read-only.** Quote, order and invoice all keep their editor on `/[id]/edit`
   behind a manual save, because R1 will not autosave totals derived from lines, discount

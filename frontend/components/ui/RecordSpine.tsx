@@ -51,9 +51,32 @@ export function RecordSpine({
     <aside
       data-slot="record-spine"
       aria-label="Record state and relationships"
-      className={cn("flex w-full shrink-0 flex-col gap-6 lg:w-80", className)}
+      className={cn("flex w-full shrink-0 flex-col lg:w-80 lg:min-h-0", className)}
     >
-      {children}
+      {/*
+        The rail scrolls itself once its blocks outgrow the row, rather than growing the row
+        and handing the overflow to the dashboard shell's own scroller. Without this a
+        support case — a lifecycle track, three State fields, six Connected entries and the
+        meta footer — pushed `Updated` and its `History` trigger 222px below the fold at a
+        695px viewport, and reaching them scrolled the *page*, dragging the record's name and
+        actions off the top. §4.5 allows one scroller per region; that was a second one,
+        owned by the shell. It shipped in batch 1 and no assertion could see it — the
+        contract page carried the same defect at 130px.
+
+        `-mx-2 px-2` is load-bearing, not cosmetic. `RecordSpineLink` and
+        `RecordSpineCollection` bleed 8px each side so their hover ground and focus ring reach
+        the rail's edges; inside a scroll container that bleed is 8px of horizontal overflow,
+        and because CSS computes the other axis to `auto` the rail grew a horizontal
+        scrollbar. Padding the scroller and pulling it back out gives the bleed somewhere to
+        land — `overflow-x-clip` would have removed the scrollbar by cutting the focus ring
+        off instead, which §8 does not allow.
+      */}
+      <div
+        data-slot="record-spine-scroll"
+        className="flex min-w-0 flex-col gap-6 lg:-mx-2 lg:min-h-0 lg:flex-1 lg:overflow-y-auto lg:px-2"
+      >
+        {children}
+      </div>
     </aside>
   );
 }

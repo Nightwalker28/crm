@@ -201,7 +201,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/payments/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `finance/insertion-orders/page.tsx` | 241 | 5.5 | rebuild | | |
 | `finance/insertion-orders/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `finance/insertion-orders/[ioId]/page.tsx` | 222 | 5.3 | rebuild | Runtime title-caser at `:186` | |
+| `finance/insertion-orders/[ioId]/page.tsx` | 222 | 5.3 | rebuild | Runtime title-caser at `:186` | done |
 | `finance/insertion-orders/[ioId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `finance/invoice-generator/page.tsx` | 5 | 5.7 | **delete** | A 3-line `redirect()` still in the route list | |
 
@@ -211,11 +211,11 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `catalog/products/page.tsx` | 5 | 5.5 | unchanged | Shim to `CatalogRecordsPage` | |
 | `catalog/products/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `catalog/products/[productId]/page.tsx` | 10 | 5.3 | unchanged | Shim to `CatalogRecordDetailPage` | |
+| `catalog/products/[productId]/page.tsx` | 10 | 5.3 | unchanged | Shim to `CatalogRecordDetailPage` | done |
 | `catalog/products/[productId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `catalog/services/page.tsx` | 5 | 5.5 | unchanged | Shim | |
 | `catalog/services/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `catalog/services/[serviceId]/page.tsx` | 10 | 5.3 | unchanged | Shim | |
+| `catalog/services/[serviceId]/page.tsx` | 10 | 5.3 | unchanged | Shim | done |
 | `catalog/services/[serviceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `contracts/page.tsx` | 75 | 5.5 | rebuild | | |
 | `contracts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
@@ -223,13 +223,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `contracts/[contractId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `support/cases/page.tsx` | 117 | 5.5 | rebuild | | |
 | `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | |
+| `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | done |
 | `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | |
 | `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | |
 | `documents/upload/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `custom/[moduleKey]/page.tsx` | 263 | 5.5 | rebuild | **B.2** — filters collected and silently discarded. Filed, not fixed here | |
 | `custom/[moduleKey]/new/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `custom/[moduleKey]/[recordId]/page.tsx` | 320 | 5.3 | rebuild | Archetype 5 — inline-edit form | |
+| `custom/[moduleKey]/[recordId]/page.tsx` | 320 | 5.3 | rebuild | Archetype 5 — inline-edit form | done |
+| `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | |
@@ -291,13 +292,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
 | `recordWorkspace/RecordWorkspace.tsx` | 142 | 5.3 | rebuild | `RecordWorkspace` itself is nearly a no-op forwarding to `PageShell`. The real targets are its header/primary/region/rail exports → the spine | **done** — now the archetype: header, spine, content region, and the only tab strip (named slots, not an array) |
-| `recordActivity/RecordPageHeader.tsx` | 46 | 5.3 | adopt | | |
-| `recordActivity/CrmRecordActivitySection.tsx` | 76 | 5.3 | **delete** | **This is a `RecordTabs` rendered inside another one.** The nested-tabs cause. The archetype owns the only strip, so this has nothing left to be | |
+| `recordActivity/RecordPageHeader.tsx` | 46 | 5.3 | **delete** | Superseded by `RecordWorkspace`'s own header row. Deleted in batch 4 with its last three consumers | done |
+| `recordActivity/CrmRecordActivitySection.tsx` | 76 | 5.3 | **delete** | **This is a `RecordTabs` rendered inside another one.** The nested-tabs cause. The archetype owns the only strip, so this has nothing left to be | done — deleted in batch 4 |
 | `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | **delete** | Replaced by `RecordTimeline` — composer on top, `divide-y` rows (R8) | **done** — file deleted, 0 importers |
-| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | `RecordAuditHistory` built; the old file dies with its last 2 importers in batch 1 |
-| `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | |
+| `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | done — `RecordAuditHistory` replaced it; the old file died with `CrmRecordActivitySection` in batch 4 |
+| `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | done — deleted in batch 4 |
 | `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | |
-| `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | |
+| `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | done — deleted in batch 4 |
 | `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | |
 | `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | **done** — gained the `menuItem` presentation for the header's `[⋯]` (§2.2) |
 | `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | **done** (A) — now `ui/PanelStates.tsx` |
@@ -344,10 +345,11 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | |
 | `catalog/CatalogRecordFormPage.tsx` | 333 | 5.4 | rebuild | | |
 | `customModules/CustomModuleRecordCreatePage.tsx` | 286 | 5.4 | rebuild | | |
+| `customModules/CustomModuleRecordEditPage.tsx` | 300 | 5.4 | **new** | Added in batch 4 as the create page with a record behind it — archetype 3, so 5.4 owns its final shape with the other 15 form routes | |
 | `documents/DocumentUploadFormPage.tsx` | 533 | 5.4 | rebuild | One of two footer stragglers (`:515`) | |
 | `settings/message-templates/MessageTemplateRecordFormPage.tsx` | 232 | 5.4 | rebuild | Verbatim copy of the sticky-footer classes (`:205`) | |
 | `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | |
-| `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | |
+| `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 
 ### 2.3 Tables and lists (16) — owner 5.5
 

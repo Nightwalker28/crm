@@ -33,6 +33,7 @@ export type InsertionOrder = {
   file_url?: string | null;
   user_name?: string | null;
   photo_url?: string | null;
+  created_at?: string | null;
   updated_at?: string | null;
 };
 

@@ -46,6 +46,55 @@ function serviceFixture() {
   };
 }
 
+/** The `detail` surfaces catalog records adopted in rebuild 5.3 batch 4. */
+function catalogDetailLayout(moduleKey: "catalog_products" | "catalog_services") {
+  const isProduct = moduleKey === "catalog_products";
+  const f = (field_key: string, label: string, position: number, width = "half") => ({
+    field_key, label, field_type: "text", field_source: "system", position, width,
+    visible: true, required: false, readonly: true,
+  });
+  return {
+    layout_id: null,
+    module_key: moduleKey,
+    surface: "detail",
+    name: isProduct ? "Product Details" : "Service Details",
+    source: "system",
+    version: 1,
+    can_customize: false,
+    warnings: [],
+    sections: [
+      {
+        id: "catalog",
+        label: "Catalog",
+        position: 0,
+        region: "main",
+        collapsed_by_default: false,
+        fields: [
+          ...(isProduct ? [f("sku", "SKU", 0)] : []),
+          f("slug", "Public slug", 1),
+          f("description", "Description", 2, "full"),
+        ],
+      },
+      {
+        id: "pricing",
+        label: "Pricing",
+        position: 1,
+        region: "main",
+        collapsed_by_default: false,
+        fields: [f("public_unit_price", "Public base price", 0), f("currency", "Currency", 1)],
+      },
+      ...(isProduct ? [{
+        id: "inventory",
+        label: "Inventory",
+        position: 2,
+        region: "main",
+        collapsed_by_default: false,
+        fields: [f("stock_quantity", "Stock quantity", 0)],
+      }] : []),
+    ],
+  };
+}
+
 async function cacheCatalogPermissions(
   page: Parameters<typeof loginAsAdmin>[0],
   actions: { can_create?: boolean; can_edit: boolean; can_delete: boolean },
@@ -77,7 +126,8 @@ async function cacheCatalogPermissions(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([{
+      body: JSON.stringify([
+      {
         id: 44,
         name: moduleName,
         is_enabled: true,
@@ -90,8 +140,31 @@ async function cacheCatalogPermissions(
           can_export: false,
           can_configure: false,
         },
-      }]),
+      },
+      // The record archetype's Tasks and Files tabs resolve through their own modules —
+      // a tab whose module is not granted is simply not rendered.
+      ...["tasks", "documents"].map((name, index) => ({
+        id: 45 + index,
+        name,
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: true,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      })),
+      ]),
     }),
+  );
+
+  // `Details` is `ReadOnlyRecordLayout` over the resolved layout, so a detail route cannot
+  // render without one.
+  await page.route(`**/record-layouts/${moduleName}/detail/resolved`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(catalogDetailLayout(moduleName as "catalog_products" | "catalog_services")) }),
   );
 }
 
@@ -248,16 +321,30 @@ test("Product detail uses the shared responsive summary and explains recoverable
     });
   });
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/catalog/products/${productId}`);
 
-  await expect(page.getByRole("heading", { name: "Camera kit" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Camera kit");
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+
+  // The three State fields are the rail's, and two of them are booleans whose values are
+  // named states — a closed set the operator picks from, so they edit in place (design.md §4.7).
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("combobox", { name: "Active" })).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Website feed" })).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Stock status" })).toBeVisible();
+  // A catalog record has no relationship column at all, so there is no Connected block.
+  await expect(spine.getByText("Connected", { exact: true })).toHaveCount(0);
+
+  // The image is the record's customer-facing body, so it renders under the layout — the
+  // same shape a line-item document's items take.
   await expect(page.getByText("Public base price")).toBeVisible();
-  await expect(page.getByText("Customer-specific pricing is resolved separately for authenticated customers.")).toBeVisible();
   await expect(page.getByRole("img", { name: "Camera kit catalog image" })).toBeVisible();
-  await page.getByRole("button", { name: "Delete product" }).click();
-  await expect(page.getByText('Move "Camera kit" to the Recycle Bin? It can be restored by an administrator.')).toBeVisible();
-  await expect(page.getByRole("button", { name: "Move to Recycle Bin" })).toBeVisible();
+
+  // Delete is destructive, so it is in the `[⋯]` menu rather than setting a second fill.
+  await page.getByRole("button", { name: /More .* actions/ }).click();
+  await page.getByRole("menuitem", { name: "Delete product" }).click();
+  await expect(page.getByText('Move "Camera kit" to the recycle bin? It can be restored from Settings.')).toBeVisible();
+  await expect(page.getByRole("button", { name: "Delete Product" })).toBeVisible();
 });
 
 test("Product detail hides actions that are not granted", async ({ page }) => {
@@ -272,9 +359,14 @@ test("Product detail hides actions that are not granted", async ({ page }) => {
 
   await page.goto(`/dashboard/catalog/products/${productId}`);
 
-  await expect(page.getByRole("heading", { name: "Camera kit" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit product" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete product" })).toHaveCount(0);
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Camera kit");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  // With neither Edit nor Delete granted the overflow has nothing to hold, so it is absent.
+  await expect(page.getByRole("button", { name: /More .* actions/ })).toHaveCount(0);
+  // The rail falls back to a read-only status rather than offering a control that cannot save.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("combobox", { name: "Active" })).toHaveCount(0);
+  await expect(spine.locator('[data-slot="status-value"]', { hasText: "Active" }).first()).toBeVisible();
 });
 
 test("Service detail uses the shared summary without product inventory fields", async ({ page }) => {
@@ -289,19 +381,26 @@ test("Service detail uses the shared summary without product inventory fields", 
 
   await page.goto(`/dashboard/catalog/services/${serviceId}`);
 
-  await expect(page.getByRole("heading", { name: "Installation service" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Installation service");
   await expect(page.getByText("Public base price")).toBeVisible();
-  await expect(page.getByText("Private", { exact: true })).toBeVisible();
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByText("Private", { exact: true })).toBeVisible();
+  // A service has no inventory, so the rail carries two State fields rather than three and
+  // the layout carries no SKU.
+  await expect(spine.getByRole("combobox", { name: "Stock status" })).toHaveCount(0);
   await expect(page.getByText("SKU", { exact: true })).toHaveCount(0);
-  await expect(page.getByText("Stock status", { exact: true })).toHaveCount(0);
   await expect(page.getByText("Stock quantity", { exact: true })).toHaveCount(0);
+  // A service with no image says so rather than drawing an empty frame with no explanation.
+  await expect(page.getByText("No image uploaded")).toBeVisible();
 });
 
-test("Shared record activity panels are responsive, labeled, and use consistent states", async ({ page }) => {
+test("The record archetype's Timeline, Tasks and Files tabs replace the nested activity section", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
   await page.route(`**/api/v1/catalog/products/${productId}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(productFixture()) }),
   );
+  // The audit store the `History` sheet reads. It is deliberately separate from the
+  // interaction feed below and is not a tab (design.md §4.7).
   await page.route("**/activity/record?**", (route) =>
     route.fulfill({
       status: 200,
@@ -319,21 +418,31 @@ test("Shared record activity panels are responsive, labeled, and use consistent 
       }),
     }),
   );
-  await page.route("**/record-comments?**", (route) =>
+  // The interaction feed. A note is `type="note"` here, which is why there is no Notes tab.
+  await page.route("**/records/catalog_products/**/activity**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
-        results: [{
-          id: 61,
-          actor_user_id: 1,
-          module_key: "catalog_products",
-          entity_id: String(productId),
-          body: "Confirm the replenishment date.",
-          author_name: "Admin User",
-          created_at: "2026-07-27T10:15:00Z",
-          updated_at: "2026-07-27T10:15:00Z",
+        items: [{
+          id: "note:61",
+          type: "note",
+          occurred_at: "2026-07-27T10:15:00Z",
+          title: "Note added",
+          summary: "Confirm the replenishment date.",
+          direction: null,
+          status: null,
+          actor: { user_id: 1, name: "Admin User" },
+          source: { module_key: "catalog_products", record_id: "61" },
+          record: { module_key: "catalog_products", entity_id: String(productId) },
+          capabilities: [],
+          meta: {},
         }],
+        next_cursor: null,
+        has_more: false,
+        limit: 25,
+        available_types: ["note"],
+        omitted_types: [],
       }),
     }),
   );
@@ -351,17 +460,21 @@ test("Shared record activity panels are responsive, labeled, and use consistent 
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ users: [], teams: [] }) }),
   );
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/catalog/products/${productId}`);
 
-  await expect(page.getByRole("heading", { name: "Activity Timeline" })).toBeVisible();
-  await expect(page.getByRole("list", { name: "Activity Timeline entries" })).toContainText("Updated Camera kit");
+  // One strip, four tabs, nothing nested — `CrmRecordActivitySection` supplied a second
+  // strip inside the page's own, and it is gone with its last three consumers.
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+  await expect(page.getByRole("tab", { name: "Notes" })).toHaveCount(0);
 
-  await page.getByRole("tab", { name: "Notes" }).click();
+  // The composer sits above the feed it writes to, and a note is one of the feed's entries
+  // rather than a list of its own.
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/catalog/products/${productId}\\?tab=timeline$`));
   await expect(page.getByLabel("Add internal note")).toBeVisible();
-  await expect(page.getByRole("list", { name: "Record notes" })).toContainText("Confirm the replenishment date.");
+  await expect(page.getByText("Confirm the replenishment date.")).toBeVisible();
 
-  await page.getByRole("tab", { name: "Documents" }).click();
+  await page.getByRole("tab", { name: "Files" }).click();
   await expect(page.getByText("No documents are linked to this record yet.")).toBeVisible();
 
   await page.getByRole("tab", { name: "Tasks" }).click();
@@ -370,9 +483,13 @@ test("Shared record activity panels are responsive, labeled, and use consistent 
   await expect(page.getByLabel("Task title")).toBeVisible();
   await expect(page.getByLabel("Due")).toBeVisible();
   await expect(page.getByLabel("Priority")).toBeVisible();
+
+  // Audit history hangs off the rail's `Updated` line, not a fifth tab.
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("dialog", { name: "History" })).toContainText("Updated Camera kit");
 });
 
-test("Record activity failures provide retry without backend details", async ({ page }) => {
+test("History sheet failures provide retry without backend details", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
   await page.route(`**/api/v1/catalog/products/${productId}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(productFixture()) }),
@@ -385,8 +502,10 @@ test("Record activity failures provide retry without backend details", async ({ 
     }),
   );
   await page.goto(`/dashboard/catalog/products/${productId}`);
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
 
-  await expect(page.getByText("Record activity could not be loaded.")).toBeVisible();
+  const sheet = page.getByRole("dialog", { name: "History" });
+  await expect(sheet.getByText("Record history could not be loaded.")).toBeVisible();
   await expect(page.getByText("database_password=secret")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Try again" })).toBeVisible();
 });

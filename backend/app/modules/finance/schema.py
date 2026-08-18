@@ -88,6 +88,7 @@ class InsertionOrderResponse(BaseModel):
     file_url: Optional[str] = None
     user_name: Optional[str] = None
     photo_url: Optional[str] = None
+    created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
 

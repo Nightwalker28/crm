@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
-from app.modules.finance.services.common import finance_date_to_iso
+from app.modules.finance.services.common import finance_date_to_iso, finance_datetime_to_iso
 from app.modules.finance.services.io_search_services import _normalize_allowed_currency, parse_human_date
 from app.modules.platform.models import ActivityLog
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -306,8 +306,8 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "payment_terms": invoice.payment_terms,
         "notes": invoice.notes,
         "user_name": user_name,
-        "created_at": finance_date_to_iso(invoice.created_at),
-        "updated_at": finance_date_to_iso(invoice.updated_at),
+        "created_at": finance_datetime_to_iso(invoice.created_at),
+        "updated_at": finance_datetime_to_iso(invoice.updated_at),
     }
     if include_lines:
         data["lines"] = [_serialize_line(line) for line in invoice.lines]

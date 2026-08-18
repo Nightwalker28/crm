@@ -258,7 +258,7 @@ def get_case_or_404(db: Session, *, tenant_id: int, case_id: int) -> SupportCase
             selectinload(SupportCase.assigned_user),
             selectinload(SupportCase.created_by),
             selectinload(SupportCase.comments).selectinload(SupportCaseComment.author),
-            selectinload(SupportCase.events),
+            selectinload(SupportCase.events).selectinload(SupportCaseEvent.created_by),
         )
         .filter(SupportCase.id == case_id, SupportCase.tenant_id == tenant_id)
         .populate_existing()

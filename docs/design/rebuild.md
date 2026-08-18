@@ -1241,7 +1241,7 @@ record's own fields versus related objects, and §4.7 now carries the one-line t
 
 ### Status: in progress — the archetype, and five modules on it
 
-Eight commits. **Pick up at "What is left", below.**
+Ten commits. **Pick up at "What is left", below.**
 
 | Commit | What landed |
 |---|---|
@@ -1252,6 +1252,7 @@ Eight commits. **Pick up at "What is left", below.**
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
 | `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
+| _pending_ | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in the primitive |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1503,6 +1504,116 @@ record page — the "the detail page is secretly a form" defect this sub-phase r
 being *rows pointing at the document* would otherwise let §4.7's own test wave them through,
 so the rule is written down rather than left to the next reader.
 
+**What batch 4 decided — insertion order, support case, custom record and catalog.** The
+last four detail pages, and the batch that kills `CrmRecordActivitySection`. All four needed
+the same backend slice batches 2 and 3 needed, for the same reason: `Details` is
+`ReadOnlyRecordLayout` over a resolved layout, so `finance_io`, `support_cases`,
+`catalog_products` and `catalog_services` join the `detail`-only modules. None of them gains
+a Quick Create.
+
+- **`CrmRecordActivitySection` is deleted, and `RecordCommentsPanel`, `FollowUpPanel`,
+  `RecordActivityTimeline` and `RecordPageHeader` went with it.** Five files, one deletion:
+  the first was the nested-tabs cause and the next three were its only importers. Nothing in
+  `app/dashboard` now renders a tab strip inside a tab strip, and nothing renders a record
+  header that is not `RecordWorkspace`'s.
+- **The support case's conversation *is* the Timeline**, which is what the `support_case_reply`
+  adapter was built for three commits earlier. The `Conversation` card with its own reply box
+  and the `Case history` card beside it are both gone — the first became the composer's reply
+  mode over the feed that already rendered those rows, and the second became `moduleEvents` in
+  the History sheet. That is the census row "two comment systems and two histories on one
+  screen" closing as one change rather than four.
+- **The case's name is its `subject`, not its `case_number`** — the reverse of the three
+  line-item documents, and deliberate. A quote's number *is* its identity in the ledger; a
+  case's number is the reference you quote when you already know which case you mean. The
+  header answers "which record is this", so the subject wins and the number is the subtitle.
+- **Two runtime title-casers died**, as the batch row promised. The support case's became a
+  static `CASE_EVENT_LABELS` map, which also fixed what the title-caser could not see:
+  `client_replied` was rendering as `Client Replied` — §3.5 shouting, and a `client_` prefix
+  that said "portal" to nobody. It reads `Customer replied in the portal` now. The catalog's
+  `stockLabel()` became `CATALOG_STOCK_STATUS` in `statusStyles.ts`, where the tone
+  classification belongs.
+- **Custom module records needed a route that did not exist.** R2 sends a record's content
+  fields to `/[id]/edit`, and this was the one module whose detail page *was* the form — so
+  removing the form would have made the record uneditable. `/dashboard/custom/[moduleKey]/[recordId]/edit`
+  is the create page with a record behind it: same `RecordFormLayout`, same validation, same
+  guard. It is the only new route in the sub-phase, and it is 5.4's to finish with the other
+  15 form routes.
+
+**Two rules came out of it, both in §4.7 now.**
+
+- **The `Connected` block is omitted where the record type has no relationship columns at
+  all.** §4.7 said it was "not optional", written when every record in view had six of them.
+  A catalog product and a custom-module record have none — not unset, *absent from the
+  schema* — so the heading would have promised a link the data model cannot make. The narrow
+  half of the rule still stands: a relationship that exists and is unset still draws, because
+  `Not set` tells the operator what this record *can* link to. **Rejected: inventing one to
+  fill the block** — a `POS invoices 3` collection on a product, which only
+  `finance_pos_items` carries a foreign key for, so quote and order lines would silently not
+  count and the number would be wrong. This is R9's "a thin rail is a signal the record type
+  is under-modelled" arriving for the third time; it is raised, not answered with a second
+  archetype.
+- **A boolean whose two values are named states is a state field and edits in the rail.**
+  R2's shape test says "dropdown-shaped", and read literally that sends a product's
+  `is_active` to `/[id]/edit` — a page trip to flip one switch, on a column that is state by
+  any reading. What the test is really about is a closed set the operator picks from, and two
+  is a closed set. **Rejected: a `Switch` in the rail** — a second control shape for the job
+  `InlineFieldEdit` already does, whose `SaveStateIndicator` pairing would have to be
+  re-solved, and which commits on a click where a select commits on a choice. The naming is
+  what qualifies a boolean: a field whose honest labels are "Yes" and "No" is answering a
+  question about the record rather than naming a state it is in, and it stays content. The
+  custom-module rail follows the same line — `single_select` and `boolean` are State, every
+  other field type is content.
+
+**Two response-shape defects, the same class every batch since 2 has found.** An insertion
+order had no `created_at` at all, so its spine had no `Created` line — exactly the POS
+invoice's defect from batch 3. And a support case's `SupportCaseEvent` carried
+`created_by_id` and no name, so every operator-caused row in the merged History sheet would
+have read `Unknown user`; it is a model property and an eager load now, resolved in-tenant.
+
+**A third was worse than a shape defect, and it was in code batch 3 shipped.** Every finance
+timestamp went through `finance_date_to_iso`, which truncates a `datetime` to `YYYY-MM-DD` —
+correct for `issue_date` and `due_date`, which are `Date` columns, and wrong for `created_at`
+and `updated_at`, which are not. Every consumer renders them with `formatDateTime`, so
+`new Date("2026-08-18")` parsed as UTC midnight and a record page west of Greenwich read
+`Updated Aug 17, 8:00 PM` for a row saved on the 18th — a wrong clock time and, often enough,
+the wrong day. `finance_datetime_to_iso` is the fix, and it corrects the POS invoice spine
+as well as the insertion order's.
+
+**The browser pass found the seventh defect across four batches, and this one was in the
+archetype's own geometry.** §4.7's contract says the content region is the only scroller and
+the rail is a flex sibling of it. The rail had no height constraint, so once its blocks
+outgrew the row it grew the row instead, and the dashboard shell's scroller absorbed the
+overflow. On a support case — a lifecycle track, three State fields, six Connected entries
+and the meta footer — `Updated` and its `History` trigger sat **222px below the fold** at a
+695px viewport, and reaching them scrolled the *page*, dragging the record's name and actions
+off the top. **It shipped in batch 1**: the contract page carried the same defect at 130px,
+through three batches, four rounds of gates and every module spec. `RecordSpine` owns its own
+scroll now.
+
+**Fixing it walked straight into the trap `check-design.sh` already names.** Adding
+`overflow-y-auto` silently computes `overflow-x` to `auto` as well, and
+`RecordSpineLink`'s `-mx-2` bleed — the 8px that lets a hover ground and a focus ring reach
+the rail's edges — became 8px of horizontal overflow with a scrollbar under it. The rule's
+prescribed fix is `overflow-x-clip`, and here that would have clipped the focus ring §8
+requires, so the scroller takes matching `-mx-2 px-2` instead and the bleed has somewhere to
+land. Worth recording: the rule was right about the mechanism and wrong about the remedy for
+this one case.
+
+**Two things the pass proved were *not* defects, both of which looked like findings.** The
+Timeline appeared to render one of two replies — the second was below the fold inside the tab
+panel's own scroller. And the tab strip appeared to be a focus stop with no ring: it is
+radix's `RovingFocusGroup` delegating, so one `Tab` press fires two `focusin` events and
+focus *rests* on the trigger, which rings. The lesson from batch 3 repeated in a new form —
+**read where focus comes to rest, not every event on the way** — and the ring itself still
+has to be looked at, because the resting trigger's computed `box-shadow` reads as a
+transparent shadow while the ring is plainly visible on screen.
+
+**One inherited redundancy, observed and left.** The seeded `Notes` section holds a single
+field also labelled `Notes`, so the word is drawn twice — on the quote and order from batch 3
+and now on the insertion order. It is one seed line per module to change and no renderer
+special case would be right, so it is recorded here for 5.9's copy sweep rather than churned
+now.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1512,32 +1623,32 @@ each — the shape 5.2 used.
 |---|---|---|
 | ~~1~~ | ~~**deal + contract**~~ | **Done** — see "What batch 2 decided", above |
 | ~~2~~ | ~~**quote, order, POS invoice**~~ | **Done** — see "What batch 3 decided", above. A12 closed; the second nested tab strip died with it |
-| 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline, and `item.events` joins the History sheet through `RecordAuditHistory`'s `moduleEvents`, which batch 2 built for contract events. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
+| ~~3~~ | ~~**insertion order, support case, custom record, catalog product/service**~~ | **Done** — see "What batch 4 decided", above. `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in `RecordSpine` |
 | 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
 | 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
-| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links |
+| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links. Batch 4 adds two more: a support case has **no `/[id]/edit` route at all**, so its subject, description and relationships have never been editable after create — a product gap that predates the rebuild, not something a migration should answer by inventing a form; and `sla_due_at` is on the model, in the response, in the automation registry and in list filters, and **no code path writes it**, so every case shows an SLA that will never arrive |
 
 ### Traps already paid for once
 
 - **`RecordWorkspaceLegacy.tsx` is gone** — deleted in batch 1 with its last two consumers,
   as planned. Nothing may reintroduce it.
-- **`CrmRecordActivitySection` is down to 3 importers** — the deal left in batch 2, and the
-  quote, order and POS invoice in batch 3 — and is the nested-tabs cause. What is left is
-  exactly batch 3's row: `insertion-orders/[ioId]`, `support/cases/[caseId]` and
-  `CatalogRecordDetailPage`. It is
-  a `delete`, not a rebuild — it dies when its last consumer migrates in what is now batch 3.
-  `RecordCommentsPanel` and `FollowUpPanel` are **down to one importer each, and it is
-  `CrmRecordActivitySection` itself**, so all three die together; their composers already
-  live in `RecordTimelineComposer`. `RecordActivityTimeline` (the audit component) is in the
-  same position. `RecordActivityFeed` is already deleted.
+- **`CrmRecordActivitySection` is gone**, deleted in batch 4 with its last three consumers,
+  and `RecordCommentsPanel`, `FollowUpPanel` and `RecordActivityTimeline` went with it — it
+  was their only importer. `RecordPageHeader` died in the same commit for the same reason.
+  `RecordActivityFeed` was already deleted. Nothing may reintroduce any of them: their
+  composers live in `RecordTimelineComposer` and their panels are the archetype's tabs.
 - **`leads-revamp.spec.ts` has 2 failures that predate this sub-phase** — narrow-viewport
   list, and denied/missing records (the route states render `titleAs="p"` and the spec asks
   for a heading). Measure the baseline by stashing before blaming a rebuild for a red.
-- **The browser pass is not optional. It has now found six defects across three batches**
-  while lint, build, both rendered guards and every module spec were green — and batch 2's
-  was a `ReferenceError` that took the whole route down, which the rendered guards missed
-  because they only audit routes that render. Seed, then drive a real record — and tab
-  through it, which is what batch 1's two needed.
+- **The browser pass is not optional. It has now found seven defects across four batches**
+  while lint, build, both rendered guards and every module spec were green — and two of them
+  had been shipped for batches: batch 2's `ReferenceError` took a whole route down, and batch
+  4 found the rail overflowing the page, which batch 1 introduced and three batches of gates
+  missed. Seed, then drive a real record — and tab through it, which is what batch 1's two
+  needed. **Measure the geometry too**: `scroll-containers.spec.ts` only visits static routes,
+  so no rendered guard has ever opened a record page, which is exactly where the rail defect
+  lived. `support-revamp.spec.ts` now carries a record-page scroll assertion; a batch that
+  changes the rail should extend it rather than trust the route list.
   `scripts/seed_demo_crm` seeds tenant 1 (`default`): leads at ids 3–5, and batch 1 used
   contact 23 and account 13, which carry a phone, an account, a customer group and related
   records. Batch 2 used deal 14 (a `proposal` with a contact, an account and an insertion
@@ -1550,7 +1661,14 @@ each — the shape 5.2 used.
   `partial`, so the only one with a real balance due). **The sample quotes and orders seed
   flat** — no items, no contact, no account, no deal — so a rail and a line-item table are
   both empty on them; batch 3 filled quote 3 by hand before driving it, and `Convert to
-  order` then rejects unless the quote's account matches its deal's.
+  order` then rejects unless the quote's account matches its deal's. Batch 4 used insertion
+  order 15 (`active`, an account, and a real `.pdf` rather than the `.manual` sentinel the
+  first two carry), support case 3 — **the only one with events** — after linking it to
+  contact 23 and account 13 and adding two replies by hand, catalog product 13 (the only
+  `preorder` one) and custom module `testing_new_custom_module`, whose seeded fields are all
+  content, so a `single_select` and a `boolean` were added by hand to see a State block at
+  all. **No seeded custom module has a state field**, which is worth knowing before assuming
+  the rail is broken.
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.
 

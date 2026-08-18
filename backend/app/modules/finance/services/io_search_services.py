@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.finance.models import FinanceIO
 from app.modules.finance.repositories import io_repository
-from app.modules.finance.services.common import finance_date_to_iso
+from app.modules.finance.services.common import finance_date_to_iso, finance_datetime_to_iso
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     load_custom_field_values_with_fallback,
@@ -228,7 +228,10 @@ def _serialize_finance_record_state(record: FinanceIO, *, current_user=None) -> 
         "file_name": _normalize_text(record.file_name),
         "user_name": user_name,
         "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
-        "updated_at": finance_date_to_iso(record.updated_at),
+        # The record archetype's spine draws a `Created` line, and the response had no
+        # timestamp to draw it from — the same response-shape gap the POS invoice had.
+        "created_at": finance_datetime_to_iso(record.created_at),
+        "updated_at": finance_datetime_to_iso(record.updated_at),
     }
 
 

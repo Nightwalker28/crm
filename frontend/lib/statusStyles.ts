@@ -85,6 +85,18 @@ const INSERTION_ORDER_STATUS: Record<string, StatusDescriptor> = {
   cancelled: c("Cancelled"),
 };
 
+/**
+ * `in_stock` is neutral rather than success on purpose: it is the state most rows are in, and
+ * R5's whole point is that painting the normal case leaves nothing for the exception. Out of
+ * stock is what an operator scanning the catalog is looking for.
+ */
+const CATALOG_STOCK_STATUS: Record<string, StatusDescriptor> = {
+  untracked: n("Untracked"),
+  in_stock: n("In stock"),
+  out_of_stock: c("Out of stock"),
+  preorder: a("Preorder"),
+};
+
 const CONTRACT_STATUS: Record<string, StatusDescriptor> = {
   draft: n("Draft"),
   review: n("Review"),
@@ -192,6 +204,21 @@ export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);
 export const getTaskStatus = (v: string) => descriptorFrom(TASK_STATUS, v);
 export const getSupportCaseStatus = (v: string) => descriptorFrom(SUPPORT_CASE_STATUS, v);
+export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK_STATUS, v);
+
+/**
+ * The two named-state booleans on a catalog record (design.md §4.7).
+ *
+ * They are descriptors rather than raw strings because the rail edits them through
+ * `InlineFieldEdit`, which renders its closed value as a `StatusValue` — so the read-only and
+ * the editable spelling of "this product is inactive" have to be the same one.
+ *
+ * `Active` is neutral and `Inactive` takes the tone: active is what almost every row is, and
+ * a disabled product is the deviation. Public and private are a category — a product not on
+ * the website is not an exception, it is a choice — so neither takes a tone (R5).
+ */
+export const getCatalogActiveState = (v: boolean) => (v ? n("Active") : a("Inactive"));
+export const getCatalogVisibility = (v: boolean) => (v ? cat("Public") : cat("Private"));
 export const getSupportCasePriority = (v: string) => descriptorFrom(SUPPORT_CASE_PRIORITY, v);
 
 /** Categories — classified so the label is right, toneless so nothing paints them. */

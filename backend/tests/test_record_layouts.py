@@ -304,24 +304,35 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     validate_module_and_surface(module_key, surface),
                     (module_key, surface),
                 )
-        # Contracts and the three line-item documents adopt the record archetype's `Details`
-        # tab and nothing else — none of the four has a Quick Create surface, so all four are
-        # deliberately detail-only.
-        for module_key in ("contracts", "sales_quotes", "sales_orders", "finance_pos"):
+        # Every module that adopts the record archetype's `Details` tab and nothing else.
+        # None of them has a Quick Create surface: a contract, a line-item document and a
+        # catalog record all keep an explicit save on `/new`, and a support case and an
+        # insertion order are created from their own forms.
+        detail_only = (
+            "contracts",
+            "sales_quotes",
+            "sales_orders",
+            "finance_pos",
+            "finance_io",
+            "support_cases",
+            "catalog_products",
+            "catalog_services",
+        )
+        for module_key in detail_only:
             self.assertEqual(
                 validate_module_and_surface(module_key, "detail"),
                 (module_key, "detail"),
             )
 
         with self.assertRaises(HTTPException) as unadopted_module:
-            validate_module_and_surface("support_cases", "detail")
+            validate_module_and_surface("mail", "detail")
         self.assertEqual(unadopted_module.exception.status_code, 404)
 
         with self.assertRaises(HTTPException) as future_surface:
             validate_module_and_surface("sales_leads", "full_form")
         self.assertEqual(future_surface.exception.status_code, 422)
 
-        for module_key in ("contracts", "sales_quotes", "sales_orders", "finance_pos"):
+        for module_key in detail_only:
             with self.assertRaises(HTTPException) as unseeded_surface:
                 validate_module_and_surface(module_key, "quick_create")
             self.assertEqual(unseeded_surface.exception.status_code, 422)

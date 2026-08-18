@@ -3,7 +3,9 @@
 import type { ReactNode } from "react";
 
 import { ResolvedRecordLayout } from "@/components/forms/ResolvedRecordLayout";
+import { Card } from "@/components/ui/Card";
 import { EmptyValue } from "@/components/ui/EmptyValue";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
@@ -18,16 +20,16 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
  * one §3.6 rejects. Absence is `EmptyValue` at `context="field"` now, so 5.9's copy sweep is
  * one edit rather than one per renderer.
  */
-function formatResolvedValue(field: ResolvedRecordLayoutField, value: unknown): ReactNode {
+export function formatReadOnlyValue(fieldType: string, value: unknown): ReactNode {
   if (value === null || value === undefined || value === "") return <EmptyValue context="field" />;
-  if (field.field_type === "boolean") return value === true ? "Yes" : "No";
-  if (field.field_type === "date") {
+  if (fieldType === "boolean") return value === true ? "Yes" : "No";
+  if (fieldType === "date") {
     return formatDateOnly(String(value)) || <EmptyValue context="field" />;
   }
-  if (field.field_type === "datetime") {
+  if (fieldType === "datetime") {
     return formatDateTime(String(value)) || <EmptyValue context="field" />;
   }
-  if (field.field_type === "select") {
+  if (fieldType === "select" || fieldType === "single_select") {
     const label = String(value).replace(/_/g, " ");
     return label.charAt(0).toUpperCase() + label.slice(1);
   }
@@ -36,6 +38,66 @@ function formatResolvedValue(field: ResolvedRecordLayoutField, value: unknown): 
   }
   if (typeof value === "object") return <EmptyValue context="field" />;
   return String(value);
+}
+
+/**
+ * One read-only field: the label, and the value formatted by its type.
+ *
+ * Exported because a module with **no server-side record layout** still has to draw its
+ * fields, and the census counted 9–12 private renderers doing exactly this by hand. A custom
+ * module's schema is defined by the tenant rather than by `record_layouts.py`, so it cannot
+ * resolve a layout — but it can render through the same field.
+ */
+export function ReadOnlyField({
+  label,
+  fieldType,
+  value,
+  children,
+}: {
+  label: string;
+  fieldType: string;
+  value: unknown;
+  /** An override for a value the type-based formatter cannot produce, e.g. money. */
+  children?: ReactNode;
+}) {
+  return (
+    <div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
+      {/* R7: a value is `text-copy-primary` — one ink step *louder* than the label above
+          it and than the section heading over the group. */}
+      <div className="mt-1 whitespace-pre-wrap text-sm text-copy-primary">
+        {children === undefined ? formatReadOnlyValue(fieldType, value) : children}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A read-only field section for a module with no record layout — the same panel, heading and
+ * two-column grid `ResolvedRecordLayout` draws for a section it resolved.
+ *
+ * A field marked `full` spans both columns, matching the layout's own `width` handling.
+ */
+export function ReadOnlyFieldSection({
+  title,
+  fields,
+}: {
+  title: string;
+  fields: { key: string; label: string; fieldType: string; value: unknown; width?: "half" | "full" }[];
+}) {
+  if (!fields.length) return null;
+  return (
+    <Card className="px-5 py-5">
+      <SectionHeading>{title}</SectionHeading>
+      <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+        {fields.map((field) => (
+          <div key={field.key} className={field.width === "full" ? "sm:col-span-2" : undefined}>
+            <ReadOnlyField label={field.label} fieldType={field.fieldType} value={field.value} />
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
 }
 
 export function ReadOnlyRecordLayout({
@@ -66,18 +128,10 @@ export function ReadOnlyRecordLayout({
       ? field.field_key.slice("custom:".length)
       : null;
     const value = rawCustomKey ? customValues[rawCustomKey] : values[field.field_key];
-    const renderedValue = renderValue?.(field, value);
     return (
-      <div>
-        <div className="text-xs font-medium text-copy-label">
-          {field.label}
-        </div>
-        {/* R7: a value is `text-copy-primary` — one ink step *louder* than the label above
-            it and than the section heading over the group. */}
-        <div className="mt-1 whitespace-pre-wrap text-sm text-copy-primary">
-          {renderedValue === undefined ? formatResolvedValue(field, value) : renderedValue}
-        </div>
-      </div>
+      <ReadOnlyField label={field.label} fieldType={field.field_type} value={value}>
+        {renderValue?.(field, value)}
+      </ReadOnlyField>
     );
   }
 

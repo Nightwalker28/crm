@@ -313,15 +313,20 @@ test("custom-module viewers receive read-only list and detail routes", async ({ 
   await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete Renewal rollout" })).toHaveCount(0);
 
+  // The detail route is the record archetype now, not a form: a viewer sees the record's
+  // state read-only in the rail and its content read-only in `Details`, and there is no
+  // Save to hide because nothing on the page writes (R2).
   await page.goto("/dashboard/custom/custom_projects/91");
-  await expect(page.getByText("You have view-only access to this record.")).toBeVisible();
-  await expect(page.getByLabel("Record title")).toBeDisabled();
-  await expect(page.getByLabel("Project name")).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Save" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Renewal rollout");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /More .* actions/ })).toHaveCount(0);
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("combobox", { name: "Status" })).toHaveCount(0);
+  await expect(page.getByLabel("Record title")).toHaveCount(0);
+  await expect(page.locator("form#custom-module-record-form")).toHaveCount(0);
 });
 
-test("custom-module detail validates required fields and redacts save failures", async ({ page }) => {
+test("custom-module editing lives on /[id]/edit, which validates and redacts save failures", async ({ page }) => {
   await page.route("**/custom-modules/custom_projects/records/91", (route) => {
     if (route.request().method() === "PUT") {
       return route.fulfill({
@@ -337,16 +342,48 @@ test("custom-module detail validates required fields and redacts save failures",
     });
   });
 
+  // R2 sends the record's content fields to `/[id]/edit`. The route is new in rebuild 5.3
+  // batch 4 and had to be, because the detail page used to *be* this form.
   await page.goto("/dashboard/custom/custom_projects/91");
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
+  await expect(page).toHaveURL(/\/dashboard\/custom\/custom_projects\/91\/edit$/);
+
   await page.getByLabel("Project name").fill("");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save record" }).click();
   await expect(page.getByText("Project name is required.")).toBeVisible();
   await expect(page.getByLabel("Project name")).toBeFocused();
 
   await page.getByLabel("Project name").fill("Renewal relaunch");
-  await page.getByRole("button", { name: "Save" }).click();
+  await page.getByRole("button", { name: "Save record" }).click();
   await expect(page.getByText("We could not save this record.")).toBeVisible();
   await expect(page.getByText("custom_values_table=private-secret")).toHaveCount(0);
+});
+
+test("custom-module state fields autosave from the rail", async ({ page }) => {
+  let saved: Record<string, unknown> | null = null;
+  let record = { ...recordFixture };
+  await page.route("**/custom-modules/custom_projects/records/91", (route) => {
+    if (route.request().method() === "PUT") {
+      saved = route.request().postDataJSON() as Record<string, unknown>;
+      record = { ...record, values: { ...record.values, ...(saved.values as Record<string, unknown>) } };
+    }
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(record) });
+  });
+
+  await page.goto("/dashboard/custom/custom_projects/91");
+  const spine = page.locator('[data-slot="record-spine"]');
+  // `single_select` is R2's shape rule read literally; `boolean` is the same rule read as
+  // "a closed set the operator picks from" (design.md §4.7). Everything else is content.
+  await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Billable" })).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Project name" })).toHaveCount(0);
+  await expect(spine.getByRole("combobox", { name: "Notes" })).toHaveCount(0);
+
+  await spine.getByRole("combobox", { name: "Status" }).click();
+  await page.getByRole("option", { name: "active" }).click();
+  await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
+  // A partial write: the rail sends the one field it changed, not the whole record.
+  expect(saved).toEqual({ values: { status: "active" } });
 });
 
 test("custom-module routes distinguish not-found and recoverable list failures", async ({ page }) => {
@@ -372,6 +409,8 @@ test("custom-module routes distinguish not-found and recoverable list failures",
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 
   await page.goto("/dashboard/custom/custom_projects/404");
-  await expect(page.getByRole("heading", { name: "Record not found" })).toBeVisible();
+  // The archetype's own not-found panel sits inside the page, so its title is `titleAs="p"`
+  // — the page's one h1 belongs to `PageShell` (§8).
+  await expect(page.getByText("Record not found")).toBeVisible();
   await expect(page.getByText("record 404 for tenant 42")).toHaveCount(0);
 });

@@ -32,9 +32,55 @@ function orderFixture() {
     file_name: "IO-2099-07301.pdf",
     file_url: "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
     user_name: "Finance Owner",
+    created_at: "2099-07-24T08:00:00Z",
     updated_at: "2099-07-24T09:00:00Z",
   };
 }
+
+/** The `detail` surface insertion orders adopted in rebuild 5.3 batch 4. */
+const insertionOrderDetailLayout = {
+  layout_id: null,
+  module_key: "finance_io",
+  surface: "detail",
+  name: "Insertion Order Details",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "references",
+      label: "References",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "external_reference", label: "External reference", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "counterparty_reference", label: "Counterparty reference", field_type: "text", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "totals",
+      label: "Totals",
+      position: 1,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "total_amount", label: "Total", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "custom_fields",
+      label: "Custom fields",
+      position: 2,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "custom:campaign_type", label: "Campaign type", field_type: "text", field_source: "custom_field", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+  ],
+};
 
 async function cacheInsertionOrderPermissions(
   page: Parameters<typeof loginAsAdmin>[0],
@@ -76,21 +122,52 @@ async function cacheInsertionOrderPermissions(
     route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify([{
-        id: 73,
-        name: "finance_io",
-        is_enabled: true,
-        actions: {
-          can_view: true,
-          can_create: true,
-          can_edit: canEdit,
-          can_delete: false,
-          can_restore: false,
-          can_export: false,
-          can_configure: false,
-          ...overrides,
+      // Tasks and documents are here because the record archetype's Tasks and Files tabs
+      // resolve through their own modules — a tab whose module is not granted is not rendered.
+      body: JSON.stringify([
+        {
+          id: 73,
+          name: "finance_io",
+          is_enabled: true,
+          actions: {
+            can_view: true,
+            can_create: true,
+            can_edit: canEdit,
+            can_delete: false,
+            can_restore: false,
+            can_export: false,
+            can_configure: false,
+            ...overrides,
+          },
         },
-      }]),
+        ...["tasks", "documents"].map((name, index) => ({
+          id: 74 + index,
+          name,
+          is_enabled: true,
+          actions: {
+            can_view: true,
+            can_create: true,
+            can_edit: true,
+            can_delete: false,
+            can_restore: false,
+            can_export: false,
+            can_configure: false,
+          },
+        })),
+      ]),
+    }),
+  );
+
+  // The record archetype's `Details` tab is `ReadOnlyRecordLayout` over the resolved layout,
+  // so a detail route cannot render without one.
+  await page.route("**/record-layouts/finance_io/detail/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(insertionOrderDetailLayout) }),
+  );
+  await page.route("**/records/finance_io/**/activity**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false, limit: 25, available_types: ["note"], omitted_types: [] }),
     }),
   );
 }
@@ -187,7 +264,7 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   });
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
-  await page.getByRole("link", { name: "Edit insertion order" }).click();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit IO-2099-07301" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveValue("Acme Operations");
@@ -205,17 +282,25 @@ test("Insertion Order detail uses the shared mobile summary and authenticated at
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
   });
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "Insertion order details" })).toBeVisible();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
-  await expect(page.getByText("Finance Owner")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
-  await expect(page.getByRole("heading", { name: "Custom fields" })).toBeVisible();
-  await expect(page.getByText("Campaign Type")).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("IO-2099-07301");
+  // R9: state and relationships are the rail's, and it is the only editable region.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(spine.getByText("Finance Owner")).toBeVisible();
+  await expect(spine.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+
+  // The private `Custom fields` card is gone: the tenant's fields are merged into the same
+  // resolved layout as the system ones (design.md §4.7).
+  await expect(page.locator("[data-layout-section='custom_fields']")).toBeVisible();
   await expect(page.getByText("Renewal", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "IO-2099-07301.pdf" })).toHaveAttribute(
+
+  // The imported source file is a rare action on the record, so it is in the overflow menu
+  // and only rendered when there is a file to fetch.
+  await page.getByRole("button", { name: /More .* actions/ }).click();
+  await expect(page.getByRole("menuitem", { name: "Download source file" })).toHaveAttribute(
     "href",
     "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
   );
@@ -229,10 +314,16 @@ test("Insertion Order detail is read-only without edit permission", async ({ pag
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "IO-2099-07301" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit insertion order" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Acme Operations" })).toBeVisible();
-  await expect(page.getByText("$1,100.00")).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("IO-2099-07301");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("link", { name: "Acme Operations" })).toBeVisible();
+  // Without edit permission the rail shows the status rather than offering to change it.
+  await expect(spine.getByRole("combobox", { name: "Status" })).toHaveCount(0);
+  await expect(spine.locator('[data-slot="status-value"]', { hasText: "Active" })).toBeVisible();
+  // The header carries the total as the identifying glance and `Totals` carries it as the
+  // document's arithmetic — the same pair the three line-item documents ship (design.md §4.7).
+  await expect(page.locator("[data-layout-section='totals']").getByText("$1,100.00")).toBeVisible();
 });
 
 test("Insertion Order detail failures do not expose backend details", async ({ page }) => {
@@ -246,7 +337,8 @@ test("Insertion Order detail failures do not expose backend details", async ({ p
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "Unable to load insertion order" })).toBeVisible();
+  // `PageShell` owns the record archetype's §7.4 states and names the record, not the failure.
+  await expect(page.getByText("Insertion order could not be loaded")).toBeVisible();
   await expect(page.getByText("sql_connection=detail-page-secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
