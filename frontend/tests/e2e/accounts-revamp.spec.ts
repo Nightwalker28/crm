@@ -109,16 +109,17 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(ownerPicker).toHaveValue("Ada Owner");
 
   await page.goto(`/dashboard/sales/organizations/${fakeAccountId}`);
-  await expect(page.getByRole("heading", { name: "Browser Account" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Account");
   await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
-  // Ownership now reads from the workspace relationship rail; the industry stays on Details.
-  await expect(
-    page.locator("[data-record-workspace-relationship-rail]").getByText("Ada Owner", { exact: true }),
-  ).toBeVisible();
+  // Ownership now reads from the record spine; the industry stays on Details (design.md 4.7).
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
   await expect(page.locator("[data-layout-field='industry']")).toContainText("Technology");
+  // Audit history is a sheet off the spine's meta line, not a fifth tab.
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Related records" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/organizations/${fakeAccountId}\\?tab=related$`));
-  // The relationship rail also counts insertion orders, so target the related-records card.
+  // The spine also counts insertion orders, so target the related-records card.
   await expect(page.getByRole("heading", { name: "Insertion orders" })).toBeVisible();
   await expect(page.getByText("SO-BROWSER", { exact: true })).toBeVisible();
   await expect(page.getByText("INV-BROWSER", { exact: true })).toBeVisible();

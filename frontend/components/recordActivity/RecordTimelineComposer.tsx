@@ -9,6 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -51,6 +58,14 @@ type ReplyConfig = {
   onReplied?: () => Promise<void> | void;
 };
 
+type WhatsAppConfig = {
+  /** Click-to-chat. Records the interaction and returns the URL to open. */
+  endpoint: string;
+  phone?: string | null;
+  canCreateTask?: boolean;
+  onLogged?: () => Promise<void> | void;
+};
+
 type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
@@ -60,7 +75,23 @@ type Props = {
   followUp?: FollowUpConfig;
   /** The support case's customer-facing reply. Appended as its own mode. */
   reply?: ReplyConfig;
+  /**
+   * Replaces the generic WhatsApp channel mode with the tracked one (§4.7).
+   *
+   * `followUp`'s WhatsApp is a `wa.me` link plus a logged follow-up row. Where the module
+   * has a real click-to-chat endpoint — contacts do — it picks a template, records a
+   * `WhatsAppInteraction` and can create the reminder, and that interaction is what the
+   * feed below renders. The record page must then not offer the untracked path as well.
+   */
+  whatsApp?: WhatsAppConfig;
   className?: string;
+};
+
+type MessageTemplate = {
+  id: number;
+  name: string;
+  body: string;
+  variables: string[];
 };
 
 type Channel = "whatsapp" | "email" | "call";
@@ -83,6 +114,7 @@ export default function RecordTimelineComposer({
   canAddNote = false,
   followUp,
   reply,
+  whatsApp,
   className,
 }: Props) {
   const modes: { id: string; label: string; icon: typeof StickyNote }[] = [
@@ -90,7 +122,7 @@ export default function RecordTimelineComposer({
     ...(reply ? [{ id: "reply", label: reply.label, icon: Mail }] : []),
     ...(followUp ? [{ id: "call", label: "Call", icon: Phone }] : []),
     ...(followUp ? [{ id: "email", label: "Email", icon: Mail }] : []),
-    ...(followUp ? [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }] : []),
+    ...(followUp || whatsApp ? [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }] : []),
   ];
   const [mode, setMode] = useState(modes[0]?.id ?? "note");
 
@@ -130,6 +162,8 @@ export default function RecordTimelineComposer({
           <NoteMode moduleKey={moduleKey} entityId={entityId} />
         ) : activeMode === "reply" && reply ? (
           <ReplyMode moduleKey={moduleKey} entityId={entityId} config={reply} />
+        ) : activeMode === "whatsapp" && whatsApp ? (
+          <WhatsAppMode moduleKey={moduleKey} entityId={entityId} config={whatsApp} />
         ) : followUp ? (
           <FollowUpMode
             moduleKey={moduleKey}
@@ -418,6 +452,167 @@ function FollowUpMode({
           {logging ? "Logging…" : `Log ${CHANNEL_LABELS[channel].toLocaleLowerCase()}`}
         </Button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Tracked WhatsApp — the pre-5.3 `WhatsApp` panel, now a composer mode.
+ *
+ * The panel sat in the contact's primary region with its own "Last contacted" line, three
+ * fields and a button, directly above a feed that renders every one of its clicks as a
+ * `whatsapp` entry. Folding it in drops the duplicated summary line — the feed underneath
+ * *is* the history — and puts the record's one WhatsApp affordance where the other
+ * channels already live (§4.7).
+ *
+ * The blank window is opened synchronously on the click and only then pointed at the URL
+ * the server returns. Opening it after the `await` is a popup the browser blocks, which is
+ * the behaviour the panel already had and the reason it is preserved here.
+ */
+function WhatsAppMode({
+  moduleKey,
+  entityId,
+  config,
+}: {
+  moduleKey: RecordModuleKey;
+  entityId: string | number;
+  config: WhatsAppConfig;
+}) {
+  const queryClient = useQueryClient();
+  const [templateId, setTemplateId] = useState("");
+  const [createReminder, setCreateReminder] = useState(true);
+  const [dueAt, setDueAt] = useState("");
+  const [sending, setSending] = useState(false);
+  const fieldId = `record-whatsapp-${moduleKey}-${entityId}`;
+
+  const templatesQuery = useQuery({
+    queryKey: ["message-templates", "whatsapp", moduleKey],
+    queryFn: async () => {
+      const params = new URLSearchParams({ channel: "whatsapp", module_key: moduleKey });
+      const res = await apiFetch(`/message-templates?${params.toString()}`);
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error("WhatsApp templates could not be loaded.");
+      return (body?.results ?? []) as MessageTemplate[];
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  const templates = templatesQuery.data ?? [];
+  const activeTemplate =
+    templates.find((template) => String(template.id) === templateId) ?? templates[0] ?? null;
+  const shouldCreateReminder = Boolean(config.canCreateTask) && createReminder;
+  const blocked = sending || !config.phone || !templates.length || templatesQuery.isLoading;
+
+  async function openChat() {
+    if (blocked) return;
+    // Synchronously, before any await — see the note above.
+    const pending =
+      typeof window !== "undefined" && typeof window.open === "function"
+        ? window.open("about:blank", "_blank")
+        : null;
+    if (pending) pending.opener = null;
+
+    try {
+      setSending(true);
+      const res = await apiFetch(config.endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          template_id: activeTemplate ? activeTemplate.id : null,
+          create_follow_up_task: shouldCreateReminder,
+          follow_up_due_at: shouldCreateReminder ? toIsoOrNull(dueAt) : null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok || !body?.whatsapp_url) throw new Error("not-opened");
+      if (pending) pending.location.href = body.whatsapp_url;
+      else window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["record-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ]);
+      toast.success(
+        body.follow_up_task ? "WhatsApp chat opened and reminder created." : "WhatsApp chat opened.",
+      );
+      await config.onLogged?.();
+    } catch {
+      pending?.close();
+      toast.error("WhatsApp chat could not be started. Check the phone number and try again.");
+    } finally {
+      setSending(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3">
+      <Field>
+        <FieldLabel htmlFor={fieldId}>Message template</FieldLabel>
+        <Select
+          value={activeTemplate ? String(activeTemplate.id) : ""}
+          onValueChange={setTemplateId}
+          disabled={!templates.length || templatesQuery.isLoading}
+        >
+          <SelectTrigger id={fieldId}>
+            <SelectValue
+              placeholder={
+                templatesQuery.isLoading
+                  ? "Loading templates"
+                  : templates.length
+                    ? "Select template"
+                    : "No templates available"
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {templates.map((template) => (
+              <SelectItem key={template.id} value={String(template.id)}>
+                {template.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {activeTemplate ? (
+          <FieldDescription>{activeTemplate.body}</FieldDescription>
+        ) : null}
+      </Field>
+      {config.canCreateTask ? (
+        <label className="flex items-center gap-2 text-sm text-copy-secondary">
+          <Checkbox
+            checked={createReminder}
+            onCheckedChange={(checked) => setCreateReminder(checked === true)}
+          />
+          Create reminder task
+        </label>
+      ) : null}
+      {shouldCreateReminder ? (
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-due`}>Reminder due</FieldLabel>
+          <Input
+            id={`${fieldId}-due`}
+            type="datetime-local"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+          />
+          <FieldDescription>Leave blank to create the reminder without a due time.</FieldDescription>
+        </Field>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {!config.phone ? (
+          <p className="text-p-xs text-copy-muted">No phone number is recorded for this record.</p>
+        ) : !templatesQuery.isLoading && !templates.length ? (
+          <p className="text-p-xs text-copy-muted">
+            No WhatsApp template is configured for this module yet.
+          </p>
+        ) : null}
+        <Button type="button" size="sm" disabled={blocked} onClick={() => void openChat()}>
+          {sending ? "Opening…" : "Open WhatsApp"}
+        </Button>
+      </div>
+      <p className="text-p-xs text-copy-muted">
+        Lynk opens the chat in WhatsApp and records it here. Delivery is not tracked.
+      </p>
     </div>
   );
 }

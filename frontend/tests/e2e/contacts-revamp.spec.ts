@@ -134,14 +134,30 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(accountPicker).toHaveValue("Lynk QA");
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}`);
-  await expect(page.getByRole("heading", { name: "Browser Contact" })).toBeVisible();
+  // Two elements carry the name now: `PageShell`'s sr-only h1 and the archetype's own
+  // header line. Target the record header, as the lead spec does.
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Contact");
   await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
-  // Ownership and the account now read from the workspace relationship rail.
-  const rail = page.locator("[data-record-workspace-relationship-rail]");
-  await expect(rail.getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(rail.getByRole("link", { name: "Lynk QA" })).toBeVisible();
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/contacts/${fakeContactId}\\?tab=audit$`));
+  // Ownership and the account read from the record spine now (design.md 4.7).
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(spine.getByRole("link", { name: "Lynk QA" })).toBeVisible();
+  // The tab set is the archetype's four plus the module's own, and history is a sheet off
+  // the spine's "Updated" line rather than a fifth tab.
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Related records" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/contacts/${fakeContactId}\\?tab=related$`));
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("dialog", { name: "History" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // WhatsApp is the tracked click-to-chat in the Timeline composer, and the header no
+  // longer offers the untracked wa.me path beside it (design.md 4.7).
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  // Scoped to the composer: the feed's own filter strip offers a WhatsApp option too on a
+  // record that has WhatsApp activity, and the two are different controls.
+  await page.getByLabel("Add to the timeline").getByRole("radio", { name: "WhatsApp" }).click();
+  await expect(page.getByRole("button", { name: "Open WhatsApp" })).toBeVisible();
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit contact" })).toBeVisible();

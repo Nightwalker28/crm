@@ -794,6 +794,15 @@ Contract:
   pipeline — lead, deal, quote, order), **State**, **Connected**, then created/updated
   metadata carrying the `History` disclosure. State fields are `InlineFieldEdit` and
   autosave (R1). Connected entries are links, never free text.
+- **Connected carries two kinds of entry: a record, and a collection.** A record is
+  `RecordSpineLink` — a name and the way to it. A collection is `RecordSpineCollection` —
+  a label, how many, and a link into the module tab that lists them (`Deals 3 ›`). Both
+  are links for the same reason: a count with no way through is a number the operator
+  cannot act on, and that is what the pre-5.3 relationship rail's tile grid was. The count
+  answers "how big is this account" at a glance; the tab answers "which ones". Rejected:
+  keeping the tiles (decoration, and it left the rail's densest region inert), and moving
+  the counts into `Details` (they are derived volume, not fields, and R2's read-only
+  content region is not where navigation belongs).
 - **Every record type carries the spine.** Where a record has no state fields the State
   block is omitted; the Connected block is not optional. A rail that ends up carrying only
   "Created / Updated" is a signal that the record type is under-modelled — raise it, do not
@@ -811,6 +820,16 @@ Contract:
   `Notes` tab is not an option: `record_activity.py` already emits notes into the feed as
   `type="note"`, so a Notes tab renders the same rows twice and asks the operator which
   copy is authoritative.
+- **Where a channel has a tracked endpoint, that endpoint *is* the composer's mode for it,
+  and the page offers no second untracked path to the same channel.** Contacts are the
+  case: click-to-chat posts to `/whatsapp/contacts/{id}/click`, which picks a template,
+  records a `WhatsAppInteraction` and optionally creates the reminder — and that
+  interaction is exactly what the feed renders as `type="whatsapp"` underneath. So the
+  pre-5.3 `WhatsApp` panel becomes the composer's WhatsApp mode rather than a spine block:
+  by the test above it creates a row pointing at the record, not a column on it.
+  `CommunicationActions` keeps its raw `wa.me` button only on records with no tracked
+  endpoint — offering both on one page means the same action logs itself half the time,
+  and the operator cannot tell which button did which.
 - **Audit history is not a tab.** It hangs off the spine's `Updated` line and opens in a
   sheet. Two reasons, and the second is the load-bearing one. First, it is a reference
   surface consulted occasionally, and a tab that is always present but rarely opened is

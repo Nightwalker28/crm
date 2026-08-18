@@ -286,7 +286,12 @@ function RecordContent({ tabs }: { tabs: RecordExtraTab[] }) {
           value={tab.id}
           // `lg:min-h-0` is load-bearing here for the same reason it is on the list page:
           // without it the flex child refuses to shrink and the whole page scrolls again.
-          className="focus-visible:outline-none lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
+          //
+          // Radix makes the panel a tab stop so the keyboard can reach content that holds no
+          // control of its own, and it is one — the tab-through lands here after `Details`.
+          // So it takes the §2.3 ring rather than `outline-none` with nothing behind it;
+          // inset, because the panel runs the height of the content region.
+          className="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus lg:min-h-0 lg:flex-1 lg:overflow-y-auto"
         >
           {tab.content}
         </Tabs.Content>

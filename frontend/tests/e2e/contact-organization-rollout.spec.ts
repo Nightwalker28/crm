@@ -412,7 +412,7 @@ test("Account workspace creates a Contact with the account already filled in", a
   });
 
   await page.goto(`/dashboard/sales/organizations/${accountId}`);
-  await expect(page.getByRole("heading", { name: "Rollout Account" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Rollout Account");
 
   const trigger = page.getByRole("button", { name: "Contact", exact: true }).first();
   await trigger.click();
@@ -450,7 +450,7 @@ test("Contact workspace creates a Deal with the contact and account already fill
   });
 
   await page.goto(`/dashboard/sales/contacts/${contactId}`);
-  await expect(page.getByRole("heading", { name: "Rollout Contact" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Rollout Contact");
 
   await page.getByRole("button", { name: "Deal", exact: true }).first().click();
   const panel = page.getByRole("dialog", { name: "Create deal" });
@@ -488,7 +488,7 @@ test("hides create surfaces from a user without the matching create permission",
   await expect(page.getByRole("button", { name: "Create contact" })).toHaveCount(0);
 
   await page.goto(`/dashboard/sales/organizations/${accountId}`);
-  await expect(page.getByRole("heading", { name: "Rollout Account" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Rollout Account");
   await expect(page.getByRole("button", { name: "Contact", exact: true })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Deal", exact: true })).toHaveCount(0);
 });

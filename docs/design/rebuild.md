@@ -503,6 +503,20 @@ Mitigation, applied to every sub-phase:
 | 5.9 | Copy and voice | Was Phase 6 |
 | 5.10 | Guard the composition | Was Phase 8; all new test coverage lands here |
 
+### How a run ends — not optional
+
+**Every run updates this file and `rebuild-census.md` before it stops, even a partial one.**
+A session can end at any point and the next one starts with no memory of this one: the
+sub-phase's `Status` section and its "What is left" table are the entire handover. A batch
+that landed but is unwritten reads to the next session as work still to do, and the census
+row it owns reads as untouched.
+
+What a run writes down, at minimum: which batch landed and under which commit, what the
+verification actually was (including which failures were pre-existing and how that was
+measured), any rule it added to `design.md`, and the next batch's starting point. Decisions
+and rejected alternatives belong here too — §12 requires the rule before the code, and the
+reason is that future agents read this file, not the PR description.
+
 ---
 
 ## 5.0 — Direction, law, and the census
@@ -1224,9 +1238,9 @@ it, hanging history off `Updated 2h ago` so the answer sits where the question i
 reads as a contradiction the moment the Tasks tab creates a task. The boundary is the
 record's own fields versus related objects, and §4.7 now carries the one-line test.
 
-### Status: in progress — the dependencies, the archetype, and the first module
+### Status: in progress — the archetype, and three modules on it
 
-Five commits, ending at `49e70ce`. **Pick up at "What is left", below.**
+Six commits. **Pick up at "What is left", below.**
 
 | Commit | What landed |
 |---|---|
@@ -1234,6 +1248,64 @@ Five commits, ending at `49e70ce`. **Pick up at "What is left", below.**
 | `3a592bc` | The `support_case_reply` feed adapter |
 | `aea493d` | `RecordSpine`, `PageShell variant="record"`, the archetype shell, `RecordTimeline` + composer, `RecordAuditHistory`, and leads onto all of it |
 | `49e70ce` | Three defects the browser pass found, and the two §4.7 rules they produced |
+| *batch 1* | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted |
+
+**What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
+information the archetype had no shape for yet, and both answers are now rules rather than
+page-local choices:
+
+- **The rail's counts became links.** `RecordSpineCollection` — label, count, and the way
+  into the module tab that lists them — replaces the tile grid the legacy relationship rail
+  used (`Open deals 3`, `Quotes 2`, and six of them on an account). A count with nowhere to
+  click was the densest inert region on the page. Connected now carries two entry shapes: a
+  record (`RecordSpineLink`) and a collection.
+- **The contact's WhatsApp panel became the composer's WhatsApp mode.** It is a tracked
+  endpoint — `/whatsapp/contacts/{id}/click` picks a template, writes a `WhatsAppInteraction`
+  and can create the reminder — and that interaction is exactly what the feed underneath
+  renders as `type="whatsapp"`. So the panel's own "Last contacted" line was duplication, and
+  the header's `CommunicationActions` WhatsApp button was a *second, untracked* path to the
+  same action. §4.7 now says the tracked endpoint is the mode, and the page offers no raw
+  `wa.me` beside it.
+
+**Neither page had state to speak of, and that is worth recording.** A contact's and an
+account's only dropdown-shaped own-field is `customer_group_id`, so each State block holds
+one `InlineFieldEdit`. That is not the archetype failing — it is R9's "a thin rail is a
+signal the record type is under-modelled" landing exactly where it said it would. Raise it
+rather than answer it with a second archetype.
+
+**Accounts have no follow-up endpoint**, so their composer is note-only: you call a person,
+not a company. Contacts keep call/email from `/sales/contacts/{id}/follow-up` and take
+WhatsApp from the tracked one.
+
+**The browser pass found three defects again, and all three were in the archetype rather
+than in the new pages — so leads had them too.** Two are keyboard-only; the third is
+visible on every record page and had been shipped for a batch. Neither lint, build, either
+rendered guard nor 21 module assertions saw any of them:
+
+- **The `History` sheet dropped focus on close.** `RecordSpineMeta` opened it from a plain
+  `onClick` with no `SheetTrigger` registered, so Radix had no element to restore focus to
+  and it fell to the body — the next `Tab` restarted at the sidebar, several screens away
+  from the rail the operator was in. Now a `SheetTrigger asChild`.
+- **The tab panel is a focus stop with its ring removed.** Radix makes `Tabs.Content`
+  focusable so the keyboard can reach panel content that holds no control of its own, and
+  the archetype's class list said `focus-visible:outline-none` with nothing behind it. It
+  takes the §2.3 ring, inset.
+- **`Details` was a box inside a box.** `ResolvedRecordLayout` already renders each section
+  as a `Card`, and all three record pages wrapped the whole layout in another one — a
+  second container level earned by nothing, which §1.3 gives only to interactivity or
+  separation. The wrapper is gone from contacts, accounts *and* leads; `Card` stays on the
+  layout's loading and error panel, which is a single box around a single thing.
+
+**One thing left open deliberately.** An account's header now carries six actions plus the
+overflow (`Deal` filled, `Contact`, `Email`, `WhatsApp`, `Call`, `Edit`) — down from nine,
+but still fuller than §4.7's wireframe. Which channels an account should offer at all is a
+product question rather than an archetype one, so it is noted here for close-out rather
+than answered by trimming during a migration.
+
+The method that found the defects is worth repeating verbatim in the next batch: seed, open a real
+record, and **tab through it recording `document.activeElement` and whether the computed
+style carries an outline or a shadow at every stop**. A screenshot cannot show this and an
+assertion nobody wrote cannot fail.
 
 **The archetype's shape, so the next module does not re-derive it.**
 `RecordWorkspace` owns the geometry and **the only tab strip on the page**. The four tabs
@@ -1264,29 +1336,33 @@ each — the shape 5.2 used.
 
 | # | Batch | Notes |
 |---|---|---|
-| 1 | **contacts + organizations** | The only two still on `RecordWorkspaceLegacy.tsx`. Both also *gain* the timeline they lack today (the census's "no `RecordActivityFeed` though leads have one"). Deleting the legacy file is part of this batch. Contacts also carries a WhatsApp panel that needs a home — it is a logged interaction, so the composer is the likely answer |
-| 2 | **deal + contract** | Deal has the nested tabs at `:507`; contract has no activity, notes, tasks or documents at all and renders raw FKs at `:244,264,265` |
-| 3 | **quote, order, POS invoice** | Shell only. The existing line-item editor drops into `Details` behind a manual save (R1); `RecordTable variant="lineItems"` is 5.5's, per the owner's call. Quote is 1,335 lines and carries **A12** (quote → order needs 3 actions) |
-| 4 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline and `item.events` joins the History sheet. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
-| 5 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
-| 6 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
-| 7 | **Close-out** | All 34 census rows, the status note, and the full gate set |
+| 1 | **deal + contract** | Deal has the nested tabs at `:507`; contract has no activity, notes, tasks or documents at all and renders raw FKs at `:244,264,265` |
+| 2 | **quote, order, POS invoice** | Shell only. The existing line-item editor drops into `Details` behind a manual save (R1); `RecordTable variant="lineItems"` is 5.5's, per the owner's call. Quote is 1,335 lines and carries **A12** (quote → order needs 3 actions) |
+| 3 | **insertion order, support case, custom record, catalog product/service** | Support case is where the `case_reply` adapter pays off — the conversation becomes the Timeline and `item.events` joins the History sheet. Catalog goes through `CatalogRecordDetailPage` (archetype 6). Runtime title-casers at `insertion-orders:186` and `cases:269` die here |
+| 4 | **The two hand-rolled `role="tablist"`** | `views/[moduleKey]:162`, `settings/module-builder:479`. `SavedViewSelector.tsx:26` is the reference if radix genuinely does not fit |
+| 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
+| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set |
 
 ### Traps already paid for once
 
-- **`RecordWorkspaceLegacy.tsx` is scaffolding, and 5.3 does not close while it exists.**
-  It holds the pre-5.3 shell for contacts and organizations only so the tree stays green
-  between batches. Nothing new may import it; it goes in batch 1.
+- **`RecordWorkspaceLegacy.tsx` is gone** — deleted in batch 1 with its last two consumers,
+  as planned. Nothing may reintroduce it.
 - **`CrmRecordActivitySection` still has 7 importers** and is the nested-tabs cause. It is
-  a `delete`, not a rebuild — it dies when its last consumer migrates in batch 4.
-  `RecordCommentsPanel` (3) and `FollowUpPanel` (2) go the same way; their composers already
-  live in `RecordTimelineComposer`. `RecordActivityFeed` is already deleted.
+  a `delete`, not a rebuild — it dies when its last consumer migrates in what is now batch 3.
+  `RecordCommentsPanel` and `FollowUpPanel` are **down to one importer each, and it is
+  `CrmRecordActivitySection` itself**, so all three die together; their composers already
+  live in `RecordTimelineComposer`. `RecordActivityTimeline` (the audit component) is in the
+  same position. `RecordActivityFeed` is already deleted.
 - **`leads-revamp.spec.ts` has 2 failures that predate this sub-phase** — narrow-viewport
   list, and denied/missing records (the route states render `titleAs="p"` and the spec asks
   for a heading). Measure the baseline by stashing before blaming a rebuild for a red.
-- **The browser pass is not optional and it found all three defects above** while lint,
-  build, both rendered guards and 17 module specs were green. Seed, then drive a real
-  record: `scripts/seed_demo_crm` leaves sample leads at ids 3–5.
+- **The browser pass is not optional. It has now found five defects across two batches**
+  while lint, build, both rendered guards and every module spec were green. Seed, then
+  drive a real record — and tab through it, which is what batch 1's two needed.
+  `scripts/seed_demo_crm` seeds tenant 1 (`default`): leads at ids 3–5, and batch 1 used
+  contact 23 and account 13, which carry a phone, an account, a customer group and related
+  records. The demo tenant's own records (ids 5–20) are **not** the admin's tenant and read
+  as "not found".
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.
 

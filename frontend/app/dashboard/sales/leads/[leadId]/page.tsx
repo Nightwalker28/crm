@@ -430,29 +430,27 @@ function LeadOverview({
   }
 
   return (
-    <Card className="px-5 py-5">
-      <ReadOnlyRecordLayout
-        layout={layout}
-        values={layoutValues}
-        customValues={summary.lead.custom_fields ?? {}}
-        omitFieldKeys={SPINE_OWNED_FIELDS}
-        renderValue={(field, value) => {
-          if (field.field_key === "tags" && Array.isArray(value)) {
-            return value.length ? (
-              <div className="flex flex-wrap gap-2">
-                {value.map((tag) => (
-                  <Chip key={String(tag).toLocaleLowerCase()}>{String(tag)}</Chip>
-                ))}
-              </div>
-            ) : undefined;
-          }
-          if (field.field_key !== "next_follow_up_at") return undefined;
-          return value
-            ? `${formatDateTime(String(value))}${summary.lead.next_follow_up_is_overdue ? " · Overdue" : ""}`
-            : undefined;
-        }}
-      />
-    </Card>
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={layoutValues}
+      customValues={summary.lead.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) => {
+        if (field.field_key === "tags" && Array.isArray(value)) {
+          return value.length ? (
+            <div className="flex flex-wrap gap-2">
+              {value.map((tag) => (
+                <Chip key={String(tag).toLocaleLowerCase()}>{String(tag)}</Chip>
+              ))}
+            </div>
+          ) : undefined;
+        }
+        if (field.field_key !== "next_follow_up_at") return undefined;
+        return value
+          ? `${formatDateTime(String(value))}${summary.lead.next_follow_up_is_overdue ? " · Overdue" : ""}`
+          : undefined;
+      }}
+    />
   );
 }
 

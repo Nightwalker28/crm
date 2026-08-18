@@ -144,14 +144,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/leads/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/contacts/page.tsx` | 111 | 5.5 | rebuild | | |
 | `sales/contacts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `sales/contacts/[contactId]/page.tsx` | 936 | 5.3 | rebuild | No `RecordActivityFeed` though leads have one | |
+| `sales/contacts/[contactId]/page.tsx` | 936 | 5.3 | rebuild | No `RecordActivityFeed` though leads have one | **done** — archetype 2; gained Timeline; WhatsApp panel became the composer's tracked mode |
 | `sales/contacts/[contactId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
 | `sales/contacts/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/contacts/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/contacts/not-found.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/page.tsx` | 60 | 5.5 | rebuild | | |
 | `sales/organizations/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `sales/organizations/[orgId]/page.tsx` | 869 | 5.3 | rebuild | No activity feed | |
+| `sales/organizations/[orgId]/page.tsx` | 869 | 5.3 | rebuild | No activity feed | **done** — archetype 2; gained Timeline; counts became spine collections |
 | `sales/organizations/[orgId]/edit/page.tsx` | 9 | 5.4 | unchanged | Shim | |
 | `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
@@ -487,7 +487,7 @@ taken. Counted here so the denominator stays honest.
 | `dropdown-menu.tsx` | **new** | **Not in the plan.** No existing radix vendor for a menu; `ExportControls` / `ImportControls` needed one to leave `@headlessui/react` — see `rebuild.md` 5.1 batch D | **done** (D) |
 | `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | **done** (D) |
 | `InlineFieldEdit.tsx` | **new** | The R2/R6 state-field control. 5 pages hand-rolled this, each differently — see `rebuild.md` 5.1 batch E | **done** (E) |
-| `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | **done** — rail, lifecycle track, State/Connected blocks, and the meta foot carrying the History sheet |
+| `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | **done** — rail, lifecycle track, State/Connected blocks, and the meta foot carrying the History sheet. Batch 1 added `RecordSpineCollection` (a Connected entry for a related *collection*) and gave the History sheet a real `SheetTrigger`, so closing it returns focus |
 
 ### 3.2 Existing primitives
 

@@ -15,6 +15,7 @@ import {
   SheetOverlay,
   SheetPortal,
   SheetTitle,
+  SheetTrigger,
 } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
@@ -158,6 +159,63 @@ export function RecordSpineLink({
 }
 
 /**
+ * A Connected entry for a *collection* rather than a record: how many, and the way to them.
+ *
+ * The pre-5.3 relationship rail carried these as a grid of ink tiles — `Open deals 3`,
+ * `Quotes 2` — which put the rail's densest region out of reach: the operator learns the
+ * account has six invoices and has nowhere to click. §4.7 makes both Connected shapes
+ * links for that reason. The count is the glance; the module tab is the answer.
+ *
+ * Zero is a real answer and stays legible rather than reading as missing — an account with
+ * no quotes is not an account whose quotes failed to load (§2.1) — but it draws no link,
+ * because a list of nothing is not worth the trip.
+ */
+export function RecordSpineCollection({
+  label,
+  count,
+  href,
+  className,
+}: {
+  label: string;
+  count: number;
+  href?: string | null;
+  className?: string;
+}) {
+  const content = (
+    <>
+      <span className="truncate text-copy-secondary">{label}</span>
+      <span className="flex shrink-0 items-center gap-1">
+        <span className="tabular-nums text-copy-primary">{count}</span>
+        {href && count > 0 ? (
+          <ChevronRight className="h-4 w-4 text-copy-muted" aria-hidden="true" />
+        ) : null}
+      </span>
+    </>
+  );
+
+  return (
+    <div data-slot="record-spine-collection" className={cn("min-w-0 text-sm", className)}>
+      {href && count > 0 ? (
+        <Link
+          href={href}
+          className={cn(
+            "-mx-2 flex items-center justify-between gap-2 rounded-[var(--radius-control)] px-2 py-1",
+            "transition-colors hover:bg-surface-muted",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+          )}
+        >
+          {content}
+        </Link>
+      ) : (
+        // The same row geometry minus the interaction, so a zero lines up with the rest of
+        // the block instead of stepping out of the column.
+        <div className="flex items-center justify-between gap-2 py-1">{content}</div>
+      )}
+    </div>
+  );
+}
+
+/**
  * The rail's foot: when the record was created, when it last moved, and the way into its
  * audit history.
  *
@@ -198,35 +256,40 @@ export function RecordSpineMeta({
       <div className="flex flex-wrap items-center justify-between gap-2">
         {updatedLabel ? <div className="text-xs text-copy-muted">{updatedLabel}</div> : null}
         {history ? (
-          <>
-            <Button type="button" variant="ghost" size="sm" onClick={() => setOpen(true)}>
-              <History />
-              {historyTitle}
-            </Button>
-            <Sheet open={open} onOpenChange={setOpen}>
-              <SheetPortal>
-                <SheetOverlay className="fixed inset-0 z-40 bg-overlay sm:bg-overlay/60" />
-                <SheetContent
-                  side="right"
-                  className="z-50 flex h-dvh w-full max-w-none flex-col bg-surface-raised outline-none sm:max-w-[36rem] sm:border-l sm:border-line-default"
-                >
-                  <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-5">
-                    <div className="min-w-0">
-                      <SheetTitle className="text-lg font-semibold text-copy-primary">
-                        {historyTitle}
-                      </SheetTitle>
-                      <SheetDescription className="mt-1 text-p-sm text-copy-muted">
-                        {historyDescription}
-                      </SheetDescription>
-                    </div>
-                  </SheetHeader>
-                  <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
-                    {history}
+          // `SheetTrigger` rather than an `onClick` that only sets state: Radix restores
+          // focus to the element that opened a dialog, and with no trigger registered it has
+          // nowhere to put it — closing the sheet dropped focus to the body, so the next Tab
+          // restarted at the sidebar instead of the rail. Found by tabbing through, which is
+          // the only way it shows up: the sheet opened, closed and read correctly throughout.
+          <Sheet open={open} onOpenChange={setOpen}>
+            <SheetTrigger asChild>
+              <Button type="button" variant="ghost" size="sm">
+                <History />
+                {historyTitle}
+              </Button>
+            </SheetTrigger>
+            <SheetPortal>
+              <SheetOverlay className="fixed inset-0 z-40 bg-overlay sm:bg-overlay/60" />
+              <SheetContent
+                side="right"
+                className="z-50 flex h-dvh w-full max-w-none flex-col bg-surface-raised outline-none sm:max-w-[36rem] sm:border-l sm:border-line-default"
+              >
+                <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-5">
+                  <div className="min-w-0">
+                    <SheetTitle className="text-lg font-semibold text-copy-primary">
+                      {historyTitle}
+                    </SheetTitle>
+                    <SheetDescription className="mt-1 text-p-sm text-copy-muted">
+                      {historyDescription}
+                    </SheetDescription>
                   </div>
-                </SheetContent>
-              </SheetPortal>
-            </Sheet>
-          </>
+                </SheetHeader>
+                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+                  {history}
+                </div>
+              </SheetContent>
+            </SheetPortal>
+          </Sheet>
         ) : null}
       </div>
     </div>
