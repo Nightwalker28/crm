@@ -1252,7 +1252,7 @@ Ten commits. **Pick up at "What is left", below.**
 | `d099b39` | contacts + organizations onto the archetype; `RecordWorkspaceLegacy.tsx` deleted; three archetype defects the browser pass found |
 | `1ada2c3` | deal + contract onto the archetype, with the backend slice each needed |
 | `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
-| _pending_ | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in the primitive |
+| `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
