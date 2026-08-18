@@ -1,38 +1,49 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import {
-  Activity,
-  ArrowRightLeft,
-  CheckSquare,
-  Pencil,
-  StickyNote,
-} from "lucide-react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowRightLeft, Pencil } from "lucide-react";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import {
+  RecordWorkspace,
+  recordEditHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { RecordTabs } from "@/components/ui/RecordTabs";
+import { Chip } from "@/components/ui/Chip";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
-  RouteErrorState,
-  RouteLoadingState,
-} from "@/components/ui/RouteStates";
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+  RecordSpineTrack,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
   isModuleFieldEnabled,
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { getLeadScoreStyle } from "@/lib/statusStyles";
+import { getLeadScoreGrade, getLeadStatus } from "@/lib/statusStyles";
 
 type LeadScoreFactor = {
   key: string;
@@ -71,18 +82,81 @@ type LeadSummary = {
   };
 };
 
+const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "unqualified", "converted"] as const;
+
+/**
+ * Fields the spine owns, which `Details` must not draw a second time (design.md §4.7).
+ *
+ * The record layout is configured server-side and still lists these, because it predates
+ * the spine — so without this the page renders an editable status in the rail and a
+ * read-only copy of it in the tab beside, which is the exact confusion R2 exists to avoid.
+ */
+const SPINE_OWNED_FIELDS = ["status", "assigned_to", "team_id", "next_follow_up_at"] as const;
+
+/** The track shows a pipeline, so the one status that leaves it is not a step on it. */
+const LEAD_TRACK_VALUES = ["new", "contacted", "qualified", "converted"] as const;
+
+const LEAD_STATUS_OPTIONS: InlineFieldEditOption[] = LEAD_STATUS_VALUES.map((value) => ({
+  value,
+  ...getLeadStatus(value),
+}));
+
+const LEAD_TRACK_STEPS = LEAD_TRACK_VALUES.map((value) => ({
+  id: value,
+  label: getLeadStatus(value).label,
+}));
+
+class LeadSummaryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function fetchLeadSummary(leadId: string) {
   const res = await apiFetch(`/sales/leads/${leadId}/summary`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new LeadSummaryRequestError(body?.detail ?? `Failed with ${res.status}`, res.status);
   return body as LeadSummary;
 }
 
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
-  const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const activeTab = searchParams.get("tab");
+  const { modules } = useAccessibleModules();
+  const {
+    fields: moduleFields,
+    isLoading: moduleFieldsLoading,
+    error: moduleFieldsError,
+  } = useModuleFieldConfigs("sales_leads");
+  const fieldConfigsReady = !moduleFieldsLoading && !moduleFieldsError;
   const fieldEnabled = (fieldKey: string) =>
-    isModuleFieldEnabled(moduleFields, fieldKey);
+    fieldKey === "primary_email"
+    || (fieldConfigsReady && isModuleFieldEnabled(moduleFields, fieldKey));
+
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const leadActions = moduleActions("sales_leads");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const organizationActions = moduleActions("sales_organizations");
+  const contactActions = moduleActions("sales_contacts");
+  const canEditLead = Boolean(leadActions?.can_edit);
+  const canDeleteLead = Boolean(leadActions?.can_delete);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canCreateTasks = Boolean(taskActions?.can_create);
+  const canEditTasks = Boolean(taskActions?.can_edit);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+  const canCreateDocuments = Boolean(documentActions?.can_create);
+  const canEditDocuments = Boolean(documentActions?.can_edit);
+  const canDeleteDocuments = Boolean(documentActions?.can_delete);
+  const canConvertLead = canEditLead
+    && Boolean(organizationActions?.can_view || organizationActions?.can_create)
+    && Boolean(contactActions?.can_view || contactActions?.can_create);
 
   const summaryQuery = useQuery({
     queryKey: ["sales-lead-summary", params.leadId],
@@ -90,337 +164,304 @@ export default function LeadDetailPage() {
     enabled: Boolean(params.leadId),
     refetchOnWindowFocus: false,
   });
+  const detailLayoutQuery = useResolvedRecordLayout("sales_leads", "detail");
   const summary = summaryQuery.data ?? null;
+  const lead = summary?.lead;
+  const leadName = summary
+    ? `${fieldEnabled("first_name") ? summary.lead.first_name || "" : ""} ${fieldEnabled("last_name") ? summary.lead.last_name || "" : ""}`.trim()
+      || summary.lead.primary_email
+      || "Lead"
+    : "Lead";
+  const status = lead?.status || "new";
+  const summaryError = summaryQuery.error;
+  const notFound = summaryError instanceof LeadSummaryRequestError && summaryError.status === 404;
+
+  /**
+   * R1's autosave for a state field. The write is a single-field `PUT` — the request
+   * schema is `exclude_unset`, so it patches — and the optimistic update is what moves
+   * `InlineFieldEdit`'s value, since the control deliberately holds no copy of its own.
+   * Throwing puts its indicator into `error` and rolls the cache back.
+   */
+  async function updateStatus(next: string) {
+    if (!summary || status === next) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-lead-summary", params.leadId], {
+      ...summary,
+      lead: { ...summary.lead, status: next },
+    });
+    try {
+      const res = await apiFetch(`/sales/leads/${params.leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) throw new Error("The lead status could not be saved.");
+      await queryClient.invalidateQueries({ queryKey: ["sales-leads"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_leads", params.leadId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-lead-summary", params.leadId], previous);
+      throw error;
+    }
+  }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      <RecordPageHeader
-        backHref="/dashboard/sales/leads"
-        backLabel="Back to Leads"
-        title={
-          summary
-            ? `${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() ||
-              summary.lead.primary_email ||
-              "Lead"
-            : "Lead"
-        }
-        description="Review the lead record, qualification status, and follow-up history."
-        primaryAction={
-          <>
-            <RecordDeleteButton
-              endpoint={`/sales/leads/${params.leadId}`}
-              label="Lead"
-              recordName={
-                summary
-                  ? `${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() ||
-                    summary.lead.primary_email
-                  : "this lead"
-              }
-              redirectHref="/dashboard/sales/leads"
-              queryKeys={["sales-leads"]}
-            />
+    <RecordWorkspace
+      title={leadName}
+      description="Review the lead record, qualification status, and follow-up history."
+      backHref="/dashboard/sales/leads"
+      backLabel="Leads"
+      isPermissionDenied={summaryError instanceof LeadSummaryRequestError && summaryError.status === 403}
+      isLoading={summaryQuery.isLoading || (!summary && !summaryError)}
+      hasError={Boolean(summaryError)}
+      onRetry={() => void summaryQuery.refetch()}
+      errorState={notFound ? (
+        <RouteNotFoundState
+          titleAs="p"
+          recordLabel="Lead"
+          backHref="/dashboard/sales/leads"
+          backLabel="Back to leads"
+        />
+      ) : undefined}
+      status={<StatusValue status={getLeadStatus(status)} context="record" />}
+      subtitle={lead ? (
+        <>
+          {fieldEnabled("company") && lead.company ? <span>{lead.company}</span> : null}
+          <span>{lead.primary_email}</span>
+          {fieldEnabled("phone") && lead.phone ? <span>{lead.phone}</span> : null}
+        </>
+      ) : null}
+      actions={lead ? (
+        <>
+          {canConvertLead && lead.status !== "converted" ? (
             <Button asChild>
-              <Link href={`/dashboard/sales/leads/${params.leadId}/edit`}>
+              <Link href={`/dashboard/sales/leads/${lead.lead_id}/convert`}>
+                <ArrowRightLeft />
+                Convert
+              </Link>
+            </Button>
+          ) : null}
+          <CommunicationActions
+            email={lead.primary_email}
+            phone={fieldEnabled("phone") ? lead.phone : null}
+            showCopyActions={false}
+            // Record context only. Which mailbox sends, whether one is connected, and how
+            // the message is filed are all decided by the mail domain, not by this page.
+            emailContext={{
+              moduleKey: "sales_leads",
+              entityId: lead.lead_id,
+              recordLabel: leadName,
+            }}
+          />
+          {canEditLead ? (
+            <Button asChild variant="outline">
+              {/* R2: the round trip preserves `?tab=` in both directions, so editing from
+                  Files comes back to Files rather than dumping you on Details. */}
+              <Link href={recordEditHref(`/dashboard/sales/leads/${lead.lead_id}/edit`, activeTab)}>
                 <Pencil />
                 Edit
               </Link>
             </Button>
-          </>
-        }
-      />
-
-      {summaryQuery.error ? (
-        <RouteErrorState
-          title="Unable to load this lead"
-          reset={() => void summaryQuery.refetch()}
-          backHref="/dashboard/sales/leads"
-          backLabel="Back to leads"
-        />
-      ) : summaryQuery.isLoading || !summary ? (
-        <RouteLoadingState label="lead" />
-      ) : (
-        <>
-          <Card className="px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                asChild={summary.lead.status !== "converted"}
-                type="button"
-                size="sm"
-                disabled={summary.lead.status === "converted"}
-              >
-                {summary.lead.status === "converted" ? (
-                  <>
-                    <ArrowRightLeft />
-                    Converted
-                  </>
-                ) : (
-                  <Link
-                    href={`/dashboard/sales/leads/${summary.lead.lead_id}/convert`}
-                  >
-                    <ArrowRightLeft />
-                    Convert
-                  </Link>
-                )}
-              </Button>
-              <CommunicationActions
-                email={summary.lead.primary_email}
-                phone={fieldEnabled("phone") ? summary.lead.phone : null}
-              />
-              <Button asChild type="button" size="sm" variant="ghost">
-                <Link href="?tab=activity" scroll={false}>
-                  <Activity />
-                  Add activity
-                </Link>
-              </Button>
-              <Button asChild type="button" size="sm" variant="ghost">
-                <Link href={`?tab=notes`} scroll={false}>
-                  <StickyNote />
-                  Note
-                </Link>
-              </Button>
-              <Button asChild type="button" size="sm" variant="ghost">
-                <Link href={`?tab=related`} scroll={false}>
-                  <CheckSquare />
-                  Task
-                </Link>
-              </Button>
-              <div className="ml-auto text-xs text-copy-muted">
-                Updated:{" "}
-                {summary.lead.updated_at
-                  ? formatDateTime(summary.lead.updated_at)
-                  : "Not recorded"}
-              </div>
-            </div>
-          </Card>
-
-          <RecordTabs
-            urlParam="tab"
-            defaultTabId="overview"
-            tabs={[
-              {
-                id: "overview",
-                label: "Overview",
-                content: (
-                  <LeadOverview summary={summary} fieldEnabled={fieldEnabled} />
-                ),
-              },
-              {
-                id: "activity",
-                label: "Activity",
-                content: (
-                  <FollowUpPanel
-                    endpoint={`/sales/leads/${summary.lead.lead_id}/follow-up`}
-                    lastContactedAt={summary.lead.last_contacted_at}
-                    lastContactedChannel={summary.lead.last_contacted_channel}
-                    email={summary.lead.primary_email}
-                    phone={summary.lead.phone}
-                    onLogged={async () => {
-                      await summaryQuery.refetch();
-                    }}
-                  />
-                ),
-              },
-              {
-                id: "related",
-                label: "Related records",
-                content: (
-                  <RecordTasksPanel
-                    moduleKey="sales_leads"
-                    entityId={summary.lead.lead_id}
-                    sourceLabel={
-                      `${summary.lead.first_name || ""} ${summary.lead.last_name || ""}`.trim() ||
-                      summary.lead.primary_email
-                    }
-                  />
-                ),
-              },
-              {
-                id: "notes",
-                label: "Notes",
-                content: (
-                  <RecordCommentsPanel
-                    moduleKey="sales_leads"
-                    entityId={summary.lead.lead_id}
-                  />
-                ),
-              },
-              {
-                id: "files",
-                label: "Files",
-                content: (
-                  <RecordDocumentsPanel
-                    moduleKey="sales_leads"
-                    entityId={summary.lead.lead_id}
-                  />
-                ),
-              },
-              {
-                id: "audit",
-                label: "Audit history",
-                content: (
-                  <RecordActivityTimeline
-                    moduleKey="sales_leads"
-                    entityId={summary.lead.lead_id}
-                    title="Audit history"
-                    description="Chronological record changes and collaboration events for this lead."
-                  />
-                ),
-              },
-            ]}
-          />
+          ) : null}
         </>
-      )}
-    </div>
+      ) : null}
+      overflowActions={lead && canDeleteLead ? (
+        <RecordDeleteButton
+          as="menuItem"
+          endpoint={`/sales/leads/${params.leadId}`}
+          label="Lead"
+          recordName={leadName}
+          redirectHref="/dashboard/sales/leads"
+          queryKeys={["sales-leads"]}
+        />
+      ) : null}
+      spine={
+        <RecordSpine>
+          {lead ? (
+            <>
+              {LEAD_TRACK_VALUES.includes(status as (typeof LEAD_TRACK_VALUES)[number]) ? (
+                <RecordSpineTrack steps={LEAD_TRACK_STEPS} currentId={status} label="Lead lifecycle" />
+              ) : null}
+
+              <RecordSpineBlock title="State">
+                <RecordSpineField label="Status">
+                  {canEditLead ? (
+                    <InlineFieldEdit
+                      fieldLabel="Status"
+                      value={status}
+                      options={LEAD_STATUS_OPTIONS}
+                      onCommit={(next) => updateStatus(next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getLeadStatus(status)} context="record" />
+                  )}
+                </RecordSpineField>
+                {fieldEnabled("next_follow_up_at") ? (
+                  <RecordSpineField label="Next follow-up">
+                    {lead.next_follow_up_at ? (
+                      <>
+                        {formatDateTime(lead.next_follow_up_at)}
+                        {lead.next_follow_up_is_overdue ? (
+                          <span className="ml-2 text-state-warning">Overdue</span>
+                        ) : null}
+                      </>
+                    ) : (
+                      <EmptyValue context="field" />
+                    )}
+                  </RecordSpineField>
+                ) : null}
+              </RecordSpineBlock>
+
+              <RecordSpineBlock title="Connected">
+                {fieldEnabled("company") ? (
+                  <RecordSpineLink label="Company" value={lead.company} />
+                ) : null}
+                {fieldEnabled("assigned_to") ? (
+                  <RecordSpineLink label="Owner" value={lead.assigned_to_name} />
+                ) : null}
+                {fieldEnabled("team_id") ? (
+                  <RecordSpineLink label="Team" value={lead.team_name} />
+                ) : null}
+              </RecordSpineBlock>
+
+              {fieldEnabled("score") ? (
+                <RecordSpineBlock title="Lead score">
+                  <LeadScore
+                    score={lead.score}
+                    grade={lead.score_grade}
+                    factors={lead.score_factors ?? []}
+                    calculatedAt={lead.score_calculated_at}
+                  />
+                </RecordSpineBlock>
+              ) : null}
+
+              <RecordSpineMeta
+                updatedLabel={
+                  lead.updated_at ? `Updated ${formatDateTime(lead.updated_at)}` : undefined
+                }
+                history={<RecordAuditHistory moduleKey="sales_leads" entityId={lead.lead_id} />}
+              />
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={lead ? (
+        <LeadOverview
+          summary={{ lead }}
+          layout={detailLayoutQuery.data}
+          isLayoutLoading={detailLayoutQuery.isLoading}
+          layoutError={detailLayoutQuery.error}
+          onRetryLayout={() => void detailLayoutQuery.refetch()}
+        />
+      ) : null}
+      timeline={lead ? (
+        <RecordTimeline
+          moduleKey="sales_leads"
+          entityId={lead.lead_id}
+          canEdit={canEditLead}
+          composer={{
+            followUp: canEditLead
+              ? {
+                  endpoint: `/sales/leads/${lead.lead_id}/follow-up`,
+                  email: lead.primary_email,
+                  phone: fieldEnabled("phone") ? lead.phone : null,
+                  canCreateTask: canViewTasks && canCreateTasks,
+                  onLogged: async () => {
+                    await summaryQuery.refetch();
+                  },
+                }
+              : undefined,
+          }}
+        />
+      ) : undefined}
+      tasks={lead && canViewTasks ? (
+        <RecordTasksPanel
+          moduleKey="sales_leads"
+          entityId={lead.lead_id}
+          sourceLabel={leadName}
+          canCreate={canCreateTasks}
+          canEdit={canEditTasks}
+          createActionVariant="outline"
+        />
+      ) : undefined}
+      files={lead && canViewDocuments ? (
+        <RecordDocumentsPanel
+          moduleKey="sales_leads"
+          entityId={lead.lead_id}
+          canUpload={canCreateDocuments && canEditLead}
+          canEdit={canEditDocuments && canEditLead}
+          canDelete={canDeleteDocuments && canEditLead}
+        />
+      ) : undefined}
+    />
   );
 }
 
 function LeadOverview({
   summary,
-  fieldEnabled,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
 }: {
   summary: LeadSummary;
-  fieldEnabled: (fieldKey: string) => boolean;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
 }) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+  const layoutValues: Record<string, unknown> = {
+    ...summary.lead,
+    assigned_to: summary.lead.assigned_to_name,
+    team_id: summary.lead.team_name,
+  };
+
+  if (isLayoutLoading || !layout) {
+    return (
       <Card className="px-5 py-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-copy-primary">
-            Lead details
-          </h2>
-          <p className="mt-1 text-sm text-copy-muted">
-            Core contact and qualification information.
-          </p>
-        </div>
-        <div className="grid gap-x-6 gap-y-4 md:grid-cols-2">
-          {fieldEnabled("primary_email") ? (
-            <DetailField label="Email" value={summary.lead.primary_email} />
-          ) : null}
-          {fieldEnabled("phone") ? (
-            <DetailField label="Phone" value={summary.lead.phone} />
-          ) : null}
-          {fieldEnabled("company") ? (
-            <DetailField label="Company" value={summary.lead.company} />
-          ) : null}
-          {fieldEnabled("title") ? (
-            <DetailField label="Job title" value={summary.lead.title} />
-          ) : null}
-          {fieldEnabled("source") ? (
-            <DetailField label="Source" value={summary.lead.source} />
-          ) : null}
-          {fieldEnabled("status") ? (
-            <DetailField
-              label="Status"
-              value={(summary.lead.status || "new").replace(/_/g, " ")}
-              capitalize
-            />
-          ) : null}
-          {fieldEnabled("assigned_to") ? (
-            <DetailField label="Owner" value={summary.lead.assigned_to_name} />
-          ) : null}
-          {fieldEnabled("team_id") ? (
-            <DetailField label="Team" value={summary.lead.team_name} />
-          ) : null}
-          {fieldEnabled("next_follow_up_at") ? (
-            <FollowUpDetail
-              value={summary.lead.next_follow_up_at}
-              isOverdue={summary.lead.next_follow_up_is_overdue}
-            />
-          ) : null}
-        </div>
-        {fieldEnabled("notes") ? (
-          <div className="mt-5 border-t border-line-subtle pt-5">
-            <DetailField label="Notes" value={summary.lead.notes} />
-          </div>
-        ) : null}
-        {fieldEnabled("tags") && (summary.lead.tags ?? []).length ? (
-          <div className="mt-5 border-t border-line-subtle pt-5">
-            <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-              Tags
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {(summary.lead.tags ?? []).map((tag) => (
-                <span
-                  key={tag.toLocaleLowerCase()}
-                  className="rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-secondary"
-                >
-                  {tag}
-                </span>
+        {layoutError ? (
+          <PanelError message="The lead details layout could not be loaded." onRetry={onRetryLayout} />
+        ) : (
+          <PanelLoading label="Loading lead details…" />
+        )}
+      </Card>
+    );
+  }
+
+  return (
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={layoutValues}
+      customValues={summary.lead.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) => {
+        if (field.field_key === "tags" && Array.isArray(value)) {
+          return value.length ? (
+            <div className="flex flex-wrap gap-2">
+              {value.map((tag) => (
+                <Chip key={String(tag).toLocaleLowerCase()}>{String(tag)}</Chip>
               ))}
             </div>
-          </div>
-        ) : null}
-        {Object.keys(summary.lead.custom_fields ?? {}).length ? (
-          <details className="mt-5 border-t border-line-subtle pt-5">
-            <summary className="cursor-pointer text-sm font-medium text-copy-primary">
-              Custom fields
-            </summary>
-            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
-              {Object.entries(summary.lead.custom_fields ?? {}).map(
-                ([key, value]) => (
-                  <DetailField
-                    key={key}
-                    label={key.replace(/_/g, " ")}
-                    value={formatFieldValue(value)}
-                  />
-                ),
-              )}
-            </div>
-          </details>
-        ) : null}
-      </Card>
-
-      <Card className="px-5 py-5">
-        <h2 className="text-lg font-semibold text-copy-primary">Summary</h2>
-        <div className="mt-4 grid gap-3">
-          <ScoreTile
-            score={summary.lead.score}
-            grade={summary.lead.score_grade}
-            factors={summary.lead.score_factors ?? []}
-            calculatedAt={summary.lead.score_calculated_at}
-          />
-          <SummaryTile
-            label="Company"
-            value={summary.lead.company || "No company recorded"}
-          />
-          <SummaryTile
-            label="Source"
-            value={summary.lead.source || "No source recorded"}
-          />
-          <SummaryTile
-            label="Status"
-            value={(summary.lead.status || "new").replace(/_/g, " ")}
-          />
-        </div>
-      </Card>
-    </div>
+          ) : undefined;
+        }
+        if (field.field_key !== "next_follow_up_at") return undefined;
+        return value
+          ? `${formatDateTime(String(value))}${summary.lead.next_follow_up_is_overdue ? " · Overdue" : ""}`
+          : undefined;
+      }}
+    />
   );
 }
 
-function FollowUpDetail({
-  value,
-  isOverdue = false,
-}: {
-  value?: string | null;
-  isOverdue?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        Next follow-up
-      </div>
-      <div
-        className={`mt-1 text-sm ${isOverdue ? "font-medium text-state-warning" : "text-copy-secondary"}`}
-      >
-        {value
-          ? `${formatDateTime(value)}${isOverdue ? " · Overdue" : ""}`
-          : "Not scheduled"}
-      </div>
-    </div>
-  );
-}
-
-function ScoreTile({
+/**
+ * The lead's score, in the spine.
+ *
+ * No tone: a grade is a category, not an outcome — no value is better than another and none
+ * is a deviation, so painting it by grade says something colour is not entitled to say (R5).
+ * The figure takes the one stat-figure size (§3.3).
+ */
+function LeadScore({
   score,
   grade,
   factors,
@@ -431,92 +472,37 @@ function ScoreTile({
   factors: LeadScoreFactor[];
   calculatedAt?: string | null;
 }) {
-  const gradeStyle = getLeadScoreStyle(grade || "cold");
+  const gradeStyle = getLeadScoreGrade(grade || "cold");
+
   return (
-    <div className={`rounded-md border px-4 py-4 ${gradeStyle.border} ${gradeStyle.bg} ${gradeStyle.text}`}>
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-xs uppercase tracking-wide opacity-75">
-            Lead Score
-          </div>
-          <div className="mt-2 flex items-baseline gap-2">
-            <span className="text-3xl font-semibold leading-none">
-              {score ?? 0}
-            </span>
-            <span className="text-sm font-medium">{gradeStyle.label}</span>
-          </div>
-        </div>
-        <div className="text-right text-[11px] opacity-70">
-          {calculatedAt ? formatDateTime(calculatedAt) : "Not calculated"}
-        </div>
+    <div data-slot="lead-score">
+      <div className="flex items-baseline gap-2">
+        <span className="text-2xl font-bold tabular-nums leading-none text-copy-primary">
+          {score ?? 0}
+        </span>
+        <span className="text-sm text-copy-secondary">{gradeStyle.label}</span>
       </div>
-      <details className="mt-4">
-        <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide opacity-80">
-          Factors
-        </summary>
-        <div className="mt-3 grid gap-2">
+      <div className="mt-1 text-xs text-copy-muted">
+        {calculatedAt ? formatDateTime(calculatedAt) : "Not calculated"}
+      </div>
+      <details className="mt-3">
+        <summary className="cursor-pointer text-xs font-medium text-copy-label">Factors</summary>
+        <div className="mt-2 divide-y divide-line-subtle">
           {factors.length ? (
             factors.map((factor) => (
-              <div
-                key={factor.key}
-                className="rounded border border-current/15 bg-app/20 px-3 py-2"
-              >
-                <div className="flex items-center justify-between gap-3 text-sm">
-                  <span className="font-medium">{factor.label}</span>
-                  <span>+{factor.points}</span>
+              <div key={factor.key} className="py-2 first:pt-0 last:pb-0">
+                <div className="flex items-center justify-between gap-3 text-sm text-copy-primary">
+                  <span>{factor.label}</span>
+                  <span className="tabular-nums">+{factor.points}</span>
                 </div>
-                <div className="mt-1 text-xs opacity-75">{factor.reason}</div>
+                <div className="mt-0.5 text-xs text-copy-muted">{factor.reason}</div>
               </div>
             ))
           ) : (
-            <div className="text-xs opacity-75">
-              No scoring factors recorded.
-            </div>
+            <div className="text-xs text-copy-muted">No scoring factors recorded.</div>
           )}
         </div>
       </details>
     </div>
   );
-}
-
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-2 text-sm capitalize text-copy-primary">{value}</div>
-    </div>
-  );
-}
-
-function DetailField({
-  label,
-  value,
-  capitalize = false,
-}: {
-  label: string;
-  value?: string | null;
-  capitalize?: boolean;
-}) {
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div
-        className={`mt-1 text-sm text-copy-secondary ${capitalize ? "capitalize" : ""}`}
-      >
-        {value || "Not recorded"}
-      </div>
-    </div>
-  );
-}
-
-function formatFieldValue(value: unknown) {
-  if (value === null || value === undefined || value === "")
-    return "Not recorded";
-  if (Array.isArray(value)) return value.map(String).join(", ");
-  if (typeof value === "object") return JSON.stringify(value);
-  return String(value);
 }

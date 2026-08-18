@@ -1,15 +1,17 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertTriangle, GripVertical } from "lucide-react";
-import { Pill } from "@/components/ui/Pill";
+import { AlertTriangle, GripVertical, Handshake, TriangleAlert } from "lucide-react";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import { formatDateOnly } from "@/lib/datetime";
 import {
   getOpportunityStageLabel,
-  getOpportunityStageStyle,
+  getOpportunityStage,
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
@@ -18,6 +20,12 @@ type Props = {
   opportunities: Opportunity[];
   isLoading: boolean;
   isRefreshing?: boolean;
+  /** §7.4 — the board is a data view, so it owes the same states the table does. */
+  hasError?: boolean;
+  onRetry?: () => void;
+  hasActiveFilters?: boolean;
+  onClearFilters?: () => void;
+  onCreate?: () => void;
   onEdit: (opportunity: Opportunity) => void;
   onStageChange: (opportunity: Opportunity, salesStage: string) => Promise<void> | void;
 };
@@ -33,6 +41,11 @@ export default function OpportunitiesPipelineBoard({
   opportunities,
   isLoading,
   isRefreshing = false,
+  hasError = false,
+  onRetry,
+  hasActiveFilters = false,
+  onClearFilters,
+  onCreate,
   onEdit,
   onStageChange,
 }: Props) {
@@ -59,11 +72,11 @@ export default function OpportunitiesPipelineBoard({
     stage,
     label: stage === "unstaged" ? "Unstaged" : getOpportunityStageLabel(stage),
     items: grouped.get(stage) ?? [],
-    style: getOpportunityStageStyle(stage),
+    style: getOpportunityStage(stage),
   }));
 
   return (
-    <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface">
+    <div className="flex min-h-56 flex-1 flex-col overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface">
       <div className="border-b border-line-subtle px-5 py-4">
         <h2 className="text-base font-semibold text-copy-primary">Pipeline View</h2>
         <p className="mt-1 text-sm text-copy-muted">
@@ -71,11 +84,23 @@ export default function OpportunitiesPipelineBoard({
         </p>
       </div>
 
-      {isLoading ? (
+      {hasError ? (
+        // Same four states as `RecordTable`, in the same order and the same shape — the
+        // board is the other half of this list, and an operator switching display should
+        // not meet a different vocabulary (§7.4).
+        <div role="alert" className="px-4 py-12">
+          <EmptyState
+            icon={TriangleAlert}
+            title="Deals could not be loaded"
+            description="Check your connection and try again."
+            action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+          />
+        </div>
+      ) : isLoading ? (
         <div className="overflow-x-auto px-4 py-4">
           <div className="flex gap-4 overflow-x-auto">
             {Array.from({ length: 7 }).map((_, index) => (
-              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-[var(--radius-card)] border border-line-default bg-surface-muted">
+              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-[var(--radius-control)] bg-surface-muted">
                 <div className="border-b border-line-subtle px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
                     <Skeleton className="h-6 w-24" />
@@ -84,7 +109,7 @@ export default function OpportunitiesPipelineBoard({
                 </div>
                 <div className="flex min-h-[12rem] flex-col gap-3 p-3">
                   {Array.from({ length: 3 }).map((__, cardIndex) => (
-                    <div key={`pipeline-card-${index}-${cardIndex}`} className="rounded-[var(--radius-card)] border border-line-default bg-surface p-3">
+                    <div key={`pipeline-card-${index}-${cardIndex}`} className="rounded-[var(--radius-control)] border border-line-subtle bg-surface p-3">
                       <Skeleton className="h-4 w-32" />
                       <Skeleton className="mt-2 h-3 w-24" />
                       <Skeleton className="mt-4 h-3 w-20" />
@@ -96,10 +121,23 @@ export default function OpportunitiesPipelineBoard({
             ))}
           </div>
         </div>
+      ) : !opportunities.length ? (
+        <div className="px-4 py-12">
+          <EmptyState
+            icon={Handshake}
+            title={hasActiveFilters ? "No deals match these filters" : "No deals yet"}
+            description={hasActiveFilters ? "Clear one or more filters and try again." : "Create your first deal to see it move through the pipeline."}
+            action={
+              hasActiveFilters
+                ? onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined
+                : onCreate ? <Button type="button" onClick={onCreate}>Create deal</Button> : undefined
+            }
+          />
+        </div>
       ) : (
         <div className="overflow-x-auto px-4 py-4">
           {isRefreshing ? (
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line-subtle bg-surface-muted px-3 py-1 text-[11px] uppercase tracking-[0.16em] text-copy-muted">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line-subtle bg-surface-muted px-3 py-1 text-2xs font-medium text-copy-label">
               <span className="h-2 w-2 animate-pulse rounded-full bg-copy-muted motion-reduce:animate-none" />
               Refreshing
             </div>
@@ -111,17 +149,11 @@ export default function OpportunitiesPipelineBoard({
                 onDragOver={(event) => { event.preventDefault(); setDropStage(entry.stage); }}
                 onDragLeave={() => setDropStage((current) => current === entry.stage ? null : current)}
                 onDrop={() => { const opportunity = opportunities.find((item) => item.opportunity_id === draggedId); setDropStage(null); setDraggedId(null); if (opportunity && entry.stage !== "unstaged" && normalizeOpportunityStage(opportunity.sales_stage) !== entry.stage) void onStageChange(opportunity, entry.stage); }}
-                className={`min-w-[240px] flex-shrink-0 rounded-[var(--radius-card)] border bg-surface-muted transition-colors motion-reduce:transition-none ${dropStage === entry.stage ? "border-action-primary bg-action-primary-muted/30" : "border-line-default"}`}
+                className={`min-w-[240px] flex-shrink-0 rounded-[var(--radius-control)] border bg-surface-muted transition-colors motion-reduce:transition-none ${dropStage === entry.stage ? "border-action-primary bg-action-primary-muted/30" : "border-transparent"}`}
               >
                 <div className="border-b border-line-subtle px-4 py-3">
                   <div className="flex items-center justify-between gap-2">
-                    <Pill
-                      bg={entry.style.bg}
-                      text={entry.style.text}
-                      border={entry.style.border}
-                    >
-                      {entry.label}
-                    </Pill>
+                    <StatusValue status={entry.style} context="record" />
                     <span className="text-xs text-copy-muted">{entry.items.length}</span>
                   </div>
                 </div>
@@ -134,12 +166,12 @@ export default function OpportunitiesPipelineBoard({
                         draggable
                         onDragStart={() => setDraggedId(opportunity.opportunity_id)}
                         onDragEnd={() => { setDraggedId(null); setDropStage(null); }}
-                        className={`rounded-[var(--radius-card)] border bg-surface p-3 text-left transition-colors hover:border-line-strong hover:bg-surface-raised motion-reduce:transition-none ${isOverdue(opportunity) ? "border-state-warning/50" : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? "border-state-info/50" : "border-line-default"}`}
+                        className={`rounded-[var(--radius-control)] border bg-surface p-3 text-left transition-colors hover:border-line-strong hover:bg-surface-raised motion-reduce:transition-none ${isOverdue(opportunity) ? "border-state-warning/50" : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? "border-state-info/50" : "border-line-subtle"}`}
                       >
                         <div className="flex items-start gap-2"><GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" /><button
                           type="button"
                           onClick={() => onEdit(opportunity)}
-                          className="w-full text-left text-sm font-medium text-copy-primary hover:text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="w-full text-left text-sm font-medium text-copy-primary hover:text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           {opportunity.opportunity_name}
                         </button></div>
@@ -159,7 +191,7 @@ export default function OpportunitiesPipelineBoard({
                             value={normalizeOpportunityStage(opportunity.sales_stage) || "lead"}
                             onValueChange={(value) => onStageChange(opportunity, value)}
                           >
-                            <SelectTrigger className="h-8 w-full text-xs">
+                            <SelectTrigger size="sm" className="w-full text-xs">
                               <SelectValue placeholder="Move stage" />
                             </SelectTrigger>
                             <SelectContent>
@@ -172,14 +204,14 @@ export default function OpportunitiesPipelineBoard({
                           </Select>
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">
+                          <span className="text-2xs font-medium text-copy-label">
                             {opportunity.currency_type || "USD"}
                           </span>
                         </div>
                       </div>
                     ))
                   ) : (
-                    <div className="rounded-[var(--radius-card)] border border-dashed border-line-default bg-surface px-3 py-6 text-center text-sm text-copy-muted">
+                    <div className="px-3 py-6 text-center text-sm text-copy-muted">
                       No opportunities in this stage.
                     </div>
                   )}

@@ -41,10 +41,10 @@ export function SettingsSwitch({
         }}
         className={cn(
           "min-w-12 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1.5 text-xs font-semibold transition-colors",
-          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
           "disabled:cursor-not-allowed",
           !checked
-            ? "bg-surface-raised text-copy-primary shadow-sm"
+            ? "bg-surface-raised text-copy-primary"
             : "text-copy-muted hover:text-copy-primary",
         )}
       >
@@ -59,10 +59,10 @@ export function SettingsSwitch({
         }}
         className={cn(
           "min-w-12 rounded-[calc(var(--radius-control)-2px)] px-2.5 py-1.5 text-xs font-semibold transition-colors",
-          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+          "focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
           "disabled:cursor-not-allowed",
           checked
-            ? "bg-action-primary text-primary-foreground shadow-sm"
+            ? "bg-action-primary text-primary-foreground"
             : "text-copy-muted hover:text-copy-primary",
         )}
       >
@@ -98,7 +98,7 @@ export function SettingsSwitchRow({
     >
       <div className="min-w-0">
         <div className="text-sm font-medium text-copy-primary">{label}</div>
-        {description ? <p className="mt-0.5 text-xs leading-5 text-copy-muted">{description}</p> : null}
+        {description ? <p className="mt-0.5 text-p-xs text-copy-muted">{description}</p> : null}
       </div>
       <SettingsSwitch
         id={id}

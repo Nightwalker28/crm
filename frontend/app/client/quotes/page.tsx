@@ -43,20 +43,20 @@ export default function ClientQuotesPage() {
         </section>
 
         {quotesQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quotes...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quotes...</div>
         ) : quotesQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {quotesQuery.error instanceof Error ? quotesQuery.error.message : "Failed to load quotes."}
           </div>
         ) : quotes.length === 0 ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No quotes are assigned to your portal account yet.</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No quotes are assigned to your portal account yet.</div>
         ) : (
           <div className="grid gap-3">
             {quotes.map((quote) => (
-              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={quote.quote_id} href={`/client/quotes/${quote.quote_id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase text-copy-muted">{quote.quote_number}</div>
+                    <div className="text-xs font-medium text-copy-label">{quote.quote_number}</div>
                     <h2 className="mt-1 truncate font-semibold text-copy-primary">{quoteTitle(quote)}</h2>
                     <p className="mt-1 text-xs text-copy-muted">
                       Updated {formatDateTime(quote.updated_at ?? quote.created_time)}

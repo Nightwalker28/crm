@@ -8,6 +8,7 @@ import { IntegrationEventHistory } from "@/components/integrations/IntegrationEv
 import { IntegrationProviderRegistry, type IntegrationRegistryHealth } from "@/components/integrations/IntegrationProviderRegistry";
 import { IntegrationWebhookWorkspace } from "@/components/integrations/IntegrationWebhookWorkspace";
 import { IntegrationWebsiteWorkspace } from "@/components/integrations/IntegrationWebsiteWorkspace";
+import { PageShell } from "@/components/ui/PageShell";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
 import { apiFetch } from "@/lib/api";
 
@@ -41,7 +42,11 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 text-copy-secondary">
+    <PageShell
+      variant="settings"
+      title="Integrations"
+      description="Connect storage, mail, and messaging providers."
+    >
       <IntegrationProviderRegistry
         items={registryHealth}
         isLoading={registryQuery.isLoading}
@@ -57,6 +62,6 @@ export default function IntegrationsPage() {
       <IntegrationWebhookWorkspace />
 
       <IntegrationEventHistory />
-    </div>
+    </PageShell>
   );
 }

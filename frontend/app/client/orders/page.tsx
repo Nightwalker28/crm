@@ -41,20 +41,20 @@ export default function ClientOrdersPage() {
         </section>
 
         {ordersQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading orders...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading orders...</div>
         ) : ordersQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {ordersQuery.error instanceof Error ? ordersQuery.error.message : "Failed to load orders."}
           </div>
         ) : orders.length === 0 ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No orders submitted yet.</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No orders submitted yet.</div>
         ) : (
           <div className="grid gap-3">
             {orders.map((order) => (
-              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <div className="text-xs uppercase text-copy-muted">{order.external_reference}</div>
+                    <div className="text-xs font-medium text-copy-label">{order.external_reference}</div>
                     <h2 className="mt-1 font-semibold text-copy-primary">{firstLine(order)}</h2>
                     <p className="mt-1 text-xs text-copy-muted">{formatDateTime(order.created_at)}</p>
                   </div>

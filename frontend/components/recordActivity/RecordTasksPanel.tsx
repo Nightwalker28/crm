@@ -1,23 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { CheckCircle2, ClipboardList, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
@@ -36,6 +36,10 @@ type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
   sourceLabel?: string;
+  canCreate?: boolean;
+  canEdit?: boolean;
+  createRequestId?: number;
+  createActionVariant?: "default" | "outline";
 };
 
 type TaskDraft = {
@@ -117,12 +121,34 @@ async function completeTask(task: Task) {
   return body as Task;
 }
 
-export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: Props) {
+export default function RecordTasksPanel({
+  moduleKey,
+  entityId,
+  sourceLabel,
+  canCreate = true,
+  canEdit = true,
+  createRequestId = 0,
+  createActionVariant = "default",
+}: Props) {
   const queryClient = useQueryClient();
-  const [isCreating, setIsCreating] = useState(false);
+  const [isCreating, setIsCreating] = useState(createRequestId > 0);
   const [draft, setDraft] = useState<TaskDraft>(() => emptyDraft());
   const [submitting, setSubmitting] = useState(false);
   const [completingTaskId, setCompletingTaskId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!canCreate || createRequestId <= 0) return;
+    setIsCreating(true);
+  }, [canCreate, createRequestId]);
+
+  useEffect(() => {
+    if (!isCreating || createRequestId <= 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`record-task-title-${moduleKey}-${entityId}`)?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [createRequestId, entityId, isCreating, moduleKey]);
+
   const query = useQuery({
     queryKey: ["record-tasks", moduleKey, String(entityId)],
     queryFn: () => fetchRecordTasks(moduleKey, entityId),
@@ -131,7 +157,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
   const optionsQuery = useQuery({
     queryKey: ["task-assignment-options"],
     queryFn: fetchTaskAssignmentOptions,
-    enabled: isCreating,
+    enabled: canCreate && isCreating,
     staleTime: 5 * 60_000,
   });
   const tasks = query.data?.results ?? [];
@@ -147,7 +173,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
 
   async function handleCreateTask(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.title.trim()) return;
+    if (!canCreate || !draft.title.trim()) return;
 
     try {
       setSubmitting(true);
@@ -178,19 +204,19 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader
+      <PanelHeader
         title="Tasks & reminders"
         description="Follow-up tasks linked to this record."
         icon={ClipboardList}
-        action={
+        action={canCreate ? (
           <Button type="button" variant="outline" size="sm" onClick={() => setIsCreating((current) => !current)}>
             <Plus className="h-4 w-4" />
             {isCreating ? "Close" : "Add task"}
           </Button>
-        }
+        ) : undefined}
       />
 
-      {isCreating ? (
+      {canCreate && isCreating ? (
         <form onSubmit={handleCreateTask} className="my-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field className="md:col-span-2">
@@ -259,9 +285,9 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
             <Field className="md:col-span-2">
               <FieldLabel>Assigned user or team</FieldLabel>
               {optionsQuery.isLoading ? (
-                <RecordPanelLoading label="Loading assignees…" />
+                <PanelLoading label="Loading assignees…" />
               ) : optionsQuery.error ? (
-                <RecordPanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
+                <PanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
               ) : (
                 <TaskAssigneePicker
                   users={optionsQuery.data?.users ?? []}
@@ -285,7 +311,7 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
             >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting || !draft.title.trim()}>
+            <Button type="submit" variant={createActionVariant} disabled={submitting || !draft.title.trim()}>
               {submitting ? "Creating…" : "Create linked task"}
             </Button>
           </div>
@@ -293,9 +319,9 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
       ) : null}
 
       {query.isLoading ? (
-        <div className="mt-4"><RecordPanelLoading label="Loading linked tasks…" /></div>
+        <div className="mt-4"><PanelLoading label="Loading linked tasks…" /></div>
       ) : query.error ? (
-        <div className="mt-4"><RecordPanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
+        <div className="mt-4"><PanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : tasks.length ? (
         <ol className="mt-4 space-y-3" aria-label="Linked tasks">
           {tasks.map((task) => (
@@ -307,18 +333,18 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                 <div className="min-w-0">
                   <Link
                     href={`/dashboard/tasks?taskId=${task.id}`}
-                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                   >
                     {task.title}
                   </Link>
                   <div className="mt-2 flex flex-wrap gap-2">
-                    <Pill>{statusLabel(task.status)}</Pill>
-                    <Pill>{task.priority} priority</Pill>
+                    <Chip>{statusLabel(task.status)}</Chip>
+                    <Chip>{task.priority} priority</Chip>
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   {task.due_at ? <div className="text-xs text-copy-muted">Due {formatDateTime(task.due_at)}</div> : null}
-                  {task.status !== "completed" ? (
+                  {canEdit && task.status !== "completed" ? (
                     <Button
                       type="button"
                       variant="outline"
@@ -328,20 +354,20 @@ export default function RecordTasksPanel({ moduleKey, entityId, sourceLabel }: P
                         void handleCompleteTask(task);
                       }}
                       disabled={completingTaskId === task.id}
-                      className="h-7 gap-1 border-state-success/40 bg-state-success-muted px-2 text-[11px] text-state-success hover:bg-state-success-muted hover:text-state-success"
+                      className="border-state-success/40 bg-state-success-muted text-state-success hover:bg-state-success-muted hover:text-state-success"
                     >
-                      <CheckCircle2 className="h-3.5 w-3.5" />
+                      <CheckCircle2 />
                       {completingTaskId === task.id ? "Saving…" : "Complete"}
                     </Button>
                   ) : null}
                 </div>
               </div>
-              {task.description ? <div className="mt-3 line-clamp-2 text-sm leading-6 text-copy-secondary">{task.description}</div> : null}
+              {task.description ? <div className="mt-3 line-clamp-2 text-p-sm text-copy-secondary">{task.description}</div> : null}
             </li>
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><RecordPanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
+        <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
       )}
     </Card>
   );

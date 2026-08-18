@@ -6,11 +6,12 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -122,8 +123,11 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageToolbar><Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button></PageToolbar>
+    <PageShell
+      title={isEdit ? "Edit template" : "Create template"}
+      description="A reusable message body for mail and WhatsApp."
+      actions={<Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button>}
+    >
       <Card className="overflow-hidden">
         {!isEdit ? (
           <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-presets-heading">
@@ -160,10 +164,13 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
             </div>
             <Field>
               <FieldLabel>Template status</FieldLabel>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Template status">
-                <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
-                <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
-              </div>
+              <SegmentedBoolean
+                aria-label="Template status"
+                value={draft.is_active}
+                onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+                trueLabel="Active"
+                falseLabel="Inactive"
+              />
               <FieldDescription>Inactive templates remain saved but cannot be selected for new messages.</FieldDescription>
             </Field>
           </FieldGroup>
@@ -210,7 +217,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
           </div>
         </div>
       </div>
-    </div>
+    </PageShell>
   );
 }
 

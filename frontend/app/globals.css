@@ -33,6 +33,34 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  /* Bounded overlay lists - pickers, notification panels, option lists. They
+     keep a visible scrollbar because it is the only cue that there is more
+     below; .scrollbar-hide is for chrome strips where the content is already
+     obviously continuous. The class was in use on three pickers for months
+     while being defined nowhere, so those rendered the native bar. */
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background-color: transparent;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-strong);
+    border-radius: 9999px;
+  }
+
+  .custom-scrollbar:hover::-webkit-scrollbar-thumb {
+    background-color: var(--color-border-control);
+  }
 }
 
 @keyframes shiny-slide {
@@ -48,7 +76,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-app-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-app-mono);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -61,25 +89,38 @@
   --color-surface: var(--color-bg-surface);
   --color-surface-muted: var(--color-bg-surface-muted);
   --color-surface-raised: var(--color-bg-surface-raised);
+  --color-surface-row-alt: var(--color-bg-surface-row-alt);
+  --color-surface-row-hover: var(--color-bg-surface-row-hover);
   --color-overlay: var(--color-bg-overlay);
   --color-line-subtle: var(--color-border-subtle);
   --color-line-default: var(--color-border-default);
   --color-line-strong: var(--color-border-strong);
+  --color-line-control: var(--color-border-control);
+  --color-line-control-hover: var(--color-border-control-hover);
   --color-copy-primary: var(--color-text-primary);
   --color-copy-secondary: var(--color-text-secondary);
+  --color-copy-label: var(--color-text-label);
   --color-copy-muted: var(--color-text-muted);
   --color-copy-disabled: var(--color-text-disabled);
+
+  --color-action-primary: var(--color-primary);
   --color-action-primary-hover: var(--color-primary-hover);
   --color-action-primary-active: var(--color-primary-active);
   --color-action-primary-muted: var(--color-primary-muted);
+  --color-focus: var(--color-focus-ring);
   --color-state-success: var(--color-success);
   --color-state-success-muted: var(--color-success-muted);
   --color-state-warning: var(--color-warning);
   --color-state-warning-muted: var(--color-warning-muted);
   --color-state-danger: var(--color-danger);
   --color-state-danger-muted: var(--color-danger-muted);
+  --color-state-danger-contrast: var(--color-danger-contrast);
+  --color-action-primary-contrast: var(--color-primary-contrast);
   --color-state-info: var(--color-info);
   --color-state-info-muted: var(--color-info-muted);
+  --color-chart-8: var(--chart-8);
+  --color-chart-7: var(--chart-7);
+  --color-chart-6: var(--chart-6);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -101,10 +142,28 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
-  --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  /* Tight family: single-line labels, headings, buttons, table cells, stat
+     values. Line height is set for one line of text that will not wrap. */
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1.2;
+
+  /* Prose family: the same pixel sizes at a reading line height, for anything
+     that may wrap - descriptions, helper text, empty-state copy. Multi-line
+     text in the tight family reads cramped; one-line labels in this family
+     read floppy. See docs/design/design.md 3.3. */
+  --text-p-xs: 0.75rem;
+  --text-p-xs--line-height: 1.55;
+  --text-p-sm: 0.875rem;
+  --text-p-sm--line-height: 1.55;
+  --text-p-base: 1rem;
+  --text-p-base--line-height: 1.6;
+
+  /* The named Tailwind radius aliases (rounded-sm/md/lg/xl) are deliberately
+     NOT mapped. They invited eyeballing - the same button was 6px in one place
+     and 8px in another. There is one radius vocabulary, `rounded-[var(--radius-*)]`,
+     named for what the shape wraps. A leftover alias now emits no CSS and fails
+     loudly instead of silently rendering a different corner.
+     See docs/design/design.md 4.3. */
   --animate-shiny-text: shiny-text 8s infinite;
   @keyframes shiny-text {
   0%, 90%, 100% {
@@ -138,33 +197,99 @@
   }
 }
 
+/* ---------------------------------------------------------------------------
+   Theme tokens.
+
+   Dark is the product's default, so the dark set lives on :root — that way a
+   server-rendered page with no theme class still paints dark and never flashes.
+   `.light` follows and overrides at equal specificity, which next-themes stamps
+   on <html> when the operator picks light. See docs/design/tokens.md.
+
+   The ink ladder is assigned by role, not by eye. See docs/design/design.md 2.1:
+     text-primary    record names, values, headings
+     text-secondary  body copy, table cells, descriptions
+     text-label      field labels, form icons, section eyebrows
+     text-muted      timestamps, counts, column headers, ids (with tabular-nums)
+     text-disabled   non-interactive only - never for de-emphasis
+   Every step except `disabled` clears 4.5:1 on all four grounds in both themes;
+   `disabled` is exempt under WCAG 1.4.3 (incidental text).
+
+   Two border tiers exist on purpose:
+     --color-border-subtle/default  structural hairlines (row dividers, panel
+                                    seams). Deliberately quiet, no contrast floor.
+     --color-border-control         the visible edge of an input, select or
+                                    checkbox. Holds >= 3:1 per WCAG 1.4.11.
+     --color-border-control-hover   the same edge on hover. It moves *away* from
+                                    the ground, never toward it - hover must not
+                                    drop a control below the 1.4.11 floor.
+   Do not use a structural border to bound a control.
+
+   Light is not a second palette. Every status colour in `.light` is the dark
+   value with its OKLCH hue and chroma held and only lightness pulled down far
+   enough to carry white and clear 4.5:1 on a white ground - each one lands
+   within half a degree of hue of its dark counterpart. The theme changes
+   weight, not identity.
+
+   There is no brand accent. `--color-primary` is a neutral: the loudest thing
+   on a gray page is a high-contrast achromatic fill, not a hue. The token keeps
+   the name `primary` because it names the *role* (the primary action), not the
+   colour. Colour survives only where it carries meaning - status, destructive
+   intent, and chart series.
+
+   `--color-focus-ring` is deliberately separate from the action colour. A
+   near-white ring would be harsh and would bleed into surrounding content, so
+   focus uses a mid grey that clears 3:1 against all four grounds in both themes.
+--------------------------------------------------------------------------- */
+
 :root {
   color-scheme: dark;
 
-  --font-app-sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-app-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* No mono webfont. Machine strings are rare enough (see docs/design/design.md
+     3.2) that a system stack is correct, and shipping a second face for record
+     ids is what made the product read like a terminal. */
+  --font-app-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 
   --color-bg-app: #0b0d10;
   --color-bg-sidebar: #0e1116;
   --color-bg-surface: #12161c;
   --color-bg-surface-muted: #171c23;
   --color-bg-surface-raised: #1d232c;
+  /* A table row's zebra and hover grounds. These are the composites the row used to
+     paint with `bg-surface-muted/30` and `bg-surface-raised/60` — same colour, no alpha.
+     A sticky column takes its ground from the row (design.md 4.4), and a translucent
+     ground does not occlude: the columns scrolling underneath show straight through it. */
+  --color-bg-surface-row-alt: color-mix(in oklab, var(--color-bg-surface-muted) 30%, var(--color-bg-surface));
+  --color-bg-surface-row-hover: color-mix(in oklab, var(--color-bg-surface-raised) 60%, var(--color-bg-surface));
   --color-bg-overlay: rgba(5, 7, 10, 0.72);
-  --background-accent-glow: radial-gradient(circle at top right, rgba(108, 124, 255, 0.08), transparent 38%);
+  --background-accent-glow: radial-gradient(circle at top right, rgba(244, 247, 251, 0.04), transparent 38%);
   --shadow-panel: 0 24px 80px rgba(0, 0, 0, 0.28);
 
   --color-border-subtle: #20262f;
   --color-border-default: #2a313c;
   --color-border-strong: #3a4350;
+  --color-border-control: #646d7c;
+  /* 4.17:1 on bg-surface-raised, the worst ground a control lands on. The old
+     hover moved inputs to --color-border-strong, which is 2.0:1 there - hover
+     was quietly dropping the control below the WCAG 1.4.11 floor. */
+  --color-border-control-hover: #7a8492;
 
   --color-text-primary: #f4f7fb;
   --color-text-secondary: #b7c0cc;
-  --color-text-muted: #7f8a99;
+  --color-text-label: #99a4b4;
+  --color-text-muted: #808b9a;
   --color-text-disabled: #59616d;
 
-  --color-primary: #6c7cff;
-  --color-primary-hover: #7e8bff;
-  --color-primary-active: #5b6beb;
-  --color-primary-muted: rgba(108, 124, 255, 0.14);
+  /* The primary action: a high-contrast neutral, no hue. 18.1:1 label on fill.
+     Because it is maximally loud there is exactly one per view. */
+  --color-primary: #f4f7fb;
+  --color-primary-hover: #e2e8f0;
+  --color-primary-active: #cdd5e0;
+  --color-primary-muted: rgba(244, 247, 251, 0.08);
+  --color-primary-contrast: #0b0d10;
+
+  /* >= 3:1 on app/surface/muted/raised (6.82 / 6.36 / 6.00 / 5.53). */
+  --color-focus-ring: #8f9aa8;
 
   --color-success: #2fcf80;
   --color-success-muted: rgba(47, 207, 128, 0.14);
@@ -172,8 +297,22 @@
   --color-warning-muted: rgba(244, 183, 64, 0.14);
   --color-danger: #ef6461;
   --color-danger-muted: rgba(239, 100, 97, 0.14);
+  --color-danger-contrast: #0b0d10;
   --color-info: #4ca7ff;
   --color-info-muted: rgba(76, 167, 255, 0.14);
+
+  /* Control heights are a closed set. An input and the button beside it must
+     always resolve to the same token. See docs/design/design.md 4.2. */
+  --size-control-sm: 2rem;
+  --size-control: 2.375rem;
+  --size-control-lg: 2.75rem;
+
+  /* Rail widths are a closed set of two, named by what the rail carries rather than by how
+     wide it is. See docs/design/tokens.md 6.1. `nav` is a list of destinations; `context` sits
+     beside content and holds label/value pairs and inline controls, so the record spine and
+     the form aside are deliberately the same width. Ten hand-written ratios preceded these. */
+  --width-rail-nav: 16rem;
+  --width-rail-context: 20rem;
 
   --radius: 0.5rem;
   --radius-control-sm: 0.375rem;
@@ -189,7 +328,7 @@
   --popover: var(--color-bg-surface-raised);
   --popover-foreground: var(--color-text-primary);
   --primary: var(--color-primary);
-  --primary-foreground: #ffffff;
+  --primary-foreground: var(--color-primary-contrast);
   --secondary: var(--color-bg-surface-muted);
   --secondary-foreground: var(--color-text-primary);
   --muted: var(--color-bg-surface-muted);
@@ -198,21 +337,82 @@
   --accent-foreground: var(--color-text-primary);
   --destructive: var(--color-danger);
   --border: var(--color-border-default);
-  --input: var(--color-border-default);
-  --ring: var(--color-primary);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --input: var(--color-border-control);
+  --ring: var(--color-focus-ring);
+  --chart-1: #5fbace;
+  --chart-2: #7b9be0;
+  --chart-3: #e0a860;
+  --chart-4: #d97c86;
+  --chart-5: #8fbf8a;
+  --chart-6: #cd90c7;
+  --chart-7: #4cbdb0;
+  --chart-8: #df9176;
   --sidebar: var(--color-bg-sidebar);
   --sidebar-foreground: var(--color-text-secondary);
   --sidebar-primary: var(--color-primary);
-  --sidebar-primary-foreground: #ffffff;
+  --sidebar-primary-foreground: var(--color-primary-contrast);
   --sidebar-accent: var(--color-primary-muted);
   --sidebar-accent-foreground: var(--color-text-primary);
   --sidebar-border: var(--color-border-subtle);
-  --sidebar-ring: var(--color-primary);
+  --sidebar-ring: var(--color-focus-ring);
+}
+
+.light {
+  color-scheme: light;
+
+  --color-bg-app: #f7f8fa;
+  --color-bg-sidebar: #f1f3f6;
+  --color-bg-surface: #ffffff;
+  --color-bg-surface-muted: #f1f3f6;
+  --color-bg-surface-raised: #e7eaf0;
+  --color-bg-surface-row-alt: color-mix(in oklab, var(--color-bg-surface-muted) 30%, var(--color-bg-surface));
+  --color-bg-surface-row-hover: color-mix(in oklab, var(--color-bg-surface-raised) 60%, var(--color-bg-surface));
+  --color-bg-overlay: rgba(16, 19, 25, 0.42);
+  --background-accent-glow: radial-gradient(circle at top right, rgba(16, 19, 25, 0.03), transparent 38%);
+  --shadow-panel: 0 18px 48px rgba(16, 19, 25, 0.12);
+
+  --color-border-subtle: #e6e9ef;
+  --color-border-default: #dde1e8;
+  --color-border-strong: #c4cad4;
+  --color-border-control: #7f8693;
+  /* 4.02:1 on the light bg-surface-raised. Same operation as dark, inverted. */
+  --color-border-control-hover: #6a7280;
+
+  --color-text-primary: #101319;
+  --color-text-secondary: #4a515d;
+  --color-text-label: #5d6574;
+  --color-text-muted: #626a78;
+  --color-text-disabled: #9aa1ad;
+
+  /* Same role, inverted weight: 18.6:1 label on fill, and the fill itself holds
+     17.5:1 against the app ground so the button's edge needs no border. */
+  --color-primary: #101319;
+  --color-primary-hover: #262c36;
+  --color-primary-active: #363d49;
+  --color-primary-muted: rgba(16, 19, 25, 0.06);
+  --color-primary-contrast: #ffffff;
+
+  /* >= 3:1 on app/surface/muted/raised (5.63 / 5.98 / 5.38 / 4.96). */
+  --color-focus-ring: #5b6472;
+
+  --color-success: #00834c;
+  --color-success-muted: rgba(0, 131, 76, 0.12);
+  --color-warning: #966a00;
+  --color-warning-muted: rgba(150, 106, 0, 0.12);
+  --color-danger: #ca4243;
+  --color-danger-muted: rgba(202, 66, 67, 0.12);
+  --color-danger-contrast: #ffffff;
+  --color-info: #0373c7;
+  --color-info-muted: rgba(3, 115, 199, 0.12);
+
+  --chart-1: #429fb3;
+  --chart-2: #7292d6;
+  --chart-3: #bf8940;
+  --chart-4: #d47782;
+  --chart-5: #719f6c;
+  --chart-6: #bb7fb5;
+  --chart-7: #2ba498;
+  --chart-8: #cc8065;
 }
 
 @layer base {
@@ -235,6 +435,23 @@
 ::view-transition-old(root), ::view-transition-new(root) {
     animation: none;
     mix-blend-mode: normal;
+}
+
+/* Reduced motion is a property of the platform, not of the call site
+   (docs/design/design.md 6). Before this block it was 13 hand-placed
+   `motion-reduce:` classes: Skeleton and Pagination remembered, 20 of 21
+   spinners did not, and `.float-slow` ran `infinite` on the first screen every
+   operator sees. Loops stop, one-shot transitions collapse to instant, and
+   nothing below has to remember. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 @media print {

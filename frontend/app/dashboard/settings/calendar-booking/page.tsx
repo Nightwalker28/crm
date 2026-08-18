@@ -2,18 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, Plus, Trash2, X } from "lucide-react";
+import { CalendarDays, Copy, ExternalLink, Plus, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
 
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import TimezonePicker from "@/components/ui/TimezonePicker";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
@@ -25,7 +26,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useCalendarContext } from "@/hooks/useCalendar";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -310,14 +310,20 @@ export default function CalendarBookingSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageToolbar context={isDirty || isHandleDirty ? "Unsaved booking-link changes" : undefined}>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>
-            <Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>
-          </div>
-      </PageToolbar>
-
+    <PageShell
+      variant="settings"
+      title="Booking Links"
+      description="Public scheduling links and booking availability."
+      context={isDirty || isHandleDirty ? "Unsaved booking-link changes" : undefined}
+      actions={(
+        <>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button asChild variant="outline"><Link href={SETTINGS_ROUTES.integrations}>Integrations</Link></Button>
+          <Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>
+        </div>
+        </>
+      )}
+    >
       {bookingTypesQuery.isError ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <span>Booking links could not be loaded.</span>
@@ -363,7 +369,7 @@ export default function CalendarBookingSettingsPage() {
             <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
             <SheetContent
               side="right"
-              className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+              className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised outline-none"
             >
               <form
                 className="flex min-h-0 flex-1 flex-col"
@@ -428,24 +434,13 @@ export default function CalendarBookingSettingsPage() {
             </Field>
             <Field>
               <FieldLabel>Link availability</FieldLabel>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Link availability">
-                <Button
-                  type="button"
-                  variant={draft.enabled ? "secondary" : "outline"}
-                  aria-pressed={draft.enabled}
-                  onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
-                >
-                  Enabled
-                </Button>
-                <Button
-                  type="button"
-                  variant={!draft.enabled ? "secondary" : "outline"}
-                  aria-pressed={!draft.enabled}
-                  onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
-                >
-                  Disabled
-                </Button>
-              </div>
+              <SegmentedBoolean
+                aria-label="Link availability"
+                value={draft.enabled}
+                onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+                trueLabel="Enabled"
+                falseLabel="Disabled"
+              />
               <FieldDescription>Enabled links accept new public bookings. Existing calendar events remain when a link is disabled.</FieldDescription>
             </Field>
           </FieldGroup>
@@ -502,26 +497,13 @@ export default function CalendarBookingSettingsPage() {
             {draft.questions.map((question, index) => (
               <div key={`question-${index}`} className="grid gap-2 md:grid-cols-[minmax(0,1fr)_12rem_auto]">
                 <Input aria-label={`Question ${index + 1} label`} value={question.label} placeholder="Question label" onChange={(event) => updateQuestion(index, { label: event.target.value })} />
-                <div className="grid grid-cols-2 gap-2" role="group" aria-label={`Question ${index + 1} requirement`}>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={question.required ? "secondary" : "outline"}
-                    aria-pressed={question.required}
-                    onClick={() => updateQuestion(index, { required: true })}
-                  >
-                    Required
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant={!question.required ? "secondary" : "outline"}
-                    aria-pressed={!question.required}
-                    onClick={() => updateQuestion(index, { required: false })}
-                  >
-                    Optional
-                  </Button>
-                </div>
+                <SegmentedBoolean
+                  aria-label={`Question ${index + 1} requirement`}
+                  value={question.required}
+                  onValueChange={(required) => updateQuestion(index, { required })}
+                  trueLabel="Required"
+                  falseLabel="Optional"
+                />
                 <Button aria-label={`Remove question ${index + 1}`} variant="ghost" size="icon-sm" onClick={() => setDraft((current) => ({ ...current, questions: current.questions.filter((_, itemIndex) => itemIndex !== index) }))}>
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -555,66 +537,65 @@ export default function CalendarBookingSettingsPage() {
             </div>
             <Button type="button" size="sm" onClick={() => void startNewBookingLink()}><Plus />New link</Button>
           </div>
-          <div className="mt-4 overflow-x-auto rounded-[var(--radius-card)] border border-line-default">
-            <Table>
-              <TableHeader>
-                <TableHeaderRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Owner</TableHead>
-                  <TableHead>Public URL</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead />
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {bookingTypesQuery.isLoading ? (
-                  <TableRow><TableCell colSpan={5} className="py-6 text-copy-muted">Loading booking links...</TableCell></TableRow>
-                ) : bookingTypes.length ? bookingTypes.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="font-medium text-copy-primary">
-                      <button
-                        type="button"
-                        className="rounded-sm text-left hover:underline focus:outline-none focus:ring-2 focus:ring-ring"
-                        onClick={() => void editBookingType(item)}
-                      >
-                        {item.name}
-                      </button>
-                    </TableCell>
-                    <TableCell className="text-copy-muted">{item.owner_name || `User ${item.owner_id}`}</TableCell>
-                    <TableCell className="text-copy-muted">
-                      <button
-                        type="button"
-                        className="inline-flex items-center gap-2 text-sm text-copy-secondary hover:text-copy-primary focus:outline-none focus:ring-2 focus:ring-ring"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void navigator.clipboard.writeText(publicUrl(item.owner_handle, item.slug));
-                          toast.success("Booking link copied.");
-                        }}
-                      >
-                        <Copy className="h-4 w-4" />
-                        /book/{item.owner_handle}/{item.slug}
-                      </button>
-                    </TableCell>
-                    <TableCell className={item.enabled ? "text-state-success" : "text-copy-muted"}>{item.enabled ? "Enabled" : "Disabled"}</TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex justify-end gap-2">
-                        <Button asChild variant="ghost" size="icon-sm">
-                          <Link aria-label={`Open ${item.name} booking page`} href={`/book/${item.owner_handle}/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
-                        </Button>
-                        <Button aria-label={`Disable ${item.name}`} variant="ghost" size="icon-sm" onClick={() => void confirmDisableBookingType(item)} disabled={!item.enabled || disableMutation.isPending}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                )) : (
-                  <TableRow><TableCell colSpan={5}><EmptyState title="No booking links yet" description="Create the first link to offer public meeting slots." /></TableCell></TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+          <RecordTable
+            className="mt-4"
+            label="Booking links"
+            columns={[
+              {
+                key: "name",
+                label: "Name",
+                size: "lg",
+                render: (item) => <span className="font-medium text-copy-primary">{item.name}</span>,
+              },
+              { key: "owner", label: "Owner", render: (item) => <span className="text-copy-muted">{item.owner_name || `User ${item.owner_id}`}</span> },
+              {
+                key: "url",
+                label: "Public URL",
+                size: "lg",
+                interactive: true,
+                render: (item) => (
+                  <button
+                    type="button"
+                    className="inline-flex items-center gap-2 rounded-[var(--radius-control-sm)] text-sm text-copy-secondary hover:text-copy-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(publicUrl(item.owner_handle, item.slug));
+                      toast.success("Booking link copied.");
+                    }}
+                  >
+                    <Copy className="h-4 w-4" />
+                    /book/{item.owner_handle}/{item.slug}
+                  </button>
+                ),
+              },
+              { key: "status", label: "Status", size: "sm", render: (item) => <span className={item.enabled ? "text-state-success" : "text-copy-muted"}>{item.enabled ? "Enabled" : "Disabled"}</span> },
+            ]}
+            rows={bookingTypes}
+            rowKey={(item) => item.id}
+            onOpenRow={(item) => void editBookingType(item)}
+            rowLabel={(item) => `Edit booking link ${item.name}`}
+            isLoading={bookingTypesQuery.isLoading}
+            isRefreshing={bookingTypesQuery.isFetching && !bookingTypesQuery.isLoading}
+            hasError={Boolean(bookingTypesQuery.error)}
+            onRetry={() => void bookingTypesQuery.refetch()}
+            emptyState={{
+              icon: CalendarDays,
+              title: "No booking links yet",
+              description: "Create the first link to offer public meeting slots.",
+              action: <Button type="button" onClick={() => void startNewBookingLink()}><Plus />Create booking link</Button>,
+            }}
+            rowActions={(item) => (
+              <div className="flex justify-end gap-2">
+                <Button asChild variant="ghost" size="icon-sm">
+                  <Link aria-label={`Open ${item.name} booking page`} href={`/book/${item.owner_handle}/${item.slug}`} target="_blank"><ExternalLink className="h-4 w-4" /></Link>
+                </Button>
+                <Button aria-label={`Disable ${item.name}`} variant="ghost" size="icon-sm" onClick={() => void confirmDisableBookingType(item)} disabled={!item.enabled || disableMutation.isPending}>
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            )}
+          />
         </Card>
       </>
-    </div>
+    </PageShell>
   );
 }

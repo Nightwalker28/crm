@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const ioId = 7301;
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 function orderFixture() {
   return {
@@ -69,6 +69,30 @@ async function cacheInsertionOrderPermissions(
     },
     { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 73,
+        name: "finance_io",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: canEdit,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+          ...overrides,
+        },
+      }]),
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -97,23 +121,24 @@ test("Insertion Order creation is routed, responsive, and focuses the required c
   await expect(customerType).toBeVisible();
   await customerType.click();
   await page.getByRole("option", { name: "Account" }).click();
-  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search accounts or enter a customer");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveAttribute("placeholder", "Search accounts or enter a customer");
   await customerType.click();
   await page.getByRole("option", { name: "Contact" }).click();
-  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search contacts or enter a customer");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveAttribute("placeholder", "Search contacts or enter a customer");
 
   await page.getByRole("button", { name: "Create order" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
-  await expect(page.getByLabel("Customer")).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toBeFocused();
 
-  await page.getByLabel("Customer").fill("New Customer");
+  await page.getByRole("combobox", { name: "Customer", exact: true }).fill("New Customer");
+  await page.keyboard.press("Escape");
   await page.getByText("Create a lightweight contact when this order is saved.").click();
   await expect(page.getByLabel("Customer email")).toBeVisible();
 });
 
 test("Insertion Order creation preserves commercial fields and redacts backend failures", async ({ page }) => {
   let submitted: Record<string, unknown> | null = null;
-  await page.route("**/finance/insertion-orders", async (route) => {
+  await page.route("**/api/v1/finance/insertion-orders", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -127,12 +152,13 @@ test("Insertion Order creation preserves commercial fields and redacts backend f
   });
 
   await page.goto("/dashboard/finance/insertion-orders/new");
-  await page.getByLabel("Customer").fill("New Customer");
+  await page.getByRole("combobox", { name: "Customer", exact: true }).fill("New Customer");
+  await page.keyboard.press("Escape");
   await page.getByText("Create a lightweight contact when this order is saved.").click();
   await page.getByLabel("Customer email").fill("customer@example.test");
   await page.getByLabel("Subtotal").fill("1000");
   await page.getByLabel("Tax").fill("100");
-  await page.getByLabel("Total").fill("1100");
+  await page.getByLabel("Total", { exact: true }).fill("1100");
   await page.getByRole("button", { name: "Create order" }).click();
 
   expect(submitted).toMatchObject({
@@ -152,7 +178,7 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   await cacheInsertionOrderPermissions(page, true);
   let order = orderFixture();
   let submitted: Record<string, unknown> | null = null;
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     if (route.request().method() === "PUT") {
       submitted = route.request().postDataJSON() as Record<string, unknown>;
       order = { ...order, ...submitted };
@@ -164,10 +190,10 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   await page.getByRole("link", { name: "Edit insertion order" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit IO-2099-07301" })).toBeVisible();
-  await expect(page.getByLabel("Customer")).toHaveValue("Acme Operations");
-  await expect(page.getByLabel("Total")).toHaveValue("1100");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveValue("Acme Operations");
+  await expect(page.getByLabel("Total", { exact: true })).toHaveValue("1100");
 
-  await page.getByLabel("Total").fill("1250");
+  await page.getByLabel("Total", { exact: true }).fill("1250");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}$`));
   expect(submitted).toMatchObject({ customer_name: "Acme Operations", customer_organization_id: 51, total_amount: 1250 });
@@ -175,7 +201,7 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
 
 test("Insertion Order detail uses the shared mobile summary and authenticated attachment", async ({ page }) => {
   await cacheInsertionOrderPermissions(page, true);
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
   });
 
@@ -188,7 +214,7 @@ test("Insertion Order detail uses the shared mobile summary and authenticated at
   await expect(page.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
   await expect(page.getByRole("heading", { name: "Custom fields" })).toBeVisible();
   await expect(page.getByText("Campaign Type")).toBeVisible();
-  await expect(page.getByText("Renewal")).toBeVisible();
+  await expect(page.getByText("Renewal", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: "IO-2099-07301.pdf" })).toHaveAttribute(
     "href",
     "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
@@ -197,7 +223,7 @@ test("Insertion Order detail uses the shared mobile summary and authenticated at
 
 test("Insertion Order detail is read-only without edit permission", async ({ page }) => {
   await cacheInsertionOrderPermissions(page, false);
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
   });
 
@@ -205,12 +231,12 @@ test("Insertion Order detail is read-only without edit permission", async ({ pag
 
   await expect(page.getByRole("heading", { name: "IO-2099-07301" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Edit insertion order" })).toHaveCount(0);
-  await expect(page.getByText("Acme Operations")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Acme Operations" })).toBeVisible();
   await expect(page.getByText("$1,100.00")).toBeVisible();
 });
 
 test("Insertion Order detail failures do not expose backend details", async ({ page }) => {
-  await page.route(`**/finance/insertion-orders/${ioId}`, (route) =>
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -277,13 +303,14 @@ test("Insertion Order list distinguishes filtered empty and fixed failure states
 
   await page.goto("/dashboard/finance/insertion-orders");
   await expect(page.getByText("No insertion orders yet")).toBeVisible();
-  await page.getByRole("button", { name: "Active" }).click();
+  await page.getByRole("radio", { name: "Active" }).click();
   await expect(page.getByText("No insertion orders match this view")).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Insertion orders").getByRole("button", { name: "Clear filters" }).click();
 
   shouldFail = true;
   await page.reload();
-  await expect(page.getByText("Insertion orders could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Insertion orders could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 sql_connection=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

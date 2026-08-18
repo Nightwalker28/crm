@@ -9,6 +9,7 @@ import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
@@ -42,13 +43,6 @@ export default function QuotesPage() {
   const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
 
   const currentPageIds = useMemo(() => quotes.map((quote) => quote.quote_id), [quotes]);
-  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
-    if (!currentPageIds.length) return false;
-    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
-    if (!selectedOnPage) return false;
-    if (selectedOnPage === currentPageIds.length) return true;
-    return "indeterminate";
-  }, [currentPageIds, selectedIds]);
 
   function toggleRow(quoteId: number, checked: boolean) {
     setSelectedIds((current) => checked ? Array.from(new Set([...current, quoteId])) : current.filter((id) => id !== quoteId));
@@ -63,15 +57,9 @@ export default function QuotesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title="Quotes">
       <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search quotes" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} selectedCount={selectedIds.length} selectionNoun="quote" onClearSelection={() => setSelectedIds([])} viewControls={<SavedViewSelector moduleKey="sales_quotes" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} actionControls={<ModuleImportExportControls importEndpoint="/sales/quotes/import" exportEndpoint="/sales/quotes/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />} primaryAction={<Button asChild><Link href="/dashboard/sales/quotes/new"><Plus />Create quote</Link></Button>} />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? (
-        <div role="alert" className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>We could not load quotes.</span>
-          <button onClick={refresh} className="underline underline-offset-2">Try again</button>
-        </div>
-      ) : null}
       <QuotesTable
         quotes={quotes}
         isLoading={isLoading}
@@ -79,10 +67,11 @@ export default function QuotesPage() {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
-        currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         onClearFilters={clearFilters}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) =>
@@ -93,6 +82,6 @@ export default function QuotesPage() {
         }
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-    </div>
+    </PageShell>
   );
 }

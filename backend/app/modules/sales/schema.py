@@ -5,6 +5,7 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
+from app.modules.sales.opportunity_contact_roles import OPPORTUNITY_CONTACT_ROLE_PATTERN
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
 
 
@@ -384,6 +385,7 @@ class SalesQuoteResponse(SalesQuoteBase):
     quote_id: int
     quote_number: str
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     created_time: datetime
     updated_at: datetime | None = None
     items: list[SalesQuoteItemResponse] = Field(default_factory=list)
@@ -574,6 +576,7 @@ class SalesOrderResponse(BaseModel):
     id: int
     order_number: str
     quote_id: int | None = None
+    quote_number: str | None = None
     organization_id: int | None = None
     contact_id: int | None = None
     opportunity_id: int | None = None
@@ -899,10 +902,76 @@ class SalesOpportunityListResponse(BaseModel):
     page: int
 
 
+class OpportunityContactParticipant(BaseModel):
+    """One contact involved in a deal, with the role they play in it."""
+
+    id: int
+    opportunity_id: int
+    contact_id: int
+    role_key: str
+    role_label: str
+    is_primary: bool
+    contact_name: str | None = None
+    contact: ContactCompactSummary
+    created_at: datetime | None = None
+    created_by_user_id: int | None = None
+    # Populated only on removed participants, which are served by their own route.
+    removed_at: datetime | None = None
+    removed_by_user_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OpportunityParticipantCreate(BaseModel):
+    """Put an existing contact on a deal.
+
+    `contact_id` is a hint from the client, never an authorization: the service
+    resolves it inside the caller's tenant and the route independently requires
+    Contacts link access.
+    """
+
+    contact_id: int
+    # Omitted role means the catalog default rather than a rejection, matching the
+    # legacy mirror, which records no role.
+    role_key: str | None = Field(default=None, pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+    # Adding someone straight as the primary contact also moves the legacy
+    # `sales_opportunities.contact_id`.
+    is_primary: bool = False
+
+
+class OpportunityParticipantRoleUpdate(BaseModel):
+    role_key: str = Field(pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+
+
+class OpportunityParticipantListResponse(BaseModel):
+    results: list[OpportunityContactParticipant]
+    # Whether this reader may change the participant list, so a client can render a
+    # read-only relationship rail without probing the write routes. UI hiding is not
+    # the authorization; the routes enforce it independently.
+    can_manage: bool = False
+
+
+class OpportunityContactRoleOption(BaseModel):
+    key: str
+    label: str
+
+
+class OpportunityContactRoleCatalogResponse(BaseModel):
+    results: list[OpportunityContactRoleOption]
+
+
 class OpportunitySummaryResponse(BaseModel):
     opportunity: SalesOpportunityResponse
     contact: ContactCompactSummary | None = None
     organization: OrganizationCompactSummary | None = None
+    # `participant_contacts` carries every association including the primary one,
+    # which is repeated in `primary_contact` for clients that only need that.
+    # `contact` above stays the legacy single-contact field.
+    primary_contact: OpportunityContactParticipant | None = None
+    participant_contacts: list[OpportunityContactParticipant] = Field(default_factory=list)
+    # False when the reader may not view Contacts; the participant lists are then
+    # empty because they are hidden, not because the deal has no participants.
+    can_view_contacts: bool = True
     related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]

@@ -29,7 +29,15 @@ test("keeps the global search centered and shell controls singular", async ({ pa
     return Math.abs((searchBox!.x + searchBox!.width / 2) - (headerBox!.x + headerBox!.width / 2));
   };
 
-  expect(await centeredDifference()).toBeLessThan(2);
+  // The sidebar animates its width over 200ms (transition-[width] duration-200), so a bare
+  // read straight after a collapse samples a frame mid-transition — 18px off at t=0, 0.3px
+  // at t=100ms, 0 once settled. Poll for the settled value instead of racing the animation.
+  const expectCentered = async () =>
+    expect
+      .poll(centeredDifference, { message: "Expected the command palette to settle centered.", timeout: 5000 })
+      .toBeLessThan(2);
+
+  await expectCentered();
   await expect(page.getByRole("button", { name: /Open notifications/ })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Open profile menu" })).toHaveCount(1);
   await expect(page.getByRole("button", { name: "Log out" })).toHaveCount(1);
@@ -37,7 +45,7 @@ test("keeps the global search centered and shell controls singular", async ({ pa
   const sidebar = page.getByRole("complementary", { name: "Primary navigation" });
   expect(await sidebar.evaluate((element) => getComputedStyle(element).borderRightWidth)).not.toBe("0px");
   await page.getByRole("button", { name: "Collapse sidebar" }).click();
-  expect(await centeredDifference()).toBeLessThan(2);
+  await expectCentered();
 });
 
 test("shows only the module name in the global header and a cached profile photo", async ({ page }) => {
@@ -45,7 +53,7 @@ test("shows only the module name in the global header and a cached profile photo
   await expect(page.locator("main > div > header").getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create lead" })).toBeVisible();
 
   await page.evaluate(() => {
     const current = JSON.parse(sessionStorage.getItem("lynk_user") || "{}");
@@ -62,10 +70,12 @@ test("renders neither breadcrumb trails nor visible page-title headers across da
     ["/dashboard/mail", "Mail"],
     ["/dashboard/reports", "Reports"],
     ["/dashboard/client-portal", "Client Portal"],
+    // The sidebar has one flat Settings entry, so the landing page is named for the section.
+    // An open settings page names itself in the header.
     ["/dashboard/settings", "Settings"],
-    ["/dashboard/settings/general", "Settings"],
-    ["/dashboard/settings/permissions", "Settings"],
-    ["/dashboard/settings/integrations", "Settings"],
+    ["/dashboard/settings/general", "General"],
+    ["/dashboard/settings/permissions", "Permissions"],
+    ["/dashboard/settings/integrations", "Integrations"],
   ];
 
   for (const [route, moduleName] of routes) {

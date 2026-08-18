@@ -1,4 +1,5 @@
 import unittest
+from datetime import datetime, timezone
 from decimal import Decimal
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -13,10 +14,11 @@ from app.modules.contracts.models import Contract
 from app.modules.contracts.routes import contracts_routes
 from app.modules.contracts.schema import ContractCreateRequest
 from app.modules.contracts.services import contracts_services
-from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, update_contract, update_contract_signer
+from app.modules.contracts.services.contracts_services import add_contract_party, add_contract_signer, create_contract, get_contract_or_404, resolve_contract_link_labels, update_contract, update_contract_signer
 from app.modules.documents.models import Document
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.platform.models import CrmNumberCounter
+from app.modules.platform.services.record_comments import get_record_reference
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -84,6 +86,66 @@ class ContractTests(unittest.TestCase):
             self.db.query(CrmNumberCounter).filter(CrmNumberCounter.scope == "contracts").count(),
             1,
         )
+
+    def test_linked_record_names_resolve_in_tenant(self):
+        """The detail page draws links, and a link labelled `Contact #30` names nothing.
+
+        Rebuild 5.3 batch 1 puts these in the record spine's `Connected` block, which is a
+        list of names rather than ids.
+        """
+
+        item = create_contract(self.db, {"title": "Acme MSA", "organization_id": 20, "contact_id": 30, "opportunity_id": 40, "quote_id": 50, "order_id": 60, "document_id": 70, "owner_id": 1}, self.user)
+
+        labels = resolve_contract_link_labels(self.db, item)
+
+        self.assertEqual(labels["organization_name"], "Acme")
+        self.assertEqual(labels["contact_name"], "Ada")
+        self.assertEqual(labels["opportunity_name"], "Acme Pilot")
+        self.assertEqual(labels["quote_number"], "Q-500")
+        self.assertEqual(labels["order_number"], "SO-60")
+        self.assertEqual(labels["document_name"], "MSA")
+        self.assertEqual(labels["owner_name"], "Owner User")
+
+    def test_unlinked_and_cross_tenant_targets_resolve_to_none(self):
+        item = create_contract(self.db, {"title": "Bare contract"}, self.user)
+        # Not reachable through the API — the create path rejects a cross-tenant link — but the
+        # resolver must not leak one if a row is repointed or a tenant record is removed.
+        item.organization_id = 99
+        item.owner_id = 2
+        self.db.flush()
+
+        labels = resolve_contract_link_labels(self.db, item)
+
+        self.assertIsNone(labels["organization_name"])
+        self.assertIsNone(labels["owner_name"])
+        self.assertIsNone(labels["contact_name"])
+
+    def test_soft_deleted_link_targets_resolve_to_none(self):
+        """A recycled record still has the contract's foreign key pointing at it — `SET NULL`
+        only fires on a hard delete — so the link would otherwise open a "not found"."""
+
+        item = create_contract(self.db, {"title": "Acme MSA", "contact_id": 30, "opportunity_id": 40}, self.user)
+        contact = self.db.query(SalesContact).filter(SalesContact.contact_id == 30).one()
+        contact.deleted_at = datetime(2026, 8, 18, tzinfo=timezone.utc)
+        self.db.flush()
+
+        labels = resolve_contract_link_labels(self.db, item)
+
+        self.assertIsNone(labels["contact_name"])
+        self.assertEqual(labels["opportunity_name"], "Acme Pilot")
+
+    def test_contract_is_a_record_reference_module(self):
+        """Notes, tasks, documents and the activity feed all resolve a record through one
+        registry. Contracts had no entry, which is why the page carried none of them."""
+
+        item = create_contract(self.db, {"title": "Referenced contract"}, self.user)
+
+        record = get_record_reference(self.db, tenant_id=10, module_key="contracts", entity_id=item.id)
+        self.assertEqual(record.id, item.id)
+
+        with self.assertRaises(HTTPException) as exc:
+            get_record_reference(self.db, tenant_id=99, module_key="contracts", entity_id=item.id)
+        self.assertEqual(exc.exception.status_code, 404)
 
     def test_contract_number_schema_documents_server_generation(self):
         schema = ContractCreateRequest.model_json_schema()

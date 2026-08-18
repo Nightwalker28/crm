@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteErrorState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   Sheet,
   SheetContent,
@@ -62,7 +62,7 @@ function DepartmentEditorSheet({
     <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <SheetPortal>
         <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
@@ -144,7 +144,7 @@ function TeamEditorSheet({
     <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
       <SheetPortal>
         <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
           <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
@@ -317,20 +317,17 @@ export default function TeamsAndDepartmentsPage() {
     }
   }
 
-  if (loadError && !loading) {
-    return (
-      <RouteErrorState
-        title="Unable to load teams and departments"
-        description="The organization structure could not be loaded. Try again or return to Settings."
-        reset={() => void retryLoad()}
-        backHref="/dashboard/settings"
-        backLabel="Back to Settings"
-      />
-    );
-  }
-
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      variant="settings"
+      title="Teams"
+      description="Departments contain teams. Manage the hierarchy from one workspace."
+      hasError={Boolean(loadError) && !loading}
+      errorDescription="The organization structure could not be loaded. Try again or return to Settings."
+      onRetry={() => void retryLoad()}
+      backHref="/dashboard/settings"
+      backLabel="Back to Settings"
+    >
       {error && !departmentDialogOpen && !teamDialogOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}
@@ -346,7 +343,7 @@ export default function TeamsAndDepartmentsPage() {
             </div>
             <div>
               <h2 className="text-lg font-semibold text-copy-primary">Organization structure</h2>
-              <p className="mt-1 text-sm leading-6 text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
+              <p className="mt-1 text-p-sm text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -365,7 +362,7 @@ export default function TeamsAndDepartmentsPage() {
         <div className="px-5 py-5">
           {loading ? (
             <div className="space-y-4" aria-label="Loading organization structure" aria-busy="true">
-              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-card)]" />)}
+              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-control)]" />)}
             </div>
           ) : departments.length === 0 ? (
             <EmptyState
@@ -377,13 +374,13 @@ export default function TeamsAndDepartmentsPage() {
           ) : (
             <div className="space-y-4">
               {groupedTeams.map(({ department, teams: departmentTeams }) => (
-                <section key={department.id} className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface-muted" aria-labelledby={`department-${department.id}`}>
+                <section key={department.id} className="overflow-hidden rounded-[var(--radius-control)] bg-surface-muted" aria-labelledby={`department-${department.id}`}>
                   <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="flex min-w-0 items-start gap-3">
-                      <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
+                      <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
                       <div className="min-w-0">
                         <h3 id={`department-${department.id}`} className="text-sm font-semibold text-copy-primary">{department.name}</h3>
-                        <p className="mt-1 text-sm leading-6 text-copy-secondary">{department.description || "No description"}</p>
+                        <p className="mt-1 text-p-sm text-copy-secondary">{department.description || "No description"}</p>
                         <p className="mt-1 text-xs text-copy-muted">{departmentTeams.length} {departmentTeams.length === 1 ? "team" : "teams"}</p>
                       </div>
                     </div>
@@ -400,7 +397,7 @@ export default function TeamsAndDepartmentsPage() {
                     ) : null}
                   </div>
 
-                  <div className="border-t border-line-default bg-surface-raised">
+                  <div className="border-t border-line-subtle bg-surface-raised">
                     {departmentTeams.length === 0 ? (
                       <div className="flex flex-col gap-3 px-4 py-4 text-sm text-copy-muted sm:flex-row sm:items-center sm:justify-between">
                         <span>No teams in this department.</span>
@@ -457,6 +454,6 @@ export default function TeamsAndDepartmentsPage() {
         onChange={setTeamForm}
         onSubmit={() => void saveTeamWorkflow()}
       />
-    </div>
+    </PageShell>
   );
 }

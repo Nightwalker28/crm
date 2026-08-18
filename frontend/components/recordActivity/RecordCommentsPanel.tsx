@@ -6,11 +6,11 @@ import { MessageSquareText, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  RecordPanelEmpty,
-  RecordPanelError,
-  RecordPanelHeader,
-  RecordPanelLoading,
-} from "@/components/recordActivity/RecordPanelStates";
+  PanelEmpty,
+  PanelError,
+  PanelHeader,
+  PanelLoading,
+} from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
@@ -39,6 +39,8 @@ type Props = {
   entityId: string | number;
   title?: string;
   description?: string;
+  canEdit?: boolean;
+  submitVariant?: "default" | "outline";
 };
 
 async function fetchRecordComments(moduleKey: Props["moduleKey"], entityId: string | number): Promise<CommentsResponse> {
@@ -79,6 +81,8 @@ export default function RecordCommentsPanel({
   entityId,
   title = "Notes & Comments",
   description = "Shared record notes for internal collaboration and context.",
+  canEdit = true,
+  submitVariant = "default",
 }: Props) {
   const { confirm } = useConfirm();
   const queryClient = useQueryClient();
@@ -151,7 +155,7 @@ export default function RecordCommentsPanel({
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const body = draft.trim();
-    if (!body) {
+    if (!canEdit || !body) {
       return;
     }
 
@@ -212,9 +216,9 @@ export default function RecordCommentsPanel({
 
   return (
     <Card className="px-5 py-5">
-      <RecordPanelHeader title={title} description={description} icon={MessageSquareText} />
+      <PanelHeader title={title} description={description} icon={MessageSquareText} />
 
-      <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
+      {canEdit ? <form className="mt-4 space-y-3" onSubmit={handleSubmit}>
         <Field>
           <FieldLabel htmlFor={`record-note-${moduleKey}-${entityId}`}>Add internal note</FieldLabel>
           <div className="relative">
@@ -234,7 +238,7 @@ export default function RecordCommentsPanel({
               <div
                 role="listbox"
                 aria-label="Mention suggestions"
-                className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-xl"
+                className="absolute left-2 right-2 top-full z-20 mt-1 max-h-56 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-[var(--shadow-panel)]"
               >
                 {mentionQueryResult.isLoading ? (
                   <div role="status" className="px-3 py-2 text-sm text-copy-muted">Loading people…</div>
@@ -247,7 +251,7 @@ export default function RecordCommentsPanel({
                       type="button"
                       role="option"
                       aria-selected="false"
-                      className="flex w-full flex-col px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className="flex w-full flex-col px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                       onClick={() => insertMention(user)}
                     >
                       <span className="text-sm font-medium text-copy-primary">{user.label}</span>
@@ -266,16 +270,18 @@ export default function RecordCommentsPanel({
         </Field>
         <div className="flex items-center justify-between gap-3">
           <div />
-          <Button type="submit" disabled={submitting || !draft.trim()}>
+          <Button type="submit" variant={submitVariant} disabled={submitting || !draft.trim()}>
             {submitting ? "Saving…" : "Add note"}
           </Button>
         </div>
-      </form>
+      </form> : (
+        <p className="mt-4 text-p-sm text-copy-muted">Edit access is required to add or remove internal notes.</p>
+      )}
 
       {query.isLoading ? (
-        <div className="mt-4"><RecordPanelLoading label="Loading notes…" /></div>
+        <div className="mt-4"><PanelLoading label="Loading notes…" /></div>
       ) : query.error ? (
-        <div className="mt-4"><RecordPanelError message="Record notes could not be loaded." onRetry={() => void query.refetch()} /></div>
+        <div className="mt-4"><PanelError message="Record notes could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : query.data?.results.length ? (
         <ol className="mt-4 space-y-3" aria-label="Record notes">
           {query.data.results.map((item) => (
@@ -285,7 +291,7 @@ export default function RecordCommentsPanel({
                   <div className="text-sm font-semibold text-copy-primary">{item.author_name}</div>
                   <div className="mt-1 text-xs text-copy-muted">{formatDateTime(item.created_at)}</div>
                 </div>
-                <Button
+                {canEdit ? <Button
                   type="button"
                   variant="ghost"
                   size="icon-sm"
@@ -295,14 +301,14 @@ export default function RecordCommentsPanel({
                   aria-label={`Delete note by ${item.author_name}`}
                 >
                   <Trash2 className="h-4 w-4" />
-                </Button>
+                </Button> : null}
               </div>
-              <div className="mt-3 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{item.body}</div>
+              <div className="mt-3 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.body}</div>
             </li>
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><RecordPanelEmpty icon={MessageSquareText} title="No notes yet" description="Add internal context or mention a teammate to begin collaborating." /></div>
+        <div className="mt-4"><PanelEmpty icon={MessageSquareText} title="No notes yet" description="Add internal context or mention a teammate to begin collaborating." /></div>
       )}
     </Card>
   );

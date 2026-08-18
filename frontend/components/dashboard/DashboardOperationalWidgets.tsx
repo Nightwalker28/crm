@@ -56,14 +56,14 @@ export function DashboardModuleEntryPoints({
           <Link
             key={module.id}
             href={href}
-            className="group rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
+            className="group rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-copy-primary">
                   {getModuleDisplayName(module.name, module.description ?? undefined)}
                 </div>
-                <div className="mt-1 text-sm leading-6 text-copy-secondary">
+                <div className="mt-1 text-p-sm text-copy-secondary">
                   {module.description || "Open this module and continue where your role allows."}
                 </div>
               </div>
@@ -86,7 +86,7 @@ export function DashboardQuickActions({ actions }: { actions: DashboardQuickActi
         <Link
           key={action.href}
           href={action.href}
-          className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
+          className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
         >
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -123,11 +123,11 @@ export function DashboardRecentActivity({
   }
   if (!items.length) return <DashboardEmptyMessage>No recent activity is available yet.</DashboardEmptyMessage>;
   return (
-    <div className="divide-y divide-line-subtle rounded-[var(--radius-card)] border border-line-default">
+    <div className="divide-y divide-line-subtle">
       {items.map((item) => (
-        <div key={item.id} className="px-4 py-4">
+        <div key={item.id} className="py-4 first:pt-0 last:pb-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-[11px] uppercase tracking-[0.16em] text-copy-secondary">
+            <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-2xs font-medium text-copy-secondary">
               {actionLabel(item.action)}
             </span>
             <span className="text-sm font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span>
@@ -157,7 +157,7 @@ export function DashboardNotifications({
   if (isLoading) return <div className="text-sm text-copy-muted">Loading notifications...</div>;
   if (isError) {
     return (
-      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-primary">
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
         <span>Notifications could not be loaded.</span>
         <Button type="button" variant="outline" size="sm" onClick={onRetry}>Try again</Button>
       </div>
@@ -165,18 +165,18 @@ export function DashboardNotifications({
   }
   if (!notifications.length) return <DashboardEmptyMessage>No notifications yet.</DashboardEmptyMessage>;
   return (
-    <div className="divide-y divide-line-subtle rounded-[var(--radius-card)] border border-line-default">
+    <div className="-mx-4 divide-y divide-line-subtle">
       {notifications.slice(0, 6).map((notification) => (
         <Link
           key={notification.id}
           href={resolveNotificationHref(notification.link_url, SETTINGS_ROUTES.activityLog)}
           onClick={() => onRead(notification.id)}
-          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
         >
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <div className="text-sm font-medium text-copy-primary">{notification.title}</div>
-              <div className="mt-1 text-sm leading-6 text-copy-secondary">{notification.message}</div>
+              <div className="mt-1 text-p-sm text-copy-secondary">{notification.message}</div>
               <div className="mt-2 text-xs text-copy-muted">{formatDateTime(notification.created_at)}</div>
             </div>
             {notification.read_at ? null : <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-state-success" />}

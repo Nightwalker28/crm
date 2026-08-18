@@ -1,13 +1,14 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { Eye, History } from "lucide-react";
 
 import type { AutomationRun } from "./types";
-import { formatModuleLabel, statusPill } from "./utils";
+import { formatModuleLabel, statusToneFor } from "./utils";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -37,7 +38,7 @@ export function AutomationRunsTable({ runs, isRefreshing, hasFilters, onClearFil
             <TableRow key={run.id}>
               <TableCell><div className="font-medium text-copy-primary">{run.rule_name ?? `Rule #${run.rule_id}`}</div><div className="mt-1 text-xs text-copy-muted">{run.trigger_event_key ?? "Unknown trigger"}</div></TableCell>
               <TableCell>{sourceLabel(run)}</TableCell>
-              <TableCell><Pill {...statusPill(run.status)}>{run.status}</Pill></TableCell>
+              <TableCell><StatusValue status={{ tone: statusToneFor(run.status), label: formatSnakeCaseLabel(run.status) }} /></TableCell>
               <TableCell className="hidden md:table-cell">{run.action_success_count}/{run.action_attempt_count} succeeded</TableCell>
               <TableCell className="hidden whitespace-nowrap lg:table-cell">{formatDateTime(run.started_at)}</TableCell>
               <TableCell className="text-right"><Button type="button" variant="ghost" size="sm" onClick={() => onInspect(run)}><Eye />Inspect</Button></TableCell>

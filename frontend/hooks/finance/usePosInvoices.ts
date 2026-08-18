@@ -52,6 +52,7 @@ export type PosInvoice = {
   payment_terms?: string | null;
   notes?: string | null;
   user_name?: string | null;
+  created_at?: string | null;
   updated_at?: string | null;
   lines?: PosInvoiceLine[];
 };
@@ -92,10 +93,28 @@ async function fetchInvoices(
   return body as PosInvoicesResponse;
 }
 
+/**
+ * Carries the HTTP status so a caller can tell "you may not see this" from "this is gone"
+ * from "the request failed" — the three §7.4 states the record archetype renders separately.
+ */
+export class PosInvoiceRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 export async function fetchPosInvoice(id: number): Promise<PosInvoice> {
   const res = await apiFetch(`/finance/pos-invoices/${id}`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error("The invoice could not be loaded.");
+  if (!res.ok) {
+    throw new PosInvoiceRequestError(
+      body?.detail ?? "The invoice could not be loaded.",
+      res.status,
+    );
+  }
   return body as PosInvoice;
 }
 

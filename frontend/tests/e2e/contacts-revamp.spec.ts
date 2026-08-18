@@ -98,12 +98,13 @@ test("Contacts list keeps the shared controls usable on mobile", async ({ page }
 
   await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();
   await expect(page.getByPlaceholder("Search contacts")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create contact" })).toBeVisible();
+  // Create is the Quick Create surface now, not a navigation to /new.
+  await expect(page.getByRole("button", { name: "Create contact" })).toBeVisible();
   const filtersButton = page.getByRole("button", { name: /Filters/ });
   await filtersButton.focus();
   await page.keyboard.press("Enter");
   await expect(page.getByText("Filter Conditions")).toBeVisible();
-  const tableRegion = page.getByRole("region", { name: "Data table" });
+  const tableRegion = page.getByRole("region", { name: "Contacts" });
   await expect(tableRegion).toBeVisible();
   await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "EMEA" })).toBeVisible();
   expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);
@@ -118,8 +119,10 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await page.goto("/dashboard/sales/contacts/new");
   await expect(page.getByRole("heading", { name: "Create contact" })).toBeVisible();
   await page.getByRole("button", { name: "Create contact" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Email is required.");
-  await expect(page.getByLabel("Email")).toBeFocused();
+  // A bare getByRole("alert") also matches Next's route announcer, and a bare "Email" label
+  // also matches the "Email opt-out" checkbox. Target the field slot and the input itself.
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
+  await expect(page.getByRole("textbox", { name: "Email", exact: true })).toBeFocused();
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
@@ -127,20 +130,38 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(ownerPicker).toHaveValue("Ada Owner");
   const accountPicker = page.getByPlaceholder("Search accounts");
   await accountPicker.fill("Lynk");
-  await page.getByRole("button", { name: "Lynk QA" }).click();
+  await page.getByRole("option", { name: "Lynk QA" }).click();
   await expect(accountPicker).toHaveValue("Lynk QA");
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}`);
-  await expect(page.getByRole("heading", { name: "Browser Contact" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(page.getByText("Lynk QA", { exact: true })).toBeVisible();
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/contacts/${fakeContactId}\\?tab=audit$`));
+  // Two elements carry the name now: `PageShell`'s sr-only h1 and the archetype's own
+  // header line. Target the record header, as the lead spec does.
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Contact");
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // Ownership and the account read from the record spine now (design.md 4.7).
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(spine.getByRole("link", { name: "Lynk QA" })).toBeVisible();
+  // The tab set is the archetype's four plus the module's own, and history is a sheet off
+  // the spine's "Updated" line rather than a fifth tab.
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Related records" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/contacts/${fakeContactId}\\?tab=related$`));
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("dialog", { name: "History" })).toBeVisible();
+  await page.keyboard.press("Escape");
+
+  // WhatsApp is the tracked click-to-chat in the Timeline composer, and the header no
+  // longer offers the untracked wa.me path beside it (design.md 4.7).
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  // Scoped to the composer: the feed's own filter strip offers a WhatsApp option too on a
+  // record that has WhatsApp activity, and the two are different controls.
+  await page.getByLabel("Add to the timeline").getByRole("radio", { name: "WhatsApp" }).click();
+  await expect(page.getByRole("button", { name: "Open WhatsApp" })).toBeVisible();
 
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit contact" })).toBeVisible();
-  await expect(page.getByLabel("Email")).toHaveValue("browser.contact@example.com");
+  await expect(page.getByRole("textbox", { name: "Email", exact: true })).toHaveValue("browser.contact@example.com");
   await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
   await expect(page.getByPlaceholder("Search accounts")).toHaveValue("Lynk QA");
   await expect(page.getByText(/Last modified/)).toBeVisible();

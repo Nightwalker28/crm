@@ -1,8 +1,8 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 
 import InsertionOrdersList from "@/components/finance/insertionOrderList";
@@ -11,10 +11,10 @@ import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import type { InsertionOrderSortState } from "@/hooks/finance/useInsertionOrders";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -27,7 +27,6 @@ import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 type InsertionOrderTableSortState = { column: string; direction: "asc" | "desc" } | null;
 
 export default function InsertionOrdersPage() {
-  const router = useRouter();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const accessibleModule = modules.find((module) => module.name === "finance_io");
   const canCreate = Boolean(accessibleModule?.actions?.can_create);
@@ -90,13 +89,6 @@ export default function InsertionOrdersPage() {
     (typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount,
   );
   const currentPageIds = useMemo(() => orders.map((order) => order.id), [orders]);
-  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
-    if (!currentPageIds.length) return false;
-    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
-    if (!selectedOnPage) return false;
-    if (selectedOnPage === currentPageIds.length) return true;
-    return "indeterminate";
-  }, [currentPageIds, selectedIds]);
 
   function toggleRow(orderId: number, checked: boolean) {
     setSelectedIds((current) =>
@@ -134,16 +126,13 @@ export default function InsertionOrdersPage() {
     }));
   }
 
-  if (modulesLoading) {
-    return <RouteLoadingState label="insertion orders" />;
-  }
-
-  if (!accessibleModule?.actions?.can_view) {
-    return <PermissionDeniedState />;
-  }
-
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell
+      variant="list"
+      title="Insertion orders"
+      isLoading={modulesLoading}
+      isPermissionDenied={!modulesLoading && !accessibleModule?.actions?.can_view}
+    >
         <ModuleListToolbar
           searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
           onSearchChange={(value) =>
@@ -175,24 +164,19 @@ export default function InsertionOrdersPage() {
           }
           actionControls={
             <>
-              <div className="flex flex-wrap gap-1" aria-label="Order status">
+              <SegmentedControl
+                aria-label="Order status"
+                value={statusFilter}
+                onValueChange={(status) =>
+                  setDraftConfig((current) => ({ ...current, filters: { ...current.filters, status } }))
+                }
+              >
                 {["all", "draft", "issued", "active", "completed", "cancelled"].map((status) => (
-                  <Button
-                    key={status}
-                    type="button"
-                    size="sm"
-                    variant={statusFilter === status ? "secondary" : "ghost"}
-                    onClick={() =>
-                      setDraftConfig((current) => ({
-                        ...current,
-                        filters: { ...current.filters, status },
-                      }))
-                    }
-                  >
-                    {status === "all" ? "All" : status.charAt(0).toUpperCase() + status.slice(1)}
-                  </Button>
+                  <SegmentedItem key={status} value={status}>
+                    {status === "all" ? "All" : formatSnakeCaseLabel(status)}
+                  </SegmentedItem>
                 ))}
-              </div>
+              </SegmentedControl>
               <ModuleImportExportControls
                 importEndpoint={canCreate ? "/finance/insertion-orders/import" : undefined}
                 exportEndpoint={canExport ? "/finance/insertion-orders/export" : undefined}
@@ -219,22 +203,13 @@ export default function InsertionOrdersPage() {
           hideHeader
         />
 
-        {error ? (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-            <span>Insertion orders could not be loaded. Check your connection and try again.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button>
-          </div>
-        ) : null}
-
         <InsertionOrdersList
           orders={orders}
           isLoading={isLoading}
           isRefreshing={isFetching && !isLoading}
-          onRowClick={(order) => router.push(`/dashboard/finance/insertion-orders/${order.id}`)}
           visibleColumns={visibleColumns}
           columnOptions={definition?.columns ?? []}
           selectedIds={selectedIds}
-          currentPageSelectionState={currentPageSelectionState}
           onToggleRow={toggleRow}
           onToggleCurrentPage={toggleCurrentPage}
           sort={sort ? { column: sort.key, direction: sort.direction } : null}
@@ -242,6 +217,7 @@ export default function InsertionOrdersPage() {
           selectionEnabled={canExport}
           hasActiveFilters={hasActiveFilters}
           hasError={Boolean(error)}
+          onRetry={refresh}
           canCreate={canCreate}
           onClearFilters={clearFilters}
         />
@@ -257,6 +233,6 @@ export default function InsertionOrdersPage() {
           onPageChange={goToPage}
           onPageSizeChange={onPageSizeChange}
         /> : null}
-    </div>
+    </PageShell>
   );
 }

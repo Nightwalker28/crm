@@ -185,7 +185,7 @@ export default function TaskDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="3xl">
+        <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{task ? "Edit Task" : "Create Task"}</DialogTitle>
             <DialogIconClose />
@@ -300,7 +300,7 @@ export default function TaskDialog({
               </Field>
             </FieldGroup>
 
-            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
+            <div className="border-t border-line-subtle pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-copy-primary">Assignments</div>
@@ -308,7 +308,7 @@ export default function TaskDialog({
                     Search and assign individual users or whole teams. Team assignments notify the full team.
                   </FieldDescription>
                 </div>
-                <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">
+                <div className="text-xs font-medium text-copy-label">
                   {selectedAssigneeCount} selected
                 </div>
               </div>
@@ -344,8 +344,8 @@ export default function TaskDialog({
             {task && onDelete ? (
               <Button
                 type="button"
-                variant="outline"
-                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
+                variant="destructiveOutline"
+                className="mr-auto"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >

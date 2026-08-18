@@ -10,11 +10,13 @@ import TaskDialog from "@/components/tasks/TaskDialog";
 import TasksBoard from "@/components/tasks/TasksBoard";
 import TasksCalendar from "@/components/tasks/TasksCalendar";
 import TasksTable from "@/components/tasks/TasksTable";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
@@ -181,7 +183,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title="Tasks">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -193,17 +195,17 @@ export default function TasksPage() {
         viewControls={
           <>
             <SavedViewSelector moduleKey="tasks" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
-            <div className="inline-flex rounded-md border border-line-default p-0.5" aria-label="Task display">
-              <Button type="button" variant={displayMode === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "list"} onClick={() => changeDisplayMode("list")}><Table2 />List</Button>
-              <Button type="button" variant={displayMode === "board" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "board"} onClick={() => changeDisplayMode("board")}><Columns3 />Board</Button>
-              <Button type="button" variant={displayMode === "calendar" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "calendar"} onClick={() => changeDisplayMode("calendar")}><CalendarDays />Calendar</Button>
-            </div>
+            <SegmentedControl aria-label="Task display" value={displayMode} onValueChange={changeDisplayMode}>
+              <SegmentedItem value="list"><Table2 />List</SegmentedItem>
+              <SegmentedItem value="board"><Columns3 />Board</SegmentedItem>
+              <SegmentedItem value="calendar"><CalendarDays />Calendar</SegmentedItem>
+            </SegmentedControl>
           </>
         }
         primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}
       />
 
-      <div className="rounded-xl border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+      <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
         <div className="flex items-center gap-2 text-copy-secondary">
           <CheckSquare className="h-4 w-4" />
           Default task views hide completed work. Use Manage View to include a completed-task queue.
@@ -217,17 +219,10 @@ export default function TasksPage() {
         hideHeader
       />
 
-      {error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Tasks could not be loaded. Check your connection and try again.</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
-        </div>
-      ) : null}
-
       {displayMode !== "list" ? (
-        <div className="rounded-lg border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+        <p className="text-sm text-copy-muted">
           Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
-        </div>
+        </p>
       ) : null}
 
       {displayMode === "list" ? (
@@ -237,14 +232,17 @@ export default function TasksPage() {
           isRefreshing={isFetching && !isLoading}
           visibleColumns={visibleColumns}
           onEdit={openEditDialog}
+          onCreateTask={openCreateDialog}
           isFiltered={hasActiveFilters}
+          hasError={Boolean(error)}
+          onRetry={() => void refresh()}
           sort={sort}
           onSortChange={setSort}
         />
       ) : displayMode === "board" ? (
-        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
+        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
       ) : (
-        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} />
+        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} />
       )}
 
       <Pagination
@@ -275,6 +273,6 @@ export default function TasksPage() {
         onRemoveFromCalendar={activeTask ? handleRemoveFromCalendar : undefined}
         onOpenCalendarEvent={linkedCalendarEventQuery.data?.event ? handleOpenCalendarEvent : undefined}
       />
-    </div>
+    </PageShell>
   );
 }

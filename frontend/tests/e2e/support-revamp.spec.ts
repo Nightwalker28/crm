@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
 const caseId = 987654301;
 
@@ -57,6 +58,7 @@ function supportCaseFixture() {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
   let supportCase = supportCaseFixture();
 
   await page.route("**/support/cases/summary", (route) =>
@@ -69,7 +71,7 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ results: [supportCase], range_start: 1, range_end: 1, total_count: 1, total_pages: 1, page: 1 }),
     }),
   );
-  await page.route(`**/support/cases/${caseId}`, async (route) => {
+  await page.route(`**/api/v1/support/cases/${caseId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       supportCase = { ...supportCase, ...route.request().postDataJSON(), updated_at: "2099-07-24T10:00:00Z" };
     }
@@ -88,8 +90,8 @@ test("Support list exposes shared controls and keyboard case navigation", async 
   await expect(page.getByPlaceholder("Search support cases")).toBeVisible();
   await expect(page.getByText("CASE-2407-001")).toBeVisible();
   await expect(page.getByText("1", { exact: true }).first()).toBeVisible();
-  await expect(page.locator("span.bg-state-warning-muted", { hasText: "Open" })).toBeVisible();
-  await expect(page.locator("span.bg-state-danger-muted", { hasText: "Urgent" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Open" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="critical"]', { hasText: "Urgent" })).toBeVisible();
 
   const row = page.getByRole("row", { name: /Open CASE-2407-001/ });
   await row.focus();
@@ -108,20 +110,25 @@ test("Support creation uses a full page and does not offer service-owned SLA fie
   await expect(page.getByLabel("Subject")).toBeFocused();
 });
 
-test("Support detail prioritizes the requester and conversation with guarded saves", async ({ page }) => {
+test("Support detail prioritizes the requester and conversation, and its state fields autosave", async ({ page }) => {
   await page.goto(`/dashboard/support/cases/${caseId}`);
 
   await expect(page.getByRole("heading", { name: "CASE-2407-001" })).toBeVisible();
-  await expect(page.getByText("Grace Buyer")).toBeVisible();
+  // The requester shows twice: once as a plain summary tile and once linked to its contact.
+  // Assert the linked one, which also proves the record connection is present.
+  await expect(page.getByRole("link", { name: "Grace Buyer" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Conversation" })).toBeVisible();
   await expect(page.getByText("We are reviewing the account permissions.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
-  await expect(page.locator("span.bg-state-warning-muted", { hasText: "Open" })).toBeVisible();
-  await expect(page.locator("span.bg-state-danger-muted", { hasText: "Urgent" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Open" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="critical"]', { hasText: "Urgent" })).toBeVisible();
 
   await page.getByRole("combobox", { name: "Priority" }).click();
   await page.getByRole("option", { name: "High" }).click();
-  await expect(page.getByRole("button", { name: "Save changes" })).toBeEnabled();
+  await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="attention"]', { hasText: "High" })).toBeVisible();
+
+  // Status is unaffected — each state field autosaves independently.
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Open" })).toBeVisible();
 });
 
 test("Support failures do not expose backend details", async ({ page }) => {

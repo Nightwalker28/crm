@@ -111,7 +111,7 @@ test("refreshes mounted module guards after custom-module access changes", async
 
   const emptyRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
   await page.evaluate(() => {
-    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.sessionStorage.removeItem("lynk_modules:v4");
     window.dispatchEvent(new Event("lynk:modules-invalidated"));
   });
   await emptyRefresh;
@@ -119,7 +119,7 @@ test("refreshes mounted module guards after custom-module access changes", async
   accessibleModules = [moduleFixture];
   const accessRefresh = page.waitForResponse((response) => response.url().includes("/users/me/modules"));
   await page.evaluate(() => {
-    window.sessionStorage.removeItem("lynk_modules:v3");
+    window.sessionStorage.removeItem("lynk_modules:v4");
     window.dispatchEvent(new Event("lynk:modules-invalidated"));
   });
   await accessRefresh;
@@ -139,11 +139,22 @@ async function cachePermissions(
   await page.evaluate(
     ({ module, actions }) => {
       window.sessionStorage.setItem(
-        "lynk_modules:v3",
+        "lynk_modules:v4",
         JSON.stringify([{ ...module, actions: { ...module.actions, ...actions } }]),
       );
     },
     { module: moduleFixture, actions: overrides },
+  );
+
+  // The beforeEach stub still serves the unrestricted fixture, and useAccessibleModules
+  // revalidates and overwrites the seeded cache, so the endpoint has to be narrowed too.
+  await page.unroute("**/users/me/modules");
+  await page.route("**/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ ...moduleFixture, actions: { ...moduleFixture.actions, ...overrides } }]),
+    }),
   );
 }
 
@@ -224,7 +235,7 @@ test("blocks the routed create form without custom-module create permission", as
       body: JSON.stringify([{ ...moduleFixture, actions: { ...fullActions, can_create: false } }]),
     }),
   );
-  await page.evaluate(() => window.sessionStorage.removeItem("lynk_modules:v3"));
+  await page.evaluate(() => window.sessionStorage.removeItem("lynk_modules:v4"));
 
   await page.goto("/dashboard/custom/custom_projects/new");
 
@@ -355,7 +366,8 @@ test("custom-module routes distinguish not-found and recoverable list failures",
   );
 
   await page.goto("/dashboard/custom/custom_projects");
-  await expect(page.getByText("Records could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Records could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 

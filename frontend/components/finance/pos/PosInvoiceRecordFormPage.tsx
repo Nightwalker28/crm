@@ -28,7 +28,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
@@ -89,7 +89,7 @@ const EMPTY_FORM: InvoiceForm = {
   payment_status: "unpaid",
   payment_method: "cash",
   template_id: "modern",
-  accent_color: "#14b8a6",
+  accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   currency: "USD",
   discount_amount: "0",
   tax_rate: "0",
@@ -360,30 +360,29 @@ function PosInvoiceRecordFormEditor({
       ? `/dashboard/finance/pos/${invoiceId}`
       : "/dashboard/finance/pos";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={
-          mode === "edit" && updatedAt
-            ? `Last modified ${formatDateTime(updatedAt)}`
-            : undefined
-        }
-        title={
-          mode === "edit" ? `Edit ${form.invoice_number}` : "Create invoice"
-        }
-        description={
-          mode === "edit"
-            ? "Update billing details, line items, pricing, payment state, and print settings."
-            : "Create an itemized customer invoice with pricing, payment, and print settings."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "invoice" : "invoices"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      eyebrow={
+        mode === "edit" && updatedAt
+          ? `Last modified ${formatDateTime(updatedAt)}`
+          : undefined
+      }
+      title={
+        mode === "edit" ? `Edit ${form.invoice_number}` : "Create invoice"
+      }
+      description={
+        mode === "edit"
+          ? "Update billing details, line items, pricing, payment state, and print settings."
+          : "Create an itemized customer invoice with pricing, payment, and print settings."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "invoice" : "invoices"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -598,7 +597,7 @@ function PosInvoiceRecordFormEditor({
           </div>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 

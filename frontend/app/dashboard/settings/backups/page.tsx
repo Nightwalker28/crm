@@ -5,15 +5,15 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CalendarClock, Download, Play, RotateCcw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
@@ -26,7 +26,7 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -34,7 +34,7 @@ import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { getFilenameFromDisposition } from "@/components/ui/importExportUtils";
 import { formatDateTime } from "@/lib/datetime";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 
 type TenantBackupSettings = {
   id: number;
@@ -500,34 +500,44 @@ export default function BackupSettingsPage() {
     void closeSettingsEditor();
   }
 
-  if (settingsQuery.isLoading) return <RouteLoadingState label="backup settings" />;
-  if (settingsQuery.isError) {
+  if (settingsQuery.isLoading || settingsQuery.isError) {
     return (
-      <RouteErrorState
-        title="Unable to load backup settings"
-        description="Backup settings are unavailable right now. No backup or restore action has been started."
-        reset={() => void settingsQuery.refetch()}
+      <PageShell
+        variant="settings"
+        title="Backups"
+        description="Schedule tenant backups and restore a module from one."
+        isLoading={settingsQuery.isLoading}
+        hasError={settingsQuery.isError}
+        errorDescription="Backup settings are unavailable right now. No backup or restore action has been started."
+        onRetry={() => void settingsQuery.refetch()}
         backHref="/dashboard/settings"
         backLabel="Back to settings"
-      />
+      >
+        {null}
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
-            <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
-              <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
-            </Button>
-          </div>
-      </PageToolbar>
-
+    <PageShell
+      variant="settings"
+      title="Backups"
+      description="Schedule tenant backups and restore a module from one."
+      actions={(
+        <>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
+          <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
+            <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
+          </Button>
+        </div>
+        </>
+      )}
+    >
       <Sheet open={settingsEditorOpen} onOpenChange={handleSettingsEditorOpenChange}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate(); }}>
               <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
                 <div>
@@ -540,24 +550,13 @@ export default function BackupSettingsPage() {
               <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
                 <Field>
                   <FieldLabel>Backup schedule</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Backup schedule">
-                    <Button
-                      type="button"
-                      variant={draft.enabled ? "secondary" : "outline"}
-                      aria-pressed={draft.enabled}
-                      onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
-                    >
-                      Scheduled
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!draft.enabled ? "secondary" : "outline"}
-                      aria-pressed={!draft.enabled}
-                      onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
-                    >
-                      Manual only
-                    </Button>
-                  </div>
+                  <SegmentedBoolean
+                    aria-label="Backup schedule"
+                    value={draft.enabled}
+                    onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+                    trueLabel="Scheduled"
+                    falseLabel="Manual only"
+                  />
                   <FieldDescription>Scheduled backups run automatically using the frequency and retention settings below.</FieldDescription>
                 </Field>
 
@@ -602,24 +601,13 @@ export default function BackupSettingsPage() {
 
                 <Field>
                   <FieldLabel>Document files</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Document files">
-                    <Button
-                      type="button"
-                      variant={draft.include_documents ? "secondary" : "outline"}
-                      aria-pressed={draft.include_documents}
-                      onClick={() => setDraft((current) => ({ ...current, include_documents: true }))}
-                    >
-                      Include
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!draft.include_documents ? "secondary" : "outline"}
-                      aria-pressed={!draft.include_documents}
-                      onClick={() => setDraft((current) => ({ ...current, include_documents: false }))}
-                    >
-                      Exclude
-                    </Button>
-                  </div>
+                  <SegmentedBoolean
+                    aria-label="Document files"
+                    value={draft.include_documents}
+                    onValueChange={(include_documents) => setDraft((current) => ({ ...current, include_documents }))}
+                    trueLabel="Include"
+                    falseLabel="Exclude"
+                  />
                   <FieldDescription>Choose whether tenant documents are included in backup artifacts.</FieldDescription>
                 </Field>
 
@@ -640,9 +628,7 @@ export default function BackupSettingsPage() {
                         const disabled = draft.scope !== "selected_modules";
                         return (
                           <label key={module.value} className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${checked ? "border-action-primary bg-action-primary-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-                            <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => toggleModule(module.value)} className="flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary">
-                              <CheckboxIndicator className="size-3" />
-                            </Checkbox>
+                            <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => toggleModule(module.value)} className="shrink-0" />
                             {module.label}
                           </label>
                         );
@@ -677,7 +663,7 @@ export default function BackupSettingsPage() {
         <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3">
             <dt className="text-copy-muted">Schedule</dt>
-            <dd className="mt-2"><Pill bg={settings?.enabled ? "bg-state-success-muted" : "bg-surface-muted"} text={settings?.enabled ? "text-state-success" : "text-copy-muted"} border={settings?.enabled ? "border-state-success/40" : "border-line-default"}>{settings?.enabled ? "Enabled" : "Disabled"}</Pill></dd>
+            <dd className="mt-2"><StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" /></dd>
           </div>
           <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Last run</dt><dd className="mt-2 text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd></div>
           <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Next run</dt><dd className="mt-2 text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd></div>
@@ -846,108 +832,74 @@ export default function BackupSettingsPage() {
           <h2 className="text-lg font-semibold text-copy-primary">Recent Backup Runs</h2>
           <p className="mt-1 text-sm text-copy-muted">Tenant backup artifacts are separate from platform backups.</p>
         </div>
-        <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line-subtle">
-        <Table className="min-w-[880px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Run</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Scope</TableHead>
-              <TableHead>Modules</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Upload</TableHead>
-              <TableHead>Completed</TableHead>
-              <TableHead>Action</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {runsQuery.isLoading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-copy-muted" aria-busy="true">Loading backup runs...</TableCell>
-              </TableRow>
-            ) : runsQuery.isError ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-6 text-center">
-                  <div role="alert" className="mx-auto max-w-lg text-sm text-copy-secondary">
-                    <p>Recent backup runs could not be loaded.</p>
-                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void runsQuery.refetch()}>
-                      <RotateCcw />Try again
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (runsQuery.data ?? []).length ? (
-              (runsQuery.data ?? []).map((run) => (
-                <TableRow key={run.id}>
-                  <TableCell>#{run.id}</TableCell>
-                  <TableCell>
-                    <Pill
-                      bg={run.status === "completed" ? "bg-state-success-muted" : run.status === "failed" ? "bg-state-danger-muted" : "bg-state-warning-muted"}
-                      text={run.status === "completed" ? "text-state-success" : run.status === "failed" ? "text-state-danger" : "text-state-warning"}
-                      border={run.status === "completed" ? "border-state-success/40" : run.status === "failed" ? "border-state-danger/40" : "border-state-warning/40"}
-                    >
-                      {run.status}
-                    </Pill>
-                  </TableCell>
-                  <TableCell>{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</TableCell>
-                  <TableCell>{run.modules_included.length}</TableCell>
-                  <TableCell>{formatBytes(run.size_bytes)}</TableCell>
-                  <TableCell>
-                    <Pill
-                      bg={run.destination_upload_status === "failed" ? "bg-state-danger-muted" : run.destination_upload_status === "uploaded" ? "bg-state-success-muted" : "bg-surface-muted"}
-                      text={run.destination_upload_status === "failed" ? "text-state-danger" : run.destination_upload_status === "uploaded" ? "text-state-success" : "text-copy-muted"}
-                      border={run.destination_upload_status === "failed" ? "border-state-danger/40" : run.destination_upload_status === "uploaded" ? "border-state-success/40" : "border-line-default"}
-                    >
-                      {run.destination_upload_status.replaceAll("_", " ")}
-                    </Pill>
-                  </TableCell>
-                  <TableCell>{run.completed_at ? formatDateTime(run.completed_at) : "-"}</TableCell>
-                  <TableCell>
-                    {run.status === "completed" && run.storage_ref ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            void downloadRun(run).catch((error) => toast.error(error instanceof Error ? error.message : "Download failed."));
-                          }}
-                        >
-                          <Download />Download
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="dangerGhost"
-                          size="sm"
-                          onClick={() => void confirmDeleteRun(run)}
-                          disabled={deleteRunMutation.isPending}
-                        >
-                          <Trash2 />Delete
-                        </Button>
-                      </div>
-                    ) : run.error_message ? (
-                      <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
-                    ) : (
-                      <span className="text-xs text-copy-muted">Unavailable</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
+        <RecordTable
+          label="Backup runs"
+          columns={[
+            { key: "id", label: "Run", size: "sm", render: (run) => <span className="tabular-nums text-copy-secondary">#{run.id}</span> },
+            {
+              key: "status",
+              label: "Status",
+              size: "sm",
+              render: (run) => (
+                <StatusValue status={{ tone: run.status === "completed" ? "success" : run.status === "failed" ? "critical" : "attention", label: formatSnakeCaseLabel(run.status) }} />
+              ),
+            },
+            { key: "scope", label: "Scope", size: "sm", render: (run) => <span className="text-copy-secondary">{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</span> },
+            { key: "modules", label: "Modules", size: "sm", render: (run) => <span className="tabular-nums text-copy-secondary">{run.modules_included.length}</span> },
+            { key: "size", label: "Size", size: "sm", render: (run) => <span className="text-copy-secondary">{formatBytes(run.size_bytes)}</span> },
+            {
+              key: "upload",
+              label: "Upload",
+              render: (run) => (
+                <StatusValue status={{ tone: run.destination_upload_status === "failed" ? "critical" : run.destination_upload_status === "uploaded" ? "success" : "neutral", label: formatSnakeCaseLabel(run.destination_upload_status) }} />
+              ),
+            },
+            { key: "completed_at", label: "Completed", render: (run) => <span className="text-copy-muted">{run.completed_at ? formatDateTime(run.completed_at) : "Not finished"}</span> },
+          ]}
+          rows={runsQuery.data ?? []}
+          rowKey={(run) => run.id}
+          shellVariant="nested"
+          isLoading={runsQuery.isLoading}
+          isRefreshing={runsQuery.isFetching && !runsQuery.isLoading}
+          hasError={runsQuery.isError}
+          onRetry={() => void runsQuery.refetch()}
+          errorState={{ title: "Recent backup runs could not be loaded" }}
+          emptyState={{
+            icon: Archive,
+            title: "No tenant backup runs yet",
+            description: "Run a backup to create the first tenant-scoped artifact.",
+          }}
+          rowActions={(run) => (
+            run.status === "completed" && run.storage_ref ? (
+              <div className="flex flex-wrap justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    void downloadRun(run).catch((error) => toast.error(error instanceof Error ? error.message : "Download failed."));
+                  }}
+                >
+                  <Download />Download
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructiveGhost"
+                  size="sm"
+                  onClick={() => void confirmDeleteRun(run)}
+                  disabled={deleteRunMutation.isPending}
+                >
+                  <Trash2 />Delete
+                </Button>
+              </div>
+            ) : run.error_message ? (
+              <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
             ) : (
-              <TableRow>
-                <TableCell colSpan={8} className="p-0">
-                  <EmptyState
-                    icon={Archive}
-                    title="No tenant backup runs yet"
-                    description="Run a backup to create the first tenant-scoped artifact."
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        </div>
+              <span className="text-xs text-copy-muted">Unavailable</span>
+            )
+          )}
+        />
       </Card>
-    </div>
+    </PageShell>
   );
 }

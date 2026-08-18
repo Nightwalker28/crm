@@ -123,7 +123,7 @@ test("Webhook creation uses an explicit guarded drawer", async ({ page }) => {
   await page.getByRole("button", { name: "New webhook" }).click();
   const webhookEditor = page.getByRole("dialog", { name: "Create webhook" });
   await expect(webhookEditor).toBeVisible();
-  await expect(webhookEditor.getByRole("button", { name: "Active", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(webhookEditor.getByRole("radio", { name: "Active", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByLabel("Channel Name").fill("#operations");
   await webhookEditor.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Discard webhook draft?" })).toBeVisible();

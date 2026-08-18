@@ -7,7 +7,7 @@ import { Command } from "cmdk";
 import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogBackdrop, DialogPanel } from "@/components/ui/dialog";
+import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { useAccessibleModules, type AccessibleModuleActions } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { apiFetch } from "@/lib/api";
@@ -15,6 +15,8 @@ import { getModuleDisplayName } from "@/lib/module-display";
 import { ADMIN_QUICK_ACTIONS, getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, recordRecentPage, subscribeToRecentPages } from "@/lib/recent-pages";
 import { canonicalizeDashboardHref } from "@/lib/routes";
+
+const SEARCH_LABEL = "Search records and modules";
 
 type PaletteLink = {
   label: string;
@@ -233,8 +235,8 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
         type="button"
         onClick={() => setOpen(true)}
         className={responsive
-          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
-          : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"}
+          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
+          : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"}
         aria-label="Open command palette"
       >
         {responsive ? <Search className="h-4 w-4 xl:hidden" /> : null}
@@ -254,8 +256,14 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
       <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
-          <DialogPanel className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[0_32px_100px_rgba(0,0,0,0.55)]">
-            <Command shouldFilter={false} className="overflow-hidden bg-transparent">
+          <DialogPanel aria-describedby={undefined} className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[var(--shadow-panel)]">
+            {/* Distinct from SEARCH_LABEL, which already names the combobox below — sharing
+                text would give the dialog and its input the same accessible name. */}
+            <DialogTitle className="sr-only">Command palette</DialogTitle>
+            {/* cmdk always points the input's aria-labelledby at the element it renders for
+                `label`, and aria-labelledby wins over aria-label. Without it the reference
+                resolved to empty text, leaving the combobox with no accessible name at all. */}
+            <Command label={SEARCH_LABEL} shouldFilter={false} className="overflow-hidden bg-transparent">
               <div className="flex items-center gap-3 border-b border-line-subtle px-4 py-3">
                 <Search className="h-4 w-4 text-copy-muted" />
                 <Command.Input
@@ -264,7 +272,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   onValueChange={setQuery}
                   placeholder="Search records across the workspace..."
                   className="h-10 w-full bg-transparent text-sm text-copy-primary outline-none placeholder:text-copy-muted"
-                  aria-label="Search records and modules"
+                  aria-label={SEARCH_LABEL}
                 />
                 <div className="hidden items-center gap-1 text-[11px] text-copy-muted sm:flex">
                   <CornerDownLeft className="h-3 w-3" />
@@ -277,7 +285,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   <>
                     {recentPages.length ? (
                       <Command.Group className="mb-3" data-testid="recent-pages">
-                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                           Recent Pages
                         </div>
                         {recentPages.map((item) => (
@@ -291,12 +299,12 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                               <div className="font-medium text-copy-primary">{item.label}</div>
                               <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">Recent</div>
+                            <div className="text-2xs font-medium text-copy-label">Recent</div>
                           </Command.Item>
                         ))}
                       </Command.Group>
                     ) : null}
-                    <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       Quick Links
                     </div>
                     {quickLinks.map((item) => (
@@ -312,15 +320,15 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                           <div className="font-medium text-copy-primary">{item.label}</div>
                           <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                         </div>
-                        <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
+                        <div className="text-2xs font-medium text-copy-label">{item.group}</div>
                       </Command.Item>
                     ))}
                   </>
                 ) : (
                   <>
                     {matchingQuickLinks.length ? (
-                      <Command.Group className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary">
-                        <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                      <Command.Group className="mb-3">
+                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                           Modules
                         </div>
                         {matchingQuickLinks.map((item) => (
@@ -336,7 +344,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                               <div className="font-medium text-copy-primary">{item.label}</div>
                               <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
                             </div>
-                            <div className="text-[11px] uppercase tracking-[0.14em] text-copy-muted">{item.group}</div>
+                            <div className="text-2xs font-medium text-copy-label">{item.group}</div>
                           </Command.Item>
                         ))}
                       </Command.Group>
@@ -356,12 +364,8 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                       </div>
                     ) : groupedResults.length ? (
                       groupedResults.map(([group, items]) => (
-                        <Command.Group
-                          key={group}
-                          heading={group}
-                          className="mb-3 overflow-hidden rounded-[var(--radius-card)] border border-line-subtle bg-surface p-1 text-copy-secondary"
-                        >
-                          <div className="px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                        <Command.Group key={group} heading={group} className="mb-3">
+                          <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                             {group}
                           </div>
                           {items.map((item) => (

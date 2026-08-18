@@ -41,20 +41,20 @@ export default function ClientBookingsPage() {
         </section>
 
         {bookingsQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading bookings...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading bookings...</div>
         ) : bookingsQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {bookingsQuery.error instanceof Error ? bookingsQuery.error.message : "Failed to load bookings."}
           </div>
         ) : bookings.length === 0 ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No upcoming appointments are assigned to your portal account.</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No upcoming appointments are assigned to your portal account.</div>
         ) : (
           <div className="grid gap-3">
             {bookings.map((booking) => (
-              <Link key={booking.id} href={`/client/bookings/${booking.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+              <Link key={booking.id} href={`/client/bookings/${booking.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="text-xs uppercase text-copy-muted">{booking.status}</div>
+                    <div className="text-xs font-medium text-copy-label">{booking.status}</div>
                     <h2 className="mt-1 truncate font-semibold text-copy-primary">{bookingTitle(booking)}</h2>
                     <p className="mt-1 text-xs text-copy-muted">{formatDateTime(booking.start_at)} / {booking.timezone}</p>
                   </div>

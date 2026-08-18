@@ -101,17 +101,17 @@ function ClientSetupContent() {
         </div>
 
         {status === "done" ? (
-          <div className="rounded-md border border-emerald-900/60 bg-emerald-950/20 p-4">
-            <div className="text-sm text-emerald-200">Password set. You can now sign in from any shared client page.</div>
+          <div className="rounded-[var(--radius-card)] border border-state-success/40 bg-state-success-muted p-4">
+            <div className="text-sm text-state-success">Password set. You can now sign in from any shared client page.</div>
             <Button asChild className="mt-4">
               <Link href={loginHref(tenantSlug)}>Go to client login</Link>
             </Button>
           </div>
         ) : (
-          <form className="space-y-4 rounded-md border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
+          <form className="space-y-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
             <div>
-              <label className="mb-2 block text-sm font-medium">Password</label>
-              <Input type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+              <label htmlFor="client-setup-password" className="mb-2 block text-sm font-medium">Password</label>
+              <Input id="client-setup-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
               {passwordPolicy ? (
                 <ul className="mt-2 space-y-1 text-xs text-copy-secondary">
                   {passwordPolicy.requirements.map((requirement) => (
@@ -123,8 +123,8 @@ function ClientSetupContent() {
               )}
             </div>
             <div>
-              <label className="mb-2 block text-sm font-medium">Confirm Password</label>
-              <Input type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
+              <label htmlFor="client-setup-confirm" className="mb-2 block text-sm font-medium">Confirm password</label>
+              <Input id="client-setup-confirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
             </div>
             <Button type="submit" className="w-full" disabled={status === "saving"}>
               {status === "saving" ? "Saving..." : "Set Password"}

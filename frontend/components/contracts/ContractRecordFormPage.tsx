@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -319,14 +319,12 @@ function ContractRecordFormEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={mode === "edit" && updatedAt ? `Last modified ${formatDateTime(updatedAt)}` : undefined}
-        title={mode === "edit" ? `Edit ${contractNumber ?? "contract"}` : "Create contract"}
-        description={mode === "edit" ? "Update the commercial terms, lifecycle dates, ownership, and CRM relationships." : "Set the commercial terms, lifecycle dates, ownership, and related CRM records."}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
-      />
-
+    <PageShell
+      eyebrow={mode === "edit" && updatedAt ? `Last modified ${formatDateTime(updatedAt)}` : undefined}
+      title={mode === "edit" ? `Edit ${contractNumber ?? "contract"}` : "Create contract"}
+      description={mode === "edit" ? "Update the commercial terms, lifecycle dates, ownership, and CRM relationships." : "Set the commercial terms, lifecycle dates, ownership, and related CRM records."}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not {mode === "edit" ? "update" : "create"} this contract.</div>
@@ -458,6 +456,6 @@ function ContractRecordFormEditor({
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

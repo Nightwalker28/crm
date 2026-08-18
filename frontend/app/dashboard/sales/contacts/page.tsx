@@ -1,18 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 
-import Link from "next/link";
 import { Plus } from "lucide-react";
 import ContactList from "@/components/contacts/contactList";
+import { ContactQuickCreate } from "@/components/contacts/ContactQuickCreate";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
 import { useContacts, type ContactSortState } from "@/hooks/sales/useContacts";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -20,6 +22,11 @@ import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilter
 import { buildSavedViewExportPayload } from "@/lib/savedViewQuery";
 
 export default function ContactsPage() {
+  const { modules } = useAccessibleModules();
+  // UI gating only — the create endpoint and the quick_create layout endpoint both enforce this.
+  const canCreate = Boolean(modules.find((module) => module.name === "sales_contacts")?.actions?.can_create);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const quickCreateTriggerRef = useRef<HTMLButtonElement>(null);
   const { data: customFields = [] } = useModuleCustomFields("sales_contacts");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
   const definition = useMemo(() => buildModuleViewDefinition("sales_contacts", customFields, moduleFields), [customFields, moduleFields]);
@@ -38,12 +45,6 @@ export default function ContactsPage() {
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
   const currentPageIds = useMemo(() => contacts.map((contact) => contact.contact_id), [contacts]);
-  const currentPageSelectionState = useMemo<boolean | "indeterminate">(() => {
-    if (!currentPageIds.length) return false;
-    const selectedOnPage = currentPageIds.filter((id) => selectedIds.includes(id)).length;
-    if (!selectedOnPage) return false;
-    return selectedOnPage === currentPageIds.length ? true : "indeterminate";
-  }, [currentPageIds, selectedIds]);
 
   function toggleRow(contactId: number, checked: boolean) {
     setSelectedIds((current) => checked ? Array.from(new Set([...current, contactId])) : current.filter((id) => id !== contactId));
@@ -58,7 +59,7 @@ export default function ContactsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title="Contacts">
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(value) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: value } }))}
@@ -72,10 +73,21 @@ export default function ContactsPage() {
         onClearSelection={() => setSelectedIds([])}
         viewControls={<SavedViewSelector moduleKey="sales_contacts" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
         actionControls={<ModuleImportExportControls importEndpoint="/sales/contacts/import" exportEndpoint="/sales/contacts/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />}
-        primaryAction={<Button asChild><Link href="/dashboard/sales/contacts/new"><Plus />Create contact</Link></Button>}
+        primaryAction={canCreate ? (
+          <Button ref={quickCreateTriggerRef} type="button" onClick={() => setQuickCreateOpen(true)}>
+            <Plus />Create contact
+          </Button>
+        ) : null}
+      />
+      <ContactQuickCreate
+        open={quickCreateOpen}
+        onOpenChange={setQuickCreateOpen}
+        returnFocusRef={quickCreateTriggerRef}
+        // refresh() refetches the query already keyed by the active view, filters, sort, and
+        // page, so the list updates without resetting any of them.
+        onCreated={() => refresh()}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? <div className="flex justify-between rounded-lg border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-state-danger"><span>We could not load contacts.</span><button onClick={refresh} className="underline underline-offset-2">Retry</button></div> : null}
       <ContactList
         contacts={contacts}
         isLoading={isLoading}
@@ -83,15 +95,17 @@ export default function ContactsPage() {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         selectedIds={selectedIds}
-        currentPageSelectionState={currentPageSelectionState}
         onToggleRow={toggleRow}
         onToggleCurrentPage={toggleCurrentPage}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         onClearFilters={clearFilters}
+        onCreateContact={canCreate ? () => setQuickCreateOpen(true) : undefined}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) => setDraftConfig((current) => ({ ...current, sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null }))}
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-    </div>
+    </PageShell>
   );
 }

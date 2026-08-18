@@ -2,7 +2,7 @@
 
 import type { ChangeEvent } from "react";
 
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -107,11 +107,8 @@ export function CustomModuleFieldInput({
                     : selected.filter((item) => item !== option);
                   onChange(next);
                 }}
-                className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
                 aria-label={option}
-              >
-                <CheckboxIndicator className="size-3" />
-              </Checkbox>
+              />
               {option}
             </label>
           );
@@ -153,11 +150,8 @@ export function CustomModuleFieldInput({
           checked={Boolean(value)}
           disabled={disabled}
           onCheckedChange={(checked) => onChange(Boolean(checked))}
-          className="flex size-4 items-center justify-center rounded border border-line-strong bg-surface text-primary"
           aria-invalid={invalid}
-        >
-          <CheckboxIndicator className="size-3" />
-        </Checkbox>
+        />
       </label>
     );
   }

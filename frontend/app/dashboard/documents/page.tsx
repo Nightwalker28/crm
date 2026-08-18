@@ -3,14 +3,14 @@
 import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { FileText, HardDrive, RefreshCw, Upload } from "lucide-react";
+import { HardDrive, RefreshCw, Upload } from "lucide-react";
 import { toast } from "sonner";
 
 import DocumentList from "@/components/documents/DocumentList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { FieldDescription } from "@/components/ui/field";
+import { PageShell } from "@/components/ui/PageShell";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDocumentActions, useDocuments, useDocumentStorageUsage, type DocumentSortState } from "@/hooks/useDocuments";
@@ -71,19 +71,21 @@ export default function DocumentsPage() {
     }
   }
 
+  // No `description` on the shell: the library card below carries that sentence visibly,
+  // and the shell's copy is sr-only, so supplying both announces it twice.
   return (
-    <div className="flex flex-col gap-4 text-copy-primary">
+    <PageShell title="Documents">
       <div className="grid gap-3 md:grid-cols-3">
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Used</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Used</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.used_bytes) : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Remaining</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Remaining</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.remaining_bytes) : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
-          <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-copy-muted"><HardDrive className="size-3.5" />Quota</div>
+          <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Quota</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">
             {storageUsageQuery.error ? "Unavailable" : storageUsage ? `${storageUsage.usage_percent.toFixed(1)}% of ${formatBytes(storageUsage.tenant_storage_limit_bytes)}` : "Loading"}
           </div>
@@ -118,34 +120,28 @@ export default function DocumentsPage() {
           </div>
         </div>
         <div className="mt-4">
-          {documentsQuery.isLoading ? (
-            <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading documents...</div>
-          ) : documentsQuery.error ? (
-            <div role="alert" className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-              <span>Documents could not be loaded. Check your connection and try again.</span>
-              <Button type="button" variant="outline" size="sm" onClick={() => void documentsQuery.refetch()}>Retry</Button>
-            </div>
-          ) : (documentsQuery.data?.results ?? []).length ? (
-            <DocumentList
-              documents={documentsQuery.data?.results ?? []}
-              highlightedDocumentId={requestedDocumentId}
-              emptyText="No documents have been uploaded yet."
-              onDelete={(document) => void handleDelete(document)}
-              isDeleting={isDeletingDocument}
-              sort={sort}
-              onSortChange={setSort}
-              isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
-            />
-          ) : (
-            <EmptyState
-              icon={FileText}
-              title="No documents found"
-              description={search || documentFilter !== "all" ? "Adjust the search or document filter." : "Upload the first controlled document to this tenant library."}
-              action={!search && documentFilter === "all" ? <Button asChild><Link href="/dashboard/documents/upload">Upload document</Link></Button> : undefined}
-            />
-          )}
+          {/* One data view, one set of states: the table supplies loading, empty and error
+              (§7.4). This page used to draw all three itself and only mount the table once
+              rows had arrived, so the same list spoke three different vocabularies. */}
+          <DocumentList
+            documents={documentsQuery.data?.results ?? []}
+            highlightedDocumentId={requestedDocumentId}
+            emptyText={
+              search || documentFilter !== "all"
+                ? "Adjust the search or document filter."
+                : "Upload the first controlled document to this tenant library."
+            }
+            onDelete={(document) => void handleDelete(document)}
+            isDeleting={isDeletingDocument}
+            sort={sort}
+            onSortChange={setSort}
+            isLoading={documentsQuery.isLoading}
+            isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
+            hasError={Boolean(documentsQuery.error)}
+            onRetry={() => void documentsQuery.refetch()}
+          />
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 }

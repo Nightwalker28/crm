@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,13 +8,13 @@ import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, T
 import { toast } from "sonner";
 
 import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -365,7 +366,7 @@ export function IntegrationWebsiteWorkspace() {
       <Sheet open={apiKeyEditorOpen} onOpenChange={handleApiKeyEditorOpenChange}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <div className="flex min-h-0 flex-1 flex-col">
               <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
                 <div>
@@ -393,13 +394,13 @@ export function IntegrationWebsiteWorkspace() {
                   <Field>
                     <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
                     <Textarea id="api-key-origins" value={apiKeyDraft.allowedOrigins} onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))} placeholder="https://example.com, https://www.example.com" className="min-h-20" />
-                    <p className="text-xs leading-5 text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
+                    <p className="text-p-xs text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
                   </Field>
                 </FieldGroup>
 
                 {latestApiKey ? (
                   <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
-                    <div className="mb-2 text-xs font-medium uppercase text-copy-muted">Copy this key now</div>
+                    <div className="mb-2 text-xs font-medium text-copy-muted">Copy this key now</div>
                     <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}><Copy size={14} />Copy</Button>
@@ -443,13 +444,7 @@ export function IntegrationWebsiteWorkspace() {
                     <TableCell className="text-copy-secondary">{key.scopes.join(", ")}</TableCell>
                     <TableCell className="max-w-[220px] truncate text-copy-muted">{key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}</TableCell>
                     <TableCell>
-                      <Pill
-                        bg={key.status === "active" ? "bg-state-success-muted" : "bg-state-danger-muted"}
-                        text={key.status === "active" ? "text-state-success" : "text-state-danger"}
-                        border={key.status === "active" ? "border-state-success/40" : "border-state-danger/40"}
-                      >
-                        {key.status}
-                      </Pill>
+                      <StatusValue status={{ tone: key.status === "active" ? "success" : "critical", label: formatSnakeCaseLabel(key.status) }} />
                     </TableCell>
                     <TableCell className="whitespace-nowrap text-copy-muted">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</TableCell>
                     <TableCell>
@@ -587,7 +582,7 @@ export function IntegrationWebsiteWorkspace() {
                     <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
                     <div className="mt-2 max-w-[180px]">
                       <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving}>
-                        <SelectTrigger className="h-8 bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
+                        <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

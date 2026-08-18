@@ -1,18 +1,21 @@
 "use client";
 
+import type { StatusTone } from "@/lib/statusStyles";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, Inbox, KeyRound, Link2, PlugZap, RefreshCw, Trash2, UserPlus } from "lucide-react";
 import { toast } from "sonner";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { apiFetch } from "@/lib/api";
@@ -121,14 +124,14 @@ function connectionStatusLabel(connection: MailConnection) {
   return connection.status;
 }
 
-function connectionStatusTone(connection: MailConnection) {
+function connectionStatusTone(connection: MailConnection): StatusTone {
   if (connection.health_status === "healthy") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+    return "success";
   }
   if (connection.health_status === "limited" || connection.health_status === "warning") {
-    return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
+    return "attention";
   }
-  return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+  return "critical";
 }
 
 function splitSenderName(name?: string | null) {
@@ -380,36 +383,38 @@ export default function MailPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar>
-          <>
-            <Button type="button" variant="outline" asChild>
-              <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
-            </Button>
-            {imapSmtpConnection?.can_sync ? (
-              <>
-                <Button type="button" variant="outline" onClick={() => void handleSyncProvider("imap_smtp")} disabled={isSyncingMail}>
-                  <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
-                  Sync IMAP
-                </Button>
-                <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
-                  <KeyRound className="h-4 w-4" />
-                  Reconfigure IMAP
-                </Button>
-              </>
-            ) : (
+    <PageShell
+      title="Mail"
+      actions={(
+        <>
+          <Button type="button" variant="outline" asChild>
+            <Link href="/dashboard/settings/integrations">Manage Integrations</Link>
+          </Button>
+          {imapSmtpConnection?.can_sync ? (
+            <>
+              <Button type="button" variant="outline" onClick={() => void handleSyncProvider("imap_smtp")} disabled={isSyncingMail}>
+                <RefreshCw className={"h-4 w-4 " + (isSyncingMail ? "animate-spin" : "")} />
+                Sync IMAP
+              </Button>
               <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
                 <KeyRound className="h-4 w-4" />
-                IMAP/SMTP
+                Reconfigure IMAP
               </Button>
-            )}
-            {hasSendProvider ? (
-              <Button asChild><Link href="/dashboard/mail/compose">New Mail</Link></Button>
-            ) : (
-              <Button type="button" disabled>New Mail</Button>
-            )}
-          </>
-      </PageToolbar>
+            </>
+          ) : (
+            <Button type="button" variant="outline" onClick={() => setImapFormOpen((current) => !current)} disabled={isConnectingMail}>
+              <KeyRound className="h-4 w-4" />
+              IMAP/SMTP
+            </Button>
+          )}
+          {hasSendProvider ? (
+            <Button asChild><Link href="/dashboard/mail/compose">New Mail</Link></Button>
+          ) : (
+            <Button type="button" disabled>New Mail</Button>
+          )}
+        </>
+      )}
+    >
 
       <Card>
         <div className="flex items-center justify-between gap-3 border-b border-line-subtle px-5 py-4">
@@ -437,9 +442,7 @@ export default function MailPage() {
                     <div className="text-sm font-semibold text-copy-primary">{providerLabel(connection.provider)}</div>
                     <div className="mt-1 text-xs text-copy-muted">{connection.account_email || "No account email"}</div>
                   </div>
-                  <Pill {...connectionStatusTone(connection)}>
-                    {connectionStatusLabel(connection)}
-                  </Pill>
+                  <StatusValue status={{ tone: connectionStatusTone(connection), label: connectionStatusLabel(connection) }} context="record" />
                 </div>
                 <div className="mt-3 space-y-2 text-xs text-copy-secondary">
                   <div>
@@ -469,12 +472,12 @@ export default function MailPage() {
                 {connection.scopes.length ? (
                   <div className="mt-3 flex flex-wrap gap-2">
                     {connection.scopes.slice(0, 3).map((scope) => (
-                      <Pill key={scope} className="max-w-full">{scope}</Pill>
+                      <Chip key={scope} className="max-w-full">{scope}</Chip>
                     ))}
                     {connection.scopes.length > 3 ? (
-                      <Pill>
+                      <Chip>
                         +{connection.scopes.length - 3}
-                      </Pill>
+                      </Chip>
                     ) : null}
                   </div>
                 ) : null}
@@ -518,7 +521,7 @@ export default function MailPage() {
                 Use Gmail IMAP/SMTP
               </Button>
               {imapSmtpConnection ? (
-                <Button type="button" variant="dangerGhost" onClick={() => void handleDisconnectMail("imap_smtp")} disabled={isDisconnectingMail}>
+                <Button type="button" variant="destructiveGhost" onClick={() => void handleDisconnectMail("imap_smtp")} disabled={isDisconnectingMail}>
                   <Trash2 className="h-4 w-4" />
                   Disconnect IMAP
                 </Button>
@@ -605,20 +608,11 @@ export default function MailPage() {
               <SearchBar value={search} onChange={setSearch} placeholder="Search mail" className="md:w-72" />
             </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
+            <SegmentedControl aria-label="Mail folder" value={folder} onValueChange={setFolder} className="mt-4">
               {FOLDERS.map((item) => (
-                <Button
-                  key={item.key || "all"}
-                  type="button"
-                  size="sm"
-                  variant={folder === item.key ? "default" : "secondary"}
-                  onClick={() => setFolder(item.key)}
-                  aria-pressed={folder === item.key}
-                >
-                  {item.label}
-                </Button>
+                <SegmentedItem key={item.key || "all"} value={item.key}>{item.label}</SegmentedItem>
               ))}
-            </div>
+            </SegmentedControl>
           </div>
 
           {messagesQuery.isLoading ? (
@@ -631,7 +625,7 @@ export default function MailPage() {
               </Button>
             </div>
           ) : messages.length ? (
-            <div className="max-h-[28rem] divide-y divide-line-subtle overflow-y-auto">
+            <div className="divide-y divide-line-subtle">
               {messages.map((message) => (
                 <Button
                   key={message.id}
@@ -706,7 +700,7 @@ export default function MailPage() {
                 ) : null}
 
                 <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-                  <div className="mb-3 text-xs font-semibold uppercase tracking-wide text-copy-muted">Link Mail To Record</div>
+                  <div className="mb-3 text-xs font-semibold text-copy-label">Link Mail To Record</div>
                   <div className="grid gap-3 md:grid-cols-[180px_1fr]">
                     <Select
                       value={linkModuleKey}
@@ -730,7 +724,7 @@ export default function MailPage() {
                       <Button
                         key={`${linkModuleKey}:${target.id}`}
                         type="button"
-                        variant="secondary"
+                        variant="outline"
                         onClick={() => void handleLinkMessage(target)}
                         disabled={isLinkingMail}
                         className="h-auto w-full justify-between whitespace-normal px-4 py-3 text-left"
@@ -745,7 +739,7 @@ export default function MailPage() {
                   </div>
                 </div>
 
-                <div className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4 text-sm leading-6 text-copy-secondary">
+                <div className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4 text-p-sm text-copy-secondary">
                   {selectedMessageQuery.isLoading ? "Loading message..." : selectedMessage.body_text || selectedMessage.snippet || "This synced message has no readable text body."}
                 </div>
               </div>
@@ -753,6 +747,6 @@ export default function MailPage() {
           ) : null}
         </Card>
       </section>
-    </div>
+    </PageShell>
   );
 }

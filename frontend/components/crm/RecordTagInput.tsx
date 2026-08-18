@@ -5,6 +5,7 @@ import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
@@ -16,6 +17,8 @@ type Props = {
   action: "create" | "edit";
   disabled?: boolean;
   inputId?: string;
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
 };
 
 const MAX_TAGS = 20;
@@ -35,7 +38,16 @@ async function searchTags(moduleKey: string, action: Props["action"], query: str
     .filter(Boolean) as string[];
 }
 
-export default function RecordTagInput({ value, onChange, moduleKey, action, disabled = false, inputId }: Props) {
+export default function RecordTagInput({
+  value,
+  onChange,
+  moduleKey,
+  action,
+  disabled = false,
+  inputId,
+  ariaDescribedBy,
+  ariaInvalid = false,
+}: Props) {
   const generatedId = useId();
   const resolvedInputId = inputId ?? `${generatedId}-input`;
   const listboxId = `${generatedId}-options`;
@@ -112,7 +124,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
       {value.length ? (
         <div className="flex flex-wrap gap-2" aria-label="Selected tags">
           {value.map((tag) => (
-            <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
+            <Chip key={tag.toLocaleLowerCase()} className="gap-1 py-1 pr-1">
               {tag}
               <Button
                 type="button"
@@ -125,7 +137,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </Button>
-            </span>
+            </Chip>
           ))}
         </div>
       ) : null}
@@ -153,12 +165,12 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
           aria-expanded={isOpen && Boolean(draft.trim())}
           aria-controls={listboxId}
           aria-activedescendant={activeIndex >= 0 && options[activeIndex] ? `${listboxId}-${activeIndex}` : undefined}
-          aria-invalid={Boolean(error)}
-          aria-describedby={error ? errorId : undefined}
+          aria-invalid={ariaInvalid || Boolean(error)}
+          aria-describedby={[ariaDescribedBy, error ? errorId : undefined].filter(Boolean).join(" ") || undefined}
           autoComplete="off"
         />
         {isOpen && draft.trim() ? (
-          <div id={listboxId} role="listbox" aria-label="Tag suggestions" className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-xl">
+          <div id={listboxId} role="listbox" aria-label="Tag suggestions" className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised py-1 shadow-[var(--shadow-panel)]">
             {query.isLoading ? <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div> : null}
             {query.error ? (
               <div role="alert" className="flex items-center justify-between gap-3 px-3 py-2 text-sm text-state-danger">
@@ -175,7 +187,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
                 type="button"
                 role="option"
                 aria-selected={optionIndex === activeIndex}
-                className="block w-full px-3 py-2 text-left text-sm text-copy-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted"
+                className="block w-full px-3 py-2 text-left text-sm text-copy-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted"
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(optionIndex)}
                 onClick={() => addTag(tag)}
@@ -189,7 +201,7 @@ export default function RecordTagInput({ value, onChange, moduleKey, action, dis
                 type="button"
                 role="option"
                 aria-selected={activeIndex === 0}
-                className="block w-full px-3 py-2 text-left text-sm text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                className="block w-full px-3 py-2 text-left text-sm text-copy-secondary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                 onMouseDown={(event) => event.preventDefault()}
                 onMouseEnter={() => setActiveIndex(0)}
                 onClick={() => addTag(draft)}

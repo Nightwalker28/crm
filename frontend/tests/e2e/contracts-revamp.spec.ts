@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const contractId = 7123;
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 function contractFixture() {
   return {
@@ -99,6 +99,30 @@ async function cacheContractPermissions(
     },
     { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 71,
+        name: "contracts",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: true,
+          can_edit: canEdit,
+          can_delete: false,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+          ...overrides,
+        },
+      }]),
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -130,7 +154,7 @@ test("Contract creation is responsive and focuses the first invalid field", asyn
 
 test("Contract creation omits disabled fields and opens the created record", async ({ page }) => {
   let submittedPayload: Record<string, unknown> | null = null;
-  await page.route("**/contracts", async (route) => {
+  await page.route("**/api/v1/contracts", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -156,7 +180,7 @@ test("Contract detail and edit share a routed record workflow", async ({ page })
   await cacheContractPermissions(page, true);
   let contract = contractFixture();
   let updatedPayload: Record<string, unknown> | null = null;
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
       contract = { ...contract, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
@@ -169,8 +193,8 @@ test("Contract detail and edit share a routed record workflow", async ({ page })
   });
 
   await page.goto(`/dashboard/contracts/${contractId}`);
-  await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
-  await page.getByRole("link", { name: "Edit contract" }).click();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("CTR-2407-001");
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/contracts/${contractId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit CTR-2407-001" })).toBeVisible();
@@ -188,7 +212,7 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
   await cacheContractPermissions(page, true);
   let contract = populatedContractFixture();
   let updatedPayload: Record<string, unknown> | null = null;
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     if (route.request().method() === "PATCH") {
       updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
       contract = { ...contract, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
@@ -203,23 +227,27 @@ test("Contract detail confirms lifecycle changes and keeps the mobile workflow a
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/contracts/${contractId}`);
 
-  await expect(page.getByRole("heading", { name: "Contract details" })).toBeVisible();
+  // Parties and signers are related objects, so 5.3 moved them out of a stack of cards and
+  // into the archetype's one module tab. Status stayed in the spine, where every state field is.
+  await page.getByRole("tab", { name: "Signing" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/contracts/${contractId}\\?tab=signing$`));
   await expect(page.getByLabel("Name").first()).toBeVisible();
   await expect(page.getByLabel("Email").first()).toBeVisible();
   await expect(page.getByText("Northwind Operations")).toBeVisible();
   await expect(page.getByText("Alex Morgan")).toBeVisible();
-  await page.getByLabel("Status", { exact: true }).first().click();
-  await page.getByRole("option", { name: "Review" }).click();
-  await page.getByRole("button", { name: "Save status" }).click();
 
-  await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract event history.")).toBeVisible();
+  await page.getByRole("combobox", { name: "Status", exact: true }).first().click();
+  await page.getByRole("option", { name: "Review" }).click();
+
+  await expect(page.getByText("Move CTR-2407-001 from Draft to Review? This change is recorded in the contract's history.")).toBeVisible();
   await page.getByRole("button", { name: "Change status" }).click();
   await expect.poll(() => updatedPayload).toEqual({ status: "review" });
+  await expect(page.locator('[data-slot="save-state-indicator"][data-state="saved"]')).toBeVisible();
 });
 
 test("Contract detail is read-only without edit permission", async ({ page }) => {
   await cacheContractPermissions(page, false);
-  await page.route(`**/contracts/${contractId}`, async (route) => {
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -227,15 +255,44 @@ test("Contract detail is read-only without edit permission", async ({ page }) =>
     });
   });
 
-  await page.goto(`/dashboard/contracts/${contractId}`);
+  await page.goto(`/dashboard/contracts/${contractId}?tab=signing`);
 
-  await expect(page.getByRole("heading", { name: "CTR-2407-001" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit contract" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Save status" })).toHaveCount(0);
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("CTR-2407-001");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add party" })).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Add signer" })).toHaveCount(0);
-  await expect(page.getByLabel("Status", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Status", exact: true })).toHaveCount(0);
   await expect(page.getByText("Pending", { exact: true })).toBeVisible();
+});
+
+test("The contract spine links related records by name, not by id", async ({ page }) => {
+  await cacheContractPermissions(page, false);
+  await page.route(`**/api/v1/contracts/${contractId}`, async (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...contractFixture(),
+        contact_id: 41,
+        contact_name: "Grace Buyer",
+        organization_id: 51,
+        organization_name: "Northwind",
+        opportunity_id: 61,
+        opportunity_name: "Northwind renewal",
+        owner_id: 7,
+        owner_name: "Ada Owner",
+      }),
+    }),
+  );
+
+  await page.goto(`/dashboard/contracts/${contractId}`);
+
+  await expect(page.getByRole("link", { name: "Grace Buyer" })).toHaveAttribute("href", "/dashboard/sales/contacts/41");
+  await expect(page.getByRole("link", { name: "Northwind", exact: true })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
+  await expect(page.getByRole("link", { name: "Northwind renewal" })).toHaveAttribute("href", "/dashboard/sales/opportunities/61");
+  await expect(page.getByText("Ada Owner")).toBeVisible();
+  // A link with no target is not a broken link — the relationship simply has no value yet.
+  await expect(page.getByRole("link", { name: /Quote #/ })).toHaveCount(0);
 });
 
 test("Contract list uses permission-aware identity links and filtered empty states", async ({ page }) => {
@@ -291,7 +348,8 @@ test("Contract list failures use fixed recoverable guidance", async ({ page }) =
 
   await page.goto("/dashboard/contracts");
 
-  await expect(page.getByText("Contracts could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Contracts could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

@@ -28,6 +28,21 @@ class MailDirection(str, Enum):
     internal = "internal"
 
 
+class MailSendStatus(str, Enum):
+    """Outbound lifecycle. Inbound messages carry no send status at all."""
+
+    sending = "sending"
+    sent = "sent"
+    failed = "failed"
+
+
+class MailAttachmentResponse(BaseModel):
+    document_id: int
+    filename: str
+    content_type: str | None = None
+    size_bytes: int | None = None
+
+
 class MailConnectionSummaryResponse(BaseModel):
     provider: MailProvider
     status: MailConnectionStatus
@@ -75,6 +90,10 @@ class MailMessageResponse(BaseModel):
     source_module_key: str | None = None
     source_entity_id: str | None = None
     source_label: str | None = None
+    send_status: MailSendStatus | None = None
+    send_error_code: str | None = None
+    template_id: int | None = None
+    attachments: list[MailAttachmentResponse] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
 
@@ -90,16 +109,67 @@ class MailMessageLinkRequest(BaseModel):
     source_entity_id: str = Field(max_length=100)
 
 
-class MailSendRequest(BaseModel):
+class MailAssociationType(str, Enum):
+    primary = "primary"
+    related = "related"
+
+
+class MailRecordAssociationCreateRequest(BaseModel):
+    module_key: str = Field(min_length=1, max_length=100)
+    entity_id: str = Field(min_length=1, max_length=100)
+    association_type: MailAssociationType = MailAssociationType.related
+    # Link every message the provider already threaded together, so a
+    # conversation lands on the record in one action instead of message by
+    # message.
+    apply_to_thread: bool = False
+
+
+class MailRecordAssociationResponse(BaseModel):
+    id: int
+    message_id: int
+    module_key: str
+    entity_id: str
+    association_type: MailAssociationType
+    record_label: str | None = None
+    created_by_user_id: int | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MailRecordAssociationListResponse(BaseModel):
+    results: list[MailRecordAssociationResponse]
+
+
+class MailComposeRequest(BaseModel):
+    """Everything a send needs except which record it belongs to."""
+
     provider: MailProvider
-    to: list[EmailStr] = Field(min_length=1)
-    cc: list[EmailStr] = Field(default_factory=list)
-    bcc: list[EmailStr] = Field(default_factory=list)
+    to: list[EmailStr] = Field(min_length=1, max_length=50)
+    cc: list[EmailStr] = Field(default_factory=list, max_length=50)
+    bcc: list[EmailStr] = Field(default_factory=list, max_length=50)
     subject: str = Field(default="", max_length=500)
-    body_text: str = ""
+    body_text: str = Field(default="", max_length=100_000)
+    # Provenance only: the composer inserts template text into the body, and
+    # the user may edit it before sending.
+    template_id: int | None = Field(default=None, ge=1)
+    # Attachments are existing CRM documents. Raw uploads go through the
+    # documents module first, so upload validation and quota are not bypassed.
+    attachment_document_ids: list[int] = Field(default_factory=list, max_length=5)
+    # Client-generated, stable across retries of one compose attempt. Sending
+    # twice with the same key returns the first message instead of a duplicate.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class MailSendRequest(MailComposeRequest):
+    # The display label is resolved from the record server-side; it is not
+    # accepted from the client because it is persisted and searchable.
     source_module_key: str | None = Field(default=None, max_length=100)
     source_entity_id: str | None = Field(default=None, max_length=100)
-    source_label: str | None = Field(default=None, max_length=255)
+
+
+class MailRecordSendRequest(MailComposeRequest):
+    """Contextual send. The source record comes from the route path."""
 
 
 class MailProviderConnectResponse(BaseModel):

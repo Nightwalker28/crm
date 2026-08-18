@@ -1,11 +1,9 @@
-"use client";
+import { RouteLoadingState } from "@/components/ui/RouteStates";
 
-import LynkSplash from "@/components/LynkSplash";
-
+// Deliberately not the splash. This boundary sits inside the dashboard shell,
+// so a full-screen overlay here blanked the sidebar and header on every
+// navigation and cost the operator their sense of place. A page-shaped skeleton
+// keeps the shell standing.
 export default function DashboardLoading() {
-  return (
-    <div className="fixed inset-0 z-[100] min-h-screen">
-      <LynkSplash />
-    </div>
-  );
+  return <RouteLoadingState label="dashboard" />;
 }

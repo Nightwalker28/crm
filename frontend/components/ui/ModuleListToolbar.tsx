@@ -50,7 +50,7 @@ export function ModuleListToolbar({
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onToggleFilters} aria-expanded={filtersOpen}>
             <Filter />Filters
-            {activeFilterCount ? <span className="rounded-full bg-action-primary-muted px-1.5 py-0.5 text-[10px] font-semibold text-copy-primary">{activeFilterCount}</span> : null}
+            {activeFilterCount ? <span className="rounded-full bg-action-primary-muted px-1.5 py-0.5 text-2xs font-semibold text-copy-primary">{activeFilterCount}</span> : null}
           </Button>
           {activeFilterCount ? <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}><SearchX />Clear filters</Button> : null}
           <TableDensityToggle />

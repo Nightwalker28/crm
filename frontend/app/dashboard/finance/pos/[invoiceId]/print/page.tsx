@@ -7,7 +7,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Printer } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -15,7 +15,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
-import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
+import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 import { fetchPosInvoice } from "@/hooks/finance/usePosInvoices";
 
 type CompanyProfile = {
@@ -99,32 +99,30 @@ export default function PosInvoicePrintPage() {
   const isCompact = invoice.template_id === "compact";
   const logoUrl = company.logo_url ? resolveMediaUrl(company.logo_url) : "";
   const accentColor = safeAccentColor(invoice.accent_color);
-  const invoiceStatus = getPosInvoiceStatusStyle(invoice.status);
-  const paymentStatus = getPosPaymentStatusStyle(invoice.payment_status);
+  const invoiceStatus = getPosInvoiceStatus(invoice.status);
+  const paymentStatus = getPosPaymentStatus(invoice.payment_status);
 
   // Printable customer documents use fixed colors so exports remain stable
   // regardless of the dashboard theme selected by the current CRM user.
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageHeader
-        className="print:hidden"
-        title="Print invoice"
-        description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
-        actions={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/finance/pos/${invoice.id}`}>
-                <ArrowLeft /> Back to invoice
-              </Link>
-            </Button>
-            <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
-              <Printer /> Print invoice
-            </Button>
-          </>
-        }
-      />
-
+    <PageShell
+      headerClassName="print:hidden"
+      title="Print invoice"
+      description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
+      actions={
+        <>
+          <Button asChild variant="outline">
+            <Link href={`/dashboard/finance/pos/${invoice.id}`}>
+              <ArrowLeft /> Back to invoice
+            </Link>
+          </Button>
+          <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
+            <Printer /> Print invoice
+          </Button>
+        </>
+      }
+    >
       <section
         aria-labelledby="print-invoice-number"
         className={`invoice-print-area overflow-hidden rounded-[var(--radius-card)] border shadow-xl ${isClassic ? "border-neutral-300 bg-neutral-100 text-neutral-950" : "border-neutral-800 bg-neutral-950 text-neutral-100"}`}
@@ -159,11 +157,14 @@ export default function PosInvoicePrintPage() {
                 </div>
               )}
               <div>
-                <h1 className="text-xl font-semibold">
+                {/* The printed document sits inside a page the shell has already named
+                    "Print invoice" — §8 allows one h1, so the document's own headings are
+                    section headings. The print stylesheet sizes them, not the tag. */}
+                <h2 className="text-xl font-semibold">
                   {company.name || "Company"}
-                </h1>
+                </h2>
                 <div
-                  className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
+                  className={`mt-2 text-p-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
                 >
                   {multiline(company.billing_address)}
                   {[company.primary_email, company.primary_phone, company.website].filter(Boolean).map((item) => (
@@ -179,14 +180,14 @@ export default function PosInvoicePrintPage() {
               className={`min-w-[230px] rounded-[var(--radius-control)] border p-4 ${isClassic ? "border-neutral-300 bg-white" : "border-neutral-800 bg-neutral-900/70"}`}
             >
               <div
-                className="text-xs font-semibold uppercase tracking-[0.2em]"
+                className="text-xs font-semibold"
                 style={{ color: accentColor }}
               >
                 POS Invoice
               </div>
-              <h1 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
+              <h2 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
                 {invoice.invoice_number}
-              </h1>
+              </h2>
               <dl
                 className={`mt-4 grid grid-cols-2 gap-2 text-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
@@ -205,7 +206,7 @@ export default function PosInvoicePrintPage() {
           <div className="mt-8 grid gap-5 sm:grid-cols-2">
             <div>
               <div
-                className="text-xs font-semibold uppercase tracking-[0.18em]"
+                className="text-xs font-semibold"
                 style={{ color: accentColor }}
               >
                 Bill To
@@ -214,7 +215,7 @@ export default function PosInvoicePrintPage() {
                 {invoice.customer_name}
               </div>
               <div
-                className={`mt-2 text-sm leading-6 ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
+                className={`mt-2 text-p-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
               >
                 {multiline(invoice.customer_address)}
                 {invoice.customer_email || "Email not provided"}
@@ -343,6 +344,6 @@ export default function PosInvoicePrintPage() {
           </div>
         </div>
       </section>
-    </div>
+    </PageShell>
   );
 }

@@ -12,12 +12,13 @@ import { AutomationRunDetails } from "@/components/automation/AutomationRunDetai
 import { AutomationRunsTable } from "@/components/automation/AutomationRunsTable";
 import type { AutomationRule, AutomationRun } from "@/components/automation/types";
 import { formatModuleLabel, ruleToDraft, serializeDraft } from "@/components/automation/utils";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldLabel } from "@/components/ui/field";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
+import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteAutomationRule, persistAutomationRule, previewAutomationRule, useAutomationRules, useAutomationRuns, useAutomationTriggers } from "@/hooks/useAutomationRules";
@@ -98,21 +99,46 @@ export default function AutomationSettingsPage() {
   }
   function viewRuns(rule?: AutomationRule) { setRunRuleFilter(rule ? String(rule.id) : "all"); setWorkspace("runs"); }
 
-  if (rulesQuery.isLoading || triggersQuery.isLoading) return <RouteLoadingState label="automation rules" />;
-  if (rulesQuery.isError || triggersQuery.isError) return <RouteErrorState title="Automation rules could not be loaded" description="Your rules are unchanged. Try loading the workspace again." reset={() => { void rulesQuery.refetch(); void triggersQuery.refetch(); }} backHref="/dashboard/settings" backLabel="Return to settings" />;
+  const isResolving = rulesQuery.isLoading || triggersQuery.isLoading;
+  const failedToLoad = rulesQuery.isError || triggersQuery.isError;
+  if (isResolving || failedToLoad) {
+    return (
+      <PageShell
+        variant="settings"
+        title="Automation"
+        description="Rules that run when records change."
+        isLoading={isResolving}
+        hasError={failedToLoad}
+        errorDescription="Your rules are unchanged. Try loading the workspace again."
+        onRetry={() => { void rulesQuery.refetch(); void triggersQuery.refetch(); }}
+        backHref="/dashboard/settings"
+        backLabel="Return to settings"
+      >
+        {null}
+      </PageShell>
+    );
+  }
 
   if (workspace === "editor") {
     return <AutomationRuleEditor key={`${editorRule?.id ?? "new"}-${isDuplicate ? "copy" : "edit"}`} rule={editorRule} duplicate={isDuplicate} triggerGroups={triggerGroups} onClose={() => setWorkspace("rules")} onSaved={(rule) => { setEditorRule(rule); setIsDuplicate(false); }} onDeleted={() => setWorkspace("rules")} />;
   }
 
   const moduleLabel = selectedModuleKey ? getModuleRegistryLabel(selectedModuleKey) ?? formatModuleLabel(selectedModuleKey) : null;
-  return <div className="flex flex-col gap-4">
-    <PageToolbar context={moduleLabel ? `${moduleLabel} automation` : "Automation workspace"}>
-      <Button type="button" variant={workspace === "rules" ? "secondary" : "ghost"} size="sm" onClick={() => setWorkspace("rules")}><Workflow />Rules</Button>
-      <Button type="button" variant={workspace === "runs" ? "secondary" : "ghost"} size="sm" onClick={() => viewRuns()}><History />Runs</Button>
-      {workspace === "rules" ? <Button type="button" onClick={() => openEditor()}><Plus />Create rule</Button> : null}
-    </PageToolbar>
-
+  return <PageShell
+   variant="settings"
+   title="Automation"
+   description="Rules that run when records change."
+   context={moduleLabel ? `${moduleLabel} automation` : "Automation workspace"}
+   actions={(
+     <>
+     <SegmentedControl aria-label="Automation workspace" value={workspace} onValueChange={(next) => (next === "runs" ? viewRuns() : setWorkspace("rules"))}>
+       <SegmentedItem value="rules"><Workflow />Rules</SegmentedItem>
+       <SegmentedItem value="runs"><History />Runs</SegmentedItem>
+     </SegmentedControl>
+     {workspace === "rules" ? <Button type="button" onClick={() => openEditor()}><Plus />Create rule</Button> : null}
+     </>
+   )}
+ >
     {workspace === "rules" ? <>
       <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_13rem_11rem]">
         <SearchBar value={ruleSearch} onChange={setRuleSearch} placeholder="Search rules" />
@@ -129,5 +155,5 @@ export default function AutomationSettingsPage() {
       {runsQuery.isLoading ? <RouteLoadingState label="automation runs" /> : runsQuery.isError ? <Card><EmptyState icon={History} title="Run history could not be loaded" description="The rules are unaffected. Try loading recent runs again." action={<Button type="button" variant="outline" onClick={() => void runsQuery.refetch()}>Try again</Button>} /></Card> : <AutomationRunsTable runs={filteredRuns} isRefreshing={runsQuery.isFetching} hasFilters={runRuleFilter !== "all" || runStatusFilter !== "all"} onClearFilters={() => { setRunRuleFilter("all"); setRunStatusFilter("all"); }} onInspect={(run) => setSelectedRun(run)} />}
       <AutomationRunDetails run={selectedRun} open={Boolean(selectedRun)} onOpenChange={(open) => { if (!open) setSelectedRun(null); }} />
     </>}
-  </div>;
+  </PageShell>;
 }

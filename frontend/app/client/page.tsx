@@ -60,9 +60,9 @@ export default function ClientPortalHomePage() {
           <div className="flex flex-1 items-center justify-center text-sm text-copy-muted">Loading portal...</div>
         ) : overviewQuery.error ? (
           <section className="flex flex-1 items-center justify-center py-16">
-            <div className="w-full max-w-md rounded-md border border-line-default bg-surface p-5">
+            <div className="w-full max-w-md rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <h1 className="text-xl font-semibold text-copy-primary">Client portal</h1>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">Sign in with your client account to continue.</p>
+              <p className="mt-2 text-p-sm text-copy-secondary">Sign in with your client account to continue.</p>
               <Button asChild className="mt-5 w-full">
                 <Link href="/client/login?redirect=%2Fclient">Sign In</Link>
               </Button>
@@ -71,20 +71,20 @@ export default function ClientPortalHomePage() {
         ) : profile ? (
           <div className="flex-1 py-8">
             <section className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-              <div className="rounded-md border border-line-default bg-surface p-5">
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
                 <div className="flex items-start gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-md border border-line-strong bg-app">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-line-strong bg-app">
                     {profile.organization_id ? <Building2 className="h-5 w-5 text-copy-secondary" /> : <BriefcaseBusiness className="h-5 w-5 text-copy-secondary" />}
                   </div>
                   <div className="min-w-0">
-                    <div className="text-xs uppercase tracking-wide text-copy-muted">Signed in as</div>
+                    <div className="text-xs font-medium text-copy-label">Signed in as</div>
                     <h1 className="mt-1 truncate text-2xl font-semibold tracking-normal text-copy-primary">{customerName(profile)}</h1>
                     <p className="mt-1 text-sm text-copy-secondary">{profile.email}</p>
                   </div>
                 </div>
               </div>
-              <div className="rounded-md border border-line-default bg-surface p-5">
-                <div className="text-xs uppercase tracking-wide text-copy-muted">Pricing group</div>
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
+                <div className="text-xs font-medium text-copy-label">Pricing group</div>
                 <div className="mt-2 text-lg font-semibold text-copy-primary">{profile.customer_group?.name ?? "Standard"}</div>
                 <p className="mt-1 text-sm text-copy-secondary">{profile.customer_group?.description ?? "Pricing is resolved from your account context."}</p>
               </div>
@@ -95,9 +95,9 @@ export default function ClientPortalHomePage() {
                 const Icon = section.icon;
                 const metric = overview?.metrics.find((item) => item.key === section.key);
                 return (
-                  <Link key={section.key} href={section.href} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+                  <Link key={section.key} href={section.href} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                     <div className="flex items-start justify-between gap-3">
-                      <span className="flex h-9 w-9 items-center justify-center rounded-md border border-line-strong bg-app">
+                      <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-strong bg-app">
                         <Icon className="h-4 w-4 text-copy-secondary" />
                       </span>
                       <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
@@ -109,7 +109,7 @@ export default function ClientPortalHomePage() {
               })}
             </section>
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-base font-semibold text-copy-primary">Next actions</h2>
@@ -121,7 +121,7 @@ export default function ClientPortalHomePage() {
               </div>
               <div className="grid gap-3">
                 {(overview?.next_actions ?? []).map((action) => (
-                  <Link key={action.key} href={action.href} className="group rounded-md border border-line-default bg-app/60 p-4 transition-colors hover:border-line-strong">
+                  <Link key={action.key} href={action.href} className="group rounded-[var(--radius-control)] border border-line-subtle bg-app/60 p-4 transition-colors hover:border-line-strong">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
                         <div className="font-medium text-copy-primary">{action.label}</div>

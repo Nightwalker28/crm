@@ -35,14 +35,14 @@ export default function ClientBookingDetailPage() {
         </header>
 
         {bookingQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading booking...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading booking...</div>
         ) : bookingQuery.error || !booking ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {bookingQuery.error instanceof Error ? bookingQuery.error.message : "Booking not found."}
           </div>
         ) : (
           <div className="grid gap-5">
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm text-copy-secondary">
@@ -62,22 +62,22 @@ export default function ClientBookingDetailPage() {
                 ) : null}
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <Clock className="h-3.5 w-3.5" />
                     Duration
                   </div>
                   <div className="mt-1 text-sm text-copy-secondary">{durationLabel(booking)}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <UserRound className="h-3.5 w-3.5" />
                     Host
                   </div>
                   <div className="mt-1 text-sm text-copy-secondary">{booking.owner_name || "Team member"}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
+                <div>
+                  <div className="flex items-center gap-2 text-xs font-medium text-copy-label">
                     <MapPin className="h-3.5 w-3.5" />
                     Location
                   </div>
@@ -87,15 +87,15 @@ export default function ClientBookingDetailPage() {
             </section>
 
             {booking.guest_note ? (
-              <section className="rounded-md border border-line-default bg-surface p-5">
+              <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
                 <h2 className="font-semibold text-copy-primary">Your note</h2>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{booking.guest_note}</p>
+                <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{booking.guest_note}</p>
               </section>
             ) : null}
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <h2 className="font-semibold text-copy-primary">Changes</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">
+              <p className="mt-2 text-p-sm text-copy-secondary">
                 Cancellation and rescheduling from the portal are not enabled for this appointment yet. Contact the team from Support or Messages if this time no longer works.
               </p>
               <div className="mt-4 flex flex-wrap gap-3">

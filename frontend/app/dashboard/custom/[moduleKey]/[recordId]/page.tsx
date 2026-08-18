@@ -12,6 +12,7 @@ import {
 } from "@/components/customModules/CustomModuleFieldInput";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RecordTabs } from "@/components/ui/RecordTabs";
 import { Button } from "@/components/ui/button";
@@ -95,8 +96,10 @@ function CustomModuleRecordOverview({
     }
   }
 
+  // The field inputs carry the native required attribute, so without noValidate the browser
+  // blocks submit and validateRequiredFields never runs.
   return (
-    <form id="custom-module-record-form" onSubmit={handleSubmit}>
+    <form id="custom-module-record-form" onSubmit={handleSubmit} noValidate>
       {submitError ? (
         <div role="alert" className="mb-4 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not save this record.</div>
@@ -248,21 +251,21 @@ export default function CustomModuleRecordDetailPage() {
   const record = recordQuery.record;
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={record.title}
+      description={description}
+    >
       <RecordPageHeader
         backHref={backHref}
         backLabel="Back to records"
-        title={record.title}
-        description={description}
         primaryAction={
           <>
             {canDelete ? (
               <Button
                 type="button"
-                variant="outline"
+                variant="destructiveGhost"
                 onClick={() => void handleDelete()}
                 disabled={recordQuery.isDeleting}
-                className="text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
               >
                 <Trash2 />
                 {recordQuery.isDeleting ? "Deleting…" : "Delete"}
@@ -311,6 +314,6 @@ export default function CustomModuleRecordDetailPage() {
           },
         ]}
       />
-    </div>
+    </PageShell>
   );
 }

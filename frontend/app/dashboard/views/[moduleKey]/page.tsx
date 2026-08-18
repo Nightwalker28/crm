@@ -6,14 +6,13 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowLeft, ArrowUp, Copy, EyeOff, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { Chip } from "@/components/ui/Chip";
 import { SavedViewConditionEditor, getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -121,32 +120,54 @@ export default function ManageModuleViewPage() {
   async function removeView() { if (!saved.selectedView || saved.selectedView.is_system) return; if (!(await confirm({ title: "Delete saved view?", description: `Delete the view "${saved.selectedView.name}"?`, confirmLabel: "Delete View", variant: "destructive" }))) return; try { await saved.deleteCurrentView(); toast.success("Saved view deleted."); router.replace(`/dashboard/views/${moduleKey}?viewId=system-default`); } catch (error) { setActionError(error instanceof SavedViewApiError && error.code === "not-found" ? "This view was already deleted elsewhere." : "The saved view could not be deleted. Please try again."); } }
   async function retryAll() { await Promise.all([saved.refresh(), moduleFieldsQuery.refresh(), CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) ? customFieldsQuery.refetch() : Promise.resolve(), shouldLoadCustomModule ? customModuleSchema.refetch() : Promise.resolve()]); }
 
-  if (pageLoading) return <RouteLoadingState label="view manager" />;
-  if (hasLoadError) return <Card className="p-6" role="alert"><h1 className="text-lg font-semibold text-copy-primary">View manager could not be loaded</h1><p className="mt-1 text-sm text-copy-secondary">Try again. Your existing saved views have not been changed.</p><Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button></Card>;
-  if (!definition) return <Card className="p-6" role="alert"><h1 className="text-lg font-semibold text-copy-primary">Unsupported module view</h1><p className="mt-1 text-sm text-copy-secondary">This module does not provide configurable list columns and filters.</p><Button asChild className="mt-4" variant="outline"><Link href="/dashboard">Return to dashboard</Link></Button></Card>;
+  const viewManagerTitle = `${safeDefinition.label} views`;
 
-  return <div className="flex flex-col gap-5 pb-6">
-    <PageToolbar>
-      <Button asChild variant="ghost" size="sm"><Link href={definition.route}><ArrowLeft />Back to {definition.label}</Link></Button>
-      <Select value={saved.selectedViewId || selectedViewKey} onValueChange={navigateToView}><SelectTrigger className="w-full sm:w-64" aria-label="Select saved view"><SelectValue /></SelectTrigger><SelectContent>{saved.views.map((view) => <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>{view.name}{view.is_default ? " (Default)" : ""}</SelectItem>)}</SelectContent></Select>
-      {saved.selectedView?.is_system ? <Button variant="outline" onClick={startDuplicate}><Copy />Duplicate</Button> : mode === "view" ? <Button variant="outline" onClick={startEdit}><Pencil />Edit view</Button> : null}
-      <Button onClick={startCreate}><Plus />New view</Button>
-    </PageToolbar>
+  // The three whole-route states go through the shell so this route keeps one h1 and one
+  // state vocabulary (§7.4, §8) — each of these used to draw its own heading inside a Card.
+  if (pageLoading || hasLoadError || !definition) {
+    return (
+      <PageShell
+        title={viewManagerTitle}
+        isLoading={pageLoading}
+        hasError={hasLoadError || !definition}
+        errorDescription={
+          hasLoadError
+            ? "Try again. Your existing saved views have not been changed."
+            : "This module does not provide configurable list columns and filters."
+        }
+        onRetry={hasLoadError ? () => void retryAll() : undefined}
+      >
+        {null}
+      </PageShell>
+    );
+  }
 
-    <Card className="overflow-visible">
+  return <PageShell
+   title={viewManagerTitle}
+   actions={(
+     <>
+     <Button asChild variant="ghost" size="sm"><Link href={definition.route}><ArrowLeft />Back to {definition.label}</Link></Button>
+     <Select value={saved.selectedViewId || selectedViewKey} onValueChange={navigateToView}><SelectTrigger className="w-full sm:w-64" aria-label="Select saved view"><SelectValue /></SelectTrigger><SelectContent>{saved.views.map((view) => <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>{view.name}{view.is_default ? " (Default)" : ""}</SelectItem>)}</SelectContent></Select>
+     {saved.selectedView?.is_system ? <Button variant="outline" onClick={startDuplicate}><Copy />Duplicate</Button> : mode === "view" ? <Button variant="outline" onClick={startEdit}><Pencil />Edit view</Button> : null}
+     <Button onClick={startCreate}><Plus />New view</Button>
+     </>
+   )}
+ >
+
+    <Card>
       <CardHeader className="flex-col gap-4 sm:flex-row">
-        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-copy-primary">{mode === "view" ? saved.selectedView?.name : mode === "edit" ? "Edit user view" : mode === "duplicate" ? "Duplicate view" : "Create new view"}</h2>{saved.selectedView?.is_system && mode === "view" ? <Pill>System · read-only</Pill> : null}{saved.selectedView?.is_default && mode === "view" ? <Pill>Default</Pill> : null}</div><p className="mt-1 text-sm text-copy-muted">{visibleColumns.length} columns · {conditionCount} conditions · {sortKey === "__none__" ? "Default sorting" : `Sorted by ${safeDefinition.columns.find((column) => column.key === sortKey)?.label ?? sortKey}`}</p></div>
+        <div className="min-w-0 flex-1"><div className="flex flex-wrap items-center gap-2"><h2 className="text-base font-semibold text-copy-primary">{mode === "view" ? saved.selectedView?.name : mode === "edit" ? "Edit user view" : mode === "duplicate" ? "Duplicate view" : "Create new view"}</h2>{saved.selectedView?.is_system && mode === "view" ? <Chip>System · read-only</Chip> : null}{saved.selectedView?.is_default && mode === "view" ? <Chip>Default</Chip> : null}</div><p className="mt-1 text-sm text-copy-muted">{visibleColumns.length} columns · {conditionCount} conditions · {sortKey === "__none__" ? "Default sorting" : `Sorted by ${safeDefinition.columns.find((column) => column.key === sortKey)?.label ?? sortKey}`}</p></div>
         {editable ? <div className="w-full sm:w-72"><Label htmlFor="view-name">View name</Label><Input id="view-name" className="mt-2" value={name} onChange={(event) => setName(event.target.value)} placeholder={`${definition.label} view`} /></div> : null}
       </CardHeader>
       <div className="mt-5 overflow-x-auto border-y border-line-subtle px-4" role="tablist" aria-label="Saved view editor">{(["columns", "filters", "sort"] as EditorSection[]).map((item) => <button key={item} type="button" role="tab" aria-selected={section === item} onClick={() => setSection(item)} className={`px-4 py-3 text-sm font-medium capitalize ${section === item ? "border-b-2 border-primary text-primary" : "text-copy-secondary"}`}>{item}</button>)}</div>
       <CardBody>
         {section === "columns" ? <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
-          <div><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-copy-primary">Selected columns</h3><p className="text-xs text-copy-muted">Ordered from left to right in the module table.</p></div><Pill>{selectedOptions.length}</Pill></div><div className="mt-3 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default">{selectedOptions.map((column, index) => { const isProtected = column.is_protected || column.key === protectedColumnKey; return <div key={column.key} data-testid={`selected-column-${column.key}`} draggable={editable} onDragStart={() => setDraggedColumn(column.key)} onDragEnd={() => setDraggedColumn(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropColumn(column.key)} className="flex items-center gap-2 px-3 py-2"><GripVertical className="h-4 w-4 text-copy-muted" /><span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{index + 1}. {column.label}{isProtected ? " · Required" : ""}</span>{editable ? <><Button size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => moveColumn(column.key, "up")} aria-label={`Move ${column.label} up`}><ArrowUp /></Button><Button size="icon-sm" variant="ghost" disabled={index === selectedOptions.length - 1} onClick={() => moveColumn(column.key, "down")} aria-label={`Move ${column.label} down`}><ArrowDown /></Button><Button size="icon-sm" variant="ghost" disabled={isProtected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={isProtected ? "This column is required." : undefined}><EyeOff /></Button></> : null}</div>; })}</div></div>
+          <div><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-copy-primary">Selected columns</h3><p className="text-xs text-copy-muted">Ordered from left to right in the module table.</p></div><Chip>{selectedOptions.length}</Chip></div><div className="mt-3 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default">{selectedOptions.map((column, index) => { const isProtected = column.is_protected || column.key === protectedColumnKey; return <div key={column.key} data-testid={`selected-column-${column.key}`} draggable={editable} onDragStart={() => setDraggedColumn(column.key)} onDragEnd={() => setDraggedColumn(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropColumn(column.key)} className="flex items-center gap-2 px-3 py-2"><GripVertical className="h-4 w-4 text-copy-muted" /><span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{index + 1}. {column.label}{isProtected ? " · Required" : ""}</span>{editable ? <><Button size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => moveColumn(column.key, "up")} aria-label={`Move ${column.label} up`}><ArrowUp /></Button><Button size="icon-sm" variant="ghost" disabled={index === selectedOptions.length - 1} onClick={() => moveColumn(column.key, "down")} aria-label={`Move ${column.label} down`}><ArrowDown /></Button><Button size="icon-sm" variant="ghost" disabled={isProtected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={isProtected ? "This column is required." : undefined}><EyeOff /></Button></> : null}</div>; })}</div></div>
           <div><h3 className="text-sm font-semibold text-copy-primary">Available columns</h3><SearchBar value={availableSearch} onChange={setAvailableSearch} placeholder="Search available columns" className="mt-3 md:w-full" />{editable ? <div className="mt-3 max-h-72 divide-y divide-line-subtle overflow-y-auto rounded-[var(--radius-control)] border border-line-default">{filteredAvailable.length ? filteredAvailable.map((column) => <button key={column.key} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => addColumn(column.key)}><span>{column.label}</span><Plus className="h-4 w-4" /></button>) : <p className="p-3 text-sm text-copy-muted">{availableOptions.length ? "No columns match this search." : "All available columns are selected."}</p>}</div> : <p className="mt-3 text-sm text-copy-muted">Choose Edit view or Duplicate to change columns.</p>}</div>
           <p className="sr-only" aria-live="polite">{announcement}</p>
         </div> : section === "filters" ? editable ? <div className="space-y-5"><div className="max-w-md"><Label htmlFor="default-search">Default search</Label><Input id="default-search" className="mt-2" value={typeof safeFilters.search === "string" ? safeFilters.search : ""} onChange={(event) => saved.setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: event.target.value } }))} /></div><SavedViewConditionEditor filterFields={safeDefinition.filterFields} filters={safeFilters} onChange={(filters) => saved.setDraftConfig((current) => ({ ...current, filters }))} allConditions={allConditions} anyConditions={anyConditions} title="View filters" description="AND conditions must all match; OR conditions may match." wrapInCard={false} /></div> : <div className="space-y-3"><p className="text-sm text-copy-secondary">Default search: {typeof safeFilters.search === "string" && safeFilters.search ? safeFilters.search : "None"}</p><p className="text-sm text-copy-secondary">{allConditions.length} AND conditions · {anyConditions.length} OR conditions</p><p className="text-sm text-copy-muted">Choose Edit view or Duplicate to change filters.</p></div> : <div className="grid gap-4 sm:grid-cols-2"><div><Label>Sort column</Label><Select value={sortKey} disabled={!editable} onValueChange={(key) => saved.setDraftConfig((current) => ({ ...current, sort: key === "__none__" ? null : { key, direction: sortDirection } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Module default</SelectItem>{safeDefinition.columns.map((column) => <SelectItem key={column.key} value={column.key}>{column.label}</SelectItem>)}</SelectContent></Select></div><div><Label>Direction</Label><Select value={sortDirection} disabled={!editable || sortKey === "__none__"} onValueChange={(direction) => saved.setDraftConfig((current) => ({ ...current, sort: sortKey === "__none__" ? null : { key: sortKey, direction } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="asc">Ascending</SelectItem><SelectItem value="desc">Descending</SelectItem></SelectContent></Select></div></div>}
       </CardBody>
-      <CardFooter className="sticky bottom-0 z-20 flex flex-col gap-3 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between"><div><p className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : mode === "view" ? "Viewing saved configuration" : "All changes saved"}</p>{actionError ? <p role="alert" className="mt-1 text-sm text-state-danger">{actionError}</p> : null}</div><div className="flex flex-wrap gap-2">{mode === "view" && saved.selectedView && !saved.selectedView.is_system ? <><Button variant="outline" disabled={saved.selectedView.is_default || saved.isSaving} onClick={() => void setDefault()}>Set default</Button><Button variant="dangerGhost" disabled={saved.isSaving} onClick={() => void removeView()}><Trash2 />Delete</Button></> : null}{editable ? <><Button variant="ghost" disabled={saved.isSaving} onClick={discard}>Discard</Button><Button disabled={saved.isSaving || !name.trim() || (mode === "edit" && !editDirty)} onClick={() => void saveDraft()}>{saved.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : mode === "duplicate" ? "Create duplicate" : "Create view"}</Button></> : null}</div></CardFooter>
+      <CardFooter className="sticky bottom-0 z-20 flex flex-col gap-3 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-between"><div><p className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : mode === "view" ? "Viewing saved configuration" : "All changes saved"}</p>{actionError ? <p role="alert" className="mt-1 text-sm text-state-danger">{actionError}</p> : null}</div><div className="flex flex-wrap gap-2">{mode === "view" && saved.selectedView && !saved.selectedView.is_system ? <><Button variant="outline" disabled={saved.selectedView.is_default || saved.isSaving} onClick={() => void setDefault()}>Set default</Button><Button variant="destructiveGhost" disabled={saved.isSaving} onClick={() => void removeView()}><Trash2 />Delete</Button></> : null}{editable ? <><Button variant="ghost" disabled={saved.isSaving} onClick={discard}>Discard</Button><Button disabled={saved.isSaving || !name.trim() || (mode === "edit" && !editDirty)} onClick={() => void saveDraft()}>{saved.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : mode === "duplicate" ? "Create duplicate" : "Create view"}</Button></> : null}</div></CardFooter>
     </Card>
-  </div>;
+  </PageShell>;
 }

@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -56,7 +56,7 @@ const EMPTY_FORM: PageForm = {
   itemPrice: "",
   brandCompanyName: "",
   brandLogoUrl: "",
-  brandAccentColor: "#14b8a6",
+  brandAccentColor: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   proposalOverview: "",
   proposalScope: "",
   proposalTerms: "",
@@ -116,7 +116,7 @@ export default function ClientPageCreateForm() {
     if (!Number.isFinite(price) || price < 0) next.price = "Public price must be zero or greater.";
     if (!validOptionalUrl(form.brandLogoUrl)) next.logoUrl = "Enter a valid HTTP or HTTPS logo URL.";
     if (form.brandAccentColor.trim() && !/^#[0-9a-fA-F]{6}$/.test(form.brandAccentColor.trim())) {
-      next.accentColor = "Use a six-digit hex color such as #14b8a6.";
+      next.accentColor = "Use a six-digit hex color such as #14b8a6."; // design-exempt: validation copy, not a styling value (§2.5)
     }
     setErrors(next);
 
@@ -170,20 +170,18 @@ export default function ClientPageCreateForm() {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Create client page"
-        description="Prepare a customer-specific pricing snapshot, proposal, and document package."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
-      />
-
+    <PageShell
+      title="Create client page"
+      description="Prepare a customer-specific pricing snapshot, proposal, and document package."
+      actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
+    >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
           sidebar={
             <>
               <Card className="p-5">
                 <h2 className="text-sm font-semibold text-copy-primary">Sharing boundary</h2>
-                <p className="mt-2 text-sm leading-6 text-copy-secondary">
+                <p className="mt-2 text-p-sm text-copy-secondary">
                   This draft is private to CRM users until you explicitly publish a scoped, expiring client link.
                 </p>
               </Card>
@@ -368,6 +366,6 @@ export default function ClientPageCreateForm() {
           </FormSection>
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

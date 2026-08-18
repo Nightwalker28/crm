@@ -7,13 +7,15 @@ import { useMemo, useState } from "react";
 import { Boxes, RefreshCw, Repeat2, Save, Settings2, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -154,7 +156,16 @@ export default function ModulesPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
+    <PageShell
+      variant="settings"
+      title="Module Settings"
+      description="Enable modules and assign department or team access."
+      hasError={Boolean(error)}
+      errorDescription="Check your connection and try again. No module settings were changed."
+      onRetry={() => void refetch()}
+      backHref="/dashboard/settings"
+      backLabel="Back to Settings"
+    >
       <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
         Module availability applies tenant-wide. Department and team access is managed separately, while action access remains in{" "}
         <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & Permissions</Link>.
@@ -167,13 +178,7 @@ export default function ModulesPage() {
         </div>
       ) : null}
 
-      {error ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-6">
-          <h2 className="text-base font-semibold text-copy-primary">Module settings could not be loaded</h2>
-          <p className="mt-2 text-sm text-copy-secondary">Check your connection and try again.</p>
-          <Button type="button" className="mt-4" onClick={() => void refetch()}><RefreshCw />Try again</Button>
-        </div>
-      ) : (
+      {(
         <ModuleTableShell>
           <div className="flex flex-col gap-3 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
             <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
@@ -209,7 +214,7 @@ export default function ModulesPage() {
                     <TableRow
                       key={module.id}
                       tabIndex={0}
-                      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary"
+                      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus"
                       onClick={() => router.push(SETTINGS_ROUTES.moduleAccess(module.id))}
                       onKeyDown={(event) => {
                         if (event.key === "Enter" || event.key === " ") {
@@ -220,7 +225,7 @@ export default function ModulesPage() {
                     >
                       <TableCell>
                         <div className="font-medium text-copy-primary">{displayName}</div>
-                        <div className="mt-1 font-mono text-xs text-copy-muted">{module.name}</div>
+                        <div className="mt-1 text-xs text-copy-muted">{module.name}</div>
                       </TableCell>
                       <TableCell>
                         <div className="text-copy-primary">{module.display_name || displayName}</div>
@@ -228,13 +233,7 @@ export default function ModulesPage() {
                       </TableCell>
                       <TableCell className="text-copy-secondary">{duplicateModeLabel(module.import_duplicate_mode)}</TableCell>
                       <TableCell>
-                        <Pill
-                          bg={module.is_enabled ? "bg-state-success-muted" : undefined}
-                          text={module.is_enabled ? "text-state-success" : undefined}
-                          border={module.is_enabled ? "border-state-success/40" : undefined}
-                        >
-                          {module.is_enabled ? "Enabled" : "Disabled"}
-                        </Pill>
+                        <StatusValue status={{ tone: module.is_enabled ? "success" : "neutral", label: module.is_enabled ? "Enabled" : "Disabled" }} />
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2" onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>
@@ -259,7 +258,7 @@ export default function ModulesPage() {
       <Sheet open={editorOpen} onOpenChange={(open) => { if (!open) void closeEditor(); }}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
+          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
             <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
               <div>
                 <SheetTitle className="text-lg font-semibold text-copy-primary">Edit module settings</SheetTitle>
@@ -320,22 +319,14 @@ export default function ModulesPage() {
                   </Field>
                   <Field>
                     <FieldLabel>Module availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Module availability">
-                      <Button
-                        type="button"
-                        variant={draft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={draft.is_enabled}
-                        onClick={() => setDraft((current) => current ? { ...current, is_enabled: true } : current)}
-                        disabled={isSaving}
-                      >Enabled</Button>
-                      <Button
-                        type="button"
-                        variant={!draft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={!draft.is_enabled}
-                        onClick={() => setDraft((current) => current ? { ...current, is_enabled: false } : current)}
-                        disabled={isSaving}
-                      >Disabled</Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Module availability"
+                      value={draft.is_enabled}
+                      onValueChange={(is_enabled) => setDraft((current) => (current ? { ...current, is_enabled } : current))}
+                      trueLabel="Enabled"
+                      falseLabel="Disabled"
+                      disabled={isSaving}
+                    />
                     <FieldDescription>Disabled modules are hidden and blocked at the API level; existing records are retained.</FieldDescription>
                   </Field>
                 </FieldGroup>
@@ -352,6 +343,6 @@ export default function ModulesPage() {
           </SheetContent>
         </SheetPortal>
       </Sheet>
-    </div>
+    </PageShell>
   );
 }

@@ -5,14 +5,16 @@ import { Filter, Lock, MoreHorizontal, Plus, Settings2, Sparkles, X } from "luci
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean, SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
@@ -34,7 +36,7 @@ import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField }
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
   CUSTOM_FIELD_SUPPORTED_MODULES,
   MODULE_VIEW_DEFINITIONS,
@@ -523,23 +525,28 @@ export default function FieldsPage() {
   const canCreate = supportsCustomFields && Boolean(draft.field_key.trim() && draft.label.trim()) && !createMutation.isPending;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageToolbar>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
-              <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
-              <Plus />New Field
-            </Button>
-          </div>
-      </PageToolbar>
-
+    <PageShell
+      variant="settings"
+      title="Field Config"
+      description="Choose which fields each module shows, and add your own."
+      actions={(
+        <>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
+            <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
+            <Plus />New Field
+          </Button>
+        </div>
+        </>
+      )}
+    >
       {hasLoadError ? (
         <Card className="p-6" role="alert">
           <h2 className="font-semibold text-copy-primary">Fields could not be loaded</h2>
@@ -548,25 +555,18 @@ export default function FieldsPage() {
         </Card>
       ) : (
         <>
-          <Card className="overflow-visible">
+          <Card>
             <div className="border-b border-line-subtle p-4">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                 <SearchBar value={search} onChange={setSearch} placeholder="Search fields" className="md:w-72" />
-                <div className="scrollbar-hide flex gap-1 overflow-x-auto" aria-label="Field filters">
+                <SegmentedControl aria-label="Field filters" value={filter} onValueChange={setFilter} className="scrollbar-hide max-w-full overflow-x-auto">
                   {FILTERS.map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="sm"
-                      variant={filter === value ? "secondary" : "ghost"}
-                      aria-pressed={filter === value}
-                      onClick={() => setFilter(value)}
-                      className="capitalize"
-                    >
-                      {value === "all" ? <Filter /> : null}{value}
-                    </Button>
+                    <SegmentedItem key={value} value={value}>
+                      {value === "all" ? <Filter /> : null}
+                      {formatSnakeCaseLabel(value)}
+                    </SegmentedItem>
                   ))}
-                </div>
+                </SegmentedControl>
               </div>
               <p className="mt-3 text-xs text-copy-muted">{filteredCatalog.length} of {catalog.length} fields shown</p>
             </div>
@@ -582,16 +582,16 @@ export default function FieldsPage() {
                   >
                     <button
                       type="button"
-                      className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                      className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-focus"
                       aria-pressed={selectedField?.field_key === field.field_key && panelMode === "inspect"}
                       onClick={() => void selectField(field.field_key)}
                     >
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold text-copy-primary">{field.label}</span>
-                        <Pill>{fieldSourceLabel(field.field_source)}</Pill>
-                        {field.is_required ? <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">Required</Pill> : null}
-                        {!field.is_enabled ? <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">Disabled</Pill> : null}
-                        {field.is_protected ? <Pill bg="bg-action-primary-muted" text="text-primary" border="border-primary/40"><Lock className="mr-1 h-3 w-3" />Protected</Pill> : null}
+                        <Chip>{fieldSourceLabel(field.field_source)}</Chip>
+                        {field.is_required ? <StatusValue status={{ tone: "attention", label: "Required" }} /> : null}
+                        {!field.is_enabled ? <StatusValue status={{ tone: "critical", label: "Disabled" }} /> : null}
+                        {field.is_protected ? <Chip><Lock />Protected</Chip> : null}
                       </div>
                       <div className="mt-1 text-xs text-copy-muted">{field.field_key} · {friendlyFieldType(field.field_type)}</div>
                       {field.is_protected ? <p className="mt-2 text-xs text-copy-secondary">Required by this module and cannot be disabled.</p> : null}
@@ -636,7 +636,7 @@ export default function FieldsPage() {
               <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
               <SheetContent
                 side="right"
-                className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
+                className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none"
               >
                 {panelMode === "create" ? (
                   <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleCreate}>
@@ -678,9 +678,7 @@ export default function FieldsPage() {
                     <Input id="create-field-help" value={draft.help_text} onChange={(event) => setDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={createMutation.isPending} />
                   </Field>
                   <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                    <Checkbox id="create-field-required" checked={draft.is_required} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_required: checked === true }))} className="h-4 w-4 rounded border border-line-strong bg-surface-raised">
-                      <CheckboxIndicator className="h-3 w-3" />
-                    </Checkbox>
+                    <Checkbox id="create-field-required" checked={draft.is_required} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_required: checked === true }))} />
                     <FieldLabel htmlFor="create-field-required">Require a value when records are saved</FieldLabel>
                   </Field>
                       </FieldGroup>
@@ -732,35 +730,21 @@ export default function FieldsPage() {
                         <Input id="inspector-field-help" value={inspectorDraft.help_text} onChange={(event) => updateInspectorDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={isSaving} />
                       </Field>
                       <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                        <Checkbox id="inspector-field-required" checked={inspectorDraft.is_required} onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_required: checked === true }))} disabled={isSaving} className="h-4 w-4 rounded border border-line-strong bg-surface-raised">
-                          <CheckboxIndicator className="h-3 w-3" />
-                        </Checkbox>
+                        <Checkbox id="inspector-field-required" checked={inspectorDraft.is_required} onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_required: checked === true }))} disabled={isSaving} />
                         <FieldLabel htmlFor="inspector-field-required">Required</FieldLabel>
                       </Field>
                     </>
                   ) : null}
                   <Field>
                     <FieldLabel>Field availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Field availability">
-                      <Button
-                        type="button"
-                        variant={inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: true }))}
-                      >
-                        Enabled
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={!inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={!inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: false }))}
-                      >
-                        Disabled
-                      </Button>
-                    </div>
+                    <SegmentedBoolean
+                      aria-label="Field availability"
+                      value={inspectorDraft.is_enabled}
+                      onValueChange={(is_enabled) => updateInspectorDraft((current) => ({ ...current, is_enabled }))}
+                      trueLabel="Enabled"
+                      falseLabel="Disabled"
+                      disabled={selectedField.is_protected || isSaving}
+                    />
                     <FieldDescription>
                       {selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
                     </FieldDescription>
@@ -782,6 +766,6 @@ export default function FieldsPage() {
           </Sheet>
         </>
       )}
-    </div>
+    </PageShell>
   );
 }

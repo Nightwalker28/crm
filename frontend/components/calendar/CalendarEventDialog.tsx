@@ -185,7 +185,7 @@ export default function CalendarEventDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="3xl">
+        <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
             <DialogTitle>{event ? (canManage ? "Edit Event" : "Event details") : "Create Event"}</DialogTitle>
             <DialogIconClose />
@@ -279,7 +279,7 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2">
+                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
                   <div>
                     <FieldLabel htmlFor="calendar-all-day">All-day event</FieldLabel>
                     <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
@@ -289,15 +289,15 @@ export default function CalendarEventDialog({
                     checked={form.is_all_day}
                     onCheckedChange={(checked) => setForm((current) => ({ ...current, is_all_day: checked }))}
                     aria-label="All-day event"
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface data-[state=checked]:bg-primary"
+                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface data-[state=checked]:bg-primary"
                   >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
+                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
                   </Switch>
                 </div>
               </Field>
             </FieldGroup>
 
-            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
+            <div className="border-t border-line-subtle pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-copy-primary">Participants</div>
@@ -322,8 +322,8 @@ export default function CalendarEventDialog({
             {event && onDelete && canManage ? (
               <Button
                 type="button"
-                variant="outline"
-                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
+                variant="destructiveOutline"
+                className="mr-auto"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >

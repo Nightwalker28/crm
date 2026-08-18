@@ -29,7 +29,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
@@ -270,28 +270,27 @@ function OrderRecordFormEditor({
       ? `/dashboard/sales/orders/${orderId}`
       : "/dashboard/sales/orders";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={
-          mode === "edit" && updatedAt
-            ? `Last modified ${formatDateTime(updatedAt)}`
-            : undefined
-        }
-        title={mode === "edit" ? `Edit ${form.order_number}` : "Create order"}
-        description={
-          mode === "edit"
-            ? "Update customer links, line items, fulfillment details, and ownership."
-            : "Create an itemized order with customer, fulfillment, and payment context."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "order" : "orders"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      eyebrow={
+        mode === "edit" && updatedAt
+          ? `Last modified ${formatDateTime(updatedAt)}`
+          : undefined
+      }
+      title={mode === "edit" ? `Edit ${form.order_number}` : "Create order"}
+      description={
+        mode === "edit"
+          ? "Update customer links, line items, fulfillment details, and ownership."
+          : "Create an itemized order with customer, fulfillment, and payment context."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "order" : "orders"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -542,7 +541,7 @@ function OrderRecordFormEditor({
           </Field>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 

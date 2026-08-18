@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -107,15 +107,14 @@ export default function MailComposePage() {
 
   if (!sendConnections.length) {
     return (
-      <div className="grid gap-6">
-        <PageHeader
-          title="Compose email"
-          description="Write and send an email through a connected mailbox."
-          actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
-        />
+      <PageShell
+        title="Compose email"
+        description="Write and send an email through a connected mailbox."
+        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
+      >
         <Card className="p-6">
           <h2 className="text-base font-semibold text-copy-primary">No sending mailbox available</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-copy-secondary">
+          <p className="mt-2 max-w-2xl text-p-sm text-copy-secondary">
             Connect or repair a Gmail, Microsoft, or IMAP/SMTP mailbox before composing an email.
           </p>
           <div className="mt-5 flex flex-wrap gap-2">
@@ -123,18 +122,16 @@ export default function MailComposePage() {
             <Button variant="outline" asChild><Link href="/dashboard/settings/integrations">Manage integrations</Link></Button>
           </div>
         </Card>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Compose email"
-        description="Send an email through a connected mailbox and use CRM variables where record context is available."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
-      />
-
+    <PageShell
+      title="Compose email"
+      description="Send an email through a connected mailbox and use CRM variables where record context is available."
+      actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
+    >
       <RecordFormLayout
         sidebar={
           <>
@@ -160,7 +157,7 @@ export default function MailComposePage() {
             </Card>
             <Card className="p-5">
               <h2 className="text-sm font-semibold text-copy-primary">CRM variables</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">
+              <p className="mt-2 text-p-sm text-copy-secondary">
                 Variables resolve from linked record context or a matching contact recipient when the message is sent.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -168,7 +165,7 @@ export default function MailComposePage() {
                   <Button
                     key={token}
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={() => setBody((current) => `${current}${current ? " " : ""}${token}`)}
                   >
@@ -237,6 +234,6 @@ export default function MailComposePage() {
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

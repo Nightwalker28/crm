@@ -20,12 +20,12 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type DocumentItem, useDocumentActions, useDocumentStorageConnections, useDocumentUploadLimits } from "@/hooks/useDocuments";
@@ -93,17 +93,11 @@ function statusLabel(status: QueueStatus) {
   return status.charAt(0).toUpperCase() + status.slice(1);
 }
 
-function StatusPill({ status }: { status: QueueStatus }) {
+function QueueStatusValue({ status }: { status: QueueStatus }) {
   const failed = status === "failed" || status === "invalid";
   const complete = status === "complete";
   return (
-    <Pill
-      bg={complete ? "bg-state-success-muted" : failed ? "bg-state-danger-muted" : "bg-surface-muted"}
-      text={complete ? "text-state-success" : failed ? "text-state-danger" : "text-copy-secondary"}
-      border="border-line-default"
-    >
-      {statusLabel(status)}
-    </Pill>
+    <StatusValue status={{ tone: complete ? "success" : failed ? "critical" : "neutral", label: statusLabel(status) }} />
   );
 }
 
@@ -202,7 +196,7 @@ function TagsInput({ value, onChange, disabled = false, inputId }: { value: stri
       {value.length ? <div className="flex flex-wrap gap-2" aria-label="Document tags">{value.map((tag) => (
         <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
           {tag}
-          <button type="button" disabled={disabled} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onChange(value.filter((item) => item !== tag))} aria-label={`Remove ${tag} tag`}><X className="h-3 w-3" /></button>
+          <button type="button" disabled={disabled} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" onClick={() => onChange(value.filter((item) => item !== tag))} aria-label={`Remove ${tag} tag`}><X className="h-3 w-3" /></button>
         </span>
       ))}</div> : null}
       <Input id={inputId} value={draft} disabled={disabled || value.length >= 20} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} onBlur={addTag} placeholder="Type a tag and press Enter" />
@@ -351,7 +345,7 @@ export default function DocumentUploadFormPage() {
       role="button"
       tabIndex={0}
       aria-label={queue.length ? "Add more document files" : "Choose document files or drag and drop them here"}
-      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-strong bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-control bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus`}
       onClick={() => fileInputRef.current?.click()}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -377,14 +371,12 @@ export default function DocumentUploadFormPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Upload documents"
-        description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
-        actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
-      />
-
-      <Card className="mx-auto w-full max-w-6xl overflow-visible">
+    <PageShell
+      title="Upload documents"
+      description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
+    >
+      <Card className="mx-auto w-full max-w-6xl">
         <section>
           <div className="border-b border-line-subtle px-4 py-4 md:px-5">
             <h2 className="font-semibold text-copy-primary">Choose files</h2>
@@ -395,17 +387,17 @@ export default function DocumentUploadFormPage() {
             <div ref={selectionStatusRef} tabIndex={-1} className="sr-only" aria-live="polite">{queue.length ? `${queue.length} files in the upload queue.` : "No files selected."}</div>
 
           {queue.length ? (
-            <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line-default" aria-label="Upload queue">
-              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-default bg-surface-muted px-4 py-2 text-xs font-medium uppercase tracking-wide text-copy-muted md:grid">
+            <div className="mt-4 border-t border-line-subtle pt-4" aria-label="Upload queue">
+              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-subtle pb-2 text-xs font-medium text-copy-label md:grid">
                 <span>File</span><span>Destination</span><span>Links</span><span className="text-right">Status</span>
               </div>
-              <div className="divide-y divide-line-default">
+              <div className="divide-y divide-line-subtle">
                 {queue.map((item) => {
                   const canEdit = item.status === "queued" || item.status === "failed" || item.status === "invalid";
                   const itemAssociations = item.overrides?.associations ?? associations;
                   const resolvedProvider = item.document?.storage_provider ?? storageProvider;
                   return (
-                    <div key={item.id} className="px-4 py-3">
+                    <div key={item.id} className="py-3">
                       <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem]">
                         <div className="flex min-w-0 items-start gap-3">
                           {item.status === "complete" ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-state-success" aria-hidden="true" /> : <FileText className="mt-0.5 h-5 w-5 shrink-0 text-copy-muted" aria-hidden="true" />}
@@ -416,7 +408,7 @@ export default function DocumentUploadFormPage() {
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-copy-secondary"><ProviderIcon provider={resolvedProvider} />{providerLabel(resolvedProvider)}</div>
                         <div className="text-xs text-copy-secondary">{itemAssociations.length} {itemAssociations.length === 1 ? "record" : "records"}</div>
-                        <div className="flex justify-start md:justify-end"><StatusPill status={item.status} /></div>
+                        <div className="flex justify-start md:justify-end"><QueueStatusValue status={item.status} /></div>
                       </div>
 
                       {item.status === "uploading" ? <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label={`Uploading ${item.file.name}`} aria-valuenow={item.progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-primary motion-safe:transition-[width] motion-reduce:transition-none" style={{ width: `${item.progress}%` }} /></div> : null}
@@ -430,13 +422,13 @@ export default function DocumentUploadFormPage() {
                         {item.document && itemAssociations[0]?.href ? <Button asChild variant="outline" size="sm"><Link href={itemAssociations[0].href}>Open related record</Link></Button> : null}
                         {canEdit && item.status !== "invalid" ? (
                           <details className="group w-full">
-                            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-xs font-medium text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-xs font-medium text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
                               {item.overrides ? "Edit file overrides" : "Add file overrides"}<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
                             </summary>
                             <div className="mt-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
                               {!item.overrides ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-copy-secondary">This file currently inherits shared metadata and associations.</p><Button type="button" variant="outline" size="sm" onClick={() => enableOverrides(item)}>Customize this file</Button></div> : (
                                 <div className="grid gap-4">
-                                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium uppercase tracking-wide text-copy-muted">Per-file override</p><Button type="button" variant="ghost" size="sm" onClick={() => updateQueueItem(item.id, { overrides: undefined })}>Use shared values</Button></div>
+                                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium text-copy-label">Per-file override</p><Button type="button" variant="ghost" size="sm" onClick={() => updateQueueItem(item.id, { overrides: undefined })}>Use shared values</Button></div>
                                   <div className="grid gap-4 sm:grid-cols-2">
                                     <Field><FieldLabel htmlFor={`title-${item.id}`}>Display title</FieldLabel><Input id={`title-${item.id}`} value={item.overrides.displayName} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, displayName: event.target.value } })} /></Field>
                                     <Field><FieldLabel htmlFor={`category-${item.id}`}>Category</FieldLabel><Input id={`category-${item.id}`} value={item.overrides.category} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, category: event.target.value } })} /></Field>
@@ -496,7 +488,7 @@ export default function DocumentUploadFormPage() {
 
         <section className="border-t border-line-subtle">
           <details className="group">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:px-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:px-5">
               <div>
                 <h2 className="font-semibold text-copy-primary">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></h2>
                 <p className="mt-1 text-sm text-copy-muted">Apply the same category, tags, description, and related records to every pending file.</p>
@@ -526,7 +518,7 @@ export default function DocumentUploadFormPage() {
           </div>
         </div>
       </Card>
-    </div>
+    </PageShell>
   );
 
   async function uploadItemsForRow(item: QueueItem) {

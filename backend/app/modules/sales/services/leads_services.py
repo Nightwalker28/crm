@@ -23,6 +23,7 @@ from app.modules.platform.services.record_tags import hydrate_record_tags, norma
 from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_SET
 from app.modules.sales.repositories import leads_repository, organizations_repository
+from app.modules.sales.services.opportunity_contacts_services import sync_primary_contact_association
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
@@ -563,6 +564,9 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         )
         db.add(opportunity)
         db.flush()
+        # Conversion still produces exactly the same records; this only keeps the
+        # compatibility association in step with the legacy contact_id it just set.
+        sync_primary_contact_association(db, opportunity=opportunity, actor_user_id=assigned_to)
         created_deal = True
 
     lead.status = "converted"

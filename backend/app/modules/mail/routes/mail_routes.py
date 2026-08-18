@@ -14,8 +14,18 @@ from app.modules.mail.schema import (
     MailMessageResponse,
     MailProvider,
     MailProviderConnectResponse,
+    MailRecordAssociationCreateRequest,
+    MailRecordAssociationListResponse,
+    MailRecordAssociationResponse,
+    MailRecordSendRequest,
     MailSendRequest,
     MailSyncResponse,
+)
+from app.modules.mail.services.mail_associations import (
+    associate_mail_message,
+    disassociate_mail_message,
+    list_mail_message_associations,
+    serialize_mail_association,
 )
 from app.modules.mail.services.mail_services import (
     build_mail_context,
@@ -27,6 +37,7 @@ from app.modules.mail.services.mail_services import (
     list_mail_messages_cursor,
     list_mail_messages,
     send_mail_message,
+    send_record_context_mail,
     serialize_mail_message,
     sync_google_inbox,
     sync_imap_smtp_inbox,
@@ -133,6 +144,71 @@ def link_mail_message(
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 
 
+@router.get("/messages/{message_id}/associations", response_model=MailRecordAssociationListResponse)
+def get_mail_message_associations(
+    message_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "view")),
+):
+    associations = list_mail_message_associations(db, current_user=current_user, message_id=message_id)
+    return {
+        "results": [
+            MailRecordAssociationResponse.model_validate(serialize_mail_association(association))
+            for association in associations
+        ]
+    }
+
+
+@router.post(
+    "/messages/{message_id}/associations",
+    response_model=MailRecordAssociationListResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_mail_message_association(
+    message_id: int,
+    payload: MailRecordAssociationCreateRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    # Linking mail to a record edits mail. The service separately requires
+    # `view` on the target record's module, so a user cannot file mail against
+    # a record they are not allowed to see.
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    associations = associate_mail_message(
+        db,
+        current_user=current_user,
+        message_id=message_id,
+        payload=payload.model_dump(mode="json"),
+    )
+    return {
+        "results": [
+            MailRecordAssociationResponse.model_validate(serialize_mail_association(association))
+            for association in associations
+        ]
+    }
+
+
+@router.delete("/messages/{message_id}/associations/{association_id}", response_model=MailMessageResponse)
+def delete_mail_message_association(
+    message_id: int,
+    association_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    message = disassociate_mail_message(
+        db,
+        current_user=current_user,
+        message_id=message_id,
+        association_id=association_id,
+    )
+    return MailMessageResponse.model_validate(serialize_mail_message(message))
+
+
 @router.post("/send", response_model=MailMessageResponse)
 def send_mail(
     payload: MailSendRequest,
@@ -142,6 +218,30 @@ def send_mail(
     require_permission=Depends(require_action_access("mail", "edit")),
 ):
     message = send_mail_message(db, current_user=current_user, payload=payload.model_dump(mode="json"))
+    return MailMessageResponse.model_validate(serialize_mail_message(message))
+
+
+@router.post("/records/{module_key}/{entity_id}/send", response_model=MailMessageResponse)
+def send_record_context_mail_message(
+    module_key: str,
+    entity_id: str,
+    payload: MailRecordSendRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("mail")),
+    # Sending is a mail action, so it is gated on mail. The service separately
+    # requires `view` on the source record's module, `view` on message_templates
+    # when a template is cited, and `view` on documents when files are attached,
+    # so composing from a record never widens what the sender can reach.
+    require_permission=Depends(require_action_access("mail", "edit")),
+):
+    message = send_record_context_mail(
+        db,
+        current_user=current_user,
+        module_key=module_key,
+        entity_id=entity_id,
+        payload=payload.model_dump(mode="json"),
+    )
     return MailMessageResponse.model_validate(serialize_mail_message(message))
 
 

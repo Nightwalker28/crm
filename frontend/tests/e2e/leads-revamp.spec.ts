@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const fakeLeadId = 987654321;
+const moduleCacheKey = "lynk_modules:v4";
 const fakeLeadSummary = {
   lead: {
     lead_id: fakeLeadId,
@@ -15,7 +16,7 @@ const fakeLeadSummary = {
     source: "Browser verification",
     status: "qualified",
     notes: "Non-persistent browser fixture",
-    custom_fields: {},
+    custom_fields: { renewal_tier: "Gold" },
     updated_at: "2099-07-20T09:30:00Z",
     score: 45,
     score_grade: "warm",
@@ -29,6 +30,143 @@ const fakeLeadSummary = {
     next_follow_up_is_overdue: false,
   },
 };
+
+const leadDetailLayout = {
+  layout_id: null,
+  module_key: "sales_leads",
+  surface: "detail",
+  name: "Lead Details",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "contact",
+      label: "Contact",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "company", label: "Company", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 1, width: "half", visible: true, required: true, readonly: true },
+        { field_key: "phone", label: "Phone", field_type: "phone", field_source: "system", position: 2, width: "half", visible: false, required: false, readonly: true },
+        { field_key: "assigned_to", label: "Owner", field_type: "user_reference", field_source: "system", position: 3, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "team_id", label: "Team", field_type: "team_reference", field_source: "system", position: 4, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "next_follow_up_at", label: "Next follow-up", field_type: "datetime", field_source: "system", position: 5, width: "full", visible: true, required: false, readonly: true },
+        { field_key: "tags", label: "Tags", field_type: "tags", field_source: "system", position: 6, width: "full", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "custom_fields",
+      label: "Configured details",
+      position: 1,
+      region: "main",
+      collapsed_by_default: true,
+      fields: [
+        { field_key: "custom:renewal_tier", label: "Renewal tier", field_type: "text", field_source: "custom_field", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+  ],
+};
+
+const leadQuickCreateLayout = {
+  layout_id: null,
+  module_key: "sales_leads",
+  surface: "quick_create",
+  name: "Lead Quick Create",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "contact",
+      label: "Contact",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "first_name", label: "First name", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "last_name", label: "Last name", field_type: "text", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 2, width: "full", visible: true, required: true, readonly: false },
+      ],
+    },
+  ],
+};
+
+type WorkspacePermissionOverrides = Partial<Record<
+  "sales_leads" | "tasks" | "documents" | "sales_organizations" | "sales_contacts" | "sales_opportunities",
+  Partial<{
+    can_view: boolean;
+    can_create: boolean;
+    can_edit: boolean;
+    can_delete: boolean;
+  }>
+>>;
+
+async function stubWorkspacePermissions(page: Page, overrides: WorkspacePermissionOverrides = {}) {
+  const moduleNames = [
+    "sales_leads",
+    "tasks",
+    "documents",
+    "sales_organizations",
+    "sales_contacts",
+    "sales_opportunities",
+  ] as const;
+  const modules = moduleNames.map((name, index) => ({
+    id: 100 + index,
+    name,
+    is_enabled: true,
+    actions: {
+      can_view: true,
+      can_create: true,
+      can_edit: true,
+      can_delete: true,
+      can_restore: false,
+      can_export: false,
+      can_configure: false,
+      ...overrides[name],
+    },
+  }));
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(modules) }),
+  );
+  await page.evaluate(
+    ({ cacheKey, cachedModules }) => window.sessionStorage.setItem(cacheKey, JSON.stringify(cachedModules)),
+    { cacheKey: moduleCacheKey, cachedModules: modules },
+  );
+}
+
+async function stubEmptyWorkspacePanels(page: Page) {
+  await page.route("**/tasks?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], total: 0 }) }),
+  );
+  await page.route("**/record-comments?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], total: 0 }) }),
+  );
+  await page.route("**/documents?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], total: 0 }) }),
+  );
+  await page.route("**/activity/record?**", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], total: 0 }) }),
+  );
+  // Relationship activity projection — separate surface from the audit log above.
+  await page.route("**/records/*/*/activity?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items: [],
+        next_cursor: null,
+        has_more: false,
+        limit: 20,
+        available_types: ["email", "follow_up", "meeting", "note", "task", "whatsapp"],
+        omitted_types: [],
+      }),
+    }),
+  );
+}
 
 async function mockLeadRelationshipOptions(page: Page) {
   await page.route("**/linked-record-options/users?**", async (route) => {
@@ -56,6 +194,147 @@ async function mockLeadRelationshipOptions(page: Page) {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubWorkspacePermissions(page);
+  await page.route("**/record-layouts/sales_leads/detail/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(leadDetailLayout) }),
+  );
+});
+
+// The primary create interaction on the Leads list is Quick Create, so this baseline now runs
+// the journey through it. The canonical /dashboard/sales/leads/new route is still first-class
+// and is covered end to end by leads-quick-create.spec.ts ("More details").
+test("Lead journey behavior baseline: filter, create, open, and add a note", async ({ page }) => {
+  const createdLeadId = 987654399;
+  const createdLeadEmail = "journey.baseline@example.test";
+  const noteBody = "Baseline next action recorded.";
+  let createdLeadPayload: Record<string, unknown> | null = null;
+  let createdNotePayload: Record<string, unknown> | null = null;
+  let noteWasCreated = false;
+
+  await page.route("**/users/saved-views/sales_leads?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ views: [] }),
+    }),
+  );
+  await page.route("**/module-fields/sales_leads", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/custom-fields/sales_leads", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+  await page.route("**/record-layouts/sales_leads/quick_create/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(leadQuickCreateLayout) }),
+  );
+  await page.route("**/sales/leads/search?**", (route) => {
+    const requestUrl = new URL(route.request().url());
+    expect(requestUrl.searchParams.get("search")).toBe("Baseline");
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          lead_id: fakeLeadId,
+          first_name: "Existing",
+          last_name: "Baseline",
+          company: "Lynk QA",
+          primary_email: "existing.baseline@example.test",
+          status: "new",
+          assigned_to: 7,
+          assigned_to_name: "Ada Owner",
+          created_time: "2099-07-20T09:30:00Z",
+          tags: [],
+          custom_fields: {},
+        }],
+        range_start: 1,
+        range_end: 1,
+        total_count: 1,
+        total_pages: 1,
+        page: 1,
+      }),
+    });
+  });
+  await page.route("**/api/v1/sales/leads", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    createdLeadPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ lead_id: createdLeadId }),
+    });
+  });
+  await page.route(`**/sales/leads/${createdLeadId}/summary`, (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        lead: {
+          ...fakeLeadSummary.lead,
+          lead_id: createdLeadId,
+          first_name: "Journey",
+          last_name: "Baseline",
+          primary_email: createdLeadEmail,
+          status: "new",
+        },
+      }),
+    }),
+  );
+  await page.route("**/record-comments?**", async (route) => {
+    if (route.request().method() === "POST") {
+      createdNotePayload = route.request().postDataJSON() as Record<string, unknown>;
+      noteWasCreated = true;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ id: 73, body: noteBody }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: noteWasCreated
+          ? [{ id: 73, body: noteBody, author_name: "System Admin", created_at: "2099-07-20T09:35:00Z" }]
+          : [],
+      }),
+    });
+  });
+
+  await page.goto("/dashboard/sales/leads");
+  await page.getByPlaceholder("Search leads").fill("Baseline");
+  await expect(page.getByText("Existing Baseline", { exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Create lead" }).click();
+  const quickCreate = page.getByRole("dialog", { name: "Create lead" });
+  await quickCreate.getByLabel("First name").fill("Journey");
+  await quickCreate.getByLabel("Last name").fill("Baseline");
+  await quickCreate.getByLabel("Email").fill(createdLeadEmail);
+  await quickCreate.getByRole("button", { name: "Create & open" }).click();
+
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${createdLeadId}$`));
+  await expect(page.locator("[data-record-workspace-title]", { hasText: "Journey Baseline" })).toBeVisible();
+  expect(createdLeadPayload).toMatchObject({
+    first_name: "Journey",
+    last_name: "Baseline",
+    primary_email: createdLeadEmail,
+  });
+
+  // The note is written from the Timeline composer now, not a header button that focused a
+  // panel further down the page (design.md 4.7).
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await page.getByRole("radio", { name: "Note" }).click();
+  await page.getByLabel("Add internal note").fill(noteBody);
+  await page.getByRole("button", { name: "Add note" }).click();
+
+  await expect.poll(() => createdNotePayload).not.toBeNull();
+  expect(createdNotePayload).toMatchObject({ body: noteBody, mentioned_user_ids: [] });
+  // The composer clears on success; the entry itself comes back through the feed.
+  await expect(page.getByLabel("Add internal note")).toHaveValue("");
 });
 
 test("Leads list keeps its controls usable in a narrow viewport", async ({ page }) => {
@@ -70,7 +349,8 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
             module_key: "sales_leads",
             name: "All leads",
             config: {
-              visible_columns: ["first_name", "last_name", "company", "status"],
+              // score_grade carries the "Warm" pill this test asserts on; score shows the number.
+              visible_columns: ["score_grade", "first_name", "last_name", "company", "status"],
               filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
               sort: null,
             },
@@ -82,7 +362,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
             module_key: "sales_leads",
             name: "My qualified leads",
             config: {
-              visible_columns: ["first_name", "company", "status"],
+              visible_columns: ["score_grade", "first_name", "company", "status"],
               filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
               sort: null,
             },
@@ -130,7 +410,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await expect(page.getByRole("heading", { name: "Leads" })).toBeVisible();
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
   await expect(page.getByRole("button", { name: /Filters/ })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create lead" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await expect(page.getByRole("tablist", { name: "Record views" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /All leads/ })).toHaveAttribute("aria-selected", "true");
@@ -140,12 +420,12 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await page.keyboard.press("ArrowRight");
   await expect(page.getByRole("tab", { name: "My qualified leads" })).toHaveAttribute("aria-selected", "true");
 
-  const tableRegion = page.getByRole("region", { name: "Data table" });
+  const tableRegion = page.getByRole("region", { name: "Leads" });
   await expect(tableRegion).toBeVisible();
   const tableBounds = await tableRegion.boundingBox();
   expect(tableBounds?.height).toBeLessThan(400);
-  await expect(tableRegion.locator("span.bg-state-success-muted", { hasText: "Qualified" })).toBeVisible();
-  await expect(tableRegion.locator("span.bg-state-warning-muted", { hasText: "Warm" })).toBeVisible();
+  await expect(tableRegion.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Qualified" })).toBeVisible();
+  await expect(tableRegion.locator('[data-slot="status-value"][data-tone="category"]', { hasText: "Warm" })).toBeVisible();
   const stickyPositions = await tableRegion.locator("thead th").evaluateAll((headers) =>
     headers.slice(0, 2).map((header) => window.getComputedStyle(header).position),
   );
@@ -160,6 +440,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
 
 test("Leads routed workflow exposes create, detail, edit, conversion, and deep-linked tabs", async ({ page }) => {
   await mockLeadRelationshipOptions(page);
+  await stubEmptyWorkspacePanels(page);
   await page.route(`**/sales/leads/${fakeLeadId}/summary`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) });
   });
@@ -167,13 +448,17 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.goto("/dashboard/sales/leads/new");
   await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
   await page.getByRole("button", { name: "Create lead" }).click();
-  await expect(page.getByRole("alert")).toHaveText("Email is required.");
+  // Next renders an empty route announcer with role="alert", so match the form's own error
+  // slot rather than every alert on the page.
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
   await expect(page.getByLabel("Email")).toBeFocused();
 
   const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
   await ownerPicker.fill("Ada");
+  // ArrowDown no-ops until the debounced lookup returns, so wait for the option to exist.
+  await expect(page.getByRole("option", { name: /Ada Owner/ })).toBeVisible();
   await ownerPicker.press("ArrowDown");
-  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /users-7$/);
+  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /-user-7$/);
   await ownerPicker.press("Enter");
   await expect(ownerPicker).toHaveValue("Ada Owner");
 
@@ -189,18 +474,46 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByLabel("Next follow-up")).toBeVisible();
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
-  await expect(page.getByRole("heading", { name: "Browser Fixture" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(page.getByText("Revenue", { exact: true })).toBeVisible();
-  await expect(page.getByText("Enterprise", { exact: true })).toBeVisible();
-  await expect(page.getByText("Warm", { exact: true })).toBeVisible();
-  await expect(page.locator("div.bg-state-warning-muted", { hasText: "Lead Score" })).toBeVisible();
-  await expect(page.getByText("Next follow-up", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]", { hasText: "Browser Fixture" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // R9: state and relationships are in the spine, and the spine is the only editable
+  // region. Details carries read-only fields, and nothing else.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(spine.getByText("Revenue", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Relationship context" })).toHaveCount(0);
+  // The four tabs are fixed and owned by the archetype, so nothing nests inside them.
+  await expect(page.getByRole("tab")).toHaveCount(4);
+  // Owner, team, status and next follow-up are the spine's, and design.md 4.7 says a field
+  // the spine owns is not drawn again in Details — so they are asserted above, not here.
+  await expect(page.locator("[data-record-layout]").getByText("Ada Owner", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-record-layout]").getByText("Revenue", { exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-record-layout]").getByText("Enterprise", { exact: true })).toBeVisible();
+  // "Warm" is both a tag and the score grade; this line is about the tag, like the one above.
+  await expect(page.locator("[data-layout-field='tags']").getByText("Warm", { exact: true })).toBeVisible();
+  await expect(page.locator('[data-slot="lead-score"]')).toBeVisible();
+  await expect(page.locator("[data-record-layout]").getByText("Next follow-up", { exact: true })).toHaveCount(0);
+  await expect(spine.getByText("Next follow-up", { exact: true })).toBeVisible();
+  const detailFields = page.locator("[data-layout-section='contact'] [data-layout-field]");
+  await expect(detailFields.nth(0)).toHaveAttribute("data-layout-field", "company");
+  await expect(detailFields.nth(1)).toHaveAttribute("data-layout-field", "primary_email");
+  await expect(page.locator("[data-layout-field='phone']")).toHaveCount(0);
+  await page.locator("[data-layout-section='custom_fields'] summary").click();
+  await expect(page.getByText("Renewal tier", { exact: true })).toBeVisible();
+  await expect(page.getByText("Gold", { exact: true })).toBeVisible();
 
-  await page.getByRole("tab", { name: "Audit history" }).click();
-  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=audit$`));
-  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("tab", { name: "Files" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=files$`));
+  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+
+  // History is a sheet hung off the spine's "Updated" line rather than a fifth tab, so the
+  // tab set stays at the archetype's four (design.md 4.7).
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  await expect(page.getByRole("dialog", { name: "History" })).toBeVisible();
+  await page.keyboard.press("Escape");
 
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit lead" })).toBeVisible();
@@ -222,6 +535,394 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByRole("button", { name: "Confirm conversion" })).toBeVisible();
 });
 
+test("Lead workspace gates mutation regions without hiding view-only context", async ({ page }) => {
+  await stubWorkspacePermissions(page, {
+    sales_leads: { can_edit: false, can_delete: false },
+    tasks: { can_create: false, can_edit: false },
+    documents: { can_view: true, can_create: true, can_edit: true, can_delete: true },
+    sales_organizations: { can_create: false },
+    sales_contacts: { can_create: false },
+    sales_opportunities: { can_create: false },
+  });
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.route("**/documents?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        results: [{
+          id: 81,
+          title: "Lead brief",
+          original_filename: "lead-brief.pdf",
+          content_type: "application/pdf",
+          extension: "pdf",
+          file_size_bytes: 1024,
+          storage_provider: "local",
+          provider_status: "available",
+          tags: [],
+          is_template: false,
+          created_at: "2099-07-20T09:30:00Z",
+          updated_at: "2099-07-20T09:30:00Z",
+          links: [],
+          client_shares: [],
+        }],
+        total: 1,
+      }),
+    }),
+  );
+  await page.route("**/documents/81/versions", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
+  );
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+
+  await expect(page.locator("[data-record-workspace-title]", { hasText: "Browser Fixture" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Convert" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Email", exact: true })).toBeVisible();
+  // View-only keeps the record readable and the spine's state field un-editable: the
+  // status renders as the same StatusValue, without the combobox R6 gives an editor.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine).toBeVisible();
+  await expect(spine.getByRole("combobox", { name: "Status" })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
+  await expect(page.getByRole("tab", { name: "Details" })).toBeVisible();
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByLabel("Add internal note")).toHaveCount(0);
+  await expect(page.getByLabel("Follow-up note")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Add task" })).toHaveCount(0);
+  await page.getByRole("tab", { name: "Files" }).click();
+  await expect(page.getByRole("button", { name: "Upload Document" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "View" })).toBeVisible();
+  await page.getByRole("button", { name: "Versions" }).click();
+  await expect(page.getByRole("button", { name: "New Version" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Mark Template" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
+});
+
+test("Lead conversion uses permitted existing targets without creating forbidden records", async ({ page }) => {
+  let conversionPayload: Record<string, unknown> | null = null;
+  await stubWorkspacePermissions(page, {
+    sales_organizations: { can_view: true, can_create: false },
+    sales_contacts: { can_view: true, can_create: false },
+    sales_opportunities: { can_create: false },
+  });
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.route("**/sales/organizations/search/**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ org_id: 51, org_name: "Existing Account" }] }),
+    }),
+  );
+  await page.route("**/sales/contacts/search?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ contact_id: 61, first_name: "Existing", last_name: "Contact", primary_email: "existing@example.test" }] }),
+    }),
+  );
+  await page.route(`**/sales/leads/${fakeLeadId}/convert`, async (route) => {
+    conversionPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ account_id: 51, contact_id: 61, deal_id: null }),
+    });
+  });
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+  await expect(page.getByRole("link", { name: "Convert" })).toBeVisible();
+  await page.getByRole("link", { name: "Convert" }).click();
+
+  await expect(page.getByRole("switch", { name: "Create account" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Create account" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Create contact" })).toBeDisabled();
+  await expect(page.getByRole("switch", { name: "Create contact" })).not.toBeChecked();
+  await expect(page.getByRole("switch", { name: "Create opportunity" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Confirm conversion" })).toBeDisabled();
+
+  await page.getByPlaceholder("Search accounts").fill("Existing");
+  await page.getByRole("option", { name: "Existing Account" }).click();
+  await page.getByPlaceholder("Search contacts").fill("Existing");
+  await page.getByRole("option", { name: /Existing Contact/ }).click();
+  await expect(page.getByRole("button", { name: "Confirm conversion" })).toBeEnabled();
+  await page.getByRole("button", { name: "Confirm conversion" }).click();
+
+  await expect.poll(() => conversionPayload).not.toBeNull();
+  expect(conversionPayload).toMatchObject({
+    create_account: false,
+    account_id: 51,
+    create_contact: false,
+    contact_id: 61,
+    create_deal: false,
+  });
+});
+
+test("Lead conversion is unavailable without a permitted account path", async ({ page }) => {
+  await stubWorkspacePermissions(page, {
+    sales_organizations: { can_view: false, can_create: false },
+  });
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+  await expect(page.getByRole("link", { name: "Convert" })).toHaveCount(0);
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}/convert`);
+  await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
+});
+
+test("Lead workspace fails optional fields closed and excludes disabled names from linked tasks", async ({ page }) => {
+  let releaseFieldConfigs!: () => void;
+  const fieldConfigGate = new Promise<void>((resolve) => {
+    releaseFieldConfigs = resolve;
+  });
+  let createdTaskPayload: Record<string, unknown> | null = null;
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.route("**/module-fields/sales_leads", async (route) => {
+    await fieldConfigGate;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([
+        { module_key: "sales_leads", field_key: "first_name", label: "First name", field_source: "system", is_enabled: false, is_protected: false, sort_order: 0 },
+        { module_key: "sales_leads", field_key: "last_name", label: "Last name", field_source: "system", is_enabled: false, is_protected: false, sort_order: 1 },
+        { module_key: "sales_leads", field_key: "phone", label: "Phone", field_source: "system", is_enabled: false, is_protected: false, sort_order: 2 },
+      ]),
+    });
+  });
+  await page.route("**/tasks/options", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ users: [], teams: [] }) }),
+  );
+  await page.route("**/tasks", async (route) => {
+    if (route.request().method() !== "POST") {
+      await route.continue();
+      return;
+    }
+    createdTaskPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ id: 901, title: "Safe linked task", status: "todo", priority: "medium" }),
+    });
+  });
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+  await expect(page.locator("[data-record-workspace-title]", { hasText: fakeLeadSummary.lead.primary_email })).toBeVisible();
+  await expect(page.getByText(fakeLeadSummary.lead.phone, { exact: true })).toHaveCount(0);
+  await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
+
+  releaseFieldConfigs();
+  await expect(page.locator("[data-record-workspace-title]", { hasText: fakeLeadSummary.lead.primary_email })).toBeVisible();
+  await expect(page.getByText("Browser Fixture", { exact: true })).toHaveCount(0);
+  await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
+
+  await page.getByRole("tab", { name: "Tasks" }).click();
+  await page.getByRole("button", { name: "Add task" }).click();
+  await page.getByLabel("Task title").fill("Safe linked task");
+  await page.getByRole("button", { name: "Create linked task" }).click();
+  await expect.poll(() => createdTaskPayload).not.toBeNull();
+  expect(createdTaskPayload).toMatchObject({
+    source_label: fakeLeadSummary.lead.primary_email,
+    source_module_key: "sales_leads",
+    source_entity_id: String(fakeLeadId),
+  });
+});
+
+test("Lead workspace stacks its spine above the content region on mobile", async ({ page }) => {
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+
+  // Below `lg` the spine stacks above the content region and the page reverts to a
+  // document scroll — design.md 4.7 calls that the deliberate fallback, not a feature.
+  const spine = page.locator('[data-slot="record-spine"]');
+  const content = page.locator('[data-slot="record-content"]');
+  await expect(spine).toBeVisible();
+  await expect(content).toBeVisible();
+  const spineBounds = await spine.boundingBox();
+  const contentBounds = await content.boundingBox();
+  expect(contentBounds?.y).toBeGreaterThan((spineBounds?.y ?? 0) + (spineBounds?.height ?? 0) - 1);
+  expect(Math.abs((contentBounds?.x ?? 0) - (spineBounds?.x ?? 0))).toBeLessThan(2);
+  await expect(page.getByRole("tab", { name: "Files" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
+test("Lead workspace routes its tab set through ?tab= and falls back to Details", async ({ page }) => {
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+
+  // The archetype owns the only strip, so the pre-5.3 region anchors (`activity`,
+  // `related`, `notes`) are no longer tab ids. An unknown one is not an error state — it
+  // falls back to the first tab rather than rendering nothing.
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=notes`);
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=tasks`);
+  await expect(page.getByRole("tab", { name: "Tasks" })).toHaveAttribute("aria-selected", "true");
+  // R2: Edit carries the tab across the round trip, so editing from Tasks returns to Tasks.
+  await expect(page.getByRole("link", { name: "Edit" })).toHaveAttribute("href", /\?tab=tasks$/);
+});
+
+test("Lead workspace distinguishes denied and missing records", async ({ page }) => {
+  const deniedLeadId = 987654322;
+  const missingLeadId = 987654323;
+  await page.route(`**/sales/leads/${deniedLeadId}/summary`, (route) =>
+    route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Forbidden" }) }),
+  );
+  await page.route(`**/sales/leads/${missingLeadId}/summary`, (route) =>
+    route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Not found" }) }),
+  );
+
+  await page.goto(`/dashboard/sales/leads/${deniedLeadId}`);
+  await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
+
+  await page.goto(`/dashboard/sales/leads/${missingLeadId}`);
+  await expect(page.getByRole("heading", { name: "Lead not found" })).toBeVisible();
+});
+
+test("Lead detail layout failure stays contained to Details", async ({ page }) => {
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.route("**/record-layouts/sales_leads/detail/resolved", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "Layout failed" }) }),
+  );
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}`);
+
+  // The layout only feeds Details. The spine and the other three tabs are unaffected —
+  // that containment is the point of the archetype owning the regions.
+  await expect(page.locator('[data-slot="record-spine"]')).toBeVisible();
+  await expect(page.getByText("The lead details layout could not be loaded.")).toBeVisible();
+  await page.getByRole("tab", { name: "Timeline" }).click();
+  await expect(page.getByRole("tab", { name: "Timeline" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByText("The lead details layout could not be loaded.")).toHaveCount(0);
+});
+
+test("Lead timeline renders each source and stays separate from audit", async ({ page }) => {
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+
+  const activityItem = (
+    type: string,
+    id: number,
+    occurredAt: string,
+    title: string,
+    extra: Record<string, unknown> = {},
+  ) => ({
+    id: `${type}:${id}`,
+    type,
+    occurred_at: occurredAt,
+    title,
+    summary: null,
+    direction: null,
+    status: null,
+    actor: { user_id: 7, name: "Ada Owner" },
+    source: { module_key: type, record_id: String(id) },
+    record: { module_key: "sales_leads", entity_id: String(fakeLeadId) },
+    capabilities: [],
+    meta: {},
+    ...extra,
+  });
+
+  const allItems = [
+    activityItem("email", 1, "2026-08-05T10:00:00+00:00", "Proposal", {
+      direction: "outbound",
+      summary: "Attached is the proposal.",
+      meta: { from_email: "rep@example.com", to_recipients: ["ada@example.com"] },
+    }),
+    activityItem("meeting", 2, "2026-08-04T09:00:00+00:00", "Discovery call", {
+      meta: { start_at: "2026-08-04T09:00:00+00:00", location: "Zoom", participants: ["Ada Owner"] },
+    }),
+    activityItem("follow_up", 3, "2026-08-03T08:00:00+00:00", "Call follow-up logged", {
+      summary: "Left a voicemail.",
+      meta: { channel: "call" },
+    }),
+  ];
+
+  await page.route("**/records/sales_leads/*/activity?**", (route) => {
+    const url = new URL(route.request().url());
+    const types = url.searchParams.get("types");
+    const items = types ? allItems.filter((item) => types.split(",").includes(item.type)) : allItems;
+    return route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        items,
+        next_cursor: null,
+        has_more: false,
+        limit: 20,
+        available_types: ["email", "follow_up", "meeting", "note", "task", "whatsapp"],
+        omitted_types: [],
+      }),
+    });
+  });
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
+
+  const feed = page.getByRole("list", { name: "Timeline entries" });
+  await expect(feed.getByRole("listitem")).toHaveCount(3);
+  // Domain-specific bodies, not flattened generic rows.
+  await expect(feed.getByText("ada@example.com")).toBeVisible();
+  await expect(feed.getByText("Zoom")).toBeVisible();
+  await expect(feed.getByText("Left a voicemail.")).toBeVisible();
+
+  // The composer also offers an "Email" mode, so scope to the filter strip.
+  const filters = page.getByRole("group", { name: "Filter the timeline by type" });
+  await filters.getByRole("radio", { name: "Email", exact: true }).click();
+  await expect(feed.getByRole("listitem")).toHaveCount(1);
+  await expect(feed.getByText("Proposal", { exact: true })).toBeVisible();
+
+  // Audit history is a separate store and still never mixes into the feed — it opens from
+  // the spine rather than owning a tab (design.md 4.7).
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
+  await page.locator('[data-slot="record-spine-meta"]').getByRole("button", { name: "History" }).click();
+  const history = page.getByRole("dialog", { name: "History" });
+  await expect(history).toBeVisible();
+  await expect(history.getByRole("list", { name: "Timeline entries" })).toHaveCount(0);
+});
+
+test("Lead timeline keeps loaded history when the projection fails", async ({ page }) => {
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+  await page.route("**/records/sales_leads/*/activity?**", (route) =>
+    route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "boom" }) }),
+  );
+
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=timeline`);
+  await expect(page.getByText("The timeline could not be loaded.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
+});
+
 test("Lead tags support keyboard suggestions and redact lookup failures", async ({ page }) => {
   let shouldFail = false;
   await page.route("**/linked-record-options/tags?**", (route) =>
@@ -235,7 +936,8 @@ test("Lead tags support keyboard suggestions and redact lookup failures", async 
   );
 
   await page.goto("/dashboard/sales/leads/new");
-  const tagInput = page.getByLabel("Tags");
+  // Exact: the tag input's chip container is labelled "Selected tags", which a substring match also picks up.
+  const tagInput = page.getByLabel("Tags", { exact: true });
   await tagInput.fill("Ent");
   await expect(page.getByRole("option", { name: "Enterprise" })).toBeVisible();
   await tagInput.press("ArrowDown");
@@ -284,7 +986,7 @@ test("Lead custom fields are labeled and preserve required false boolean values"
       ]),
     }),
   );
-  await page.route("**/sales/leads", async (route) => {
+  await page.route("**/api/v1/sales/leads", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;

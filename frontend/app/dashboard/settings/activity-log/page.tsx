@@ -1,18 +1,17 @@
 "use client";
 
+import type { StatusTone } from "@/lib/statusStyles";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, RefreshCw } from "lucide-react";
 
 import { apiFetch } from "@/lib/api";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import Pagination from "@/components/ui/Pagination";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 
@@ -56,17 +55,17 @@ function formatActivityLabel(value: string) {
     .join(" ");
 }
 
-function actionPillStyle(action: string) {
+function actionTone(action: string): StatusTone {
   if (action === "create" || action === "restore" || action.endsWith(".created")) {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+    return "success";
   }
   if (action === "soft_delete" || action === "delete" || action.endsWith(".deleted") || action.endsWith(".failed")) {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+    return "critical";
   }
   if (action === "update" || action === "edit" || action.endsWith(".updated")) {
-    return { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" };
+    return "neutral";
   }
-  return {};
+  return "neutral";
 }
 
 async function fetchActivityLog(page: number, pageSize: number, action: string): Promise<ActivityResponse> {
@@ -94,108 +93,73 @@ export default function ActivityLogPage() {
   const data = query.data;
 
   return (
-    <div className="flex flex-col gap-5 text-copy-primary">
-      <PageToolbar>
-          <>
-            <Select
-              value={actionFilter}
-              onValueChange={(value) => {
-                setActionFilter(value);
-                setPage(1);
-              }}
-            >
-              <SelectTrigger className="w-48" aria-label="Activity action">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {ACTION_OPTIONS.map((option) => (
-                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Button type="button" variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}>
-              <RefreshCw />
-              Refresh
-            </Button>
-          </>
-      </PageToolbar>
-
-      <ModuleTableShell isRefreshing={query.isFetching && !query.isLoading}>
-        <Table className="min-w-[1080px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Action</TableHead>
-              <TableHead>Module</TableHead>
-              <TableHead>Record</TableHead>
-              <TableHead>Actor</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Created</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {query.isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-sm text-copy-muted" aria-busy="true">Loading activity...</TableCell>
-              </TableRow>
-            ) : query.error ? (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <div role="alert" className="flex flex-col items-center px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-copy-primary">Activity could not be loaded.</p>
-                    <p className="mt-1 text-sm text-copy-muted">Check your connection and try again.</p>
-                    <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => void query.refetch()}>
-                      <RefreshCw />
-                      Try again
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : data?.results?.length ? (
-              data.results.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <Pill {...actionPillStyle(item.action)}>{formatActivityLabel(item.action)}</Pill>
-                  </TableCell>
-                  <TableCell className="font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</TableCell>
-                  <TableCell>
-                    <div className="text-copy-secondary">{formatActivityLabel(item.entity_type)}</div>
-                    <div className="text-xs text-copy-muted">#{item.entity_id}</div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-secondary">
-                    {item.actor_user_id ? `User #${item.actor_user_id}` : "System"}
-                  </TableCell>
-                  <TableCell className="max-w-[420px] text-copy-secondary">
-                    {item.description || `${formatActivityLabel(item.entity_type)} ${item.entity_id}`}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-muted">{formatDateTime(item.created_at)}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <EmptyState
-                    icon={ClipboardList}
-                    title={actionFilter === "all" ? "No activity recorded" : "No matching activity"}
-                    description={actionFilter === "all" ? "Audited platform changes will appear here." : "Choose another action filter to review different events."}
-                    action={actionFilter !== "all" ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => {
-                          setActionFilter("all");
-                          setPage(1);
-                        }}
-                      >
-                        Clear filter
-                      </Button>
-                    ) : undefined}
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+    <PageShell
+      variant="settings"
+      title="Activity Log"
+      description="Review who changed what, and when."
+      actions={(
+        <>
+          <Select
+            value={actionFilter}
+            onValueChange={(value) => {
+              setActionFilter(value);
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="w-48" aria-label="Activity action">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ACTION_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" variant="outline" onClick={() => void query.refetch()} disabled={query.isFetching}>
+            <RefreshCw />
+            Refresh
+          </Button>
+        </>
+      )}
+    >
+      <RecordTable
+        label="Activity"
+        columns={[
+          { key: "action", label: "Action", size: "sm", render: (item) => <StatusValue status={{ tone: actionTone(item.action), label: formatActivityLabel(item.action) }} /> },
+          { key: "module", label: "Module", render: (item) => <span className="font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span> },
+          {
+            key: "record",
+            label: "Record",
+            render: (item) => (
+              <div className="min-w-0">
+                <div className="text-copy-secondary">{formatActivityLabel(item.entity_type)}</div>
+                <div className="text-xs text-copy-muted">#{item.entity_id}</div>
+              </div>
+            ),
+          },
+          { key: "actor", label: "Actor", render: (item) => <span className="whitespace-nowrap text-copy-secondary">{item.actor_user_id ? `User #${item.actor_user_id}` : "System"}</span> },
+          { key: "description", label: "Description", size: "lg", render: (item) => <span className="text-copy-secondary">{item.description || `${formatActivityLabel(item.entity_type)} ${item.entity_id}`}</span> },
+          { key: "created_at", label: "Created", render: (item) => <span className="whitespace-nowrap text-copy-muted">{formatDateTime(item.created_at)}</span> },
+        ]}
+        rows={data?.results ?? []}
+        rowKey={(item) => item.id}
+        isLoading={query.isLoading}
+        isRefreshing={query.isFetching && !query.isLoading}
+        hasError={Boolean(query.error)}
+        onRetry={() => void query.refetch()}
+        hasActiveFilters={actionFilter !== "all"}
+        onClearFilters={() => { setActionFilter("all"); setPage(1); }}
+        emptyState={{
+          icon: ClipboardList,
+          title: "No activity recorded",
+          description: "Audited platform changes will appear here.",
+        }}
+        filteredEmptyState={{
+          icon: ClipboardList,
+          title: "No matching activity",
+          description: "Choose another action filter to review different events.",
+        }}
+      />
 
       {data && data.total_count > 0 && !query.error ? (
         <Pagination
@@ -213,6 +177,6 @@ export default function ActivityLogPage() {
           }}
         />
       ) : null}
-    </div>
+    </PageShell>
   );
 }

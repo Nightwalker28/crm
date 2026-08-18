@@ -62,34 +62,34 @@ export default function ClientCatalogItemPage() {
         </header>
 
         {itemQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading item...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading item...</div>
         ) : itemQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {itemQuery.error instanceof Error ? itemQuery.error.message : "Catalog item unavailable."}
           </div>
         ) : item ? (
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <div className="text-xs uppercase text-copy-muted">{item.kind}</div>
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
+              <div className="text-xs font-medium text-copy-label">{item.kind}</div>
               <h1 className="mt-2 text-3xl font-semibold tracking-normal text-copy-primary">{item.name}</h1>
-              {item.description ? <p className="mt-4 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
+              {item.description ? <p className="mt-4 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p> : null}
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Availability</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Availability</div>
                   <div className="mt-1 capitalize text-copy-primary">{item.kind === "service" ? "Available" : item.availability_status.replaceAll("_", " ")}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Public price</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Public price</div>
                   <div className="mt-1 text-copy-primary">{money(item.public_unit_price, item.currency)}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Your price</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Your price</div>
                   <div className="mt-1 font-semibold text-copy-primary">{money(item.resolved_unit_price, item.currency)}</div>
                 </div>
               </div>
             </section>
 
-            <aside className="h-fit rounded-md border border-line-default bg-surface p-5">
+            <aside className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <h2 className="text-base font-semibold text-copy-primary">Request item</h2>
               <form className="mt-4 space-y-3" onSubmit={(event) => void submitRequest(event)}>
                 <Input value={quantity} onChange={(event) => setQuantity(event.target.value)} inputMode="decimal" placeholder="Quantity" required />

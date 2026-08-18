@@ -61,6 +61,8 @@ type Props = {
   sourceAction?: "create" | "edit" | "view";
   allowClear?: boolean;
   allowedModuleKeys?: string[];
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -254,6 +256,8 @@ export default function LinkedRecordPicker({
   sourceAction = "create",
   allowClear = true,
   allowedModuleKeys,
+  ariaDescribedBy,
+  ariaInvalid,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -317,6 +321,8 @@ export default function LinkedRecordPicker({
           aria-autocomplete="list"
           aria-expanded={isOpen && Boolean(displayValue.trim())}
           aria-controls={listboxId}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
               ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`
@@ -344,7 +350,7 @@ export default function LinkedRecordPicker({
           id={listboxId}
           role="listbox"
           aria-label={`${placeholder} results`}
-          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-xl"
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-[var(--shadow-panel)]"
         >
           {query.isLoading ? (
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div>
@@ -361,7 +367,7 @@ export default function LinkedRecordPicker({
                   type="button"
                   role="option"
                   aria-selected={optionIndex === activeIndex}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveIndex(optionIndex)}
                   onClick={() => selectOption(option)}

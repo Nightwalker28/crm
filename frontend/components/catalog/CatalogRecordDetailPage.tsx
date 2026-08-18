@@ -7,10 +7,11 @@ import { ArrowLeft, Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import type { CatalogKind } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
@@ -18,22 +19,17 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   kind: CatalogKind;
   recordId: number;
 };
 
+// Empty string rather than a placeholder: both call sites already branch on it to decide
+// what to render instead. Formatting is lib/currency.ts's (design.md 7.1).
 function formatAmount(value: number | string | null | undefined, currency: string): string {
-  if (value == null || value === "") return "";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 2,
-  }).format(numeric);
+  return formatMoney(value, currency, { minimumFractionDigits: 0, maximumFractionDigits: 2 }) ?? "";
 }
 
 function stockLabel(value?: string | null) {
@@ -89,36 +85,34 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={record?.name ?? noun}
-        description={record ? `${noun} catalog record` : "Loading catalog record"}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
+    <PageShell
+      title={record?.name ?? noun}
+      description={record ? `${noun} catalog record` : "Loading catalog record"}
+      actions={
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" asChild>
+            <Link href={listHref}>
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back
+            </Link>
+          </Button>
+          {canEdit ? (
             <Button type="button" variant="outline" asChild>
-              <Link href={listHref}>
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back
+              <Link href={`${listHref}/${recordId}/edit`}>
+                <Pencil className="mr-2 h-4 w-4" />
+                Edit {noun.toLowerCase()}
               </Link>
             </Button>
-            {canEdit ? (
-              <Button type="button" variant="outline" asChild>
-                <Link href={`${listHref}/${recordId}/edit`}>
-                  <Pencil className="mr-2 h-4 w-4" />
-                  Edit {noun.toLowerCase()}
-                </Link>
-              </Button>
-            ) : null}
-            {canDelete ? (
-              <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
-                <Trash2 className="mr-2 h-4 w-4" />
-                Delete {noun.toLowerCase()}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
-
+          ) : null}
+          {canDelete ? (
+            <Button type="button" variant="destructive" onClick={handleDelete} disabled={isDeleting}>
+              <Trash2 className="mr-2 h-4 w-4" />
+              Delete {noun.toLowerCase()}
+            </Button>
+          ) : null}
+        </div>
+      }
+    >
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_320px]">
         <section aria-labelledby="catalog-details-heading">
           <Card>
@@ -126,45 +120,41 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
               <div className="min-w-0">
                 <h2 id="catalog-details-heading" className="text-base font-semibold text-copy-primary">Details</h2>
                 {record.description ? (
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{record.description}</p>
+                  <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{record.description}</p>
                 ) : (
                   <p className="mt-2 text-sm text-copy-muted">No description recorded.</p>
                 )}
               </div>
               {record.is_active ? (
-                <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
-                  Active
-                </Pill>
+                <StatusValue status={{ tone: "success", label: "Active" }} />
               ) : (
-                <Pill>Inactive</Pill>
+                <Chip>Inactive</Chip>
               )}
             </CardHeader>
             <CardBody>
               <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-                <DetailField label="Public slug" value={record.slug || "Not set"} mono />
+                <DetailField label="Public slug" value={record.slug || "Not set"} />
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Website feed</dt>
+                  <dt className="text-xs font-medium text-copy-label">Website feed</dt>
                   <dd className="mt-1.5">
                     {record.is_public ? (
-                      <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">
-                        Public
-                      </Pill>
+                      <StatusValue status={{ tone: "success", label: "Public" }} />
                     ) : (
-                      <Pill>Private</Pill>
+                      <Chip>Private</Chip>
                     )}
                   </dd>
                 </div>
-                {isProduct ? <DetailField label="SKU" value={record.sku || "Not set"} mono /> : null}
+                {isProduct ? <DetailField label="SKU" value={record.sku || "Not set"} /> : null}
                 <div>
-                  <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">Public base price</dt>
+                  <dt className="text-xs font-medium text-copy-label">Public base price</dt>
                   <dd className="mt-1 text-sm font-semibold text-copy-primary">
                     {formatAmount(record.public_unit_price, record.currency)}
                   </dd>
-                  <p className="mt-1 text-xs leading-5 text-copy-muted">
+                  <p className="mt-1 text-p-xs text-copy-muted">
                     Customer-specific pricing is resolved separately for authenticated customers.
                   </p>
                 </div>
-                <DetailField label="Currency" value={record.currency} mono />
+                <DetailField label="Currency" value={record.currency} />
                 {isProduct ? (
                   <>
                     <DetailField label="Stock status" value={stockLabel(record.stock_status)} />
@@ -220,23 +210,21 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
           taskSourceLabel={record.name}
         />
       </div>
-    </div>
+    </PageShell>
   );
 }
 
 function DetailField({
   label,
   value,
-  mono = false,
 }: {
   label: string;
   value: string | number;
-  mono?: boolean;
 }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
-      <dd className={`mt-1 text-sm text-copy-primary ${mono ? "font-mono" : ""}`}>{value}</dd>
+      <dt className="text-xs font-medium text-copy-muted">{label}</dt>
+      <dd className="mt-1 text-sm text-copy-primary">{value}</dd>
     </div>
   );
 }

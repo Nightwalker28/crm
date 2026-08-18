@@ -13,18 +13,25 @@ import {
   EMPTY_ORGANIZATION_FORM,
   type OrganizationFormValue,
 } from "@/components/organizations/OrganizationFormFields";
+import {
+  buildOrganizationPayload,
+  saveOrganization,
+  validateOrganizationEmail,
+  validateOrganizationName,
+} from "@/components/organizations/organizationMutation";
+import {
+  consumeOrganizationQuickCreateDraft,
+  isOrganizationQuickCreateHandoff,
+} from "@/components/organizations/organizationQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import {
-  pickEnabledModulePayload,
-  useModuleFieldConfigs,
-} from "@/hooks/useModuleFieldConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -75,6 +82,16 @@ export default function OrganizationRecordFormPage({
     refetchOnWindowFocus: false,
   });
 
+  // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
+  // empty on purpose, so the restored values count as unsaved changes and stay guarded.
+  useEffect(() => {
+    if (mode !== "create" || !isOrganizationQuickCreateHandoff(window.location.search)) return;
+    const draft = consumeOrganizationQuickCreateDraft();
+    if (!draft) return;
+    setForm(draft.form);
+    setCustomFieldValues(draft.customFieldValues);
+  }, [mode]);
+
   useEffect(() => {
     if (mode !== "edit" || !summaryQuery.data) return;
     const organization = summaryQuery.data.organization;
@@ -109,21 +126,15 @@ export default function OrganizationRecordFormPage({
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const name = form.org_name.trim();
-    const email = form.primary_email.trim();
-    setNameError(name ? null : "Account name is required.");
-    setEmailError(
-      !email
-        ? "Primary email is required."
-        : /^\S+@\S+\.\S+$/.test(email)
-          ? null
-          : "Enter a valid email address.",
-    );
-    if (!name) {
+    const nextNameError = validateOrganizationName(form.org_name);
+    const nextEmailError = validateOrganizationEmail(form.primary_email);
+    setNameError(nextNameError);
+    setEmailError(nextEmailError);
+    if (nextNameError) {
       document.getElementById("account-name")?.focus();
       return false;
     }
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+    if (nextEmailError) {
       document.getElementById("account-primary-email")?.focus();
       return false;
     }
@@ -135,40 +146,11 @@ export default function OrganizationRecordFormPage({
     try {
       setSubmitting(true);
       setSubmitError(null);
-      const payload = pickEnabledModulePayload(
-        {
-          ...Object.fromEntries(
-            Object.entries(form)
-              .filter(([key]) => !["assigned_to_name"].includes(key))
-              .map(([key, value]) => [
-                key,
-                typeof value === "string" ? value.trim() || null : value,
-              ]),
-          ),
-          assigned_to:
-            mode === "edit" && form.assigned_to === null
-              ? undefined
-              : form.assigned_to,
-          custom_fields: customFieldValues,
-        },
-        moduleFields,
-        ["org_name", "primary_email", "custom_fields"],
-      );
-      const endpoint =
-        mode === "edit"
-          ? `/sales/organizations/${orgId}`
-          : "/sales/organizations";
-      const res = await apiFetch(endpoint, {
-        method: mode === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const savedOrgId = await saveOrganization({
+        mode,
+        organizationId: orgId,
+        payload: buildOrganizationPayload(form, customFieldValues, moduleFields, mode),
       });
-      const body = (await res.json().catch(() => null)) as {
-        org_id?: number;
-        detail?: string;
-      } | null;
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      const savedOrgId = mode === "edit" ? orgId : body?.org_id;
       await queryClient.invalidateQueries({
         queryKey: ["sales-organizations"],
       });
@@ -211,28 +193,27 @@ export default function OrganizationRecordFormPage({
       ? `/dashboard/sales/organizations/${orgId}`
       : "/dashboard/sales/organizations";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={
-          mode === "edit" && summaryQuery.data?.organization.updated_at
-            ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
-            : undefined
-        }
-        description={
-          mode === "edit"
-            ? "Update account, billing, and ownership information."
-            : "Create a company account for contacts, deals, and transactions."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={cancelHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "account" : "accounts"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      title={title}
+      eyebrow={
+        mode === "edit" && summaryQuery.data?.organization.updated_at
+          ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
+          : undefined
+      }
+      description={
+        mode === "edit"
+          ? "Update account, billing, and ownership information."
+          : "Create a company account for contacts, deals, and transactions."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={cancelHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "account" : "accounts"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -296,6 +277,6 @@ export default function OrganizationRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

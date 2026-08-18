@@ -6,23 +6,17 @@ import { FileDown, Pencil } from "lucide-react";
 
 import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
 import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { PageShell } from "@/components/ui/PageShell";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
 import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { EMPTY_FIELD_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
-
-function formatMoney(amount?: number | null, currency?: string | null) {
-  if (amount == null) return "Not set";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+import { formatMoney } from "@/lib/currency";
+import { getInsertionOrderStatus } from "@/lib/statusStyles";
 
 export default function InsertionOrderDetailPage() {
   const params = useParams<{ ioId: string }>();
@@ -51,7 +45,7 @@ export default function InsertionOrderDetailPage() {
     return <RouteNotFoundState recordLabel="Insertion order" backHref="/dashboard/finance/insertion-orders" backLabel="Back to insertion orders" />;
   }
 
-  const status = getInsertionOrderStatusStyle(order.status);
+  const status = getInsertionOrderStatus(order.status);
   const customerHref = order.customer_organization_id
     ? `/dashboard/sales/organizations/${order.customer_organization_id}`
     : order.customer_contact_id
@@ -65,12 +59,13 @@ export default function InsertionOrderDetailPage() {
   );
 
   return (
-    <div className="flex flex-col gap-6">
+    <PageShell
+      title={order.io_number}
+      description={order.customer_name || "Finance insertion order"}
+    >
       <RecordPageHeader
         backHref="/dashboard/finance/insertion-orders"
         backLabel="Back to insertion orders"
-        title={order.io_number}
-        description={order.customer_name || "Finance insertion order"}
         primaryAction={canEdit ? (
           <Button asChild>
             <Link href={`/dashboard/finance/insertion-orders/${order.id}/edit`}><Pencil />Edit insertion order</Link>
@@ -100,8 +95,8 @@ export default function InsertionOrderDetailPage() {
             </dl>
             {order.notes ? (
               <div className="mt-6 border-t border-line-subtle pt-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-copy-muted">Notes</h3>
-                <p className="mt-2 whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm leading-6 text-copy-secondary">
+                <h3 className="text-xs font-medium text-copy-label">Notes</h3>
+                <p className="mt-2 whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-p-sm text-copy-secondary">
                   {order.notes}
                 </p>
               </div>
@@ -116,13 +111,13 @@ export default function InsertionOrderDetailPage() {
                 <h2 id="insertion-order-commercial-heading" className="text-lg font-semibold text-copy-primary">Commercial summary</h2>
                 <p className="mt-1 text-sm text-copy-muted">Current status and order value.</p>
               </div>
-              <Pill bg={status.bg} text={status.text} border={status.border}>{status.label}</Pill>
+              <StatusValue status={status} />
             </CardHeader>
             <CardBody>
               <dl className="grid gap-3 text-sm">
-                <MoneyRow label="Subtotal" value={formatMoney(order.subtotal_amount, order.currency)} />
-                <MoneyRow label="Tax" value={formatMoney(order.tax_amount, order.currency)} />
-                <MoneyRow label="Total" value={formatMoney(order.total_amount, order.currency)} total />
+                <MoneyRow label="Subtotal" value={formatMoney(order.subtotal_amount, order.currency) ?? EMPTY_FIELD_VALUE} />
+                <MoneyRow label="Tax" value={formatMoney(order.tax_amount, order.currency) ?? EMPTY_FIELD_VALUE} />
+                <MoneyRow label="Total" value={formatMoney(order.total_amount, order.currency) ?? EMPTY_FIELD_VALUE} total />
               </dl>
               {order.updated_at ? <p className="mt-4 text-xs text-copy-muted">Updated {formatDateTime(order.updated_at)}</p> : null}
             </CardBody>
@@ -173,7 +168,7 @@ export default function InsertionOrderDetailPage() {
         recordLabel="Insertion order"
         taskSourceLabel={order.io_number}
       />
-    </div>
+    </PageShell>
   );
 }
 
@@ -198,10 +193,10 @@ function formatCustomFieldValue(value: unknown) {
 function DetailField({ label, value, href }: { label: string; value: string; href?: string | null }) {
   return (
     <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
+      <dt className="text-xs font-medium text-copy-label">{label}</dt>
       <dd className="mt-1 text-sm text-copy-primary">
         {href ? (
-          <Link href={href} className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Link href={href} className="rounded-[var(--radius-control-sm)] text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             {value}
           </Link>
         ) : value}

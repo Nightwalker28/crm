@@ -17,11 +17,11 @@ export const SidebarNav = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const SidebarGroup = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">{children}</div>;
+  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">{children}</div>;
 };
 
 export const SidebarMenu = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">{children}</div>;
+  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">{children}</div>;
 };
 
 type SidebarChildProps = {
@@ -88,7 +88,7 @@ export function SidebarMenuItemCollapsible({
   const setOpen = onOpenChange ?? setInternalOpen;
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">
+    <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">
       <GlassItemWrapper>
         <button
           type="button"
@@ -96,7 +96,7 @@ export function SidebarMenuItemCollapsible({
           onClick={() => setOpen(!isOpen)}
           aria-expanded={isOpen}
           className={
-            "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+            "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus " +
             (activeSelf
               ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
               : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
@@ -112,7 +112,7 @@ export function SidebarMenuItemCollapsible({
           )}
           <span
             className={
-              "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-all duration-200 " +
+              "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-[opacity,max-width] duration-200 " +
               (collapsed ? "sr-only" : "opacity-100")
             }
           >
@@ -133,7 +133,7 @@ export function SidebarMenuItemCollapsible({
 
       <div
         className={
-          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-line-subtle pl-1.5 transition-all duration-200 motion-reduce:transition-none " +
+          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-line-subtle pl-1.5 transition-[max-height,opacity] duration-200 motion-reduce:transition-none " +
           (collapsed ? "max-h-0 opacity-0" : isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0")
         }
       >
@@ -163,7 +163,7 @@ export function SidebarMenuItemChild({
         href={href}
         onClick={onNavigate}
         className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control-sm)] border px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control-sm)] border px-2 py-1.5 text-sm font-medium transition-[background-color,border-color,color] duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus " +
           (active
             ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
             : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
@@ -171,7 +171,7 @@ export function SidebarMenuItemChild({
       >
         <span
           className={
-            "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap transition-all duration-200 " +
+            "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap transition-[opacity,max-width] duration-200 " +
             (collapsed ? "sr-only" : "opacity-100")
           }
         >
@@ -206,7 +206,7 @@ export function SidebarMenuItemLink({
         title={collapsed ? label : undefined}
         aria-current={active ? "page" : undefined}
         className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
+          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus " +
           (active
             ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
             : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")

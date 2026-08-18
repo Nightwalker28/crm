@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -155,13 +155,11 @@ export default function SupportCaseCreateFormPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Create support case"
-        description="Capture the customer issue, ownership, and the records the support team needs to resolve it."
-        actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/support/cases"><ArrowLeft />Back to support</Link></Button>}
-      />
-
+    <PageShell
+      title="Create support case"
+      description="Capture the customer issue, ownership, and the records the support team needs to resolve it."
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/support/cases"><ArrowLeft />Back to support</Link></Button>}
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not create this support case.</div>
@@ -253,7 +251,7 @@ export default function SupportCaseCreateFormPage() {
           </FieldGroup>
         </Card>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 

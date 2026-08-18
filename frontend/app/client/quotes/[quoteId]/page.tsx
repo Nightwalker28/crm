@@ -67,14 +67,14 @@ export default function ClientQuoteDetailPage() {
         </header>
 
         {quoteQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quote...</div>
+          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quote...</div>
         ) : quoteQuery.error || !quote ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {quoteQuery.error instanceof Error ? quoteQuery.error.message : "Quote not found."}
           </div>
         ) : (
           <div className="grid gap-5">
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <div className="flex flex-wrap items-start justify-between gap-4">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm text-copy-secondary">
@@ -90,22 +90,22 @@ export default function ClientQuoteDetailPage() {
                 </div>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Issued</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Issued</div>
                   <div className="mt-1 text-sm text-copy-secondary">{quote.issue_date ? formatDateOnly(quote.issue_date) : "Not set"}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Expires</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Expires</div>
                   <div className="mt-1 text-sm text-copy-secondary">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : "No expiry"}</div>
                 </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Updated</div>
+                <div>
+                  <div className="text-xs font-medium text-copy-label">Updated</div>
                   <div className="mt-1 text-sm text-copy-secondary">{formatDateTime(quote.updated_at ?? quote.created_time)}</div>
                 </div>
               </div>
             </section>
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-semibold text-copy-primary">Proposal</h2>
@@ -117,13 +117,13 @@ export default function ClientQuoteDetailPage() {
                 </Button>
               </div>
               {quote.proposal_content_text ? (
-                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-line-default bg-app p-4 text-sm leading-6 text-copy-secondary">{quote.proposal_content_text}</pre>
+                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-app p-4 text-p-sm text-copy-secondary">{quote.proposal_content_text}</pre>
               ) : (
-                <div className="rounded-md border border-line-default bg-app p-4 text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
+                <div className="text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
               )}
             </section>
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
+            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <h2 className="font-semibold text-copy-primary">Response</h2>
               <p className="mt-1 text-sm text-copy-muted">
                 {quote.can_respond ? "Approve the quote or send a rejection reason for the team to review." : "This quote is not currently open for portal response."}

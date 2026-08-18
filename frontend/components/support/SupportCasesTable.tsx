@@ -1,30 +1,28 @@
 "use client";
 
-import { Fragment } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
+import Link from "next/link";
 import { LifeBuoy } from "lucide-react";
 
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { Button } from "@/components/ui/button";
+import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { SupportCase } from "@/hooks/support/useCases";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
-
-type SortState = { column: string; direction: "asc" | "desc" } | null;
+import { getSupportCasePriority, getSupportCaseStatus } from "@/lib/statusStyles";
 
 type SupportCasesTableProps = {
   cases: SupportCase[];
   isLoading: boolean;
   isRefreshing?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
-  sort?: SortState;
-  onSortChange?: (sort: SortState) => void;
+  sort?: RecordTableSort | null;
+  onSortChange?: (sort: RecordTableSort) => void;
   isFiltered?: boolean;
 };
 
@@ -48,94 +46,100 @@ const SORTABLE_COLUMNS = new Set([
   "updated_at",
 ]);
 
-export default function SupportCasesTable({ cases, isLoading, isRefreshing = false, visibleColumns, columnOptions = [], sort = null, onSortChange, isFiltered = false }: SupportCasesTableProps) {
-  const router = useRouter();
+const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
+  subject: "lg",
+  case_number: "sm",
+  status: "sm",
+  priority: "sm",
+  source: "sm",
+};
 
-  function toggleSort(column: string) {
-    const nextSort: SortState = sort?.column !== column
-      ? { column, direction: "asc" }
-      : { column, direction: sort.direction === "asc" ? "desc" : "asc" };
-    onSortChange?.(nextSort);
+const DATE_COLUMNS = new Set(["created_at", "updated_at", "sla_due_at", "first_response_at", "resolved_at", "closed_at"]);
+
+function renderCell(item: SupportCase, column: string) {
+  if (DATE_COLUMNS.has(column)) {
+    const value = item[column as keyof SupportCase];
+    return <span className="text-sm text-copy-muted">{value ? formatDateTime(String(value)) : "—"}</span>;
   }
 
-  function renderCell(item: SupportCase, column: string) {
-    switch (column) {
-      case "case_number":
-        return <TableCell><span className="font-mono text-sm font-medium text-copy-primary">{item.case_number}</span></TableCell>;
-      case "subject":
-        return <TableCell><span className="text-sm font-medium text-copy-primary">{item.subject}</span></TableCell>;
-      case "status": {
-        const style = getSupportCaseStatusStyle(item.status);
-        return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
-      }
-      case "priority": {
-        const style = getSupportCasePriorityStyle(item.priority);
-        return <TableCell><Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill></TableCell>;
-      }
-      case "assigned_to_name":
-        return <TableCell><span className="text-sm text-copy-secondary">{item.assigned_to_name || <span className="text-copy-muted">Unassigned</span>}</span></TableCell>;
-      case "created_at":
-      case "updated_at":
-      case "sla_due_at":
-      case "first_response_at":
-      case "resolved_at":
-      case "closed_at":
-        return <TableCell><span className="text-sm text-copy-muted">{item[column] ? formatDateTime(String(item[column])) : "—"}</span></TableCell>;
-      default:
-        return <TableCell><span className="text-sm text-copy-secondary">{String(item[column as keyof SupportCase] ?? "") || <span className="text-copy-muted">—</span>}</span></TableCell>;
+  switch (column) {
+    case "case_number":
+      return <span className="text-sm font-medium tabular-nums text-copy-primary">{item.case_number}</span>;
+    case "subject":
+      return <span className="text-sm font-medium text-copy-primary">{item.subject}</span>;
+    case "status": {
+      const style = getSupportCaseStatus(item.status);
+      return <StatusValue status={style} />;
     }
+    case "priority": {
+      const style = getSupportCasePriority(item.priority);
+      return <StatusValue status={style} />;
+    }
+    case "assigned_to_name":
+      return (
+        <span className="text-sm text-copy-secondary">
+          {item.assigned_to_name || <span className="text-copy-muted">Unassigned</span>}
+        </span>
+      );
+    default:
+      return (
+        <span className="text-sm text-copy-secondary">
+          {String(item[column as keyof SupportCase] ?? "") || <span className="text-copy-muted">—</span>}
+        </span>
+      );
   }
+}
+
+export default function SupportCasesTable({
+  cases,
+  isLoading,
+  isRefreshing = false,
+  hasError = false,
+  onRetry,
+  visibleColumns,
+  columnOptions = [],
+  sort = null,
+  onSortChange,
+  isFiltered = false,
+}: SupportCasesTableProps) {
+  const columns = useMemo<RecordTableColumn<SupportCase>[]>(
+    () =>
+      visibleColumns.map((column) => ({
+        key: column,
+        label: getReadableColumnLabel(column, columnOptions),
+        sortable: SORTABLE_COLUMNS.has(column),
+        size: COLUMN_SIZES[column],
+        render: (item) => renderCell(item, column),
+      })),
+    [visibleColumns, columnOptions],
+  );
 
   return (
-    <ModuleTableShell isRefreshing={isRefreshing}>
-      <Table className="min-w-[1080px]">
-        <TableHeader>
-          <TableHeaderRow>
-            {visibleColumns.map((column) => {
-              const label = getReadableColumnLabel(column, columnOptions);
-              const sortable = SORTABLE_COLUMNS.has(column);
-              return sortable && onSortChange ? (
-                <SortableHead key={column} sorted={sort?.column === column} direction={sort?.column === column ? sort.direction : "asc"} onClick={() => toggleSort(column)}>
-                  {label}
-                </SortableHead>
-              ) : <TableHead key={column}>{label}</TableHead>;
-            })}
-          </TableHeaderRow>
-        </TableHeader>
-        <TableBody>
-          {isLoading ? (
-            <ModuleTableLoading columnCount={visibleColumns.length} />
-          ) : cases.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={visibleColumns.length} className="py-16 text-center">
-                <EmptyState
-                  icon={LifeBuoy}
-                  title={isFiltered ? "No cases match this view" : "No support cases yet"}
-                  description={isFiltered ? "Adjust the search or filters to see more cases." : "Create a support case to start tracking customer issues."}
-                />
-              </TableCell>
-            </TableRow>
-          ) : (
-            cases.map((item) => (
-              <TableRow
-                key={item.id}
-                className="group cursor-pointer"
-                tabIndex={0}
-                aria-label={`Open ${item.case_number}: ${item.subject}`}
-                onClick={() => router.push(`/dashboard/support/cases/${item.id}`)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    router.push(`/dashboard/support/cases/${item.id}`);
-                  }
-                }}
-              >
-                {visibleColumns.map((column) => <Fragment key={column}>{renderCell(item, column)}</Fragment>)}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Cases"
+      columns={columns}
+      rows={cases}
+      rowKey={(item) => item.id}
+      rowHref={(item) => `/dashboard/support/cases/${item.id}`}
+      rowLabel={(item) => `Open ${item.case_number}: ${item.subject}`}
+      sort={sort}
+      onSortChange={onSortChange}
+      isLoading={isLoading}
+      isRefreshing={isRefreshing}
+      hasError={hasError}
+      onRetry={onRetry}
+      hasActiveFilters={isFiltered}
+      emptyState={{
+        icon: LifeBuoy,
+        title: "No support cases yet",
+        description: "Create a support case to start tracking customer issues.",
+        action: <Button asChild><Link href="/dashboard/support/cases/new">New case</Link></Button>,
+      }}
+      filteredEmptyState={{
+        icon: LifeBuoy,
+        title: "No cases match this view",
+        description: "Adjust the search or filters to see more cases.",
+      }}
+    />
   );
 }

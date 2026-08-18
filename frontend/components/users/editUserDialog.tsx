@@ -1,7 +1,9 @@
 "use client";
 
+import type { StatusDescriptor } from "@/lib/statusStyles";
 import { useEffect, useState } from "react";
 import Image from "next/image";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -27,7 +29,6 @@ import {
   FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
-import { Pill } from "@/components/ui/Pill";
 import { resolveMediaUrl } from "@/lib/media";
 import { useConfirm } from "@/hooks/useConfirm";
 
@@ -95,11 +96,11 @@ export default function EditUserDialog({
     team !== user.team_id ||
     authMode !== (user.auth_mode ?? "manual_or_google") ||
     status !== user.is_active;
-  const mfaStyle = user.mfa_enabled
-    ? { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40", label: "Enabled" }
+  const mfaStyle: StatusDescriptor = user.mfa_enabled
+    ? { tone: "success", label: "Enabled" }
     : user.mfa_required
-      ? { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40", label: "Required" }
-      : { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default", label: "Off" };
+      ? { tone: "attention", label: "Required" }
+      : { tone: "neutral", label: "Off" };
 
   async function handleClose() {
     if (isSaving || isResettingMfa) return;
@@ -277,9 +278,7 @@ export default function EditUserDialog({
                 <FieldLabel>MFA</FieldLabel>
                 <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
                   <div className="min-w-0 text-sm">
-                    <Pill bg={mfaStyle.bg} text={mfaStyle.text} border={mfaStyle.border}>
-                      {mfaStyle.label}
-                    </Pill>
+                    <StatusValue status={mfaStyle} />
                     <div className="mt-2 text-xs text-copy-muted">
                       {user.mfa_enabled ? "Reset removes the user MFA secret and recovery codes." : "No local MFA secret is active for this user."}
                     </div>

@@ -18,7 +18,7 @@ import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getGuardedModuleRoutePrefixes, getModuleRegistryLabel, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -43,6 +43,24 @@ function registryModuleTitle(pathname: string) {
     ?.label;
 }
 
+// The sidebar carries a single flat "Settings" entry that opens the settings landing page.
+// Once a specific settings page is open, the header names that page, using the same label the
+// sidebar and landing page use so the name you click is the name you land on.
+function settingsPageTitle(pathname: string) {
+  const segments = pathname.slice(SETTINGS_ROUTES.root.length).split("/").filter(Boolean);
+  const leaf = segments[segments.length - 1];
+  if (!leaf) return "Settings";
+  if (segments.length > 1 && segments[segments.length - 2] === "modules" && /^\d+$/.test(leaf)) {
+    return "Access Settings";
+  }
+
+  const navItem = [...SETTINGS_NAV_ITEMS]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  return navItem?.label ?? getFriendlyRouteLabel(leaf);
+}
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -61,7 +79,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const moduleTitle = pathname === DASHBOARD_ROUTES.home
     ? "Dashboard"
     : pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)
-      ? "Settings"
+      ? settingsPageTitle(pathname)
       : pathname === "/dashboard/profile"
         ? "Profile"
         : viewModuleKey
@@ -120,7 +138,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <header className="relative z-10 grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)_minmax(0,1fr)] xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
               <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
-              {moduleTitle ? <h1 className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</h1> : null}
+              {/* Not an h1: this names the *module*, and `PageHeader` names the page (§8 —
+                  exactly one per page). It was an h1 until every route carried a `PageShell`,
+                  because demoting it sooner would have left the unmigrated pages with no
+                  heading at all. Phase 4 finished that migration. */}
+              {moduleTitle ? <div className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</div> : null}
             </div>
             <div className="min-w-0">
               <GlobalCommandPalette responsive />
@@ -132,7 +154,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </header>
           <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
             {isCheckingAccess ? (
-              <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-6 text-sm text-copy-muted">
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-6 text-sm text-copy-muted">
                 Checking access...
               </div>
             ) : isBlocked || isModuleBlocked ? (

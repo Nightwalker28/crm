@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -115,6 +115,50 @@ class ModuleFieldConfig(Base):
     is_enabled = Column(Boolean, nullable=False, server_default="true")
     is_protected = Column(Boolean, nullable=False, server_default="false")
     sort_order = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RecordLayoutDefinition(Base):
+    __tablename__ = "record_layout_definitions"
+    __table_args__ = (
+        CheckConstraint(
+            "surface IN ('quick_create', 'detail', 'full_form')",
+            name="ck_record_layout_definitions_surface",
+        ),
+        CheckConstraint("version >= 1", name="ck_record_layout_definitions_version"),
+        UniqueConstraint(
+            "tenant_id",
+            "module_key",
+            "surface",
+            "name",
+            name="uq_record_layout_defs_tenant_module_surface_name",
+        ),
+        Index(
+            "uq_record_layout_defs_default",
+            "tenant_id",
+            "module_key",
+            "surface",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index(
+            "ix_record_layout_defs_tenant_module_surface",
+            "tenant_id",
+            "module_key",
+            "surface",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    surface = Column(String(32), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    is_default = Column(Boolean, nullable=False, server_default="false")
+    version = Column(Integer, nullable=False, server_default="1")
+    sections = Column(JSON, nullable=False, server_default="[]")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -501,6 +545,16 @@ class AutomationRuleDeadLetter(Base):
 
 class RecordComment(Base):
     __tablename__ = "record_comments"
+    __table_args__ = (
+        Index(
+            "ix_record_comments_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "created_at",
+            "id",
+        ),
+    )
 
     id = Column(BigInteger, primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -522,6 +576,50 @@ class RecordComment(Base):
             if self.actor.email:
                 return self.actor.email
         return "Unknown user"
+
+
+class RecordFollowUp(Base):
+    """Source of truth for a logged salesperson follow-up outcome.
+
+    Follow-ups previously existed only as ``activity_logs`` rows, which mixed
+    salesperson interaction history into the immutable audit store. This table
+    owns the interaction; the audit log keeps recording the change separately.
+    ``follow_up_task_id`` is a soft reference (no FK) matching the existing
+    cross-module convention used by ``tasks.source_entity_id``.
+    """
+
+    __tablename__ = "record_follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('whatsapp', 'email', 'call')",
+            name="ck_record_follow_ups_channel",
+        ),
+        Index(
+            "ix_record_follow_ups_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "occurred_at",
+            "id",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    channel = Column(String(20), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    follow_up_task_id = Column(BigInteger, nullable=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    actor = relationship("User")
+
+    @validates("entity_id")
+    def _normalize_entity_id(self, _key, value):
+        return str(value)
 
 
 class MessageTemplate(Base):

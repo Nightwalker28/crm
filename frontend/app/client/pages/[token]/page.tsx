@@ -31,7 +31,7 @@ function formatBytes(value: number) {
 }
 
 function brandAccent(value?: string | null) {
-  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#14b8a6";
+  return value && /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#14b8a6"; // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
 }
 
 export default function PublicClientPage() {
@@ -78,15 +78,15 @@ export default function PublicClientPage() {
         <header className="flex items-center justify-between border-b border-line-default pb-4">
           <Link href="/" className="flex items-center gap-3 text-copy-primary">
             {logoUrl ? (
-              <Image src={logoUrl} alt="" width={36} height={36} unoptimized className="h-9 w-9 rounded-md object-contain" />
+              <Image src={logoUrl} alt="" width={36} height={36} unoptimized className="h-9 w-9 rounded-[var(--radius-control)] object-contain" />
             ) : (
-              <span className="h-9 w-9 rounded-md" style={{ backgroundColor: accentColor }} />
+              <span className="h-9 w-9 rounded-[var(--radius-control)]" style={{ backgroundColor: accentColor }} />
             )}
             <span className="font-lynk text-3xl">{brandName}</span>
           </Link>
           <div className="flex items-center gap-2">
             {page?.pricing_mode === "personalized" ? (
-              <span className="rounded-md border border-emerald-900/70 bg-emerald-950/30 px-3 py-2 text-xs font-medium text-emerald-200">
+              <span className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-3 py-2 text-xs font-medium text-state-success">
                 Personalized pricing
               </span>
             ) : null}
@@ -102,7 +102,7 @@ export default function PublicClientPage() {
         {pageQuery.isLoading ? (
           <div className="flex flex-1 items-center justify-center text-sm text-copy-muted">Loading client page...</div>
         ) : pageQuery.error ? (
-          <div className="my-8 rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+          <div className="my-8 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
             {pageQuery.error instanceof Error ? pageQuery.error.message : "Client page unavailable."}
           </div>
         ) : page ? (
@@ -110,21 +110,21 @@ export default function PublicClientPage() {
             <section>
               <div className="mb-6 border-l-4 pl-4" style={{ borderColor: accentColor }}>
                 <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{page.title}</h1>
-                {page.summary ? <p className="mt-3 max-w-3xl text-sm leading-6 text-copy-secondary">{page.summary}</p> : null}
+                {page.summary ? <p className="mt-3 max-w-3xl text-p-sm text-copy-secondary">{page.summary}</p> : null}
               </div>
 
               {page.proposal_sections.length ? (
-                <div className="mb-4 grid gap-3">
+                <div className="mb-4 divide-y divide-line-subtle rounded-[var(--radius-card)] border border-line-default bg-surface">
                   {page.proposal_sections.map((section) => (
-                    <div key={`${section.sort_order}-${section.title}`} className="rounded-md border border-line-default bg-surface p-4">
+                    <div key={`${section.sort_order}-${section.title}`} className="p-4">
                       <h2 className="text-sm font-semibold text-copy-primary">{section.title}</h2>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{section.body}</p>
+                      <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{section.body}</p>
                     </div>
                   ))}
                 </div>
               ) : null}
 
-              <div className="overflow-hidden rounded-md border border-line-default bg-surface">
+              <div className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface">
                 <Table>
                   <TableHeader>
                     <TableHeaderRow>
@@ -151,11 +151,11 @@ export default function PublicClientPage() {
               </div>
 
               {page.documents.length ? (
-                <div className="mt-4 rounded-md border border-line-default bg-surface p-4">
+                <div className="mt-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-4">
                   <h2 className="text-sm font-semibold text-copy-primary">Documents</h2>
                   <div className="mt-3 grid gap-2">
                     {page.documents.map((document) => (
-                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-md border border-line-default bg-app px-3 py-3">
+                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-subtle bg-app px-3 py-3">
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 text-sm font-medium text-copy-primary">
                             <FileText className="h-4 w-4 text-copy-muted" />
@@ -176,7 +176,7 @@ export default function PublicClientPage() {
               ) : null}
             </section>
 
-            <aside className="h-fit rounded-md border border-line-default bg-surface p-5">
+            <aside className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
               <h2 className="text-base font-semibold text-copy-primary">Response</h2>
               <p className="mt-1 text-sm text-copy-secondary">
                 {page.pricing_mode === "personalized"

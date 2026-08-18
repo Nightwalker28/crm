@@ -9,6 +9,7 @@ import {
   Database,
   FileText,
   KeyRound,
+  LayoutTemplate,
   Plug,
   Recycle,
   Repeat2,
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { Card } from "@/components/ui/Card";
+import { PageShell } from "@/components/ui/PageShell";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 const SETTINGS_SECTIONS = [
@@ -82,6 +84,12 @@ const SETTINGS_SECTIONS = [
         icon: Settings2,
       },
       {
+        title: "Record Layouts",
+        description: "Arrange and preview the Lead Quick Create form.",
+        href: SETTINGS_ROUTES.recordLayouts,
+        icon: LayoutTemplate,
+      },
+      {
         title: "Templates",
         description: "Manage reusable message templates.",
         href: SETTINGS_ROUTES.templates,
@@ -125,7 +133,7 @@ const SETTINGS_SECTIONS = [
 
 export default function SettingsPage() {
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
+    <PageShell variant="settings" title="Settings" description="Configure the workspace, its users, and the modules they can reach.">
       <div className="grid gap-6">
         {SETTINGS_SECTIONS.map((section) => (
           <section key={section.key} aria-labelledby={`${section.key}-heading`}>
@@ -145,7 +153,7 @@ export default function SettingsPage() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className="group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary"
+                      className="group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                     >
                       <span className="flex min-w-0 items-start gap-3">
                         <span
@@ -155,7 +163,7 @@ export default function SettingsPage() {
                         </span>
                         <span className="min-w-0">
                           <span className="block text-sm font-semibold text-copy-primary">{item.title}</span>
-                          <span className="mt-1 block text-sm leading-6 text-copy-muted">{item.description}</span>
+                          <span className="mt-1 block text-p-sm text-copy-muted">{item.description}</span>
                         </span>
                       </span>
                       <ArrowRight className="h-4 w-4 shrink-0 text-copy-muted transition-transform group-hover:translate-x-0.5 group-hover:text-copy-primary" />
@@ -167,6 +175,6 @@ export default function SettingsPage() {
           </section>
         ))}
       </div>
-    </div>
+    </PageShell>
   );
 }

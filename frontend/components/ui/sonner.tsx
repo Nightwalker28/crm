@@ -21,7 +21,10 @@ const Toaster = ({ ...props }: ToasterProps) => {
         classNames: {
           toast: [
             // 1. ESSENTIAL LAYOUT (Must be relative for the noise to work!)
-            "group toast relative overflow-hidden !transition-all !duration-250 !ease-in-out !animate-fadeIn ",
+            // Named properties at the 200ms enter/exit step (design.md 6).
+            // `animate-fadeIn` was a dead class - tw-animate-css spells it
+            // `animate-fade-in` - and sonner supplies its own entrance anyway.
+            "group toast relative overflow-hidden !transition-[opacity,transform,background-color,border-color] !duration-200 !ease-in-out",
             
             // 2. The Noise Texture (Positions itself relative to the line above)
             "before:absolute before:inset-0 before:z-[-1]",
@@ -41,7 +44,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
           description: "group-[.toast]:text-inherit opacity-80 font-normal",
           
           actionButton:
-            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground font-semibold shadow-sm",
+            "group-[.toast]:bg-primary group-[.toast]:text-primary-foreground font-semibold",
             
           cancelButton:
             "group-[.toast]:bg-surface-muted group-[.toast]:text-copy-secondary hover:group-[.toast]:bg-surface",

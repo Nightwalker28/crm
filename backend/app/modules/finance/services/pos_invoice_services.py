@@ -306,6 +306,7 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "payment_terms": invoice.payment_terms,
         "notes": invoice.notes,
         "user_name": user_name,
+        "created_at": finance_date_to_iso(invoice.created_at),
         "updated_at": finance_date_to_iso(invoice.updated_at),
     }
     if include_lines:

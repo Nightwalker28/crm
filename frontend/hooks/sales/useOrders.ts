@@ -22,6 +22,7 @@ export type Order = {
   id: number;
   order_number: string;
   quote_id: number | null;
+  quote_number?: string | null;
   organization_id: number | null;
   contact_id: number | null;
   opportunity_id: number | null;

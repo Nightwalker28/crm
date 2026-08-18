@@ -30,7 +30,7 @@ import {
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
@@ -346,28 +346,27 @@ function QuoteRecordFormEditor({
       ? `/dashboard/sales/quotes/${quoteId}`
       : "/dashboard/sales/quotes";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={
-          mode === "edit" && updatedAt
-            ? `Last modified ${formatDateTime(updatedAt)}`
-            : undefined
-        }
-        title={mode === "edit" ? `Edit ${form.quote_number}` : "Create quote"}
-        description={
-          mode === "edit"
-            ? "Update customer context, line items, pricing, ownership, and quote terms."
-            : "Build a customer quote with itemized pricing, terms, and linked sales context."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "quote" : "quotes"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      eyebrow={
+        mode === "edit" && updatedAt
+          ? `Last modified ${formatDateTime(updatedAt)}`
+          : undefined
+      }
+      title={mode === "edit" ? `Edit ${form.quote_number}` : "Create quote"}
+      description={
+        mode === "edit"
+          ? "Update customer context, line items, pricing, ownership, and quote terms."
+          : "Build a customer quote with itemized pricing, terms, and linked sales context."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "quote" : "quotes"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
         <div
           role="alert"
@@ -629,7 +628,7 @@ function QuoteRecordFormEditor({
           </FormSection>
         ) : null}
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 

@@ -1,0 +1,40 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: lynk_ci
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d lynk_ci"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
+  backend:
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/lynk_ci
+      JWT_SECRET: ci-only-jwt-secret
+      APP_ENCRYPTION_SECRET: ci-only-app-encryption-secret
+      MAIL_CREDENTIAL_SECRET: ci-only-mail-credential-secret
+      DEBUG: "true"
+      INITIAL_ADMIN_EMAIL: admin@example.com
+      INITIAL_ADMIN_PASSWORD: NotASecret-CI-Only-2026!
+    volumes: !reset []
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+
+  frontend:
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000/api/v1
+    volumes: !override
+      - frontend_node_modules:/app/node_modules
+
+  frontend-e2e:
+    environment:
+      PLAYWRIGHT_BASE_URL: http://localhost:3000
+      INITIAL_ADMIN_EMAIL: admin@example.com
+      INITIAL_ADMIN_PASSWORD: NotASecret-CI-Only-2026!

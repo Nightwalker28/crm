@@ -1,9 +1,9 @@
 "use client";
 
-import { Menu, MenuButton, MenuItems } from "@headlessui/react";
 import { ChevronDown } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportControls } from "@/components/ui/ExportControls";
 import { ImportControls } from "@/components/ui/ImportControls";
 
@@ -40,19 +40,14 @@ export function ModuleImportExportControls({
 
   return (
     <div className="flex items-center gap-3">
-      <Menu as="div" className="relative">
-        <MenuButton
-          as={Button}
-          type="button"
-          variant="outline"
-        >
-          Actions
-          <ChevronDown className="h-4 w-4" />
-        </MenuButton>
-        <MenuItems
-          anchor="bottom end"
-          className="z-50 mt-2 w-44 rounded-[var(--radius-card)] border border-line-default bg-surface-raised p-1 shadow-2xl outline-none"
-        >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline">
+            Actions
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
           {importEndpoint ? (
             <ImportControls
               importEndpoint={importEndpoint}
@@ -72,8 +67,8 @@ export function ModuleImportExportControls({
               onExportSuccess={onExportSuccess}
             />
           ) : null}
-        </MenuItems>
-      </Menu>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

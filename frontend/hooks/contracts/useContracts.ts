@@ -32,6 +32,7 @@ export type ContractEvent = {
   event_type: string;
   payload_json: Record<string, unknown>;
   created_by_id: number | null;
+  created_by_name?: string | null;
   created_at: string;
 };
 
@@ -59,6 +60,15 @@ export type Contract = {
   parties?: ContractParty[];
   signers?: ContractSigner[];
   events?: ContractEvent[];
+  // Display names for the ids above, resolved in-tenant by the contract service. `null` means
+  // the target no longer resolves, and the record spine draws no link rather than a dead one.
+  organization_name?: string | null;
+  contact_name?: string | null;
+  opportunity_name?: string | null;
+  quote_number?: string | null;
+  order_number?: string | null;
+  document_name?: string | null;
+  owner_name?: string | null;
 };
 
 export type ContractsResponse = {

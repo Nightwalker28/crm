@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, Download, FileDown, PieChart as PieChartIcon, RotateCcw, Save, Table2, Trash2 } from "lucide-react";
+import { BarChart3, BookmarkPlus, Download, FileDown, PieChart as PieChartIcon, RotateCcw, Save, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Card } from "@/components/ui/Card";
@@ -11,16 +11,18 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -28,9 +30,11 @@ import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateTime } from "@/lib/datetime";
+import { DEFAULT_CURRENCY, formatMoney } from "@/lib/currency";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { appendSavedViewFilterParams, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
+import { CHART_AXIS_STROKE, CHART_GRID_STROKE, CHART_TICK_FILL, seriesColor } from "@/lib/chartColors";
 
 type ReportField = {
   key: string;
@@ -131,7 +135,6 @@ const DEFAULT_FILTERS: SavedViewFilters = {
 
 const CRM_TASK_SOURCE_MODULE_KEYS = ["sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes"];
 // Concrete colors keep downloaded SVG charts portable outside the app's CSS token scope.
-const CHART_COLORS = ["#8bdbc1", "#7aa7ff", "#f2c86b", "#e58fb1", "#9fd56e", "#c2a5ff", "#f09568", "#6ed4e8"];
 
 const CRM_REPORT_PRESETS: ReportPreset[] = [
   {
@@ -282,9 +285,14 @@ function formatNumber(value: number) {
   return new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
 }
 
+// Zero, not `Not set`: a forecast figure with no rows is a zero pipeline rather than an
+// absent field, so this keeps its own fallback. The formatting itself is lib/currency.ts's
+// (design.md 7.1) — a local Intl.NumberFormat was also the only place in reports still on
+// the browser locale.
 function formatCurrency(value: number | string | null | undefined) {
   const amount = typeof value === "string" ? Number(value) : value;
-  return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(Number.isFinite(amount ?? NaN) ? amount ?? 0 : 0);
+  const safe = Number.isFinite(amount ?? NaN) ? (amount as number) : 0;
+  return formatMoney(safe, DEFAULT_CURRENCY, { maximumFractionDigits: 0 }) ?? "";
 }
 
 function isoDateOffset(days: number) {
@@ -439,17 +447,6 @@ export default function ReportsPage() {
     );
   }
 
-  function renderSavedReportHead(column: SavedReportSortableColumn, label: string) {
-    return (
-      <SortableHead
-        sorted={savedReportSort?.key === column}
-        direction={savedReportSort?.key === column ? savedReportSort.direction : column === "updated_at" || column === "created_at" ? "desc" : "asc"}
-        onClick={() => toggleSavedReportSort(column)}
-      >
-        {label}
-      </SortableHead>
-    );
-  }
 
   function applyReportPreset(preset: ReportPreset) {
     const nextModule = modules.find((item) => item.module_key === preset.module_key);
@@ -537,23 +534,26 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageToolbar context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}>
-          <>
-            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
-              <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
-            </Button> : null}
-            {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
-              <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
-            </Button> : null}
-            {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
-              <Save />Save as
-            </Button> : null}
-            {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
-              <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
-            </Button> : null}
-          </>
-      </PageToolbar>
+    <PageShell
+      title="Reports"
+      context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}
+      actions={(
+        <>
+          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
+            <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
+          </Button> : null}
+          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
+            <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
+          </Button> : null}
+          {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
+            <Save />Save as
+          </Button> : null}
+          {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
+            <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
+          </Button> : null}
+        </>
+      )}
+    >
 
       {!modules.length ? (
         <Card>
@@ -581,7 +581,7 @@ export default function ReportsPage() {
               className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3 text-left transition hover:border-action-primary/60 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             >
               <span className="block text-sm font-medium text-copy-primary">{preset.label}</span>
-              <span className="mt-1 block text-xs leading-5 text-copy-secondary">{preset.description}</span>
+              <span className="mt-1 block text-p-xs text-copy-secondary">{preset.description}</span>
             </button>
           ))}
         </div>
@@ -664,63 +664,39 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {savedReportsQuery.error ? (
-          <div role="alert" className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-            <span>Saved reports could not be loaded.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void savedReportsQuery.refetch()}><RotateCcw />Retry</Button>
-          </div>
-        ) : null}
-
-        <ModuleTableShell className="mb-4 max-h-72" isRefreshing={savedReportsQuery.isFetching && !savedReportsQuery.isLoading}>
-          <Table className="min-w-[720px]">
-            <TableHeader>
-              <TableHeaderRow>
-                {renderSavedReportHead("name", "Name")}
-                {renderSavedReportHead("module_key", "Module")}
-                {renderSavedReportHead("updated_at", "Updated")}
-                {renderSavedReportHead("created_at", "Created")}
-                <TableHead className="text-right">Actions</TableHead>
-              </TableHeaderRow>
-            </TableHeader>
-            <TableBody>
-              {savedReportsQuery.isLoading ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-copy-muted">Loading saved reports…</TableCell>
-                </TableRow>
-              ) : savedReports.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5} className="py-8 text-center text-sm text-copy-muted">No saved reports for this module.</TableCell>
-                </TableRow>
-              ) : (
-                savedReports.map((item) => (
-                  <TableRow
-                    key={item.id}
-                    className="cursor-pointer"
-                    tabIndex={0}
-                    aria-label={`Open saved report ${item.name}`}
-                    onClick={() => applySavedReport(String(item.id))}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" || event.key === " ") {
-                        event.preventDefault();
-                        applySavedReport(String(item.id));
-                      }
-                    }}
-                  >
-                    <TableCell className="font-medium text-copy-primary">{item.name}</TableCell>
-                    <TableCell className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</TableCell>
-                    <TableCell className="text-copy-secondary">{formatDateTime(item.updated_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
-                    <TableCell className="text-copy-secondary">{formatDateTime(item.created_at, { hour: "numeric", minute: "2-digit" })}</TableCell>
-                    <TableCell className="text-right" onClick={(event) => event.stopPropagation()}>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
-                        Open
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </ModuleTableShell>
+        {/* No height cap: §4.5/§11.1 — a capped shell is a second scroll container inside
+            an already-scrolling page. The list grows and the page scrolls, like every
+            other list on a document page. */}
+        <RecordTable
+          label="Saved reports"
+          className="mb-4"
+          columns={[
+            { key: "name", label: "Name", size: "lg", sortable: true, render: (item) => <span className="font-medium text-copy-primary">{item.name}</span> },
+            { key: "module_key", label: "Module", sortable: true, render: (item) => <span className="text-copy-secondary">{getModuleDisplayName(item.module_key)}</span> },
+            { key: "updated_at", label: "Updated", sortable: true, render: (item) => <span className="text-copy-secondary">{formatDateTime(item.updated_at, { hour: "numeric", minute: "2-digit" })}</span> },
+            { key: "created_at", label: "Created", sortable: true, render: (item) => <span className="text-copy-secondary">{formatDateTime(item.created_at, { hour: "numeric", minute: "2-digit" })}</span> },
+          ]}
+          rows={savedReports}
+          rowKey={(item) => item.id}
+          onOpenRow={(item) => applySavedReport(String(item.id))}
+          rowLabel={(item) => `Open saved report ${item.name}`}
+          sort={savedReportSort ? { column: savedReportSort.key, direction: savedReportSort.direction } : null}
+          onSortChange={(next) => toggleSavedReportSort(next.column as SavedReportSortableColumn)}
+          isLoading={savedReportsQuery.isLoading}
+          isRefreshing={savedReportsQuery.isFetching && !savedReportsQuery.isLoading}
+          hasError={Boolean(savedReportsQuery.error)}
+          onRetry={() => void savedReportsQuery.refetch()}
+          emptyState={{
+            icon: BookmarkPlus,
+            title: "No saved reports for this module",
+            description: "Build a report below, then save it to reuse the same grouping and filters.",
+          }}
+          rowActions={(item) => (
+            <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
+              Open
+            </Button>
+          )}
+        />
 
         <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
           <Field>
@@ -811,11 +787,11 @@ export default function ReportsPage() {
               <h2 className="text-base font-semibold text-copy-primary">{selectedModule?.label ?? "Module"} report</h2>
               <FieldDescription className="mt-1">{report?.dimension.label ? `Grouped by ${report.dimension.label.toLowerCase()}.` : "Choose how to group and measure the authorized records."}</FieldDescription>
             </div>
-            <div className="inline-flex rounded-[var(--radius-control)] border border-line-default p-0.5" aria-label="Report display">
-              <Button type="button" variant={viewMode === "table" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "table"} onClick={() => setViewMode("table")}><Table2 />Table</Button>
-              <Button type="button" variant={viewMode === "bar" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "bar"} onClick={() => setViewMode("bar")}><BarChart3 />Bar</Button>
-              <Button type="button" variant={viewMode === "pie" ? "secondary" : "ghost"} size="sm" aria-pressed={viewMode === "pie"} onClick={() => setViewMode("pie")}><PieChartIcon />Pie</Button>
-            </div>
+            <SegmentedControl aria-label="Report display" value={viewMode} onValueChange={setViewMode}>
+              <SegmentedItem value="table"><Table2 />Table</SegmentedItem>
+              <SegmentedItem value="bar"><BarChart3 />Bar</SegmentedItem>
+              <SegmentedItem value="pie"><PieChartIcon />Pie</SegmentedItem>
+            </SegmentedControl>
           </div>
           {reportQuery.isLoading ? (
             <Skeleton className="h-[24rem] w-full rounded-[var(--radius-control)]" />
@@ -828,7 +804,7 @@ export default function ReportsPage() {
               action={hasActiveFilters ? <Button type="button" variant="outline" onClick={clearReportFilters}>Clear filters</Button> : undefined}
             />
           ) : viewMode === "table" ? (
-            <ModuleTableShell className="min-h-[24rem] max-h-[24rem]" isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}>
+            <ModuleTableShell isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}>
               <Table>
                 <TableHeader>
                   <TableHeaderRow>
@@ -849,26 +825,26 @@ export default function ReportsPage() {
               </Table>
             </ModuleTableShell>
           ) : (
-            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: CHART_COLORS[0] } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
+            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
               <ResponsiveContainer width="100%" height="100%">
                 {viewMode === "pie" ? (
                   <PieChart>
                     <Tooltip content={<ChartTooltipContent />} />
                     <Pie data={chartData} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="52%" paddingAngle={2}>
                       {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        <Cell key={row.key} fill={seriesColor(index)} />
                       ))}
                     </Pie>
                   </PieChart>
                 ) : (
                   <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 42 }}>
-                    <CartesianGrid stroke="#262626" vertical={false} />
-                    <XAxis dataKey="label" stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
-                    <YAxis stroke="#a3a3a3" tick={{ fill: "#a3a3a3", fontSize: 11 }} />
+                    <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                    <XAxis dataKey="label" stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
+                    <YAxis stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} />
                     <Tooltip content={<ChartTooltipContent />} />
                     <Bar dataKey="value" radius={[4, 4, 0, 0]}>
                       {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={CHART_COLORS[index % CHART_COLORS.length]} />
+                        <Cell key={row.key} fill={seriesColor(index)} />
                       ))}
                     </Bar>
                   </BarChart>
@@ -881,15 +857,15 @@ export default function ReportsPage() {
         <Card className="p-4">
           <div className="space-y-5">
             <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Records matched</div>
+              <div className="text-xs font-medium text-copy-label">Records matched</div>
               <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(report?.total_count ?? 0)}</div>
             </div>
             <div>
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Groups</div>
+              <div className="text-xs font-medium text-copy-label">Groups</div>
               <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(chartData.length)}</div>
             </div>
             <div className="border-t border-line-subtle pt-4">
-              <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">Top result</div>
+              <div className="text-xs font-medium text-copy-label">Top result</div>
               <div className="mt-2 text-sm font-medium text-copy-primary">{chartData[0]?.label ?? "No data"}</div>
               <div className="mt-1 text-sm text-copy-secondary">{chartData[0] ? `${formatNumber(chartData[0].value)} ${valueLabel.toLowerCase()}` : "No grouped results"}</div>
             </div>
@@ -901,7 +877,7 @@ export default function ReportsPage() {
       <Dialog open={saveDialogOpen} onClose={() => setSaveDialogOpen(false)}>
         <DialogBackdrop />
         <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-          <DialogPanel size="md">
+          <DialogPanel size="md" aria-describedby={undefined}>
             <DialogHeader>
               <DialogTitle>Save report</DialogTitle>
               <DialogIconClose />
@@ -933,14 +909,14 @@ export default function ReportsPage() {
           </DialogPanel>
         </div>
       </Dialog>
-    </div>
+    </PageShell>
   );
 }
 
 function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className="mt-2 text-xl font-semibold text-copy-primary">{value}</div>
       <div className="mt-1 text-xs text-copy-muted">{helper}</div>
     </div>
@@ -950,7 +926,7 @@ function MetricCard({ label, value, helper }: { label: string; value: string; he
 function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBucket[] }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
-      <div className="border-b border-line-subtle px-3 py-2 text-xs font-medium uppercase tracking-wide text-copy-muted">{title}</div>
+      <div className="border-b border-line-subtle px-3 py-2 text-xs font-medium text-copy-label">{title}</div>
       <div className="divide-y divide-line-subtle">
         {rows.length ? rows.slice(0, 5).map((row) => (
           <div key={row.key} className="flex items-center justify-between gap-3 px-3 py-3">

@@ -25,6 +25,8 @@ from app.modules.contracts.services.contracts_services import (
     get_contract_for_mutation_or_404,
     get_contract_or_404,
     list_contracts,
+    resolve_contract_actor_names,
+    resolve_contract_link_labels,
     update_contract,
     update_contract_signer,
 )
@@ -149,6 +151,24 @@ def search_contract_records(
     )
 
 
+def _contract_response(db: Session, contract) -> ContractResponse:
+    """The contract plus the display names of the records it points at.
+
+    Kept in one place so a route cannot return a contract whose links are bare ids — which is
+    what the detail page rendered before this (`Contact #12`).
+    """
+
+    response = ContractResponse.model_validate(contract).model_copy(
+        update=resolve_contract_link_labels(db, contract)
+    )
+    actors = resolve_contract_actor_names(db, contract)
+    response.events = [
+        event.model_copy(update={"created_by_name": actors.get(event.created_by_id)})
+        for event in response.events
+    ]
+    return response
+
+
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
 def create_contract_record(payload: ContractCreateRequest, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "create"))):
     submitted_fields = set(payload.model_fields_set)
@@ -156,12 +176,12 @@ def create_contract_record(payload: ContractCreateRequest, db: Session = Depends
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key=CONTRACTS_MODULE_KEY, payload=payload.model_dump())
     created = create_contract(db, sanitized_payload, current_user)
     safe_log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=CONTRACTS_MODULE_KEY, entity_type="contract", entity_id=created.id, action="create", description=f"Created contract {created.contract_number}", after_state=_serialize_contract(created))
-    return created
+    return _contract_response(db, created)
 
 
 @router.get("/{contract_id}", response_model=ContractResponse)
 def get_contract_record(contract_id: int, db: Session = Depends(get_db), current_user=Depends(require_user), require_module=Depends(require_module_access(CONTRACTS_MODULE_KEY)), require_permission=Depends(require_action_access(CONTRACTS_MODULE_KEY, "view"))):
-    return get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id)
+    return _contract_response(db, get_contract_or_404(db, tenant_id=current_user.tenant_id, contract_id=contract_id))
 
 
 @router.patch("/{contract_id}", response_model=ContractResponse)
@@ -183,7 +203,7 @@ def update_contract_record(contract_id: int, payload: ContractUpdateRequest = Bo
             entity_id=updated.id,
             payload={"contract_number": updated.contract_number, "title": updated.title, "from": before_state["status"], "to": updated.status},
         )
-    return updated
+    return _contract_response(db, updated)
 
 
 @router.post("/{contract_id}/parties", response_model=ContractPartyResponse, status_code=status.HTTP_201_CREATED)

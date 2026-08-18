@@ -1,19 +1,22 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, GripVertical } from "lucide-react";
+import { AlertTriangle, GripVertical, TriangleAlert } from "lucide-react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Pill } from "@/components/ui/Pill";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Task, TaskStatus } from "@/hooks/useTasks";
 import { formatDateTime } from "@/lib/datetime";
-import { getTaskPriorityStyle, getTaskStatusStyle } from "@/lib/statusStyles";
+import { getTaskPriority, getTaskStatus } from "@/lib/statusStyles";
 
 type Props = {
   tasks: Task[];
   isLoading: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   isRefreshing?: boolean;
   onOpen: (task: Task) => void;
   onStatusChange: (task: Task, status: TaskStatus) => Promise<void> | void;
@@ -30,15 +33,29 @@ function isOverdue(task: Task) {
   return Boolean(task.due_at && task.status !== "completed" && new Date(task.due_at).getTime() < Date.now());
 }
 
-export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onOpen, onStatusChange }: Props) {
+export default function TasksBoard({ tasks, isLoading, isRefreshing = false, hasError = false, onRetry, onOpen, onStatusChange }: Props) {
   const [draggedId, setDraggedId] = useState<number | null>(null);
   const [dropStatus, setDropStatus] = useState<TaskStatus | null>(null);
 
+  // §7.4 — the board is the same data view as the table, so it owes the same states.
+  if (hasError) {
+    return (
+      <div role="alert">
+        <EmptyState
+          icon={TriangleAlert}
+          title="Tasks could not be loaded"
+          description="Check your connection and try again."
+          action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
+        />
+      </div>
+    );
+  }
+
   if (isLoading) {
     return (
-      <div className="flex gap-4 overflow-x-auto rounded-xl border border-line-default bg-surface p-4">
+      <div className="flex min-h-56 flex-1 gap-4 overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface p-4">
         {STATUSES.map((status) => (
-          <div key={status.value} className="min-w-[260px] flex-1 rounded-lg border border-line-default bg-surface-muted p-3">
+          <div key={status.value} className="min-w-[260px] flex-1 rounded-[var(--radius-control)] bg-surface-muted p-3">
             <Skeleton className="h-6 w-28" />
             <Skeleton className="mt-4 h-32 w-full" />
             <Skeleton className="mt-3 h-32 w-full" />
@@ -53,12 +70,12 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
   }
 
   return (
-    <div className="relative overflow-x-auto rounded-xl border border-line-default bg-surface p-4">
+    <div className="relative min-h-56 flex-1 overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface p-4">
       {isRefreshing ? <div className="absolute right-4 top-4 text-xs text-copy-muted">Refreshing…</div> : null}
       <div className="flex min-w-max gap-4">
         {STATUSES.map((column) => {
           const columnTasks = tasks.filter((task) => task.status === column.value);
-          const statusStyle = getTaskStatusStyle(column.value);
+          const statusStyle = getTaskStatus(column.value);
           return (
             <section
               key={column.value}
@@ -71,22 +88,22 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
                 setDropStatus(null);
                 if (task && task.status !== column.value) void onStatusChange(task, column.value);
               }}
-              className={`min-w-[270px] w-[270px] rounded-lg border bg-surface-muted transition-colors ${dropStatus === column.value ? "border-action-primary bg-action-primary-muted/20" : "border-line-default"}`}
+              className={`min-w-[270px] w-[270px] rounded-[var(--radius-control)] border bg-surface-muted transition-colors ${dropStatus === column.value ? "border-action-primary bg-action-primary-muted/20" : "border-transparent"}`}
             >
               <div className="flex items-center justify-between border-b border-line-default px-3 py-3">
-                <Pill bg={statusStyle.bg} text={statusStyle.text} border={statusStyle.border}>{column.label}</Pill>
+                <StatusValue status={{ ...statusStyle, label: String(column.label) }} />
                 <span className="text-xs font-medium text-copy-muted">{columnTasks.length}</span>
               </div>
               <div className="flex min-h-48 flex-col gap-3 p-3">
                 {columnTasks.length ? columnTasks.map((task) => {
-                  const priorityStyle = getTaskPriorityStyle(task.priority);
+                  const priorityStyle = getTaskPriority(task.priority);
                   return (
                     <article
                       key={task.id}
                       draggable
                       onDragStart={() => setDraggedId(task.id)}
                       onDragEnd={() => { setDraggedId(null); setDropStatus(null); }}
-                      className={`rounded-lg border bg-surface p-3 shadow-sm ${isOverdue(task) ? "border-state-warning/60" : "border-line-default"}`}
+                      className={`rounded-[var(--radius-control)] border bg-surface p-3 transition-colors hover:border-line-strong hover:bg-surface-raised ${isOverdue(task) ? "border-state-warning/60" : "border-line-subtle"}`}
                     >
                       <div className="flex items-start gap-2">
                         <GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
@@ -95,7 +112,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, onO
                         </button>
                       </div>
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <Pill bg={priorityStyle.bg} text={priorityStyle.text} border={priorityStyle.border}>{priorityStyle.label}</Pill>
+                        <StatusValue status={priorityStyle} />
                         {isOverdue(task) ? <span className="inline-flex items-center gap-1 text-xs text-state-warning"><AlertTriangle className="h-3.5 w-3.5" />Overdue</span> : null}
                       </div>
                       <div className="mt-3 space-y-1 text-xs text-copy-muted">

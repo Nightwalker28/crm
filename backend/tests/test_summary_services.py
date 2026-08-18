@@ -82,7 +82,7 @@ class SummaryHydrationTests(unittest.TestCase):
         )
 
         with patch.object(summary_services, "hydrate_custom_field_record") as hydrate_one:
-            summary = summary_services.build_opportunity_summary(EmptyDB(), opportunity)
+            summary = summary_services.build_opportunity_summary(EmptyDB(), opportunity, current_user=None)
 
         self.assertIs(summary["opportunity"], opportunity)
         hydrate_one.assert_not_called()
@@ -228,7 +228,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
     def test_opportunity_summary_returns_explicitly_linked_quotes(self):
         opportunity = self.db.query(SalesOpportunity).filter(SalesOpportunity.opportunity_id == 35).one()
 
-        summary = summary_services.build_opportunity_summary(self.db, opportunity)
+        summary = summary_services.build_opportunity_summary(self.db, opportunity, current_user=None)
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
 

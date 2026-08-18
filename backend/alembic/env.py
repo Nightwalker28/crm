@@ -44,6 +44,13 @@ if config.config_file_name is not None:
 # for 'autogenerate' support
 target_metadata = Base.metadata
 
+# When a verification run is isolated inside a temporary schema, the search path
+# still falls back to `public`, so Alembic would find and stamp the real
+# `public.alembic_version` while creating the tables in the temporary schema —
+# leaving the real database claiming a revision whose tables do not exist.
+# Pinning the version table to the isolated schema keeps the run self-contained.
+VERSION_TABLE_SCHEMA = os.environ.get("ALEMBIC_VERSION_TABLE_SCHEMA") or None
+
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
@@ -68,6 +75,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
 
     with context.begin_transaction():
@@ -89,7 +97,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema=VERSION_TABLE_SCHEMA,
         )
 
         with context.begin_transaction():

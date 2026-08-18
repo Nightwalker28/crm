@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -31,6 +32,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -158,24 +160,23 @@ function DashboardWidgetShell({
   isEditing: boolean;
 }) {
   return (
-    <section
+    <Card
+      asChild
       data-testid={`dashboard-widget-${widget.id}`}
-      draggable={isEditing}
-      onDragStart={() => {
-        if (isEditing) onDragStart(index);
-      }}
-      onDragOver={(event) => {
-        if (isEditing) event.preventDefault();
-      }}
-      onDrop={() => {
-        if (isEditing) onDrop(index);
-      }}
-      className={cn(
-        "rounded-[var(--radius-card)] border border-line-subtle bg-surface",
-        isEditing && "border-line-strong bg-surface-raised shadow-sm",
-        sizeClass(widget.size),
-      )}
+      className={cn(isEditing && "border-line-strong bg-surface-raised", sizeClass(widget.size))}
     >
+      <section
+        draggable={isEditing}
+        onDragStart={() => {
+          if (isEditing) onDragStart(index);
+        }}
+        onDragOver={(event) => {
+          if (isEditing) event.preventDefault();
+        }}
+        onDrop={() => {
+          if (isEditing) onDrop(index);
+        }}
+      >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle px-4 py-3">
         <div className="flex min-w-0 items-center gap-2">
           {isEditing ? <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-label="Drag widget" /> : null}
@@ -190,34 +191,27 @@ function DashboardWidgetShell({
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
               <ArrowDown />
             </Button>
-            <div
-              role="group"
-              className="mx-1 flex rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted p-0.5"
+            <SegmentedControl
               aria-label={`Resize ${title}`}
+              value={widget.size}
+              onValueChange={(size) => onResize(widget.id, size as DashboardWidgetSize)}
+              className="mx-1"
             >
               {(Object.keys(SIZE_LABELS) as DashboardWidgetSize[]).map((size) => (
-                <Button
-                  key={size}
-                  type="button"
-                  variant={widget.size === size ? "primary" : "ghost"}
-                  size="icon-sm"
-                  aria-label={`Resize ${title} to ${size}`}
-                  aria-pressed={widget.size === size}
-                  onClick={() => onResize(widget.id, size)}
-                  className="h-7 min-w-7 rounded-[var(--radius-control-sm)] px-2 text-xs"
-                >
+                <SegmentedItem key={size} value={size} aria-label={`Resize ${title} to ${size}`}>
                   {SIZE_LABELS[size]}
-                </Button>
+                </SegmentedItem>
               ))}
-            </div>
-            <Button type="button" variant="dangerGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
+            </SegmentedControl>
+            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
               <Trash2 />
             </Button>
           </div>
         ) : null}
       </div>
       <div className={cn("p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
-    </section>
+      </section>
+    </Card>
   );
 }
 
@@ -269,7 +263,10 @@ export function DashboardLayoutEditor({
   return (
     <>
       {isEditing ? (
-        <div className="sticky top-2 z-20 flex flex-wrap items-center gap-2 rounded-[var(--radius-card)] border border-line-strong bg-surface-raised/95 px-4 py-3 shadow-lg backdrop-blur">
+        <Card
+          variant="raised"
+          className="sticky top-2 z-20 flex flex-wrap items-center gap-2 border-line-strong bg-surface-raised/95 px-4 py-3 backdrop-blur"
+        >
           <div className="mr-auto">
             <p className="text-sm font-semibold text-copy-primary">Dashboard edit mode</p>
             <p className={cn("text-xs", isLayoutDirty ? "text-state-warning" : "text-copy-muted")}>
@@ -288,7 +285,7 @@ export function DashboardLayoutEditor({
           <Button type="button" size="sm" onClick={() => onSave(draftWidgets)} disabled={isSaving || !isLayoutDirty}>
             <Save />{isSaving ? "Saving…" : "Save layout"}
           </Button>
-        </div>
+        </Card>
       ) : null}
 
       <div className="grid auto-rows-min gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -339,13 +336,13 @@ export function DashboardLayoutEditor({
                 <Button
                   key={`${item.type}-${item.module_key ?? "base"}`}
                   type="button"
-                  variant="secondary"
+                  variant="outline"
                   onClick={() => onAdd(item)}
                   className="h-auto w-full items-start justify-start whitespace-normal px-4 py-4 text-left"
                 >
                   <span>
                     <span className="block text-sm font-semibold text-copy-primary">{item.title}</span>
-                    <span className="mt-1 block text-sm font-normal leading-6 text-copy-secondary">{item.description}</span>
+                    <span className="mt-1 block text-p-sm font-normal text-copy-secondary">{item.description}</span>
                   </span>
                 </Button>
               ))}

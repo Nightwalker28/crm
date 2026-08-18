@@ -1,25 +1,25 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
-import { Fragment } from "react";
 import { FileText, Printer } from "lucide-react";
 
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Pill } from "@/components/ui/Pill";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getPosInvoiceStatusStyle, getPosPaymentStatusStyle } from "@/lib/statusStyles";
+import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
 type Props = {
   invoices: PosInvoice[];
   visibleColumns: string[];
   isLoading: boolean;
   isRefreshing: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   selectedIds: number[];
   sort: PosInvoiceSortState;
   hasActiveFilters: boolean;
@@ -30,63 +30,158 @@ type Props = {
   onClearFilters: () => void;
 };
 
-const SORTABLE = new Set(["invoice_number", "customer_name", "status", "payment_status", "total_amount", "issue_date", "due_date", "template_id", "updated_at"]);
+const SORTABLE = new Set([
+  "invoice_number",
+  "customer_name",
+  "status",
+  "payment_status",
+  "total_amount",
+  "issue_date",
+  "due_date",
+  "template_id",
+  "updated_at",
+]);
+
+const HEADERS: Record<string, string> = {
+  invoice_number: "Invoice",
+  customer_name: "Customer",
+  status: "Invoice status",
+  payment_status: "Payment",
+  total_amount: "Total",
+  amount_paid: "Paid",
+  balance_due: "Balance",
+  issue_date: "Issue date",
+  due_date: "Due date",
+  payment_method: "Method",
+  template_id: "Template",
+  updated_at: "Updated",
+};
+
+const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
+  customer_name: "lg",
+  invoice_number: "sm",
+  status: "sm",
+  payment_status: "sm",
+  template_id: "sm",
+};
+
+const MONEY_COLUMNS = new Set(["total_amount", "amount_paid", "balance_due"]);
+
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try { return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount); }
-  catch { return `${currency} ${amount.toFixed(2)}`; }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
-function label(column: string) {
-  return ({ invoice_number: "Invoice", customer_name: "Customer", status: "Invoice status", payment_status: "Payment", total_amount: "Total", amount_paid: "Paid", balance_due: "Balance", issue_date: "Issue date", due_date: "Due date", payment_method: "Method", template_id: "Template", updated_at: "Updated" } as Record<string, string>)[column] ?? column;
+function renderCell(invoice: PosInvoice, column: string) {
+  switch (column) {
+    case "invoice_number":
+      return <span className="text-xs font-semibold tabular-nums text-copy-primary">{invoice.invoice_number}</span>;
+    case "customer_name":
+      return <span className="text-sm font-medium text-copy-primary">{invoice.customer_name}</span>;
+    case "status": {
+      const style = getPosInvoiceStatus(invoice.status);
+      return <StatusValue status={style} />;
+    }
+    case "payment_status": {
+      const style = getPosPaymentStatus(invoice.payment_status);
+      return <StatusValue status={style} />;
+    }
+    case "total_amount":
+      return <span className="text-sm font-medium tabular-nums text-copy-primary">{money(invoice.total_amount, invoice.currency)}</span>;
+    case "amount_paid":
+      return <span className="text-sm tabular-nums text-copy-secondary">{money(invoice.amount_paid, invoice.currency)}</span>;
+    case "balance_due":
+      return (
+        <span className={`text-sm font-semibold tabular-nums ${invoice.balance_due > 0 ? "text-state-warning" : "text-state-success"}`}>
+          {money(invoice.balance_due, invoice.currency)}
+        </span>
+      );
+    case "issue_date":
+      return <span className="text-sm text-copy-secondary">{invoice.issue_date ? formatDateOnly(invoice.issue_date) : "—"}</span>;
+    case "due_date":
+      return <span className="text-sm text-copy-secondary">{invoice.due_date ? formatDateOnly(invoice.due_date) : "—"}</span>;
+    case "payment_method":
+      return <span className="text-sm text-copy-secondary">{invoice.payment_method || "—"}</span>;
+    case "template_id":
+      return <span className="text-sm capitalize text-copy-secondary">{invoice.template_id}</span>;
+    case "updated_at":
+      return <span className="text-sm text-copy-muted">{invoice.updated_at ? formatDateTime(invoice.updated_at) : "—"}</span>;
+    default:
+      return <span className="text-sm text-copy-disabled">—</span>;
+  }
 }
 
-function nextSort(sort: PosInvoiceSortState, column: string): PosInvoiceSortState {
-  return sort?.key === column ? { key: column, direction: sort.direction === "asc" ? "desc" : "asc" } : { key: column, direction: "asc" };
-}
+export default function InvoicesTable({
+  invoices,
+  visibleColumns,
+  isLoading,
+  isRefreshing,
+  hasError = false,
+  onRetry,
+  selectedIds,
+  sort,
+  hasActiveFilters,
+  canCreateInvoice,
+  onSortChange,
+  onToggle,
+  onTogglePage,
+  onClearFilters,
+}: Props) {
+  const columns = useMemo<RecordTableColumn<PosInvoice>[]>(
+    () =>
+      visibleColumns.map((column) => ({
+        key: column,
+        label: HEADERS[column] ?? column,
+        sortable: SORTABLE.has(column),
+        size: COLUMN_SIZES[column],
+        align: MONEY_COLUMNS.has(column) ? "right" : "left",
+        render: (invoice) => renderCell(invoice, column),
+      })),
+    [visibleColumns],
+  );
 
-function statusPill(value: string, type: "invoice" | "payment") {
-  const style = type === "invoice" ? getPosInvoiceStatusStyle(value) : getPosPaymentStatusStyle(value);
-  return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
-}
-
-function cell(invoice: PosInvoice, column: string) {
-  if (column === "invoice_number") return <TableCell className="sticky left-10 z-10 bg-surface"><Link href={`/dashboard/finance/pos/${invoice.id}`} className="font-mono text-xs font-semibold text-copy-primary hover:underline">{invoice.invoice_number}</Link></TableCell>;
-  if (column === "customer_name") return <TableCell><span className="font-medium text-copy-primary">{invoice.customer_name}</span></TableCell>;
-  if (column === "status") return <TableCell>{statusPill(invoice.status, "invoice")}</TableCell>;
-  if (column === "payment_status") return <TableCell>{statusPill(invoice.payment_status, "payment")}</TableCell>;
-  if (column === "total_amount") return <TableCell className="text-right font-medium text-copy-primary">{money(invoice.total_amount, invoice.currency)}</TableCell>;
-  if (column === "amount_paid") return <TableCell className="text-right text-copy-secondary">{money(invoice.amount_paid, invoice.currency)}</TableCell>;
-  if (column === "balance_due") return <TableCell className={`text-right font-semibold ${invoice.balance_due > 0 ? "text-state-warning" : "text-state-success"}`}>{money(invoice.balance_due, invoice.currency)}</TableCell>;
-  if (column === "issue_date") return <TableCell><span className="text-copy-secondary">{invoice.issue_date ? formatDateOnly(invoice.issue_date) : "—"}</span></TableCell>;
-  if (column === "due_date") return <TableCell><span className="text-copy-secondary">{invoice.due_date ? formatDateOnly(invoice.due_date) : "—"}</span></TableCell>;
-  if (column === "payment_method") return <TableCell><span className="text-copy-secondary">{invoice.payment_method || "—"}</span></TableCell>;
-  if (column === "template_id") return <TableCell><span className="capitalize text-copy-secondary">{invoice.template_id}</span></TableCell>;
-  if (column === "updated_at") return <TableCell><span className="text-copy-muted">{invoice.updated_at ? formatDateTime(invoice.updated_at) : "—"}</span></TableCell>;
-  return <TableCell>—</TableCell>;
-}
-
-export default function InvoicesTable({ invoices, visibleColumns, isLoading, isRefreshing, selectedIds, sort, hasActiveFilters, canCreateInvoice, onSortChange, onToggle, onTogglePage, onClearFilters }: Props) {
-  const allSelected = invoices.length > 0 && invoices.every((invoice) => selectedIds.includes(invoice.id));
   return (
-    <ModuleTableShell isRefreshing={isRefreshing}>
-      <Table className="min-w-[1080px]">
-        <TableHeader><TableHeaderRow>
-          <TableHead className="sticky left-0 z-20 w-10 bg-surface"><Checkbox aria-label="Select all invoices on this page" checked={allSelected} onCheckedChange={(checked) => onTogglePage(checked === true)} /></TableHead>
-          {visibleColumns.map((column) => SORTABLE.has(column) ? <SortableHead key={column} sorted={sort?.key === column} direction={sort?.key === column ? sort.direction : "asc"} onClick={() => onSortChange(nextSort(sort, column))} className={column === "invoice_number" ? "sticky left-10 z-20 bg-surface" : undefined}>{label(column)}</SortableHead> : <TableHead key={column}>{label(column)}</TableHead>)}
-          <TableHead className="text-right">Action</TableHead>
-        </TableHeaderRow></TableHeader>
-        <TableBody>
-          {isLoading ? <ModuleTableLoading columnCount={visibleColumns.length + 2} /> : invoices.length === 0 ? (
-            <TableRow><TableCell colSpan={visibleColumns.length + 2} className="py-12"><EmptyState icon={FileText} title={hasActiveFilters ? "No invoices match these filters" : "No invoices yet"} description={hasActiveFilters ? "Clear one or more filters and try again." : canCreateInvoice ? "Create an itemized invoice to start tracking receivables." : "Invoices will appear here when a teammate creates one."} action={hasActiveFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : canCreateInvoice ? <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button> : undefined} /></TableCell></TableRow>
-          ) : invoices.map((invoice) => (
-            <TableRow key={invoice.id}>
-              <TableCell className="sticky left-0 z-10 bg-surface"><Checkbox aria-label={`Select ${invoice.invoice_number}`} checked={selectedIds.includes(invoice.id)} onCheckedChange={(checked) => onToggle(invoice.id, checked === true)} /></TableCell>
-              {visibleColumns.map((column) => <Fragment key={column}>{cell(invoice, column)}</Fragment>)}
-              <TableCell className="text-right"><Button asChild variant="ghost" size="icon-sm"><Link href={`/dashboard/finance/pos/${invoice.id}/print`} title={`Print ${invoice.invoice_number}`}><Printer /></Link></Button></TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Invoices"
+      columns={columns}
+      rows={invoices}
+      rowKey={(invoice) => invoice.id}
+      rowHref={(invoice) => `/dashboard/finance/pos/${invoice.id}`}
+      rowLabel={(invoice) => `Open invoice ${invoice.invoice_number}`}
+      selection={{
+        selectedIds,
+        onToggleRow: (id, checked) => onToggle(Number(id), checked),
+        onToggleAll: onTogglePage,
+        rowLabel: (invoice) => `Select ${invoice.invoice_number}`,
+      }}
+      rowActions={(invoice) => (
+        <Button asChild variant="ghost" size="icon-sm">
+          <Link href={`/dashboard/finance/pos/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}>
+            <Printer />
+          </Link>
+        </Button>
+      )}
+      rowActionsLabel="Action"
+      sort={sort ? { column: sort.key, direction: sort.direction } : null}
+      onSortChange={(next) => onSortChange({ key: next.column, direction: next.direction })}
+      isLoading={isLoading}
+      isRefreshing={isRefreshing}
+      hasError={hasError}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      emptyState={{
+        icon: FileText,
+        title: "No invoices yet",
+        description: canCreateInvoice
+          ? "Create an itemized invoice to start tracking receivables."
+          : "Invoices will appear here when a teammate creates one.",
+        action: canCreateInvoice
+          ? <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button>
+          : undefined,
+      }}
+      filteredEmptyState={{ icon: FileText }}
+    />
   );
 }

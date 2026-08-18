@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
+import { publishAuthSessionChange } from "@/lib/authSessionEvents";
 
 type SignInForm = {
   email: string;
@@ -139,10 +140,12 @@ export default function LoginPage() {
       }
 
       if (data?.status === "mfa_setup_required") {
+        publishAuthSessionChange();
         await startMfaSetup();
         return;
       }
 
+      publishAuthSessionChange();
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -191,6 +194,7 @@ export default function LoginPage() {
       });
       await res.json().catch(() => null);
       if (!res.ok) throw new Error("The authenticator or recovery code was not accepted.");
+      publishAuthSessionChange();
       router.replace("/dashboard");
       router.refresh();
     } catch {
@@ -265,7 +269,7 @@ export default function LoginPage() {
 
       {loginStep === "mfa_challenge" ? (
         <form className="space-y-4 text-left" onSubmit={handleMfaChallenge}>
-          <div className="rounded-md border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
+          <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
             Enter your authenticator code or one recovery code to finish signing in.
           </div>
           <div className="space-y-2">
@@ -300,15 +304,16 @@ export default function LoginPage() {
         <form className="space-y-4 text-left" onSubmit={handleEnableMfa}>
           {mfaRecoveryCodes.length ? (
             <>
-              <div className="rounded-md border border-state-success/40 bg-state-success-muted px-3 py-3 text-sm text-state-success">
+              <div className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-3 py-3 text-sm text-state-success">
                 MFA is enabled. Save these recovery codes before continuing.
               </div>
-              <div className="grid gap-2 rounded-md border border-line-default bg-app/70 p-3 font-mono text-xs text-copy-secondary">
+              <div className="grid gap-2 rounded-[var(--radius-control)] border border-line-subtle bg-app/70 p-3 font-mono text-xs text-copy-secondary">
                 {mfaRecoveryCodes.map((code) => <div key={code}>{code}</div>)}
               </div>
               <Button
                 type="button"
                 onClick={() => {
+                  publishAuthSessionChange();
                   router.replace("/dashboard");
                   router.refresh();
                 }}
@@ -319,11 +324,11 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <div className="rounded-md border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
+              <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted px-3 py-3 text-sm text-state-warning">
                 Your tenant requires MFA. Add this secret to an authenticator app, then enter the 6-digit code.
               </div>
-              <div className="rounded-md border border-line-default bg-app/70 p-3">
-                <div className="text-xs uppercase tracking-wide text-copy-muted">Secret</div>
+              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-app/70 p-3">
+                <div className="text-xs font-medium text-copy-label">Secret</div>
                 <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
               </div>
               {mfaOtpAuthUri ? (
@@ -354,7 +359,7 @@ export default function LoginPage() {
         </form>
       ) : null}
 
-      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs uppercase tracking-[0.25em] text-copy-muted">
+      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs font-medium text-copy-label">
         <div className="h-px flex-1 bg-line-subtle" />
         <span>or</span>
         <div className="h-px flex-1 bg-line-subtle" />

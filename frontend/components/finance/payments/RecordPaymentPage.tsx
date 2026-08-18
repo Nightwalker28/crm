@@ -12,7 +12,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
@@ -21,13 +21,13 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { formatDateOnly } from "@/lib/datetime";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
 
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
 function isEligible(invoice: PosInvoice) {
@@ -100,13 +100,11 @@ export default function RecordPaymentPage() {
   if (!canRecordPayment) return <PermissionDeniedState />;
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Record payment"
-        description="Select an outstanding invoice and apply a customer payment."
-        actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
-      />
-
+    <PageShell
+      title="Record payment"
+      description="Select an outstanding invoice and apply a customer payment."
+      actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
+    >
       <RecordFormLayout
         sidebar={
           <Card className="p-5">
@@ -119,7 +117,7 @@ export default function RecordPaymentPage() {
                 <div className="flex justify-between gap-3 border-t border-line-subtle pt-3"><dt className="text-copy-muted">Outstanding</dt><dd className="font-semibold text-state-warning">{money(invoice.balance_due, invoice.currency)}</dd></div>
               </dl>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
+              <p className="mt-2 text-p-sm text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
             )}
           </Card>
         }
@@ -157,7 +155,7 @@ export default function RecordPaymentPage() {
                   type="button"
                   onClick={() => selectInvoice(item)}
                   aria-pressed={invoice?.id === item.id}
-                  className="grid gap-2 rounded-[var(--radius-card)] border border-line-default bg-surface p-4 text-left transition-colors hover:border-line-strong aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
+                  className="grid gap-2 rounded-[var(--radius-control)] border border-line-subtle p-4 text-left transition-colors hover:border-line-strong hover:bg-surface-muted aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
                 >
                   <span>
                     <span className="block font-medium text-copy-primary">{item.invoice_number} · {item.customer_name}</span>
@@ -206,6 +204,6 @@ export default function RecordPaymentPage() {
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

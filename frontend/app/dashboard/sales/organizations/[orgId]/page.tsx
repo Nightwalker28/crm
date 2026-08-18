@@ -1,40 +1,60 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, Pencil, StickyNote } from "lucide-react";
-import { toast } from "sonner";
+import { useRef, useState } from "react";
+import { useParams, useSearchParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus } from "lucide-react";
 
+import { ContactQuickCreate } from "@/components/contacts/ContactQuickCreate";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
+import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQuickCreate";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import {
+  RecordRelatedCard,
+  RecordRelatedLink,
+  RecordRelatedList,
+} from "@/components/recordWorkspace/RecordRelatedList";
+import {
+  RecordWorkspace,
+  recordEditHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { RecordTabs } from "@/components/ui/RecordTabs";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineCollection,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
   isModuleFieldEnabled,
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import {
   useClientPortalActions,
   useCustomerGroups,
   type CustomerGroup,
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 
 type RelatedContact = {
   contact_id: number;
@@ -125,542 +145,562 @@ type OrganizationSummary = {
   insertion_order_count: number;
 };
 
+/** Fields the spine owns, which `Details` must not draw a second time (design.md §4.7). */
+const SPINE_OWNED_FIELDS = ["assigned_to", "customer_group_id"] as const;
+
+const NO_GROUP = "none";
+
+class OrganizationSummaryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
 async function fetchOrganizationSummary(orgId: string) {
   const res = await apiFetch(`/sales/organizations/${orgId}/summary`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) {
+    throw new OrganizationSummaryRequestError(body?.detail ?? `Failed with ${res.status}`, res.status);
+  }
   return body as OrganizationSummary;
 }
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId: string }>();
-  const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
-  const fieldEnabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
+  const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const activeTab = searchParams.get("tab");
+  const [contactQuickCreateOpen, setContactQuickCreateOpen] = useState(false);
+  const [dealQuickCreateOpen, setDealQuickCreateOpen] = useState(false);
+  const contactQuickCreateTriggerRef = useRef<HTMLButtonElement>(null);
+  const dealQuickCreateTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const { modules } = useAccessibleModules();
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const organizationActions = moduleActions("sales_organizations");
+  const contactActions = moduleActions("sales_contacts");
+  const opportunityActions = moduleActions("sales_opportunities");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const canEditOrganization = Boolean(organizationActions?.can_edit);
+  const canDeleteOrganization = Boolean(organizationActions?.can_delete);
+  const canViewContacts = Boolean(contactActions?.can_view);
+  const canViewOpportunities = Boolean(opportunityActions?.can_view);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canCreateTasks = Boolean(taskActions?.can_create);
+  const canEditTasks = Boolean(taskActions?.can_edit);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+  const canCreateDocuments = Boolean(documentActions?.can_create);
+  const canEditDocuments = Boolean(documentActions?.can_edit);
+  const canDeleteDocuments = Boolean(documentActions?.can_delete);
+  // Contextual creation links the new record to this account, so both the create right on the
+  // target module and view access to this one are required. The endpoints enforce the same pair.
+  const canCreateContactHere = Boolean(contactActions?.can_create) && Boolean(organizationActions?.can_view);
+  const canCreateOpportunityHere = Boolean(opportunityActions?.can_create) && Boolean(organizationActions?.can_view);
+
+  const {
+    fields: moduleFields,
+    isLoading: moduleFieldsLoading,
+    error: moduleFieldsError,
+  } = useModuleFieldConfigs("sales_organizations");
+  const fieldConfigsReady = !moduleFieldsLoading && !moduleFieldsError;
+  const fieldEnabled = (key: string) => fieldConfigsReady && isModuleFieldEnabled(moduleFields, key);
+
   const customerGroupsQuery = useCustomerGroups();
-  const { assignOrganizationGroup, isAssigningCustomerGroup } =
-    useClientPortalActions();
+  const { assignOrganizationGroup } = useClientPortalActions();
   const summaryQuery = useQuery({
     queryKey: ["sales-organization-summary", params.orgId],
     queryFn: () => fetchOrganizationSummary(params.orgId),
     enabled: Boolean(params.orgId),
     refetchOnWindowFocus: false,
   });
-  const summary = summaryQuery.data ?? null;
-  const accountName = summary?.organization.org_name || "Account";
+  const detailLayoutQuery = useResolvedRecordLayout("sales_organizations", "detail");
 
-  async function handleAssignCustomerGroup(value: string) {
+  const summary = summaryQuery.data ?? null;
+  const org = summary?.organization;
+  const summaryError = summaryQuery.error;
+  const notFound =
+    summaryError instanceof OrganizationSummaryRequestError && summaryError.status === 404;
+  const accountName = org?.org_name || "Account";
+  const recordHref = `/dashboard/sales/organizations/${params.orgId}`;
+  const relatedHref = `${recordHref}?tab=related`;
+
+  /** The account's one state field. Optimistic, and rolled back if the write fails (R1). */
+  async function updateCustomerGroup(next: string) {
     if (!summary) return;
+    const groupId = next === NO_GROUP ? null : Number(next);
+    if (groupId !== null && !Number.isInteger(groupId)) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-organization-summary", params.orgId], {
+      ...summary,
+      organization: { ...summary.organization, customer_group_id: groupId },
+    });
     try {
-      const groupId = value === "none" ? null : Number(value);
-      const valid =
-        groupId === null ||
-        (Number.isInteger(groupId) &&
-          (customerGroupsQuery.data ?? []).some(
-            (group) => group.id === groupId,
-          ));
-      if (!valid) throw new Error("Select a valid customer group.");
       await assignOrganizationGroup({
         organizationId: summary.organization.org_id,
         customerGroupId: groupId,
       });
-      await summaryQuery.refetch();
-      toast.success("Customer group updated.");
-    } catch {
-      toast.error("Customer group could not be updated. Try again.");
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_organizations", params.orgId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-organization-summary", params.orgId], previous);
+      throw error;
     }
   }
 
+  const customerGroups = customerGroupsQuery.data ?? [];
+  const currentGroupId = org?.customer_group_id ?? null;
+  const customerGroupOptions: InlineFieldEditOption[] = [
+    { value: NO_GROUP, tone: null, label: "No group" },
+    ...customerGroups
+      .filter((group) => group.is_active || group.id === currentGroupId)
+      .map((group) => ({ value: String(group.id), tone: null, label: group.name })),
+  ];
+  // The record arrives before the group list does; without this the rail shows the raw id
+  // until that second request lands (`InlineFieldEdit` falls back to the unmatched value).
+  if (currentGroupId && !customerGroupOptions.some((option) => option.value === String(currentGroupId))) {
+    customerGroupOptions.push({
+      value: String(currentGroupId),
+      tone: null,
+      label: org?.customer_group?.name ?? "Assigned group",
+    });
+  }
+
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      <RecordPageHeader
-        backHref="/dashboard/sales/organizations"
-        backLabel="Back to Accounts"
+    <>
+      <RecordWorkspace
         title={accountName}
         description="Review account ownership, contacts, commercial activity, transactions, and documents."
-        primaryAction={
-          <>
-            <RecordDeleteButton
-              endpoint={`/sales/organizations/${params.orgId}`}
-              label="Account"
-              recordName={accountName}
-              redirectHref="/dashboard/sales/organizations"
-              queryKeys={["sales-organizations"]}
-            />
-            <Button asChild>
-              <Link
-                href={`/dashboard/sales/organizations/${params.orgId}/edit`}
-              >
-                <Pencil />
-                Edit
-              </Link>
-            </Button>
-          </>
+        backHref="/dashboard/sales/organizations"
+        backLabel="Accounts"
+        isPermissionDenied={
+          summaryError instanceof OrganizationSummaryRequestError && summaryError.status === 403
         }
+        isLoading={summaryQuery.isLoading || (!summary && !summaryError)}
+        hasError={Boolean(summaryError)}
+        onRetry={() => void summaryQuery.refetch()}
+        errorState={notFound ? (
+          <RouteNotFoundState
+            titleAs="p"
+            recordLabel="Account"
+            backHref="/dashboard/sales/organizations"
+            backLabel="Back to accounts"
+          />
+        ) : undefined}
+        subtitle={org ? (
+          <>
+            {org.primary_email ? <span>{org.primary_email}</span> : null}
+            {fieldEnabled("primary_phone") && org.primary_phone ? (
+              <span>{org.primary_phone}</span>
+            ) : null}
+            {fieldEnabled("industry") && org.industry ? <span>{org.industry}</span> : null}
+          </>
+        ) : null}
+        actions={org ? (
+          <>
+            {canCreateOpportunityHere ? (
+              <Button
+                ref={dealQuickCreateTriggerRef}
+                type="button"
+                onClick={() => setDealQuickCreateOpen(true)}
+              >
+                <Plus />
+                Deal
+              </Button>
+            ) : null}
+            {canCreateContactHere ? (
+              <Button
+                ref={contactQuickCreateTriggerRef}
+                type="button"
+                variant="outline"
+                onClick={() => setContactQuickCreateOpen(true)}
+              >
+                <Plus />
+                Contact
+              </Button>
+            ) : null}
+            <CommunicationActions
+              email={org.primary_email}
+              phone={fieldEnabled("primary_phone") ? org.primary_phone : null}
+              showCopyActions={false}
+            />
+            {canEditOrganization ? (
+              <Button asChild variant="outline">
+                <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+                  <Pencil />
+                  Edit
+                </Link>
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+        overflowActions={org && canDeleteOrganization ? (
+          <RecordDeleteButton
+            as="menuItem"
+            endpoint={`/sales/organizations/${params.orgId}`}
+            label="Account"
+            recordName={accountName}
+            redirectHref="/dashboard/sales/organizations"
+            queryKeys={["sales-organizations"]}
+          />
+        ) : null}
+        spine={
+          <RecordSpine>
+            {summary && org ? (
+              <>
+                <RecordSpineBlock title="State">
+                  <RecordSpineField label="Customer group">
+                    {canEditOrganization ? (
+                      <InlineFieldEdit
+                        fieldLabel="Customer group"
+                        value={currentGroupId ? String(currentGroupId) : NO_GROUP}
+                        options={customerGroupOptions}
+                        disabled={customerGroupsQuery.isLoading}
+                        onCommit={(next) => updateCustomerGroup(next.value)}
+                      />
+                    ) : (
+                      org.customer_group?.name ?? "No group"
+                    )}
+                  </RecordSpineField>
+                </RecordSpineBlock>
+
+                <RecordSpineBlock title="Connected">
+                  {fieldEnabled("assigned_to") ? (
+                    <RecordSpineLink label="Owner" value={org.assigned_to_name} />
+                  ) : null}
+                  {canViewContacts ? (
+                    <RecordSpineCollection
+                      label="Contacts"
+                      count={summary.contact_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewOpportunities ? (
+                    <RecordSpineCollection
+                      label="Deals"
+                      count={summary.opportunity_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  <RecordSpineCollection
+                    label="Quotes"
+                    count={summary.quote_count}
+                    href={relatedHref}
+                  />
+                  <RecordSpineCollection
+                    label="Orders"
+                    count={summary.order_count}
+                    href={relatedHref}
+                  />
+                  <RecordSpineCollection
+                    label="Invoices"
+                    count={summary.invoice_count}
+                    href={relatedHref}
+                  />
+                  <RecordSpineCollection
+                    label="Insertion orders"
+                    count={summary.insertion_order_count}
+                    href={relatedHref}
+                  />
+                </RecordSpineBlock>
+
+                {summary.inferred_services.length ? (
+                  <RecordSpineBlock title="Services">
+                    <div className="text-sm text-copy-primary">
+                      {summary.inferred_services.join(", ")}
+                    </div>
+                  </RecordSpineBlock>
+                ) : null}
+
+                <RecordSpineMeta
+                  createdLabel={
+                    org.created_time ? `Created ${formatDateTime(org.created_time)}` : undefined
+                  }
+                  updatedLabel={
+                    org.updated_at ? `Updated ${formatDateTime(org.updated_at)}` : undefined
+                  }
+                  history={
+                    <RecordAuditHistory moduleKey="sales_organizations" entityId={org.org_id} />
+                  }
+                />
+              </>
+            ) : null}
+          </RecordSpine>
+        }
+        details={summary ? (
+          <AccountOverview
+            summary={summary}
+            layout={detailLayoutQuery.data}
+            isLayoutLoading={detailLayoutQuery.isLoading}
+            layoutError={detailLayoutQuery.error}
+            onRetryLayout={() => void detailLayoutQuery.refetch()}
+          />
+        ) : null}
+        timeline={org ? (
+          // An account has no follow-up endpoint — you call a person, not a company — so the
+          // composer offers the note mode alone rather than channels that would post nowhere.
+          <RecordTimeline
+            moduleKey="sales_organizations"
+            entityId={org.org_id}
+            canEdit={canEditOrganization}
+          />
+        ) : undefined}
+        tasks={org && canViewTasks ? (
+          <RecordTasksPanel
+            moduleKey="sales_organizations"
+            entityId={org.org_id}
+            sourceLabel={accountName}
+            canCreate={canCreateTasks}
+            canEdit={canEditTasks}
+            createActionVariant="outline"
+          />
+        ) : undefined}
+        files={org && canViewDocuments ? (
+          <RecordDocumentsPanel
+            moduleKey="sales_organizations"
+            entityId={org.org_id}
+            canUpload={canCreateDocuments && canEditOrganization}
+            canEdit={canEditDocuments && canEditOrganization}
+            canDelete={canDeleteDocuments && canEditOrganization}
+          />
+        ) : undefined}
+        extraTabs={summary ? [
+          {
+            id: "related",
+            label: "Related records",
+            content: (
+              <RelatedRecords
+                summary={summary}
+                canViewContacts={canViewContacts}
+                canViewOpportunities={canViewOpportunities}
+                canCreateContact={canCreateContactHere}
+                canCreateOpportunity={canCreateOpportunityHere}
+                onCreateContact={() => setContactQuickCreateOpen(true)}
+                onCreateOpportunity={() => setDealQuickCreateOpen(true)}
+              />
+            ),
+          },
+        ] : []}
       />
-      {summaryQuery.error ? (
-        <RouteErrorState
-          title="Unable to load this account"
-          reset={() => void summaryQuery.refetch()}
-          backHref="/dashboard/sales/organizations"
-          backLabel="Back to accounts"
+
+      {summary && canCreateContactHere ? (
+        <ContactQuickCreate
+          open={contactQuickCreateOpen}
+          onOpenChange={setContactQuickCreateOpen}
+          returnFocusRef={contactQuickCreateTriggerRef}
+          onCreated={() => void summaryQuery.refetch()}
+          context={{
+            sourceModuleKey: "sales_organizations",
+            sourceEntityId: summary.organization.org_id,
+            relationshipIntent: "account_contact",
+            defaults: {
+              organization_id: summary.organization.org_id,
+              organization_name: summary.organization.org_name,
+            },
+          }}
         />
       ) : null}
-      {summaryQuery.isLoading || (!summary && !summaryQuery.error) ? (
-        <RouteLoadingState label="account" />
+
+      {summary && canCreateOpportunityHere ? (
+        <OpportunityQuickCreate
+          open={dealQuickCreateOpen}
+          onOpenChange={setDealQuickCreateOpen}
+          returnFocusRef={dealQuickCreateTriggerRef}
+          onCreated={() => void summaryQuery.refetch()}
+          context={{
+            sourceModuleKey: "sales_organizations",
+            sourceEntityId: summary.organization.org_id,
+            relationshipIntent: "account_deal",
+            defaults: {
+              organization_id: summary.organization.org_id,
+              organization_name: summary.organization.org_name,
+              opportunity_name: `${summary.organization.org_name} — new deal`,
+            },
+          }}
+        />
       ) : null}
-      {summary ? (
-        <>
-          <Card className="px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <CommunicationActions
-                email={summary.organization.primary_email}
-                phone={
-                  fieldEnabled("primary_phone")
-                    ? summary.organization.primary_phone
-                    : null
-                }
-              />
-              <Button asChild size="sm" variant="ghost">
-                <Link href="?tab=notes" scroll={false}>
-                  <StickyNote />
-                  Note
-                </Link>
-              </Button>
-              <Button asChild size="sm" variant="ghost">
-                <Link href="?tab=related" scroll={false}>
-                  <CheckSquare />
-                  Task
-                </Link>
-              </Button>
-              <div className="ml-auto text-xs text-copy-muted">
-                Updated:{" "}
-                {summary.organization.updated_at
-                  ? formatDateTime(summary.organization.updated_at)
-                  : "Not recorded"}
-              </div>
-            </div>
-          </Card>
-          <RecordTabs
-            urlParam="tab"
-            defaultTabId="overview"
-            tabs={[
-              {
-                id: "overview",
-                label: "Overview",
-                content: (
-                  <AccountOverview
-                    summary={summary}
-                    fieldEnabled={fieldEnabled}
-                    customerGroups={customerGroupsQuery.data ?? []}
-                    customerGroupsLoading={customerGroupsQuery.isLoading}
-                    customerGroupSaving={isAssigningCustomerGroup}
-                    onAssignCustomerGroup={(value) =>
-                      void handleAssignCustomerGroup(value)
-                    }
-                  />
-                ),
-              },
-              {
-                id: "activity",
-                label: "Activity",
-                content: (
-                  <RecordActivityTimeline
-                    moduleKey="sales_organizations"
-                    entityId={summary.organization.org_id}
-                    title="Account activity"
-                    description="Recent account changes and collaboration events."
-                  />
-                ),
-              },
-              {
-                id: "related",
-                label: "Related records",
-                content: <RelatedRecords summary={summary} />,
-              },
-              {
-                id: "notes",
-                label: "Notes",
-                content: (
-                  <RecordCommentsPanel
-                    moduleKey="sales_organizations"
-                    entityId={summary.organization.org_id}
-                  />
-                ),
-              },
-              {
-                id: "files",
-                label: "Files",
-                content: (
-                  <RecordDocumentsPanel
-                    moduleKey="sales_organizations"
-                    entityId={summary.organization.org_id}
-                  />
-                ),
-              },
-              {
-                id: "audit",
-                label: "Audit history",
-                content: (
-                  <RecordActivityTimeline
-                    moduleKey="sales_organizations"
-                    entityId={summary.organization.org_id}
-                    title="Audit history"
-                    description="Chronological record changes and collaboration events for this account."
-                  />
-                ),
-              },
-            ]}
-          />
-        </>
-      ) : null}
-    </div>
+    </>
   );
 }
 
 function AccountOverview({
   summary,
-  fieldEnabled,
-  customerGroups,
-  customerGroupsLoading,
-  customerGroupSaving,
-  onAssignCustomerGroup,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
 }: {
   summary: OrganizationSummary;
-  fieldEnabled: (key: string) => boolean;
-  customerGroups: CustomerGroup[];
-  customerGroupsLoading: boolean;
-  customerGroupSaving: boolean;
-  onAssignCustomerGroup: (value: string) => void;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
 }) {
   const org = summary.organization;
-  const address = [
-    org.billing_address,
-    org.billing_city,
-    org.billing_state,
-    org.billing_postal_code,
-    org.billing_country,
-  ]
-    .filter(Boolean)
-    .join(", ");
-  return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+  const layoutValues: Record<string, unknown> = {
+    ...org,
+    assigned_to: org.assigned_to_name,
+  };
+
+  if (isLayoutLoading || !layout) {
+    return (
       <Card className="px-5 py-5">
-        <h2 className="text-lg font-semibold text-copy-primary">
-          Account details
-        </h2>
-        <p className="mt-1 text-sm text-copy-muted">
-          Core company, ownership, and billing information.
-        </p>
-        <div className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-2">
-          {fieldEnabled("primary_email") ? (
-            <DetailField label="Primary email" value={org.primary_email} />
-          ) : null}
-          {fieldEnabled("secondary_email") ? (
-            <DetailField label="Secondary email" value={org.secondary_email} />
-          ) : null}
-          {fieldEnabled("primary_phone") ? (
-            <DetailField label="Primary phone" value={org.primary_phone} />
-          ) : null}
-          {fieldEnabled("secondary_phone") ? (
-            <DetailField label="Secondary phone" value={org.secondary_phone} />
-          ) : null}
-          {fieldEnabled("website") ? (
-            <DetailField
-              label="Website"
-              value={org.website}
-              href={safeExternalUrl(org.website)}
-              external
-            />
-          ) : null}
-          {fieldEnabled("industry") ? (
-            <DetailField label="Industry" value={org.industry} />
-          ) : null}
-          {fieldEnabled("annual_revenue") ? (
-            <DetailField label="Annual revenue" value={org.annual_revenue} />
-          ) : null}
-          {fieldEnabled("assigned_to") ? (
-            <DetailField label="Owner" value={org.assigned_to_name} />
-          ) : null}
-          {address ? (
-            <div className="md:col-span-2">
-              <DetailField label="Billing address" value={address} />
-            </div>
-          ) : null}
-        </div>
-        {Object.keys(org.custom_fields ?? {}).length ? (
-          <details className="mt-5 border-t border-line-subtle pt-5">
-            <summary className="cursor-pointer text-sm font-medium text-copy-primary">
-              Custom fields
-            </summary>
-            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
-              {Object.entries(org.custom_fields ?? {}).map(([key, value]) => (
-                <DetailField
-                  key={key}
-                  label={key.replace(/_/g, " ")}
-                  value={String(value ?? "")}
-                />
-              ))}
-            </div>
-          </details>
-        ) : null}
+        {layoutError ? (
+          <PanelError message="The account details layout could not be loaded." onRetry={onRetryLayout} />
+        ) : (
+          <PanelLoading label="Loading account details…" />
+        )}
       </Card>
-      <div className="grid gap-4">
-        <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-copy-primary">
-            Commercial summary
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <SummaryTile label="Contacts" value={summary.contact_count} />
-            <SummaryTile label="Deals" value={summary.opportunity_count} />
-            <SummaryTile label="Quotes" value={summary.quote_count} />
-            <SummaryTile label="Orders" value={summary.order_count} />
-            <SummaryTile label="Invoices" value={summary.invoice_count} />
-            <SummaryTile
-              label="Insertion orders"
-              value={summary.insertion_order_count}
-            />
-          </div>
-          <div className="mt-3">
-            <SummaryTile
-              label="Services"
-              value={
-                summary.inferred_services.length
-                  ? summary.inferred_services.join(", ")
-                  : "No service history yet"
-              }
-            />
-          </div>
-        </Card>
-        <Card className="px-5 py-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
-            Customer group
-          </h2>
-          <Select
-            value={
-              org.customer_group_id ? String(org.customer_group_id) : "none"
-            }
-            onValueChange={onAssignCustomerGroup}
-            disabled={customerGroupsLoading || customerGroupSaving}
-          >
-            <SelectTrigger className="mt-3">
-              <SelectValue placeholder="Select customer group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No group</SelectItem>
-              {customerGroups.map((group) => (
-                <SelectItem
-                  key={group.id}
-                  value={String(group.id)}
-                  disabled={!group.is_active}
-                >
-                  {group.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <p className="mt-2 text-xs text-copy-muted">
-            Client portal pricing uses this group where pricing rules are
-            configured.
-          </p>
-        </Card>
-      </div>
-    </div>
+    );
+  }
+
+  return (
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={layoutValues}
+      customValues={org.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) => {
+        if (field.field_key !== "website") return undefined;
+        const href = safeExternalUrl(typeof value === "string" ? value : null);
+        if (!href) return undefined;
+        return (
+          <Link href={href} target="_blank" rel="noopener noreferrer" className="text-action-primary hover:underline">
+            {String(value)}
+          </Link>
+        );
+      }}
+    />
   );
 }
 
-function RelatedRecords({ summary }: { summary: OrganizationSummary }) {
-  const org = summary.organization;
+function RelatedRecords({
+  summary,
+  canViewContacts,
+  canViewOpportunities,
+  canCreateContact,
+  canCreateOpportunity,
+  onCreateContact,
+  onCreateOpportunity,
+}: {
+  summary: OrganizationSummary;
+  canViewContacts: boolean;
+  canViewOpportunities: boolean;
+  canCreateContact: boolean;
+  canCreateOpportunity: boolean;
+  onCreateContact: () => void;
+  onCreateOpportunity: () => void;
+}) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <RelatedCard title="Contacts" empty="No linked contacts yet.">
-        {summary.related_contacts.map((contact) => (
-          <RelatedLink
-            key={contact.contact_id}
-            href={`/dashboard/sales/contacts/${contact.contact_id}`}
-            title={
-              [contact.first_name, contact.last_name]
-                .filter(Boolean)
-                .join(" ") || contact.primary_email
-            }
-            detail={contact.current_title || contact.primary_email}
-          />
-        ))}
-      </RelatedCard>
-      <RelatedCard title="Deals" empty="No related deals yet.">
-        {summary.related_opportunities.map((deal) => (
-          <RelatedLink
-            key={deal.opportunity_id}
-            href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
-            title={deal.opportunity_name}
-            detail={`${deal.sales_stage || "Unstaged"}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
-          />
-        ))}
-      </RelatedCard>
-      <RelatedCard title="Quotes" empty="No related quotes yet.">
+    <RecordRelatedList>
+      {canViewContacts ? (
+        <RecordRelatedCard
+          title="Contacts"
+          empty={
+            canCreateContact
+              ? "No contacts linked yet. Add the first one — this account is filled in for you."
+              : "No contacts linked yet."
+          }
+          action={
+            canCreateContact ? (
+              <Button type="button" size="sm" variant="outline" onClick={onCreateContact}>
+                <Plus />
+                Contact
+              </Button>
+            ) : null
+          }
+        >
+          {summary.related_contacts.map((contact) => (
+            <RecordRelatedLink
+              key={contact.contact_id}
+              href={`/dashboard/sales/contacts/${contact.contact_id}`}
+              title={
+                [contact.first_name, contact.last_name].filter(Boolean).join(" ")
+                || contact.primary_email
+              }
+              detail={contact.current_title || contact.primary_email}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewOpportunities ? (
+        <RecordRelatedCard
+          title="Deals"
+          empty="No related deals yet."
+          action={
+            canCreateOpportunity ? (
+              <Button type="button" size="sm" variant="outline" onClick={onCreateOpportunity}>
+                <Plus />
+                Deal
+              </Button>
+            ) : null
+          }
+        >
+          {summary.related_opportunities.map((deal) => (
+            <RecordRelatedLink
+              key={deal.opportunity_id}
+              href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
+              title={deal.opportunity_name}
+              detail={`${deal.sales_stage || "Unstaged"}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      <RecordRelatedCard title="Quotes" empty="No related quotes yet.">
         {summary.related_quotes.map((quote) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={quote.quote_id}
             href={`/dashboard/sales/quotes/${quote.quote_id}`}
             title={quote.quote_number}
-            detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency)}`}
+            detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard title="Orders" empty="No related orders yet.">
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Orders" empty="No related orders yet.">
         {summary.related_orders.map((order) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={order.id}
             href={`/dashboard/sales/orders/${order.id}`}
             title={order.order_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency)}`}
+            detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard title="Invoices" empty="No related invoices yet.">
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Invoices" empty="No related invoices yet.">
         {summary.related_invoices.map((invoice) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={invoice.id}
             href={`/dashboard/finance/pos/${invoice.id}`}
             title={invoice.invoice_number}
-            detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency)}`}
+            detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <RelatedCard
-        title="Insertion orders"
-        empty="No related insertion orders yet."
-      >
+      </RecordRelatedCard>
+      <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
         {summary.related_insertion_orders.map((order) => (
-          <RelatedLink
+          <RecordRelatedLink
             key={order.id}
             href={`/dashboard/finance/insertion-orders/${order.id}`}
             title={order.io_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency)}`}
+            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
           />
         ))}
-      </RelatedCard>
-      <div className="lg:col-span-2">
-        <RecordTasksPanel
-          moduleKey="sales_organizations"
-          entityId={org.org_id}
-          sourceLabel={org.org_name}
-        />
-      </div>
-    </div>
+      </RecordRelatedCard>
+    </RecordRelatedList>
   );
 }
 
-function RelatedCard({
-  title,
-  empty,
-  children,
-}: {
-  title: string;
-  empty: string;
-  children: React.ReactNode;
-}) {
-  const items = Array.isArray(children) ? children : [children];
-  return (
-    <Card className="px-5 py-5">
-      <h2 className="text-lg font-semibold text-copy-primary">{title}</h2>
-      <div className="mt-4 space-y-3">
-        {items.length && items.some(Boolean) ? (
-          children
-        ) : (
-          <p className="text-sm text-copy-muted">{empty}</p>
-        )}
-      </div>
-    </Card>
-  );
-}
-function RelatedLink({
-  href,
-  title,
-  detail,
-}: {
-  href: string;
-  title: string;
-  detail: string;
-}) {
-  return (
-    <Link
-      href={href}
-      className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
-    >
-      <div className="text-sm font-semibold text-copy-primary">{title}</div>
-      <div className="mt-1 text-sm text-copy-muted">{detail}</div>
-    </Link>
-  );
-}
-function DetailField({
-  label,
-  value,
-  href,
-  external = false,
-}: {
-  label: string;
-  value?: string | null;
-  href?: string;
-  external?: boolean;
-}) {
-  const content = value || "Not recorded";
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-1 text-sm text-copy-primary">
-        {href ? (
-          <Link
-            href={href}
-            target={external ? "_blank" : undefined}
-            rel={external ? "noopener noreferrer" : undefined}
-            className="text-action-primary hover:underline"
-          >
-            {content}
-          </Link>
-        ) : (
-          content
-        )}
-      </div>
-    </div>
-  );
-}
-function SummaryTile({
-  label,
-  value,
-}: {
-  label: string;
-  value: string | number;
-}) {
-  return (
-    <div className="rounded-md border border-line-subtle bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
-    </div>
-  );
-}
 function safeExternalUrl(value?: string | null) {
   if (!value) return undefined;
   try {
-    const url = new URL(
-      /^https?:\/\//i.test(value) ? value : `https://${value}`,
-    );
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.toString()
-      : undefined;
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
   } catch {
     return undefined;
   }
-}
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
 }

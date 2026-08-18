@@ -264,6 +264,37 @@ def get_opportunity(
     return query.first()
 
 
+def lock_opportunity(
+    db: Session,
+    *,
+    tenant_id: int,
+    opportunity_id: int,
+) -> SalesOpportunity | None:
+    """Take a row lock on a deal so its relationship writes serialize.
+
+    Participant operations read the current association set, decide, and then
+    write; without a lock two concurrent operations can both read the same "before"
+    and produce a state neither caller asked for — for example two promotions
+    racing on the single-primary invariant, or an add racing a removal of the same
+    contact. Locking the parent, not the association rows, is what makes the whole
+    decision atomic, including the case where no association row exists yet.
+
+    Read-only participant listing does not take this lock. `FOR UPDATE` is a no-op
+    on SQLite, so the unit-test session relies on the database constraints instead,
+    which are the same ones that back this up in PostgreSQL.
+    """
+
+    return (
+        db.query(SalesOpportunity)
+        .filter(
+            SalesOpportunity.opportunity_id == opportunity_id,
+            SalesOpportunity.tenant_id == tenant_id,
+        )
+        .with_for_update()
+        .first()
+    )
+
+
 def get_deleted_opportunity(
     db: Session,
     *,

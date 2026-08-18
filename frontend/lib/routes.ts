@@ -35,6 +35,7 @@ export const SETTINGS_ROUTES = {
   moduleAccess: (moduleId: string | number) => `/dashboard/settings/modules/${moduleId}`,
   moduleBuilder: "/dashboard/settings/module-builder",
   fields: "/dashboard/settings/fields",
+  recordLayouts: "/dashboard/settings/record-layouts",
   automation: "/dashboard/settings/automation",
   calendarBooking: "/dashboard/settings/calendar-booking",
   backups: "/dashboard/settings/backups",

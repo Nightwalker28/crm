@@ -1,10 +1,11 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
 const productId = 4401;
 const serviceId = 4402;
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 function productFixture() {
   return {
@@ -69,10 +70,34 @@ async function cacheCatalogPermissions(
     },
     { cacheKey: moduleCacheKey, moduleActions: actions, moduleName },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 44,
+        name: moduleName,
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          can_create: actions.can_create ?? false,
+          can_edit: actions.can_edit,
+          can_delete: actions.can_delete,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]),
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
 });
 
 test("Product list uses permission-aware semantic actions and safe mutation feedback", async ({ page }) => {
@@ -94,7 +119,7 @@ test("Product list uses permission-aware semantic actions and safe mutation feed
       }),
     }),
   );
-  await page.route(`**/catalog/products/${productId}`, async (route) => {
+  await page.route(`**/api/v1/catalog/products/${productId}`, async (route) => {
     updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
     product = { ...product, ...updatedPayload };
     await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ detail: "database_password=secret" }) });
@@ -186,7 +211,7 @@ test("Service creation uses the shared form without product inventory fields", a
 test("Product editing hydrates the routed form and saves back to detail", async ({ page }) => {
   let product = productFixture();
   let updatedPayload: Record<string, unknown> | null = null;
-  await page.route(`**/catalog/products/${productId}`, async (route) => {
+  await page.route(`**/api/v1/catalog/products/${productId}`, async (route) => {
     if (route.request().method() === "PUT") {
       updatedPayload = route.request().postDataJSON() as Record<string, unknown>;
       product = { ...product, ...updatedPayload, updated_at: "2099-07-24T10:00:00Z" };
@@ -215,7 +240,7 @@ test("Product editing hydrates the routed form and saves back to detail", async 
 
 test("Product detail uses the shared responsive summary and explains recoverable deletion", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
-  await page.route(`**/catalog/products/${productId}`, async (route) => {
+  await page.route(`**/api/v1/catalog/products/${productId}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -237,7 +262,7 @@ test("Product detail uses the shared responsive summary and explains recoverable
 
 test("Product detail hides actions that are not granted", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: false, can_delete: false });
-  await page.route(`**/catalog/products/${productId}`, async (route) => {
+  await page.route(`**/api/v1/catalog/products/${productId}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -254,7 +279,7 @@ test("Product detail hides actions that are not granted", async ({ page }) => {
 
 test("Service detail uses the shared summary without product inventory fields", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true }, "catalog_services");
-  await page.route(`**/catalog/services/${serviceId}`, async (route) => {
+  await page.route(`**/api/v1/catalog/services/${serviceId}`, async (route) => {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -274,7 +299,7 @@ test("Service detail uses the shared summary without product inventory fields", 
 
 test("Shared record activity panels are responsive, labeled, and use consistent states", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
-  await page.route(`**/catalog/products/${productId}`, (route) =>
+  await page.route(`**/api/v1/catalog/products/${productId}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(productFixture()) }),
   );
   await page.route("**/activity/record?**", (route) =>
@@ -349,7 +374,7 @@ test("Shared record activity panels are responsive, labeled, and use consistent 
 
 test("Record activity failures provide retry without backend details", async ({ page }) => {
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
-  await page.route(`**/catalog/products/${productId}`, (route) =>
+  await page.route(`**/api/v1/catalog/products/${productId}`, (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(productFixture()) }),
   );
   await page.route("**/activity/record?**", (route) =>

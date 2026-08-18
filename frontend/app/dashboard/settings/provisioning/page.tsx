@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
+import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useProvisioningSettings } from "@/hooks/admin/useIdentitySettings";
 import { useSsoDraft } from "@/hooks/admin/useSsoDraft";
@@ -25,8 +26,8 @@ export default function ProvisioningSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-20 text-copy-primary">
-      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-control border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
+    <PageShell variant="settings" title="Provisioning" description="Choose how verified identities map to users, roles, and teams.">
+      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">
           <div><h2 className="text-sm font-semibold">User provisioning</h2><p className="text-xs text-copy-muted">Choose how verified identities map to users, roles, and teams.</p></div>
@@ -41,8 +42,14 @@ export default function ProvisioningSettingsPage() {
             <Field><FieldLabel>Last name claim</FieldLabel><Input value={draft.draft.last_name_claim} onChange={(event) => draft.update("last_name_claim", event.target.value)} /></Field>
           </div>
         </div>
+        {/* The bar belongs to the card it commits, not to the page — a page-level save bar
+            reads as governing everything above it, which on a settings page is rarely true. */}
+        <CardFooter className="sticky bottom-0 z-10 mt-4 flex flex-col gap-2 bg-surface/95 backdrop-blur sm:flex-row sm:items-center sm:justify-end">
+          <span className="mr-auto text-sm text-copy-muted" aria-live="polite">{draft.isDirty ? "You have unsaved changes." : "No unsaved changes."}</span>
+          <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
+          <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving}>{settings.isSaving ? "Saving…" : "Save provisioning"}</Button>
+        </CardFooter>
       </Card>
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-line-default bg-surface/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end"><Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button><Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving}>{settings.isSaving ? "Saving…" : "Save provisioning"}</Button></div>
-    </div>
+    </PageShell>
   );
 }

@@ -72,7 +72,7 @@ test("Orders list routes manual creation to the dedicated page", async ({
     }),
   );
   await page.goto("/dashboard/sales/orders");
-  await expect(page.locator("span.bg-state-success-muted", { hasText: "Fulfilled" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="success"]', { hasText: "Fulfilled" })).toBeVisible();
   const createLink = page.getByRole("link", { name: "Create order" });
   await expect(createLink).toBeVisible();
   await createLink.click();
@@ -83,7 +83,7 @@ test("Order editing hydrates customer, item, and fulfillment fields", async ({
   page,
 }) => {
   const orderId = 987654342;
-  await page.route(`**/sales/orders/${orderId}`, async (route) =>
+  await page.route(`**/api/v1/sales/orders/${orderId}`, async (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",

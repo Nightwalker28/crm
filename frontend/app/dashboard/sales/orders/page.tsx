@@ -8,6 +8,7 @@ import OrdersTable from "@/components/orders/OrdersTable";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { Button } from "@/components/ui/button";
@@ -40,15 +41,9 @@ export default function OrdersPage() {
   const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title="Orders">
       <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search orders" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} onClearFilters={clearFilters} viewControls={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} primaryAction={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? (
-        <div role="alert" className="flex justify-between rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>We could not load orders.</span>
-          <button onClick={refresh} className="underline underline-offset-2">Try again</button>
-        </div>
-      ) : null}
       <OrdersTable
         orders={orders}
         isLoading={isLoading}
@@ -56,6 +51,8 @@ export default function OrdersPage() {
         visibleColumns={visibleColumns}
         columnOptions={definition?.columns ?? []}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         onClearFilters={clearFilters}
         sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null}
         onSortChange={(nextSort) =>
@@ -66,6 +63,6 @@ export default function OrdersPage() {
         }
       />
       <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
-    </div>
+    </PageShell>
   );
 }

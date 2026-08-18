@@ -1,277 +1,191 @@
 "use client";
 
-import { Fragment } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useMemo } from "react";
 import { Building2 } from "lucide-react";
 
-import {
-  SortableHead,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
-import { CustomFieldCell } from "@/components/ui/CustomFieldCell";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
-import { Pill } from "@/components/ui/Pill";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
+import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Organization } from "@/hooks/sales/useOrganizations";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
 import { formatDateTime } from "@/lib/datetime";
 
-type SortState = { column: string; direction: "asc" | "desc" } | null;
-
 type Props = {
   organizations: Organization[];
   isLoading: boolean;
   isRefreshing?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   visibleColumns: string[];
   columnOptions?: TableColumnOption[];
   selectedIds?: number[];
-  currentPageSelectionState?: boolean | "indeterminate";
   onToggleRow?: (orgId: number, checked: boolean) => void;
   onToggleCurrentPage?: (checked: boolean) => void;
-  sort?: SortState;
-  onSortChange?: (sort: SortState) => void;
+  sort?: RecordTableSort | null;
+  onSortChange?: (sort: RecordTableSort) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  onCreateOrganization?: () => void;
+};
+
+const HEADERS: Record<string, string> = {
+  org_name: "Account",
+  primary_email: "Email",
+  website: "Website",
+  industry: "Industry",
+  annual_revenue: "Revenue",
+  primary_phone: "Phone",
+  billing_country: "Country",
+  assigned_to_name: "Owner",
+  created_time: "Created",
+  updated_at: "Updated",
+};
+
+const SORTABLE_COLUMNS = new Set([
+  "org_name",
+  "primary_email",
+  "website",
+  "industry",
+  "annual_revenue",
+  "primary_phone",
+  "billing_country",
+  "assigned_to",
+  "customer_group_id",
+  "created_time",
+  "updated_at",
+]);
+
+const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
+  org_name: "lg",
+  primary_email: "lg",
+  website: "lg",
+  billing_country: "sm",
+  industry: "sm",
 };
 
 function getOrgInitials(name: string): string {
-  return name.split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() ?? "").join("");
+  return name.split(/\s+/).slice(0, 2).map((word) => word[0]?.toUpperCase() ?? "").join("");
 }
 
-function formatRevenue(value?: string | null): string {
-  if (!value) return "";
-  return value;
+function emptyValue() {
+  return <span className="text-copy-disabled">—</span>;
+}
+
+function renderCell(org: Organization, column: string) {
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={org.custom_fields} />;
+
+  switch (column) {
+    case "org_name":
+      return (
+        <div className="flex h-8 items-center gap-3">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-2xs font-bold leading-none text-copy-secondary">
+            {getOrgInitials(org.org_name)}
+          </div>
+          <span className="truncate text-sm font-semibold text-copy-primary">{org.org_name}</span>
+        </div>
+      );
+    case "primary_email":
+      return <span className="text-sm text-copy-secondary">{org.primary_email || emptyValue()}</span>;
+    case "website":
+      return org.website ? (
+        <a
+          href={normalizeWebsiteHref(org.website)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="block max-w-[200px] truncate rounded-[var(--radius-control-sm)] text-sm text-action-primary transition-colors duration-100 hover:text-action-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+        >
+          {formatWebsiteDisplay(org.website)}
+        </a>
+      ) : (
+        <span className="text-sm text-copy-disabled">—</span>
+      );
+    case "industry":
+      return org.industry ? <Chip className="max-w-36">{org.industry}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
+    case "annual_revenue":
+      return org.annual_revenue
+        ? <span className="text-sm font-medium text-state-success">{org.annual_revenue}</span>
+        : <span className="text-sm text-copy-disabled">—</span>;
+    case "primary_phone":
+      return <span className="text-sm text-copy-muted">{org.primary_phone || emptyValue()}</span>;
+    case "billing_country":
+      return <span className="text-sm text-copy-muted">{org.billing_country || emptyValue()}</span>;
+    case "assigned_to_name":
+      return <span className="text-sm text-copy-secondary">{org.assigned_to_name || "Unassigned"}</span>;
+    case "created_time":
+      return <span className="text-sm text-copy-muted">{org.created_time ? formatDateTime(org.created_time) : "-"}</span>;
+    case "updated_at":
+      return <span className="text-sm text-copy-muted">{org.updated_at ? formatDateTime(org.updated_at) : "-"}</span>;
+    default:
+      return null;
+  }
 }
 
 export default function OrganizationsTable({
   organizations,
   isLoading,
   isRefreshing = false,
+  hasError = false,
+  onRetry,
   visibleColumns = [],
   columnOptions = [],
   selectedIds = [],
-  currentPageSelectionState = false,
   onToggleRow,
   onToggleCurrentPage,
   sort = null,
   onSortChange,
   hasActiveFilters = false,
   onClearFilters,
+  onCreateOrganization,
 }: Props) {
-  const router = useRouter();
-  const headers: Record<string, string> = {
-    org_name: "Account",
-    primary_email: "Email",
-    website: "Website",
-    industry: "Industry",
-    annual_revenue: "Revenue",
-    primary_phone: "Phone",
-    billing_country: "Country",
-    assigned_to_name: "Owner",
-    created_time: "Created",
-    updated_at: "Updated",
-  };
-  const sortableColumns = new Set([
-    "org_name",
-    "primary_email",
-    "website",
-    "industry",
-    "annual_revenue",
-    "primary_phone",
-    "billing_country",
-    "assigned_to",
-    "customer_group_id",
-    "created_time",
-    "updated_at",
-  ]);
-
-  function toggleSort(column: string) {
-    const nextSort: SortState = sort?.column === column
-      ? { column, direction: sort.direction === "asc" ? "desc" : "asc" }
-      : { column, direction: "asc" };
-    onSortChange?.(nextSort);
-  }
-
-  const renderCell = (org: Organization, column: string, isIdentityColumn: boolean) => {
-    const stickyClassName = isIdentityColumn ? "sticky left-12 z-10 border-r border-line-subtle bg-surface group-hover:bg-surface-raised" : undefined;
-    if (isCustomFieldColumnKey(column)) {
-      return <CustomFieldCell column={column} values={org.custom_fields} className={stickyClassName} />;
-    }
-
-    switch (column) {
-      case "org_name":
-        return (
-          <TableCell className={stickyClassName}>
-            <div className="flex items-center gap-3 h-8">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-[9px] font-bold leading-none text-copy-secondary">
-                {getOrgInitials(org.org_name)}
-              </div>
-              <span className="truncate text-sm font-semibold text-copy-primary">
-                {org.org_name}
-              </span>
-            </div>
-          </TableCell>
-        );
-      case "primary_email":
-        return (
-          <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-secondary">
-              {org.primary_email || <span className="text-copy-disabled">—</span>}
-            </span>
-          </TableCell>
-        );
-      case "website":
-        return (
-          <TableCell>
-            {org.website ? (
-              <a
-                href={normalizeWebsiteHref(org.website)}
-                target="_blank"
-                rel="noopener noreferrer"
-                onClick={(event) => event.stopPropagation()}
-                className="block max-w-[200px] truncate text-sm text-action-primary transition-colors hover:text-action-primary-hover"
-              >
-                {formatWebsiteDisplay(org.website)}
-              </a>
-            ) : (
-              <span className="text-sm text-copy-disabled">—</span>
-            )}
-          </TableCell>
-        );
-      case "industry":
-        return (
-          <TableCell>
-            {org.industry
-              ? <Pill className="max-w-36">{org.industry}</Pill>
-              : <span className="text-sm text-copy-disabled">—</span>}
-          </TableCell>
-        );
-      case "annual_revenue":
-        return (
-          <TableCell>
-            {org.annual_revenue ? (
-              <span className="text-sm font-medium text-state-success">
-                {formatRevenue(org.annual_revenue)}
-              </span>
-            ) : (
-              <span className="text-sm text-copy-disabled">—</span>
-            )}
-          </TableCell>
-        );
-      case "primary_phone":
-        return (
-          <TableCell>
-            <span className="font-mono text-sm tracking-tight text-copy-muted">
-              {org.primary_phone || <span className="text-copy-disabled">—</span>}
-            </span>
-          </TableCell>
-        );
-      case "billing_country":
-        return (
-          <TableCell>
-            <span className="text-sm text-copy-muted">
-              {org.billing_country || <span className="text-copy-disabled">—</span>}
-            </span>
-          </TableCell>
-        );
-      case "assigned_to_name":
-        return <TableCell><span className="text-sm text-copy-secondary">{org.assigned_to_name || "Unassigned"}</span></TableCell>;
-      case "created_time":
-        return <TableCell><span className="text-sm text-copy-muted">{org.created_time ? formatDateTime(org.created_time) : "-"}</span></TableCell>;
-      case "updated_at":
-        return <TableCell><span className="text-sm text-copy-muted">{org.updated_at ? formatDateTime(org.updated_at) : "-"}</span></TableCell>;
-      default:
-        return null;
-    }
-  };
+  const columns = useMemo<RecordTableColumn<Organization>[]>(
+    () =>
+      visibleColumns.map((column) => ({
+        key: column,
+        label: HEADERS[column] ?? getReadableColumnLabel(column, columnOptions),
+        sortable: !isCustomFieldColumnKey(column) && SORTABLE_COLUMNS.has(column),
+        size: COLUMN_SIZES[column],
+        interactive: column === "website",
+        render: (org) => renderCell(org, column),
+      })),
+    [visibleColumns, columnOptions],
+  );
 
   return (
-    <ModuleTableShell isRefreshing={isRefreshing}>
-      <Table className="min-w-[960px]">
-        <TableHeader>
-          <TableHeaderRow>
-            <TableHead className="sticky left-0 z-40 w-12 border-r border-line-subtle bg-surface-raised pr-0">
-              <Checkbox
-                checked={currentPageSelectionState}
-                onCheckedChange={(checked) => onToggleCurrentPage?.(checked === true)}
-                className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
-                aria-label="Select current page organizations"
-              >
-                <CheckboxIndicator className="h-3 w-3" />
-              </Checkbox>
-            </TableHead>
-            {visibleColumns.map((column, index) => {
-              const label = headers[column] ?? getReadableColumnLabel(column, columnOptions);
-              if (isCustomFieldColumnKey(column) || !sortableColumns.has(column)) {
-                return <TableHead key={column} className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}>{label}</TableHead>;
-              }
-              const isSorted = sort?.column === column;
-              return (
-                <SortableHead
-                  key={column}
-                  sorted={isSorted}
-                  direction={isSorted ? sort.direction : "asc"}
-                  onClick={() => toggleSort(column)}
-                  className={index === 0 ? "sticky left-12 z-30 border-r border-line-subtle bg-surface-raised" : undefined}
-                >
-                  {label}
-                </SortableHead>
-              );
-            })}
-          </TableHeaderRow>
-        </TableHeader>
-
-        <TableBody>
-          {isLoading ? (
-            <ModuleTableLoading columnCount={visibleColumns.length + 1} />
-          ) : organizations.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={visibleColumns.length + 1} className="py-16 text-center">
-                {hasActiveFilters ? <EmptyState icon={Building2} title="No accounts match these filters" description="Clear one or more filters and try again." action={<Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button>} /> : <EmptyState icon={Building2} title="No accounts yet" description="Create an account or import accounts from CSV." action={<Button asChild><Link href="/dashboard/sales/organizations/new">Create account</Link></Button>} />}
-              </TableCell>
-            </TableRow>
-          ) : (
-            organizations.map((org) => (
-              <TableRow
-                key={org.org_id}
-                className="group cursor-pointer"
-                onClick={() => router.push(`/dashboard/sales/organizations/${org.org_id}`)}
-              >
-                <TableCell
-                  className="sticky left-0 z-20 w-12 border-r border-line-subtle bg-surface pr-0 group-hover:bg-surface-raised"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <Checkbox
-                    checked={selectedIds.includes(org.org_id ?? 0)}
-                    onCheckedChange={(checked) => {
-                      if (org.org_id != null) onToggleRow?.(org.org_id, checked === true);
-                    }}
-                    className="h-4 w-4 rounded border border-line-strong bg-surface-raised"
-                    aria-label={`Select organization ${org.org_name}`}
-                  >
-                    <CheckboxIndicator className="h-3 w-3" />
-                  </Checkbox>
-                </TableCell>
-                {visibleColumns.map((column, index) => (
-                  <Fragment key={column}>{renderCell(org, column, index === 0)}</Fragment>
-                ))}
-              </TableRow>
-            ))
-          )}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Accounts"
+      columns={columns}
+      rows={organizations}
+      rowKey={(org) => org.org_id ?? 0}
+      rowHref={(org) => `/dashboard/sales/organizations/${org.org_id}`}
+      rowLabel={(org) => `Open account ${org.org_name}`}
+      selection={
+        onToggleRow && onToggleCurrentPage
+          ? {
+              selectedIds,
+              onToggleRow: (id, checked) => onToggleRow(Number(id), checked),
+              onToggleAll: onToggleCurrentPage,
+              rowLabel: (org) => `Select account ${org.org_name}`,
+            }
+          : undefined
+      }
+      sort={sort}
+      onSortChange={onSortChange}
+      isLoading={isLoading}
+      isRefreshing={isRefreshing}
+      hasError={hasError}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      emptyState={{
+        icon: Building2,
+        title: "No accounts yet",
+        description: "Create an account or import accounts from CSV.",
+        action: onCreateOrganization ? <Button type="button" onClick={onCreateOrganization}>Create account</Button> : undefined,
+      }}
+      filteredEmptyState={{ icon: Building2 }}
+    />
   );
 }

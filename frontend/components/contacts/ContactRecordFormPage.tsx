@@ -8,12 +8,17 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { ContactFormMainFields, ContactFormSidebarFields, EMPTY_CONTACT_FORM, type ContactFormValue } from "@/components/contacts/ContactFormFields";
+import { buildContactPayload, saveContact, validateContactEmail } from "@/components/contacts/contactMutation";
+import {
+  consumeContactQuickCreateDraft,
+  isContactQuickCreateHandoff,
+} from "@/components/contacts/contactQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import { pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -48,6 +53,16 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     refetchOnWindowFocus: false,
   });
 
+  // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
+  // empty on purpose, so the restored values count as unsaved changes and stay guarded.
+  useEffect(() => {
+    if (mode !== "create" || !isContactQuickCreateHandoff(window.location.search)) return;
+    const draft = consumeContactQuickCreateDraft();
+    if (!draft) return;
+    setForm(draft.form);
+    setCustomFieldValues(draft.customFieldValues);
+  }, [mode]);
+
   useEffect(() => {
     if (mode !== "edit" || !summaryQuery.data) return;
     const contact = summaryQuery.data.contact;
@@ -78,18 +93,12 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const email = form.primary_email.trim();
-    if (!email) {
-      setEmailError("Email is required.");
+    const error = validateContactEmail(form.primary_email);
+    setEmailError(error);
+    if (error) {
       document.getElementById("contact-primary-email")?.focus();
       return false;
     }
-    if (!/^\S+@\S+\.\S+$/.test(email)) {
-      setEmailError("Enter a valid email address.");
-      document.getElementById("contact-primary-email")?.focus();
-      return false;
-    }
-    setEmailError(null);
     return true;
   }
 
@@ -98,29 +107,11 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     try {
       setSubmitting(true);
       setSubmitError(null);
-      const payload = pickEnabledModulePayload({
-        first_name: form.first_name.trim() || null,
-        last_name: form.last_name.trim() || null,
-        primary_email: form.primary_email.trim(),
-        contact_telephone: form.contact_telephone.trim() || null,
-        linkedin_url: form.linkedin_url.trim() || null,
-        current_title: form.current_title.trim() || null,
-        region: form.region || null,
-        country: form.country || null,
-        email_opt_out: form.email_opt_out,
-        organization_id: form.organization_id,
-        assigned_to: mode === "edit" && form.assigned_to === null ? undefined : form.assigned_to,
-        custom_fields: customFieldValues,
-      }, moduleFields, ["primary_email", "custom_fields"]);
-      const endpoint = mode === "edit" ? `/sales/contacts/${contactId}` : "/sales/contacts";
-      const res = await apiFetch(endpoint, {
-        method: mode === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      const savedContactId = await saveContact({
+        mode,
+        contactId,
+        payload: buildContactPayload(form, customFieldValues, moduleFields, mode),
       });
-      const body = await res.json().catch(() => null) as { contact_id?: number; detail?: string } | null;
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      const savedContactId = mode === "edit" ? contactId : body?.contact_id;
       await queryClient.invalidateQueries({ queryKey: ["sales-contacts"] });
       if (savedContactId) await queryClient.invalidateQueries({ queryKey: ["sales-contact-summary", String(savedContactId)] });
       setInitialSnapshot(currentSnapshot);
@@ -141,13 +132,12 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   const title = mode === "edit" ? "Edit contact" : "Create contact";
   const cancelHref = mode === "edit" && contactId ? `/dashboard/sales/contacts/${contactId}` : "/dashboard/sales/contacts";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={mode === "edit" && summaryQuery.data?.contact.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.contact.updated_at)}` : undefined}
-        description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
-      />
+    <PageShell
+      title={title}
+      eyebrow={mode === "edit" && summaryQuery.data?.contact.updated_at ? `Last modified ${formatDateTime(summaryQuery.data.contact.updated_at)}` : undefined}
+      description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
+    >
       {submitError ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><div className="font-medium">We could not save this contact.</div><div className="mt-1 text-copy-secondary">{submitError}</div></div> : null}
       <RecordFormLayout
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
@@ -164,6 +154,6 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

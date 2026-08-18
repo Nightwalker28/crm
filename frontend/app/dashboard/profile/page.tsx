@@ -5,13 +5,14 @@ import { ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
 
 import { apiFetch } from "@/lib/api";
+import { Chip } from "@/components/ui/Chip";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
 import TimezonePicker from "@/components/ui/TimezonePicker";
@@ -321,9 +322,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader title="Profile" description="Manage your personal details, preferences, profile image, and sign-in security." />
-
+    <PageShell title="Profile" description="Manage your personal details, preferences, profile image, and sign-in security.">
       {error ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}
@@ -416,7 +415,7 @@ export default function ProfilePage() {
             <h2 id="profile-security-heading" className="text-lg font-semibold text-copy-primary">Account security</h2>
             <p className="mt-1 text-sm text-copy-muted">Manage multi-factor authentication for manual CRM sign-in.</p>
           </div>
-          <MfaStatusPill enabled={mfaEnabled} required={mfaRequired} />
+          <MfaStatus enabled={mfaEnabled} required={mfaRequired} />
         </CardHeader>
         <CardBody>
           {!mfaEnabled ? (
@@ -435,12 +434,12 @@ export default function ProfilePage() {
               ) : (
                 <div className="grid gap-4">
                   <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted p-4">
-                    <div className="text-xs font-medium uppercase tracking-wide text-state-warning">Authenticator secret</div>
+                    <div className="text-xs font-medium text-state-warning">Authenticator secret</div>
                     <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
                     <p className="mt-2 text-xs text-copy-secondary">Treat this secret like a password. Add it to your authenticator before continuing.</p>
                   </div>
                   {mfaOtpAuthUri ? (
-                    <a href={mfaOtpAuthUri} className="w-fit rounded-sm text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <a href={mfaOtpAuthUri} className="w-fit rounded-[var(--radius-control-sm)] text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
                       Open authenticator setup link
                     </a>
                   ) : null}
@@ -456,7 +455,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <div className="grid gap-4">
-              <p className="text-sm leading-6 text-copy-secondary">
+              <p className="text-p-sm text-copy-secondary">
                 Disabling MFA requires your current password and either an authenticator or recovery code.
               </p>
               <FieldGroup className="grid gap-4 md:grid-cols-3">
@@ -490,25 +489,28 @@ export default function ProfilePage() {
           ) : null}
         </CardBody>
       </Card>
-    </div>
+    </PageShell>
   );
 }
 
+// An ink group, not a box: a read-only field display is static, so it is not earned by
+// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
+// Card already, so a border here is the third container level 1.3 forbids.
 function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
-      <dd className="mt-2 break-words text-sm text-copy-primary">{value}</dd>
+    <div>
+      <dt className="text-xs font-medium text-copy-label">{label}</dt>
+      <dd className="mt-1 break-words text-sm text-copy-primary">{value}</dd>
     </div>
   );
 }
 
-function MfaStatusPill({ enabled, required }: { enabled: boolean; required: boolean }) {
+function MfaStatus({ enabled, required }: { enabled: boolean; required: boolean }) {
   if (enabled) {
-    return <Pill bg="bg-state-success-muted" text="text-state-success" border="border-state-success/40">MFA enabled</Pill>;
+    return <StatusValue status={{ tone: "success", label: "MFA enabled" }} />;
   }
   if (required) {
-    return <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">MFA required</Pill>;
+    return <StatusValue status={{ tone: "attention", label: "MFA required" }} />;
   }
-  return <Pill>MFA off</Pill>;
+  return <Chip>MFA off</Chip>;
 }
