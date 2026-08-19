@@ -8,11 +8,13 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 
 type LeadConversionResult = {
@@ -61,6 +63,25 @@ export default function LeadConversionForm({
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<LeadConversionResult | null>(null);
+
+  const recordHref = useRecordTabHref(`/dashboard/sales/leads/${leadId}`);
+
+  // A13. Conversion is a form that creates up to three records, and it was the one form in
+  // the app with no guard on it — Cancel, the header's `Back to lead` and the sidebar's own
+  // links all discarded a filled-in conversion silently. The dirty test is a snapshot
+  // against the state the page opened in, so the defaults the operator never touched do not
+  // count as work: arriving and leaving costs no prompt.
+  const initialSnapshot = useMemo(
+    () => JSON.stringify([capabilities.canCreateOrganizations, null, "", capabilities.canCreateContacts, null, "", false, "", "qualified"]),
+    [capabilities.canCreateContacts, capabilities.canCreateOrganizations],
+  );
+  const currentSnapshot = useMemo(
+    () => JSON.stringify([createAccount, accountId, accountSearch, createContact, contactId, contactSearch, createDeal, dealName, dealStage]),
+    [accountId, accountSearch, contactId, contactSearch, createAccount, createContact, createDeal, dealName, dealStage],
+  );
+  // The guard lifts once the conversion has run: the records exist, so the completion panel's
+  // links are the operator's next step rather than an escape from unsaved work.
+  useUnsavedChangesGuard(currentSnapshot !== initialSnapshot, submitting || Boolean(result));
 
   const defaultDealName = useMemo(() => `${company || leadName} opportunity`, [company, leadName]);
   const shouldCreateAccount = capabilities.canCreateOrganizations && createAccount;
@@ -112,7 +133,7 @@ export default function LeadConversionForm({
           {result.account_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/organizations/${result.account_id}`}>Open account</Link></Button> : null}
           {result.contact_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/contacts/${result.contact_id}`}>Open contact</Link></Button> : null}
           {result.deal_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/opportunities/${result.deal_id}`}>Open opportunity</Link></Button> : null}
-          <Button asChild><Link href={`/dashboard/sales/leads/${leadId}`}>Return to lead</Link></Button>
+          <Button asChild><Link href={recordHref}>Return to lead</Link></Button>
         </div>
       </FormSection>
     );
@@ -135,7 +156,7 @@ export default function LeadConversionForm({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-copy-muted">This action marks the lead as converted.</span>
             <div className="flex gap-2">
-              <Button asChild variant="outline"><Link href={`/dashboard/sales/leads/${leadId}`}>Cancel</Link></Button>
+              <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
               <Button onClick={() => void submit()} disabled={!canSubmit}><ArrowRightLeft />{submitting ? "Converting…" : "Confirm conversion"}</Button>
             </div>
           </div>

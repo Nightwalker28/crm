@@ -14,6 +14,7 @@ import {
   isContactQuickCreateHandoff,
 } from "@/components/contacts/contactQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -37,6 +38,10 @@ async function fetchContactSummary(contactId: string) {
 
 export default function ContactRecordFormPage({ mode, contactId }: { mode: "create" | "edit"; contactId?: string }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/contacts";
+  const cancelHref = useRecordTabHref(mode === "edit" && contactId ? `${listHref}/${contactId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<ContactFormValue>(EMPTY_CONTACT_FORM);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -116,7 +121,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       if (savedContactId) await queryClient.invalidateQueries({ queryKey: ["sales-contact-summary", String(savedContactId)] });
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Contact updated." : "Contact created.");
-      router.push(savedContactId ? `/dashboard/sales/contacts/${savedContactId}` : "/dashboard/sales/contacts");
+      router.push(mode === "edit" ? cancelHref : (savedContactId ? `${listHref}/${savedContactId}` : listHref));
     } catch {
       setSubmitError(mode === "edit" ? "The contact could not be updated. Check the fields and try again." : "The contact could not be created. Check the fields and try again.");
     } finally {
@@ -130,7 +135,6 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   }
 
   const title = mode === "edit" ? "Edit contact" : "Create contact";
-  const cancelHref = mode === "edit" && contactId ? `/dashboard/sales/contacts/${contactId}` : "/dashboard/sales/contacts";
   return (
     <PageShell
       title={title}

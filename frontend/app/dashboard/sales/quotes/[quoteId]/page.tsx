@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, FileText, Pencil, RefreshCw, Send, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -205,11 +205,9 @@ function contactLabel(contact: QuoteSummary["contact"]) {
 
 export default function QuoteDetailPage() {
   const params = useParams<{ quoteId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
   const [converting, setConverting] = useState(false);
 
   const moduleActions = (moduleKey: string) =>
@@ -245,6 +243,7 @@ export default function QuoteDetailPage() {
   const status = quote?.status || "draft";
   const quoteName = quote?.quote_number || "Quote";
   const recordHref = `/dashboard/sales/quotes/${params.quoteId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const quoteTotal = quote ? formatMoney(quote.total_amount, quote.currency) : null;
   const canEditStatus = canEdit && isModuleFieldEnabled(moduleFields, "status");
 
@@ -339,7 +338,7 @@ export default function QuoteDetailPage() {
           />
           {canEdit ? (
             <Button asChild variant="outline">
-              <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+              <Link href={editHref}>
                 <Pencil />
                 Edit
               </Link>

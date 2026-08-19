@@ -24,6 +24,7 @@ import {
   isOrganizationQuickCreateHandoff,
 } from "@/components/organizations/organizationQuickCreateDraft";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
 import {
@@ -59,6 +60,10 @@ export default function OrganizationRecordFormPage({
   orgId?: string;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/organizations";
+  const cancelHref = useRecordTabHref(mode === "edit" && orgId ? `${listHref}/${orgId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<OrganizationFormValue>(
     EMPTY_ORGANIZATION_FORM,
@@ -160,11 +165,7 @@ export default function OrganizationRecordFormPage({
         });
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Account updated." : "Account created.");
-      router.push(
-        savedOrgId
-          ? `/dashboard/sales/organizations/${savedOrgId}`
-          : "/dashboard/sales/organizations",
-      );
+      router.push(mode === "edit" ? cancelHref : (savedOrgId ? `${listHref}/${savedOrgId}` : listHref));
     } catch {
       setSubmitError(
         mode === "edit"
@@ -188,10 +189,6 @@ export default function OrganizationRecordFormPage({
       />
     );
   const title = mode === "edit" ? "Edit account" : "Create account";
-  const cancelHref =
-    mode === "edit" && orgId
-      ? `/dashboard/sales/organizations/${orgId}`
-      : "/dashboard/sales/organizations";
   return (
     <PageShell
       title={title}

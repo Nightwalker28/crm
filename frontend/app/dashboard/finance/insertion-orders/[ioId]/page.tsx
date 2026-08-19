@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { FileDown, Pencil } from "lucide-react";
 
@@ -12,7 +12,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -79,10 +79,8 @@ function attachmentHref(order: InsertionOrder) {
 
 export default function InsertionOrderDetailPage() {
   const params = useParams<{ ioId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
 
   const moduleActions = (moduleKey: string) =>
     modules.find((module) => module.name === moduleKey)?.actions;
@@ -99,6 +97,7 @@ export default function InsertionOrderDetailPage() {
   const order = orderQuery.data ?? null;
   const orderName = order?.io_number || "Insertion order";
   const recordHref = `/dashboard/finance/insertion-orders/${params.ioId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const download = order ? attachmentHref(order) : null;
 
   async function updateStatus(next: string) {
@@ -146,7 +145,7 @@ export default function InsertionOrderDetailPage() {
        */
       actions={order && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>

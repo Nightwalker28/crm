@@ -1242,7 +1242,7 @@ record's own fields versus related objects, and §4.7 now carries the one-line t
 
 ### Status: in progress — the archetype, fourteen modules on it, and the tab strips
 
-Eleven commits. **Pick up at "What is left", below.** Rows 5 and 6 remain.
+Twelve commits. **Pick up at "What is left", below.** Row 6 — close-out — is all that remains.
 
 | Commit | What landed |
 |---|---|
@@ -1255,6 +1255,7 @@ Eleven commits. **Pick up at "What is left", below.** Rows 5 and 6 remain.
 | `0dfa1cd` | quote, order and POS invoice onto the archetype, with the record-layout surface each needed |
 | `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
 | `4967bf2` | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
+| _pending_ | the `/[id]/edit` round trip's return half on twelve edit surfaces, `useRecordTabHref` replacing the two helpers, `/convert` joining the rule, and A13 |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1691,6 +1692,82 @@ method the traps section prescribes is *drive the keyboard, do not script it*, a
 Playwright's `keyboard.press` is a real key event, so `:focus-visible` behaves as it does
 for an operator. Both themes and 768px were checked the same way.
 
+**What batch 6 decided — the round trip's return half, and A13.** The row named the last
+two open items, and they turned out to be one shape: both are about what an operator loses
+when a record sends them somewhere else.
+
+- **`recordEditHref` and `recordReturnHref` became one hook, `useRecordTabHref`, and the
+  merge *is* the fix.** Two exported helpers wrapping the same three lines had shipped since
+  batch 1, and the outbound one was adopted on all eleven detail pages while the return one
+  had exactly one call site — the custom-module edit page batch 4 wrote from scratch. Naming
+  a round trip as two directions is what let one direction go unbuilt for five batches: a
+  page author reaches for the helper named for the link they are writing, and nobody was
+  writing the return link. One hook, one job, and the eleven detail pages each dropped a
+  hand-rolled `searchParams.get("tab")` on the way. §4.7 carries the rule now, including
+  both rejected alternatives (`?from=<encoded href>`, and `router.back()` on Cancel).
+- **Convert is a trip off the record too.** R2's wording is about `/[id]/edit`, but a lead's
+  `/convert` leaves the record and comes back through the same Cancel, and dumping the
+  operator on `Details` there is the identical defect. It carries the tab now, which is what
+  makes A13 and the round trip one batch rather than two.
+- **A13's dirty test is a snapshot against the state the page opened in**, not against
+  empty. Conversion's defaults come from the operator's permissions — `Create account` and
+  `Create contact` arrive pre-set — so a test against empty would prompt on the way out of a
+  page nobody touched, which trains the operator to dismiss the prompt. Arriving and leaving
+  costs nothing; toggling one switch costs a confirm. The guard also lifts once the
+  conversion has run: the records exist at that point, so the completion panel's links are
+  the next step rather than an escape from unsaved work.
+- **The single-tab case is a rule rather than an exception.** A custom-module record has one
+  tab, because `RECORD_COMMENT_MODULES` is a static registry keyed by model class and a
+  tenant's own module cannot be in it — so Timeline, Tasks and Files cannot resolve one of
+  its records at all. The archetype already renders that honestly (a tab whose slot is not
+  passed is not drawn); what was missing was the statement that the hook must not *invent* a
+  tab to carry. It is in §4.7 and it is asserted, inverted, in the guard below.
+
+**The guard is parameterised, which is batch 5's lesson applied before it could bite again.**
+`primitive-behaviour.spec.ts` gained `RECORD_MODULES` — twelve rows, one per module with an
+`/[id]/edit` — and each row opens the module's *list*, clicks the first row, selects the
+*last* tab in the strip, and then asserts the tab survives out to the form and back to the
+record. Nothing is hardcoded but the list route: not the record id, not the tab name. So a
+module that reseeds under different ids, or gains a tab, still guards the contract rather
+than the fixture — and the tabs it happened to select (`related`, `proposal`, `signing`,
+`files`) prove module-specific tabs round-trip as well as the fixed four.
+
+**Writing it found something worth recording, and it is not in this batch's code.** The
+first version located tabs with `[role="tab"]` and passed its wait on the *list* page, which
+also announces that role — `SavedViewSelector` renders `new view · Default View · new view`
+as a tab strip. The locator is scoped to `[data-slot="record-content"]` now. That selector is
+5.5's row and is untouched here, but it is the third strip-shaped thing found by looking for
+something else, so: **`[role="tab"]` is not a record-page selector in this app.**
+
+**The browser pass found two defects and neither is in this batch's code — both are in
+archetype 3, and both are already 5.4's.** Recorded here rather than fixed, because changing
+the shared form layout inside a record-detail sub-phase restyles sixteen screens:
+
+- **`RecordFormLayout.tsx:21` is `sticky bottom-0 z-20 … backdrop-blur`.** R3 says the action
+  bar sits at the end of the document, not stuck to the viewport, and §4.7's archetype 3
+  wireframe says so in as many words. It overlays the form content it is scrolling over. This
+  is 5.4's "that action bar is no longer sticky" row, and it is one line in one primitive.
+- **A form page draws no visible title.** `PageShell`'s `h1` is `sr-only` by §8, and the
+  record archetype supplies its own visible `h2` — archetype 3 supplies nothing, so an
+  operator editing a contact sees the form with the record's name nowhere on screen. The
+  archetype 3 wireframe shows a title; no primitive draws it.
+
+**What the pass did prove.** The full round trip works by keyboard alone — focus `Edit`,
+`Enter`, land on `/[id]/edit?tab=files`, tab to `Cancel`, `Enter`, land back on the record
+with `Files` selected — in both themes, and at 768px where the rail stacks and the page does
+not scroll sideways. Fourteen stops on the record page, every one ringing. The tab-through
+also repeated a lesson in a new form: started from the document, 22 presses never left the
+sidebar, so it measured nothing about the page under test. **Focus into the region you are
+testing before you count stops** — a clean tab-through of the app shell looks exactly like a
+clean tab-through of the record.
+
+**One measurement trap, paid for again.** Reading `boxShadow !== "none"` as "it has a focus
+ring" reports a ring on every element whose class list carries Tailwind's empty shadow
+variables — the computed value is a pair of transparent shadows, not `none`. It is the same
+trap batch 3 and batch 4 both recorded from the other direction. The stop list is worth
+reading with the raw `outline` and `box-shadow` strings printed beside it, and the
+screenshots are what actually settle it.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1702,8 +1779,8 @@ each — the shape 5.2 used.
 | ~~2~~ | ~~**quote, order, POS invoice**~~ | **Done** — see "What batch 3 decided", above. A12 closed; the second nested tab strip died with it |
 | ~~3~~ | ~~**insertion order, support case, custom record, catalog product/service**~~ | **Done** — see "What batch 4 decided", above. `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in `RecordSpine` |
 | ~~4~~ | ~~**The two hand-rolled `role="tablist"`**~~ | **Done** — see "What batch 5 decided", above. It was three strips, not two: `RecordTabs` is `SectionTabs` and all three are on it. `SavedViewSelector.tsx:26` is untouched and stays 5.5's |
-| 5 | **`/[id]/edit` round trip + A13** | `recordEditHref` / `recordReturnHref` exist and leads uses them; the *edit pages* still need to read `?tab=` and send it back. A13 is the lead-convert unsaved-changes guard, still open |
-| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links. Batch 4 adds two more: a support case has **no `/[id]/edit` route at all**, so its subject, description and relationships have never been editable after create — a product gap that predates the rebuild, not something a migration should answer by inventing a form; and `sla_due_at` is on the model, in the response, in the automation registry and in list filters, and **no code path writes it**, so every case shows an SLA that will never arrive |
+| ~~5~~ | ~~**`/[id]/edit` round trip + A13**~~ | **Done** — see "What batch 6 decided", above. The two helpers became one hook, `useRecordTabHref`; twelve edit surfaces carry the tab back; `/convert` joined the rule; A13 closed. The guard is parameterised over all twelve modules |
+| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links. Batch 4 adds two more: a support case has **no `/[id]/edit` route at all**, so its subject, description and relationships have never been editable after create — a product gap that predates the rebuild, not something a migration should answer by inventing a form; and `sla_due_at` is on the model, in the response, in the automation registry and in list filters, and **no code path writes it**, so every case shows an SLA that will never arrive; and batch 6 adds two archetype-3 defects it found by looking rather than by assertion — `RecordFormLayout.tsx:21` is `sticky bottom-0`, which R3 and §4.7 both forbid, and a form page draws no visible title at all because `PageShell`'s `h1` is `sr-only` and archetype 3 has no visible counterpart. Both are 5.4's rows, listed here so close-out can confirm 5.4 took them |
 
 ### Traps already paid for once
 
@@ -1748,6 +1825,24 @@ each — the shape 5.2 used.
   the rail is broken.
 - **Specs get updated, not written** (testing policy). 10 lead assertions moved with the
   rebuild; expect a similar count per batch.
+- **`[role="tab"]` is not a record-page selector.** The list page's `SavedViewSelector`
+  announces the role too, so an unscoped locator resolves on the list before a row's
+  navigation has landed — which reads as "the tab strip is broken" when it is the wrong
+  strip. Scope to `[data-slot="record-content"]`.
+- **Focus into the region under test before counting tab stops.** Tabbing from the document
+  start walks the whole sidebar first: batch 6's first tab-through spent 22 presses in the
+  nav and never reached the record, and looked perfectly clean doing it.
+- **Batch 6's `RECORD_MODULES` guard needs warm routes.** It opens twelve list routes and
+  twelve record routes; on a cold dev server one module's first compile exceeded the 30s
+  wait and failed, then passed in every warm run. Same run-shape trap as the sales lists —
+  warm first, judge on `--workers=1`.
+- **Pre-existing reds measured for batch 6, all confirmed by stashing:**
+  `leads-revamp` narrow-viewport + denied/missing (2), `accounts-revamp` and
+  `contacts-revamp` "usable on mobile" (2 — note these now fail *in isolation* too, where
+  `docs/e2e-suite-status.md` records accounts passing 3/3 that way, so that entry has drifted),
+  `opportunities-revamp:22` (1), `catalog-revamp:246` (1), `invoices-revamp:140` and `:175`
+  (2 — a strict-mode collision between `PageShell`'s `sr-only` h1 and the archetype's visible
+  h2, which is the same shape as the tab-strip specs' known ambiguities).
 - **The three tab-strip specs have 8 failures that predate this sub-phase**, all of them
   already written up in `docs/e2e-suite-status.md`: `module-builder-revamp` `:132`/`:163`/`:182`
   (an ambiguous `getByLabel('Label')`), `settings-modules-revamp` `:93`/`:209`/`:242`

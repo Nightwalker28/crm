@@ -138,7 +138,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit |
 | `sales/leads/[leadId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `sales/leads/[leadId]/convert/page.tsx` | 60 | 5.3 | rebuild | **A13** — no unsaved-changes guard | |
+| `sales/leads/[leadId]/convert/page.tsx` | 60 | 5.3 | rebuild | **A13** — no unsaved-changes guard | **done, batch 6** — A13 closed in the form below; the page's `Back to lead` carries `?tab=` because convert is a trip off the record like Edit is |
 | `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/leads/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/leads/not-found.tsx` | 2 | 5.1 | rebuild | | done |
@@ -318,7 +318,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `leads/LeadQuickCreateLayoutFields.tsx` | 285 | 5.4 | adopt | | |
 | `leads/leadQuickCreateDraft.ts` | 28 | 5.4 | unchanged | Data | |
 | `leads/leadMutation.ts` | 117 | 5.4 | unchanged | Data | |
-| `leads/LeadConversionForm.tsx` | 213 | 5.3 | rebuild | **A13** | |
+| `leads/LeadConversionForm.tsx` | 213 | 5.3 | rebuild | **A13** | **done, batch 6** — `useUnsavedChangesGuard` on a snapshot of the state the page opened in, so the permission-derived defaults do not prompt; the guard lifts once the conversion has run |
 | `contacts/ContactRecordFormPage.tsx` | 159 | 5.4 | adopt | | |
 | `contacts/ContactFormFields.tsx` | 179 | 5.4 | rebuild | Local `TextField` — 2 of 4 | |
 | `contacts/ContactQuickCreate.tsx` | 166 | 5.4 | adopt | | |

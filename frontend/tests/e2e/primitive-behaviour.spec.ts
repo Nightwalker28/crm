@@ -88,3 +88,86 @@ test("column picker closes on Escape and on outside click", async ({ page }) => 
 
 
 });
+
+// The `/[id]/edit` round trip, over every module that has one.
+//
+// R2 makes the page trip routine rather than rare — the spine autosaves a record's state,
+// so `/[id]/edit` is now how an operator fixes a typo — and §4.7 requires `?tab=` to
+// survive it in *both* directions. The outbound half shipped on eleven detail pages in
+// batches 1–4; the return half did not, and a single-module assertion on leads never saw
+// it, which is the same blind spot the table above exists to close.
+//
+// Nothing here is hardcoded but the list route: the record is whichever row the list
+// opens first, and the tab is whichever one the strip ends with. So a module that gains a
+// tab, or reseeds under different ids, still guards the contract rather than the fixture.
+const RECORD_MODULES = [
+  { name: "lead", list: "/dashboard/sales/leads" },
+  { name: "contact", list: "/dashboard/sales/contacts" },
+  { name: "account", list: "/dashboard/sales/organizations" },
+  { name: "deal", list: "/dashboard/sales/opportunities" },
+  { name: "quote", list: "/dashboard/sales/quotes" },
+  { name: "order", list: "/dashboard/sales/orders" },
+  { name: "POS invoice", list: "/dashboard/finance/pos" },
+  { name: "insertion order", list: "/dashboard/finance/insertion-orders" },
+  { name: "contract", list: "/dashboard/contracts" },
+  { name: "catalog product", list: "/dashboard/catalog/products" },
+  { name: "catalog service", list: "/dashboard/catalog/services" },
+  { name: "custom record", list: "/dashboard/custom/testing_new_custom_module" },
+];
+
+for (const record of RECORD_MODULES) {
+  test(`${record.name} carries ?tab= through the /[id]/edit round trip`, async ({ page }) => {
+    test.setTimeout(5 * 60 * 1000);
+    await loginAsAdmin(page);
+
+    await page.goto(record.list, { waitUntil: "domcontentloaded" });
+    const firstRow = page.locator('tbody tr[tabindex="0"]').first();
+    await firstRow.waitFor({ state: "visible", timeout: 30000 });
+    await firstRow.click();
+
+    // Scoped to the content region, not `[role="tab"]` at large: the list page's saved-view
+    // selector announces the same role, so an unscoped locator resolves on the list before
+    // the row's navigation has even landed. (That strip is `SavedViewSelector`, which the
+    // census hands to 5.5 — noted here so the next reader does not take it for a defect.)
+    await page.waitForURL(new RegExp(`${record.list}/\\d+`), { timeout: 30000 });
+    const tabs = page.locator('[data-slot="record-content"] [role="tab"]');
+    await tabs.first().waitFor({ state: "visible", timeout: 30000 });
+    const recordPath = new URL(page.url()).pathname;
+
+    // A record type with a single tab has nothing to carry, and that is a legitimate
+    // rendering rather than a skip: the archetype omits a tab whose slot is not passed, and
+    // a custom module is not in the backend's `RECORD_COMMENT_MODULES`, so Timeline, Tasks
+    // and Files cannot resolve one of its records at all. The assertion inverts — the hook
+    // must not invent a tab — and the row stays in the table, so the day custom modules gain
+    // a collaboration surface this starts guarding them without anyone remembering to.
+    const tabCount = await tabs.count();
+    const editLink = page.getByRole("link", { name: "Edit", exact: true }).first();
+
+    if (tabCount < 2) {
+      console.log(`[${record.name}] record ${recordPath}, single tab — nothing to carry`);
+      await expect(editLink, "a single-tab record carries no ?tab=")
+        .toHaveAttribute("href", `${recordPath}/edit`);
+      return;
+    }
+
+    // The last tab is never the fallback, so selecting it must put `?tab=` on the URL.
+    await tabs.last().click();
+    await expect(page).toHaveURL(/[?&]tab=/);
+    const tab = new URL(page.url()).searchParams.get("tab");
+    console.log(`[${record.name}] record ${recordPath}, tab "${tab}"`);
+    expect(tab, "selecting the last tab writes ?tab=").toBeTruthy();
+
+    // Outbound: Edit carries the tab to the form.
+    await expect(editLink, "Edit is in the header row, reachable from every tab")
+      .toHaveAttribute("href", new RegExp(`${recordPath}/edit\\?tab=${tab}$`));
+
+    await editLink.click();
+    await expect(page).toHaveURL(new RegExp(`${recordPath}/edit\\?tab=${tab}$`));
+
+    // Return: Cancel goes back to the tab the operator left, not to Details.
+    const cancel = page.getByRole("link", { name: "Cancel", exact: true }).first();
+    await cancel.waitFor({ state: "visible", timeout: 30000 });
+    await expect(cancel, "Cancel returns to the tab the operator left from")
+      .toHaveAttribute("href", `${recordPath}?tab=${tab}`);
+  });
+}

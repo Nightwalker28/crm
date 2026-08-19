@@ -12,6 +12,7 @@ import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
   calculateTransactionTotals,
@@ -181,6 +182,10 @@ function OrderRecordFormEditor({
   updatedAt?: string | null;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/orders";
+  const backHref = useRecordTabHref(mode === "edit" && orderId ? `${listHref}/${orderId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
   const [form, setForm] = useState<OrderForm>(seed.form);
@@ -254,21 +259,13 @@ function OrderRecordFormEditor({
       ]);
       toast.success(mode === "edit" ? "Order updated." : "Order created.");
       const targetId = body?.id ?? (orderId ? Number(orderId) : null);
-      router.push(
-        targetId
-          ? `/dashboard/sales/orders/${targetId}`
-          : "/dashboard/sales/orders",
-      );
+      router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
     } catch {
       setSubmitError("Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
   }
-  const backHref =
-    mode === "edit" && orderId
-      ? `/dashboard/sales/orders/${orderId}`
-      : "/dashboard/sales/orders";
   return (
     <PageShell
       eyebrow={

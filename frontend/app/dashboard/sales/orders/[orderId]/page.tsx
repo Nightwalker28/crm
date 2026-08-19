@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
@@ -12,7 +12,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -94,10 +94,8 @@ async function fetchOrder(orderId: string) {
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
 
   const moduleActions = (moduleKey: string) =>
     modules.find((module) => module.name === moduleKey)?.actions;
@@ -126,6 +124,7 @@ export default function OrderDetailPage() {
   const notFound = orderError instanceof OrderRequestError && orderError.status === 404;
   const orderName = order?.order_number || "Order";
   const recordHref = `/dashboard/sales/orders/${params.orderId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const orderTotal = order ? formatMoney(order.grand_total, order.currency) : null;
 
   async function updateStatus(next: string) {
@@ -179,7 +178,7 @@ export default function OrderDetailPage() {
        */
       actions={order && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>

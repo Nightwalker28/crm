@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
@@ -14,7 +13,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -82,16 +81,15 @@ const SPINE_OWNED_FIELDS = ["name", "is_active", "is_public", "stock_status"] as
 const MONEY_FIELDS = new Set(["public_unit_price"]);
 
 export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
 
   const isProduct = kind === "products";
   const noun = isProduct ? "Product" : "Service";
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
   const listHref = `/dashboard/catalog/${kind}`;
   const recordHref = `${listHref}/${recordId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
 
   const moduleActions = (key: string) => modules.find((module) => module.name === key)?.actions;
   const catalogActions = moduleActions(moduleKey);
@@ -140,7 +138,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
        */
       actions={record && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>

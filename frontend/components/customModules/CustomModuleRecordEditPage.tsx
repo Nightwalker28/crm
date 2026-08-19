@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { FormEvent, useMemo, useState } from "react";
 import { ArrowLeft, Save } from "lucide-react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import {
@@ -11,7 +11,7 @@ import {
   getInitialCustomModuleValues,
 } from "@/components/customModules/CustomModuleFieldInput";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
-import { recordReturnHref } from "@/components/recordWorkspace/RecordWorkspace";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -148,8 +148,6 @@ function CustomModuleRecordEditor({
   onSave: (payload: { title?: string; values: Record<string, unknown> }) => Promise<CustomModuleRecord>;
 }) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const activeTab = searchParams.get("tab");
   const [title, setTitle] = useState(record.title);
   const [values, setValues] = useState<Record<string, unknown>>(() =>
     getInitialCustomModuleValues(fields, record),
@@ -162,7 +160,7 @@ function CustomModuleRecordEditor({
   const currentSnapshot = useMemo(() => JSON.stringify([title, values]), [title, values]);
   const isDirty = currentSnapshot !== initialSnapshot;
   // R2's round trip: editing from the record's Files tab returns to Files.
-  const recordHref = recordReturnHref(`/dashboard/custom/${moduleKey}/${record.id}`, activeTab);
+  const recordHref = useRecordTabHref(`/dashboard/custom/${moduleKey}/${record.id}`);
   const requiredCount = fields.filter((field) => field.is_required).length;
 
   useUnsavedChangesGuard(isDirty, isSaving);

@@ -2,14 +2,14 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { useParams, useSearchParams, useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ReadOnlyFieldSection } from "@/components/forms/ReadOnlyRecordLayout";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
@@ -69,12 +69,10 @@ function currentValue(field: CustomModuleField, values: Record<string, unknown>)
 
 export default function CustomModuleRecordDetailPage() {
   const params = useParams<{ moduleKey: string; recordId: string }>();
-  const searchParams = useSearchParams();
   const router = useRouter();
   const { confirm } = useConfirm();
   const moduleKey = params.moduleKey;
   const recordId = params.recordId;
-  const activeTab = searchParams.get("tab");
 
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const schema = useCustomModuleSchema(moduleKey);
@@ -101,6 +99,7 @@ export default function CustomModuleRecordDetailPage() {
   const record = recordQuery.record;
   const backHref = `/dashboard/custom/${moduleKey}`;
   const recordHref = `${backHref}/${recordId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const notFound =
     (schema.error instanceof Error && schema.error.message === "not-found") ||
     (recordQuery.error instanceof Error && recordQuery.error.message === "not-found") ||
@@ -159,7 +158,7 @@ export default function CustomModuleRecordDetailPage() {
        */
       actions={record && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>

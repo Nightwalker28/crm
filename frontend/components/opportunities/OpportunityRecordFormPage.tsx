@@ -8,6 +8,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   EMPTY_OPPORTUNITY_FORM,
   OpportunityFormMainFields,
@@ -60,6 +61,10 @@ export default function OpportunityRecordFormPage({
   opportunityId?: string;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/opportunities";
+  const cancelHref = useRecordTabHref(mode === "edit" && opportunityId ? `${listHref}/${opportunityId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<OpportunityFormValue>(
     EMPTY_OPPORTUNITY_FORM,
@@ -145,11 +150,7 @@ export default function OpportunityRecordFormPage({
       ]);
       setInitialSnapshot(snapshot);
       toast.success(mode === "edit" ? "Deal updated." : "Deal created.");
-      router.push(
-        savedId
-          ? `/dashboard/sales/opportunities/${savedId}`
-          : "/dashboard/sales/opportunities",
-      );
+      router.push(mode === "edit" ? cancelHref : (savedId ? `${listHref}/${savedId}` : listHref));
     } catch {
       setSubmitError(
         mode === "edit"
@@ -171,10 +172,6 @@ export default function OpportunityRecordFormPage({
         backLabel="Back to deals"
       />
     );
-  const cancelHref =
-    mode === "edit" && opportunityId
-      ? `/dashboard/sales/opportunities/${opportunityId}`
-      : "/dashboard/sales/opportunities";
   return (
     <PageShell
       title={mode === "edit" ? "Edit deal" : "Create deal"}

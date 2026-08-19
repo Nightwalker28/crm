@@ -12,6 +12,7 @@ import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
   calculateTransactionTotals,
@@ -220,6 +221,10 @@ function PosInvoiceRecordFormEditor({
   updatedAt?: string | null;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/finance/pos";
+  const backHref = useRecordTabHref(mode === "edit" && invoiceId ? `${listHref}/${invoiceId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
   const [form, setForm] = useState<InvoiceForm>(seed.form);
@@ -344,21 +349,13 @@ function PosInvoiceRecordFormEditor({
       ]);
       toast.success(mode === "edit" ? "Invoice updated." : "Invoice created.");
       const targetId = body?.id ?? (invoiceId ? Number(invoiceId) : null);
-      router.push(
-        targetId
-          ? `/dashboard/finance/pos/${targetId}`
-          : "/dashboard/finance/pos",
-      );
+      router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
     } catch {
       setSubmitError("Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
   }
-  const backHref =
-    mode === "edit" && invoiceId
-      ? `/dashboard/finance/pos/${invoiceId}`
-      : "/dashboard/finance/pos";
   return (
     <PageShell
       eyebrow={

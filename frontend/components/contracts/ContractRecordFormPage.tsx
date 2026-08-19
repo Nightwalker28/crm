@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -199,6 +200,12 @@ function ContractRecordFormEditor({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { fields: moduleFields } = useModuleFieldConfigs("contracts");
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/contracts";
+  const recordHref = useRecordTabHref(
+    mode === "edit" && contractId ? `${listHref}/${contractId}` : listHref,
+  );
   const [form, setForm] = useState<ContractForm>(seed.form);
   const [displays, setDisplays] = useState<ContractDisplays>(seed.displays);
   const [initialSnapshot] = useState(() => JSON.stringify([seed.form, seed.displays]));
@@ -310,7 +317,7 @@ function ContractRecordFormEditor({
         queryClient.invalidateQueries({ queryKey: ["contract-edit", String(savedContractId)] }),
       ]);
       toast.success(mode === "edit" ? "Contract updated." : "Contract created.");
-      router.push(savedContractId ? `/dashboard/contracts/${savedContractId}` : "/dashboard/contracts");
+      router.push(mode === "edit" ? recordHref : (savedContractId ? `${listHref}/${savedContractId}` : listHref));
     } catch {
       setSubmitError(true);
     } finally {
@@ -323,7 +330,7 @@ function ContractRecordFormEditor({
       eyebrow={mode === "edit" && updatedAt ? `Last modified ${formatDateTime(updatedAt)}` : undefined}
       title={mode === "edit" ? `Edit ${contractNumber ?? "contract"}` : "Create contract"}
       description={mode === "edit" ? "Update the commercial terms, lifecycle dates, ownership, and CRM relationships." : "Set the commercial terms, lifecycle dates, ownership, and related CRM records."}
-      actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={recordHref}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
     >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
@@ -360,7 +367,7 @@ function ContractRecordFormEditor({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contract."}</span>
             <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}>Cancel</Link></Button>
+              <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
               <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contract"}</Button>
             </div>
           </div>

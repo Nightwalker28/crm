@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus } from "lucide-react";
 
@@ -22,7 +22,7 @@ import {
 } from "@/components/recordWorkspace/RecordRelatedList";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -170,9 +170,7 @@ async function fetchOrganizationSummary(orgId: string) {
 
 export default function OrganizationDetailPage() {
   const params = useParams<{ orgId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const activeTab = searchParams.get("tab");
   const [contactQuickCreateOpen, setContactQuickCreateOpen] = useState(false);
   const [dealQuickCreateOpen, setDealQuickCreateOpen] = useState(false);
   const contactQuickCreateTriggerRef = useRef<HTMLButtonElement>(null);
@@ -227,6 +225,7 @@ export default function OrganizationDetailPage() {
     summaryError instanceof OrganizationSummaryRequestError && summaryError.status === 404;
   const accountName = org?.org_name || "Account";
   const recordHref = `/dashboard/sales/organizations/${params.orgId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const relatedHref = `${recordHref}?tab=related`;
 
   /** The account's one state field. Optimistic, and rolled back if the write fails (R1). */
@@ -331,7 +330,7 @@ export default function OrganizationDetailPage() {
             />
             {canEditOrganization ? (
               <Button asChild variant="outline">
-                <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+                <Link href={editHref}>
                   <Pencil />
                   Edit
                 </Link>

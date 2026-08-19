@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, UserRoundCheck, UsersRound } from "lucide-react";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -115,11 +115,9 @@ async function fetchContract(contractId: string) {
 
 export default function ContractDetailPage() {
   const params = useParams<{ contractId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
 
   const moduleActions = (moduleKey: string) =>
     modules.find((module) => module.name === moduleKey)?.actions;
@@ -148,6 +146,7 @@ export default function ContractDetailPage() {
   const notFound = contractError instanceof ContractRequestError && contractError.status === 404;
   const contractName = item?.contract_number || "Contract";
   const recordHref = `/dashboard/contracts/${params.contractId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
 
   async function confirmStatusChange(next: InlineFieldEditOption) {
     if (!item) return false;
@@ -205,7 +204,7 @@ export default function ContractDetailPage() {
       ) : null}
       actions={item && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>

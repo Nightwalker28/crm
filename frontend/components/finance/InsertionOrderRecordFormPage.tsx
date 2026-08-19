@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -161,6 +162,10 @@ function InsertionOrderFormEditor({
   order?: InsertionOrder;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/finance/insertion-orders";
+  const recordHref = useRecordTabHref(mode === "edit" && ioId ? `${listHref}/${ioId}` : listHref);
   const queryClient = useQueryClient();
   const initialForm = useMemo(() => seedFromOrder(order), [order]);
   const [form, setForm] = useState(initialForm);
@@ -250,7 +255,7 @@ function InsertionOrderFormEditor({
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       ]);
       toast.success(mode === "edit" ? "Insertion order updated." : "Insertion order created.");
-      router.push(`/dashboard/finance/insertion-orders/${saved.id}`);
+      router.push(mode === "edit" ? recordHref : `${listHref}/${saved.id}`);
     } catch {
       toast.error(`We could not ${mode === "edit" ? "update" : "create"} this insertion order. Review the fields and try again.`);
     } finally {
@@ -262,7 +267,7 @@ function InsertionOrderFormEditor({
     <PageShell
       title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
       description="Capture customer, schedule, references, and commercial values in one workflow."
-      actions={<Button variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}><ArrowLeft />Cancel</Link></Button>}
+      actions={<Button variant="outline" asChild><Link href={recordHref}><ArrowLeft />Cancel</Link></Button>}
     >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
@@ -302,7 +307,7 @@ function InsertionOrderFormEditor({
             <div className="flex flex-wrap items-center justify-between gap-3">
               <span className="text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "No unsaved changes"}</span>
               <div className="flex gap-2">
-                <Button type="button" variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}>Cancel</Link></Button>
+                <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>
                 <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create order"}</Button>
               </div>
             </div>

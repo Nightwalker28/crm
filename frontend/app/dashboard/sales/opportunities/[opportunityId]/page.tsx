@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
@@ -25,7 +25,7 @@ import {
 } from "@/components/recordWorkspace/RecordRelatedList";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -194,9 +194,7 @@ function contactLabel(summary: OpportunitySummary) {
 
 export default function OpportunityDetailPage() {
   const params = useParams<{ opportunityId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const activeTab = searchParams.get("tab");
 
   const { modules } = useAccessibleModules();
   const moduleActions = (moduleKey: string) =>
@@ -232,6 +230,7 @@ export default function OpportunityDetailPage() {
   const stage = normalizeOpportunityStage(deal?.sales_stage) || "lead";
   const dealName = deal?.opportunity_name || "Deal";
   const recordHref = `/dashboard/sales/opportunities/${params.opportunityId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
   const relatedHref = `${recordHref}?tab=related`;
 
   /**
@@ -322,7 +321,7 @@ export default function OpportunityDetailPage() {
           />
           {canEditDeal ? (
             <Button asChild variant="outline">
-              <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+              <Link href={editHref}>
                 <Pencil />
                 Edit
               </Link>

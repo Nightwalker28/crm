@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft } from "lucide-react";
 
 import LeadConversionForm, { type LeadConversionCapabilities } from "@/components/leads/LeadConversionForm";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
@@ -27,7 +28,8 @@ export default function ConvertLeadPage() {
   const params = useParams<{ leadId: string }>();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const summaryQuery = useQuery({ queryKey: ["sales-lead-summary", params.leadId], queryFn: () => fetchLeadSummary(params.leadId), enabled: Boolean(params.leadId), refetchOnWindowFocus: false });
-  const backHref = `/dashboard/sales/leads/${params.leadId}`;
+  // Convert is a trip off the record like Edit is, so it returns to the tab it left from.
+  const backHref = useRecordTabHref(`/dashboard/sales/leads/${params.leadId}`);
   const moduleActions = (moduleKey: string) => modules.find((module) => module.name === moduleKey)?.actions;
   const leadActions = moduleActions("sales_leads");
   const organizationActions = moduleActions("sales_organizations");

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowRightLeft, Pencil } from "lucide-react";
 
@@ -13,7 +13,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
@@ -124,9 +124,12 @@ async function fetchLeadSummary(leadId: string) {
 
 export default function LeadDetailPage() {
   const params = useParams<{ leadId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const activeTab = searchParams.get("tab");
+  const recordHref = `/dashboard/sales/leads/${params.leadId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
+  // A13's other half: Convert is the second trip off the record, so it carries the tab back
+  // the same way Edit does.
+  const convertHref = useRecordTabHref(`${recordHref}/convert`);
   const { modules } = useAccessibleModules();
   const {
     fields: moduleFields,
@@ -236,7 +239,7 @@ export default function LeadDetailPage() {
         <>
           {canConvertLead && lead.status !== "converted" ? (
             <Button asChild>
-              <Link href={`/dashboard/sales/leads/${lead.lead_id}/convert`}>
+              <Link href={convertHref}>
                 <ArrowRightLeft />
                 Convert
               </Link>
@@ -258,7 +261,7 @@ export default function LeadDetailPage() {
             <Button asChild variant="outline">
               {/* R2: the round trip preserves `?tab=` in both directions, so editing from
                   Files comes back to Files rather than dumping you on Details. */}
-              <Link href={recordEditHref(`/dashboard/sales/leads/${lead.lead_id}/edit`, activeTab)}>
+              <Link href={editHref}>
                 <Pencil />
                 Edit
               </Link>

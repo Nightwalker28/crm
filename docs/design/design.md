@@ -918,8 +918,22 @@ Contract:
   the "the detail page is secretly a form" defect this archetype exists to remove.
 - **Scroll:** the content region. The rail is a flex sibling of it, not `position: sticky`,
   so this adds no exception to R3. Same mechanism as archetype 1.
-- **The `Edit` affordance is in the header row**, reachable from every tab, and
-  `/[id]/edit` preserves `?tab=` in both directions. Editing from Files returns to Files.
+- **The `Edit` affordance is in the header row**, reachable from every tab, and the tab
+  travels with the operator on any trip off the record and back. Editing from Files returns
+  to Files. The rule is not about `/[id]/edit` specifically — `/[id]/convert` is the same
+  kind of trip and carries the tab the same way — and it matters here more than it would in
+  another CRM because R2 makes the trip *routine*: the spine autosaves a record's state, so
+  a page trip is now how an operator fixes a typo rather than a rare full-record edit.
+  **One hook supplies both directions**, `useRecordTabHref`, because they are one job: the
+  detail page carries the tab out, the form carries it back, and a page that has to remember
+  either half will eventually remember only one. Naming the two directions as two helpers is
+  exactly what let the return half go unbuilt on eleven pages while the outbound half
+  shipped. A record type whose strip has only one tab carries no `?tab=` at all — the hook
+  must not invent one. **Rejected: `?from=<encoded href>`**, which would return the operator
+  to whatever page sent them: it nests a URL inside a URL, it is a rewritable redirect
+  target, and the only thing that ever varies is which tab was open. **Rejected:
+  `router.back()` on Cancel** — not an anchor, so nothing to middle-click and nothing to
+  focus, and it goes somewhere else entirely when the operator arrived at `/[id]/edit` by URL.
 - **Below `lg` the rail stacks above the content and the page reverts to a document
   scroll.** That is the deliberate fallback, not a responsive feature: §4.4's gutters stand
   and Lynk is a desktop product, so the narrow case only has to stay usable.

@@ -667,6 +667,43 @@ test("Lead conversion uses permitted existing targets without creating forbidden
   });
 });
 
+test("Lead conversion guards unsaved work and returns to the tab it left from", async ({ page }) => {
+  // A13. Conversion creates up to three records from a form that had no guard on it: Cancel
+  // discarded a filled-in conversion with no prompt, alone among the app's 16 forms.
+  await stubWorkspacePermissions(page);
+  await stubEmptyWorkspacePanels(page);
+  await page.route(`**/sales/leads/${fakeLeadId}/summary`, (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(fakeLeadSummary) }),
+  );
+
+  // Convert is a trip off the record like Edit is, so it carries `?tab=` in both directions.
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}?tab=tasks`);
+  await expect(page.getByRole("link", { name: "Convert" })).toHaveAttribute("href", /\/convert\?tab=tasks$/);
+  await page.getByRole("link", { name: "Convert" }).click();
+  await expect(page.getByRole("link", { name: "Cancel" })).toHaveAttribute(
+    "href",
+    `/dashboard/sales/leads/${fakeLeadId}?tab=tasks`,
+  );
+
+  // Arriving and leaving without touching anything is not unsaved work, so it costs no
+  // prompt — the defaults the operator never chose do not count as dirty.
+  let prompted = false;
+  page.on("dialog", (dialog) => {
+    prompted = true;
+    void dialog.accept();
+  });
+  await page.getByRole("link", { name: "Cancel" }).click();
+  await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=tasks$`));
+  expect(prompted, "an untouched conversion leaves without a prompt").toBe(false);
+
+  // Filling one in and leaving does prompt.
+  await page.goto(`/dashboard/sales/leads/${fakeLeadId}/convert?tab=tasks`);
+  await page.getByRole("switch", { name: "Create opportunity" }).click();
+  await expect(page.getByRole("switch", { name: "Create opportunity" })).toBeChecked();
+  await page.getByRole("link", { name: "Cancel" }).click();
+  expect(prompted, "a filled-in conversion warns before discarding it").toBe(true);
+});
+
 test("Lead conversion is unavailable without a permitted account path", async ({ page }) => {
   await stubWorkspacePermissions(page, {
     sales_organizations: { can_view: false, can_create: false },

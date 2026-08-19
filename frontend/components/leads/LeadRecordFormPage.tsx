@@ -8,6 +8,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue } from "@/components/leads/LeadFormFields";
 import { buildLeadPayload, saveLead, toDatetimeLocalValue, validateLeadEmail } from "@/components/leads/leadMutation";
 import { consumeLeadQuickCreateDraft, isLeadQuickCreateHandoff } from "@/components/leads/leadQuickCreateDraft";
@@ -37,6 +38,10 @@ async function fetchLeadSummary(leadId: string) {
 
 export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | "edit"; leadId?: string }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/leads";
+  const cancelHref = useRecordTabHref(mode === "edit" && leadId ? `${listHref}/${leadId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<LeadFormValue>(EMPTY_LEAD_FORM);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
@@ -118,7 +123,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       if (savedLeadId) await queryClient.invalidateQueries({ queryKey: ["sales-lead-summary", String(savedLeadId)] });
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Lead updated." : "Lead created.");
-      router.push(savedLeadId ? `/dashboard/sales/leads/${savedLeadId}` : "/dashboard/sales/leads");
+      router.push(mode === "edit" ? cancelHref : (savedLeadId ? `${listHref}/${savedLeadId}` : listHref));
     } catch {
       setSubmitError(mode === "edit" ? "The lead could not be updated. Check the fields and try again." : "The lead could not be created. Check the fields and try again.");
     } finally {
@@ -135,7 +140,6 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   }
 
   const title = mode === "edit" ? "Edit lead" : "Create lead";
-  const cancelHref = mode === "edit" && leadId ? `/dashboard/sales/leads/${leadId}` : "/dashboard/sales/leads";
 
   return (
     <PageShell

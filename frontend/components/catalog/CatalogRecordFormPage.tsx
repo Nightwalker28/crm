@@ -8,6 +8,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -139,7 +140,9 @@ function CatalogRecordFormEditor({
   const noun = isProduct ? "product" : "service";
   const titleNoun = isProduct ? "Product" : "Service";
   const listHref = `/dashboard/catalog/${kind}`;
-  const detailHref = recordId ? `${listHref}/${recordId}` : listHref;
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const detailHref = useRecordTabHref(recordId ? `${listHref}/${recordId}` : listHref);
   const snapshot = useMemo(
     () => JSON.stringify([form, mediaFile ? [mediaFile.name, mediaFile.size, mediaFile.lastModified] : null]),
     [form, mediaFile],
@@ -197,7 +200,7 @@ function CatalogRecordFormEditor({
         }
       }
       toast.success(`${titleNoun} ${mode === "edit" ? "updated" : "created"}.`);
-      router.push(`${listHref}/${saved.id}`);
+      router.push(mode === "edit" ? detailHref : `${listHref}/${saved.id}`);
     } catch {
       setSubmitError(true);
     }

@@ -295,22 +295,33 @@ function RecordContent({ tabs }: { tabs: RecordExtraTab[] }) {
 }
 
 /**
- * Builds an `/[id]/edit` href that carries the current tab, and the `?from=` that sends the
- * operator back to it.
+ * Carries the record's open tab onto a link that leaves the record — and onto the link that
+ * comes back.
  *
- * R2 names this as most of why the edit round trip feels expensive: today `/[id]/edit`
- * drops `?tab=`, so editing from the Files tab lands you back on Details. Preserving it in
- * both directions is a two-line contract, and it is here so no page has to remember it.
+ * R2 names the `/[id]/edit` round trip as most of why editing a record feels expensive, and
+ * it is the archetype that makes the trip routine rather than rare: the spine autosaves the
+ * record's *state*, so a page trip is now how an operator fixes a typo. Dropping `?tab=` on
+ * the way out put them on `Details`; dropping it on the way back put them there again. The
+ * tab is part of the record's address, so it travels with them in both directions.
+ *
+ * One hook rather than a pair, because there is one job: the detail page carries the tab
+ * *out* to `/[id]/edit` or `/[id]/convert`, and those pages carry it *back*. Naming the two
+ * directions separately is what let the return half go unbuilt for five batches while the
+ * outbound half shipped on eleven pages.
+ *
+ * **Rejected: `?from=<encoded href>`.** Fully general — it would return the operator to
+ * whatever page sent them — but it nests a URL inside a URL, it is a redirect target anyone
+ * can rewrite, and the only thing that ever varies is which tab was open.
+ * **Rejected: `router.back()` on Cancel.** It is not an anchor, so there is nothing to
+ * middle-click and nothing to focus, and it goes somewhere else entirely when the operator
+ * arrived at `/[id]/edit` by URL.
  */
-export function recordEditHref(editHref: string, tab?: string | null) {
-  if (!tab) return editHref;
-  const separator = editHref.includes("?") ? "&" : "?";
-  return `${editHref}${separator}${TAB_PARAM}=${encodeURIComponent(tab)}`;
-}
-
-/** The record href to return to after an edit, restoring the tab the operator left from. */
-export function recordReturnHref(recordHref: string, tab?: string | null) {
-  return recordEditHref(recordHref, tab);
+export function useRecordTabHref(href: string) {
+  const searchParams = useSearchParams();
+  const tab = searchParams.get(TAB_PARAM);
+  if (!tab) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}${TAB_PARAM}=${encodeURIComponent(tab)}`;
 }
 
 export { TAB_PARAM as RECORD_TAB_PARAM };

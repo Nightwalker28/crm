@@ -13,6 +13,7 @@ import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
   calculateTransactionTotals,
@@ -235,6 +236,10 @@ function QuoteRecordFormEditor({
   updatedAt?: string | null;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/quotes";
+  const backHref = useRecordTabHref(mode === "edit" && quoteId ? `${listHref}/${quoteId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<QuoteForm>(seed.form);
   const [items, setItems] = useState<TransactionLineItem[]>(seed.items);
@@ -330,21 +335,13 @@ function QuoteRecordFormEditor({
       ]);
       toast.success(mode === "edit" ? "Quote updated." : "Quote created.");
       const targetId = body?.quote_id ?? (quoteId ? Number(quoteId) : null);
-      router.push(
-        targetId
-          ? `/dashboard/sales/quotes/${targetId}`
-          : "/dashboard/sales/quotes",
-      );
+      router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
     } catch {
       setSubmitError("Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
   }
-  const backHref =
-    mode === "edit" && quoteId
-      ? `/dashboard/sales/quotes/${quoteId}`
-      : "/dashboard/sales/quotes";
   return (
     <PageShell
       eyebrow={

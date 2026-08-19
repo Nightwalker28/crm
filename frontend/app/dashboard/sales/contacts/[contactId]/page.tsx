@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRef, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus } from "lucide-react";
 
@@ -15,7 +15,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
@@ -129,9 +129,7 @@ async function fetchContactSummary(contactId: string) {
 
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
-  const activeTab = searchParams.get("tab");
   const [dealQuickCreateOpen, setDealQuickCreateOpen] = useState(false);
   const dealQuickCreateTriggerRef = useRef<HTMLButtonElement>(null);
 
@@ -186,6 +184,7 @@ export default function ContactDetailPage() {
       || summary.contact.primary_email
     : "Contact";
   const recordHref = `/dashboard/sales/contacts/${params.contactId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
 
   /**
    * The one state field a contact has. Same shape as the lead's status commit: optimistic,
@@ -295,7 +294,7 @@ export default function ContactDetailPage() {
             />
             {canEditContact ? (
               <Button asChild variant="outline">
-                <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+                <Link href={editHref}>
                   <Pencil />
                   Edit
                 </Link>

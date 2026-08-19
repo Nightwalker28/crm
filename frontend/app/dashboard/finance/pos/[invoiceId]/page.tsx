@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { ExternalLink, Pencil, ReceiptText } from "lucide-react";
 
@@ -13,7 +13,7 @@ import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
 import {
   RecordWorkspace,
-  recordEditHref,
+  useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -94,10 +94,8 @@ const MONEY_FIELDS = new Set([
 
 export default function InvoiceDetailPage() {
   const params = useParams<{ invoiceId: string }>();
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { modules } = useAccessibleModules();
-  const activeTab = searchParams.get("tab");
 
   const invoiceId = /^\d+$/.test(params.invoiceId) ? Number(params.invoiceId) : null;
   const query = usePosInvoice(invoiceId);
@@ -125,6 +123,7 @@ export default function InvoiceDetailPage() {
     || (invoiceError instanceof PosInvoiceRequestError && invoiceError.status === 404);
   const invoiceName = invoice?.invoice_number || "Invoice";
   const recordHref = `/dashboard/finance/pos/${params.invoiceId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
 
   async function updateStatus(next: string) {
     if (!invoice || invoice.status === next) return;
@@ -178,7 +177,7 @@ export default function InvoiceDetailPage() {
        */
       actions={invoice && canEdit ? (
         <Button asChild variant="outline">
-          <Link href={recordEditHref(`${recordHref}/edit`, activeTab)}>
+          <Link href={editHref}>
             <Pencil />
             Edit
           </Link>
