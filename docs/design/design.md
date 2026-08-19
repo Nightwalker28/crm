@@ -794,6 +794,16 @@ Contract:
   pipeline — lead, deal, quote, order), **State**, **Connected**, then created/updated
   metadata carrying the `History` disclosure. State fields are `InlineFieldEdit` and
   autosave (R1). Connected entries are links, never free text.
+- **A field that points at a *user* is state, not a relationship.** Owner / `assigned_to` /
+  `owner_id` is a column on **this** row, so the spine's own test puts it in **State**, as an
+  `InlineFieldEdit` that autosaves — not in `Connected` as a read-only name. It shipped as a
+  `RecordSpineLink` on all eight record types, which made reassignment a page trip for the
+  second-most-common edit an operator makes after status. The confusion is understandable and
+  worth naming: Connected is for links to *other records*, and a user is a record — but the
+  question the block answers is "what does this row point at", and `assigned_to` is a value
+  *on* the row, chosen from a closed set. This is also the answer to the thin rails on
+  contacts and accounts: they have two state fields, and one of them was being drawn in the
+  wrong block.
 - **Connected carries two kinds of entry: a record, and a collection.** A record is
   `RecordSpineLink` — a name and the way to it. A collection is `RecordSpineCollection` —
   a label, how many, and a link into the module tab that lists them (`Deals 3 ›`). Both
@@ -838,6 +848,15 @@ Contract:
   `CommunicationActions` keeps its raw `wa.me` button only on records with no tracked
   endpoint — offering both on one page means the same action logs itself half the time,
   and the operator cannot tell which button did which.
+- **A record offers a channel only if the channel is its own.** Lead, contact and account
+  carry `primary_email` / `phone` columns, so their headers offer Email, WhatsApp and Call.
+  A deal and a quote have no channel columns at all — they were passing the *linked
+  contact's* address into their own header and then filing the resulting interaction against
+  themselves, so the conversation landed on the deal and the contact's Timeline had a hole in
+  it. One conversation split across two records is worse than one extra click. The contact
+  sits in `Connected`, one click away, on a record that can perform the action and file it
+  correctly. The test is not "would this be convenient" but **"does this record own the
+  address you are about to use?"**
 - **Audit history is not a tab.** It hangs off the spine's `Updated` line and opens in a
   sheet. Two reasons, and the second is the load-bearing one. First, it is a reference
   surface consulted occasionally, and a tab that is always present but rarely opened is
@@ -994,7 +1013,18 @@ the content region — the archetype does not bend for them.
 
 Contract: sections are panels (`FormSection` → `Card`), the section title is the
 section-heading role, fields sit on `md:grid-cols-2`, every input has a visible label
-(§7.5), required sets match the backend exactly. **Manual save** (R1) — a create form and a
+(§7.5), required sets match the backend exactly.
+
+**The form draws a visible heading, and on an edit it is the record's name.** `PageHeader`'s
+h1 is `sr-only` by §8, and archetype 2 supplies its own visible `h2` — archetype 3 supplied
+nothing, so an operator editing a contact saw a form with the record's name nowhere on
+screen, and two edit tabs side by side were indistinguishable. It is the record's name on
+`/[id]/edit` and the noun on `/new` (`Pavithra Nanayakkara` / `New contact`) for the same
+reason the record header carries one: the operator came for a specific record and needs to
+know this is the right one. Rejected: making the generic label visible (`Edit contact`
+restates what clicking Edit already said), and reusing archetype 2's whole header row (it
+needs the record's status and subtitle, and it blurs two archetypes that are deliberately
+distinct). **Manual save** (R1) — a create form and a
 line-item document both keep an explicit commit, because a half-formed autosaved record
 lands in lists, counts and reports.
 
@@ -1301,6 +1331,47 @@ names, which `RecordSpine` paid for once in rebuild 5.3).
 `SectionTabs` defaults its panel to the `CardBody` inset so a tabbed card and an untabbed
 one line up; `panelPadding="none"` is for the case where the panel *is* a
 `ModuleTableShell`, which owns its own edges.
+
+---
+
+### 7.8 A select becomes searchable by counting, not by a prop
+
+> **A select whose option count is fixed by the product is never searchable. A select whose
+> option count grows with the tenant's data gets a search input — and the primitive decides
+> by counting its own options.**
+
+Lead status, contract status, stock status, `Active`/`Inactive`: the product fixes these at
+two to eight, and seeing all of them at once *is* the affordance. A search box over five
+options is furniture. Owner, customer group and a custom module's `single_select` are the
+other kind — their length is the tenant's data, and they are unbounded.
+
+**No call site passes `searchable`.** That is the load-bearing half. A boolean at 17
+`InlineFieldEdit` call sites is the prop that drifts, and §4.7's own lesson is that a rule
+with no default behind it does not survive the next page — `space-y-6` was specified for a
+year and one of 27 page roots used it. `SearchableSelect` counts what it was given and
+crosses one exported threshold (`SEARCHABLE_SELECT_MIN_OPTIONS`, currently 10), so the
+answer is the same everywhere and changing it is one edit.
+
+**One DOM shape, always.** The search input is rendered or not; the component is not.
+Radix `Select` cannot host a search field, so the searchable form is the `Popover` + `Input`
++ filtered list combobox — and swapping component *type* at N options would make an
+element's ARIA contract depend on how much data a tenant happens to have, which is
+untestable and would break the strip guards.
+
+**This primitive exists because the pattern was already here four times.** `TimezonePicker`,
+`UserTeamPicker` and `LinkedRecordPicker` each hand-rolled `Popover` + a `Search` input + a
+filtered list + a `Check` on the selection, independently. `TimezonePicker` collapses into
+`SearchableSelect` as a call site. **`LinkedRecordPicker` and `UserTeamPicker` stay**, and
+the boundary is worth writing down: `SearchableSelect` picks a *field value* from options
+held in memory; `LinkedRecordPicker` resolves a *record reference* over a server-side search
+(§4.7's Connected concern); `UserTeamPicker` is grouped multi-select across two entity
+types. Folding those in would give one primitive four modes, which is where the next author
+gets lost.
+
+**The same field behaves the same in both places it appears.** A select reached through the
+rail and the identical select on `/[id]/edit` are one control, so forms render through this
+primitive too — otherwise Owner is searchable in the spine and a 200-row native list on the
+edit page.
 
 ---
 

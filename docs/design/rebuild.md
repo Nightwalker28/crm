@@ -1303,7 +1303,9 @@ rendered guard nor 21 module assertions saw any of them:
   separation. The wrapper is gone from contacts, accounts *and* leads; `Card` stays on the
   layout's loading and error panel, which is a single box around a single thing.
 
-**One thing left open deliberately.** An account's header now carries six actions plus the
+**One thing left open deliberately** (**answered 2026-08-19** — see "The eight deferred
+questions, answered": the account keeps its channels because it owns `primary_email` and
+`primary_phone`; the deal and quote lose theirs). An account's header now carries six actions plus the
 overflow (`Deal` filled, `Contact`, `Email`, `WhatsApp`, `Call`, `Edit`) — down from nine,
 but still fuller than §4.7's wireframe. Which channels an account should offer at all is a
 product question rather than an archetype one, so it is noted here for close-out rather
@@ -1401,7 +1403,9 @@ declared below it — a temporal-dead-zone `ReferenceError` that took the whole 
 passed. Both rendered guards passed *because they only visit routes that render*. Only
 opening the page found it, which is the third time the note below has been right.
 
-**Two things left open, and the owner confirmed both deferrals on 2026-08-18.** Neither is a
+**Two things left open, and the owner confirmed both deferrals on 2026-08-18.** (**Both
+answered 2026-08-19** — channels resolved by ownership of the address; contracts frozen. See
+"The eight deferred questions, answered".) Neither is a
 defect; both are product questions a migration is not entitled to answer by trimming.
 They are batch 6's, and the row below carries them so they cannot be lost in prose:
 
@@ -1780,7 +1784,85 @@ each — the shape 5.2 used.
 | ~~3~~ | ~~**insertion order, support case, custom record, catalog product/service**~~ | **Done** — see "What batch 4 decided", above. `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in `RecordSpine` |
 | ~~4~~ | ~~**The two hand-rolled `role="tablist"`**~~ | **Done** — see "What batch 5 decided", above. It was three strips, not two: `RecordTabs` is `SectionTabs` and all three are on it. `SavedViewSelector.tsx:26` is untouched and stays 5.5's |
 | ~~5~~ | ~~**`/[id]/edit` round trip + A13**~~ | **Done** — see "What batch 6 decided", above. The two helpers became one hook, `useRecordTabHref`; twelve edit surfaces carry the tab back; `/convert` joined the rule; A13 closed. The guard is parameterised over all twelve modules |
-| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. Plus the two questions batch 2 deferred with the owner: whether non-person records carry contact channels in the header, and whether contracts need real state rather than six optional links. Batch 4 adds two more: a support case has **no `/[id]/edit` route at all**, so its subject, description and relationships have never been editable after create — a product gap that predates the rebuild, not something a migration should answer by inventing a form; and `sla_due_at` is on the model, in the response, in the automation registry and in list filters, and **no code path writes it**, so every case shows an SLA that will never arrive; and batch 6 adds two archetype-3 defects it found by looking rather than by assertion — `RecordFormLayout.tsx:21` is `sticky bottom-0`, which R3 and §4.7 both forbid, and a form page draws no visible title at all because `PageShell`'s `h1` is `sr-only` and archetype 3 has no visible counterpart. Both are 5.4's rows, listed here so close-out can confirm 5.4 took them |
+| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. **Every product question this sub-phase accumulated was settled with the owner on 2026-08-19 — see "The eight deferred questions, answered" below.** Close-out no longer carries any of them; it carries only the mechanical sweep and the two archetype-3 defects batch 6 found, which are 5.4's |
+
+### The eight deferred questions, answered
+
+Settled with the owner on **2026-08-19**, in one pass, deliberately: R9's "raise it, do not
+answer it with a second archetype" had fired four times across five batches, and a question
+raised four times and never answered is not being deferred, it is being avoided. Each answer
+below is final for the programme — a later sub-phase implements them, it does not re-open
+them.
+
+| # | Question | Answer |
+|---|---|---|
+| 1 | Header channels on non-person records | **A record offers a channel only if it owns the address.** Deal and quote lose Email/WhatsApp/Call; lead, contact, account keep them. §4.7 |
+| 2 | Contracts under-modelled | **Frozen.** See below |
+| 3 | Owner, and the thin rails on contacts/accounts | **Owner moves to State and edits inline on all 8 record types**, behind a new `SearchableSelect` primitive. §4.7, §7.8 |
+| 4 | Catalog disconnected from quoting | **Link quote/order line items to the catalog** — its own slice, after 5.9 |
+| 5 | Custom modules are second-class | **Make the filter UI honest now; one first-class slice scheduled** |
+| 6 | Support cases have no `/[id]/edit` | **Frozen.** See below |
+| 7 | `sla_due_at` is written by nothing | **Frozen.** Stays dead |
+| 8 | Archetype 3 draws no visible title | **The record's name on edit, the noun on create.** 5.4. §4.7 |
+
+**The one that reframed itself, and is the most valuable answer here.** Question 3 arrived
+as "contacts and accounts have a one-field rail". Looking at it found that `Owner` renders
+as a read-only `RecordSpineLink` inside `Connected` on **all eight** record types — and
+`assigned_to` / `owner_id` is a column on *this* row, chosen from a closed set, which
+§4.7's own test puts in **State**. So the thin rail was not under-modelling at all: it was a
+state field drawn in the wrong block, making reassignment a page trip for the
+second-most-common edit after status. One rule fixes three complaints at once. Recorded
+because it is the pattern: **three of the four "under-modelled" signals turned out to have a
+cause that was not modelling.**
+
+**What the owner added to question 3, and why it is the better instinct.** The proposal was
+a searchable picker for Owner. The owner's answer was that a searchable dropdown is a
+primitive, not a feature of one field — build it once and give it to every select where
+search makes sense. That is §0's "reuse before extending" applied before the duplication
+happened rather than after, and the count justified it immediately: `TimezonePicker`,
+`UserTeamPicker` and `LinkedRecordPicker` had each hand-rolled `Popover` + search `Input` +
+filtered list + `Check`, independently. §7.8 is the rule, and the load-bearing clause is
+that **the primitive decides by counting its own options** — a `searchable` prop at 17 call
+sites is the prop that drifts.
+
+**Support cases and contracts are frozen, and the freeze was priced.** The owner's position
+is that this is a CRM + ERP and neither module is its direction. Both were measured before
+deciding: support is ~2,870 lines across backend, frontend and tests with 24 external
+references **and a customer-facing client-portal surface** (portal users can raise, view and
+comment on cases); contracts is ~3,055 lines with 45 external references. Both are already
+rebuilt onto the archetype. **Removal was rejected as the most expensive option on the
+table** — de-integration across 24 and 45 files, migrations to drop seven tables, and a
+tenant-backup format change, to delete something that costs nothing to carry. So they are
+frozen instead.
+
+> **Freeze means no module-specific investment. It does not mean excluded from app-wide
+> sweeps.** Contracts and support cases still receive `Owner` → State, `SearchableSelect`,
+> 5.5's table work and 5.9's copy pass, because applying a shared primitive to six of eight
+> record types is the drift the programme exists to remove.
+
+**Accepted consequences, written down so nobody re-raises them as defects:** the support
+dashboard reports `0 overdue` permanently (`sla_due_at` keeps five readers and no writer); a
+support case cannot be corrected after create, including cases raised through the portal;
+and a contract's `Connected` block keeps its six `Not set` rows.
+
+**What this schedules, and where it lands.** Nothing below is 5.3's:
+
+| Work | Home |
+|---|---|
+| Deal + quote lose header channels | 5.3 close-out (a deletion, ~3 lines × 2 pages) |
+| Delete `/dashboard/finance/invoice-generator` (3-line redirect, zero inbound links) | 5.3 close-out |
+| Hide the custom-module filter control (B.2 — the toolbar badge counts conditions the backend never receives) | 5.3 close-out |
+| `SearchableSelect` primitive; `TimezonePicker` collapses into it | **5.4** — it is a form control as much as a rail one |
+| `Owner` → State on 8 record types, editable | **5.4**, immediately after the primitive |
+| Archetype 3's visible title; `RecordFormLayout.tsx:21` sticky footer (R3) | **5.4** |
+| Custom modules become first-class: dynamic module registry (Timeline/Tasks/Files), a `lookup` field type, EAV filtering over `custom_module_record_values` | **New slice, after 5.9** |
+| Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`, matching `finance_pos_items`) | **New slice, after 5.9** |
+
+Two things deliberately *not* scheduled, recorded so they are not mistaken for oversights:
+contract renewal modelling (`auto_renew`, `notice_period_days` — the one genuine gap in that
+module, frozen with it), and an SLA policy engine.
+
+---
 
 ### Traps already paid for once
 
