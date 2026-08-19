@@ -40,7 +40,6 @@ const STATIC_ROUTES = [
   "/dashboard/documents/upload",
   "/dashboard/finance/insertion-orders",
   "/dashboard/finance/insertion-orders/new",
-  "/dashboard/finance/invoice-generator",
   "/dashboard/finance/payments",
   "/dashboard/finance/payments/record",
   "/dashboard/finance/pos",

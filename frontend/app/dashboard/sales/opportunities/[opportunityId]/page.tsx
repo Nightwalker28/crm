@@ -13,7 +13,6 @@ import {
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
-import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
@@ -309,16 +308,14 @@ export default function OpportunityDetailPage() {
        */
       actions={deal ? (
         <>
-          <CommunicationActions
-            email={summary?.contact?.primary_email}
-            phone={summary?.contact?.contact_telephone}
-            showCopyActions={false}
-            emailContext={{
-              moduleKey: "sales_opportunities",
-              entityId: deal.opportunity_id,
-              recordLabel: dealName,
-            }}
-          />
+          {/*
+            No channel buttons. A deal has no `primary_email` and no phone column — the ones
+            that used to sit here were the *linked contact's*, and the interaction was then
+            filed against the deal, so the conversation landed on a record that does not own
+            it and the contact's Timeline had a hole where it belonged. The contact is in
+            `Connected`, one click away, on a record that can perform the action and file it
+            correctly (4.7).
+          */}
           {canEditDeal ? (
             <Button asChild variant="outline">
               <Link href={editHref}>

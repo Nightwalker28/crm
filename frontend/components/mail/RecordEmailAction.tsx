@@ -53,20 +53,17 @@ export default function RecordEmailAction({
   );
   const canCompose = canSendMail && hasSendingMailbox;
 
-  if (!email || emailOptOut) {
-    return (
-      <Button type="button" size="sm" variant="outline" disabled>
-        <Mail className="h-4 w-4" />
-        {emailOptOut ? "Email Opt Out" : "Email"}
-      </Button>
-    );
-  }
+  // Nothing, rather than a disabled button (4.7). `email_opt_out` is a field and `Details`
+  // draws it as `Opted out`, which is a better place to learn a compliance fact than a
+  // control that cannot be pressed. `CommunicationActions` gates this too; the guard is
+  // repeated because this component has its own call path.
+  if (!email || emailOptOut) return null;
 
   if (!canCompose) {
     return (
       <Button asChild size="sm" variant="outline">
         <a href={`mailto:${email}`}>
-          <Mail className="h-4 w-4" />
+          <Mail />
           Email
         </a>
       </Button>
@@ -85,7 +82,7 @@ export default function RecordEmailAction({
           setOpen(true);
         }}
       >
-        <Mail className="h-4 w-4" />
+        <Mail />
         Email
       </Button>
       <RecordEmailComposer

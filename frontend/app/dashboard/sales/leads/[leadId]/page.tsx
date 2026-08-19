@@ -248,7 +248,6 @@ export default function LeadDetailPage() {
           <CommunicationActions
             email={lead.primary_email}
             phone={fieldEnabled("phone") ? lead.phone : null}
-            showCopyActions={false}
             // Record context only. Which mailbox sends, whether one is connected, and how
             // the message is filed are all decided by the mail domain, not by this page.
             emailContext={{

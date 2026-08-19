@@ -506,7 +506,12 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
 
   await page.getByRole("tab", { name: "Files" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${fakeLeadId}\\?tab=files$`));
-  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+  // The tab is the panel's name, so the panel does not draw it again (design.md 4.7). This
+  // asserted a `Documents` heading until 5.3 close-out — the tab's own label, in a second
+  // word for the same thing. The panel is identified by what it lets you do instead.
+  const filesPanel = page.locator('[data-slot="record-content"]');
+  await expect(filesPanel.getByRole("heading", { name: /Documents|Files/ })).toHaveCount(0);
+  await expect(filesPanel.getByRole("button", { name: "Upload document" })).toBeVisible();
 
   // History is a sheet hung off the spine's "Updated" line rather than a fifth tab, so the
   // tab set stays at the archetype's four (design.md 4.7).
@@ -596,7 +601,7 @@ test("Lead workspace gates mutation regions without hiding view-only context", a
   await expect(page.getByLabel("Follow-up note")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Add task" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Files" }).click();
-  await expect(page.getByRole("button", { name: "Upload Document" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Upload document" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "View" })).toBeVisible();
   await page.getByRole("button", { name: "Versions" }).click();

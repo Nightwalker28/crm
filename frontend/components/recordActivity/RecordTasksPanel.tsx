@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import {
   PanelEmpty,
   PanelError,
-  PanelHeader,
   PanelLoading,
 } from "@/components/ui/PanelStates";
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
@@ -204,17 +203,20 @@ export default function RecordTasksPanel({
 
   return (
     <Card className="px-5 py-5">
-      <PanelHeader
-        title="Tasks & reminders"
-        description="Follow-up tasks linked to this record."
-        icon={ClipboardList}
-        action={canCreate ? (
+      {/*
+        No `PanelHeader`. The tab strip above already says `Tasks`, and this panel is that
+        tab's whole content — so a heading here draws the same word twice (4.7). The action
+        is the panel's first row instead, which is the shape `RecordTimeline`'s composer
+        set. What the description said now opens the empty state.
+      */}
+      {canCreate ? (
+        <div className="flex justify-end">
           <Button type="button" variant="outline" size="sm" onClick={() => setIsCreating((current) => !current)}>
-            <Plus className="h-4 w-4" />
+            <Plus />
             {isCreating ? "Close" : "Add task"}
           </Button>
-        ) : undefined}
-      />
+        </div>
+      ) : null}
 
       {canCreate && isCreating ? (
         <form onSubmit={handleCreateTask} className="my-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
@@ -354,7 +356,6 @@ export default function RecordTasksPanel({
                         void handleCompleteTask(task);
                       }}
                       disabled={completingTaskId === task.id}
-                      className="border-state-success/40 bg-state-success-muted text-state-success hover:bg-state-success-muted hover:text-state-success"
                     >
                       <CheckCircle2 />
                       {completingTaskId === task.id ? "Saving…" : "Complete"}
@@ -367,7 +368,7 @@ export default function RecordTasksPanel({
           ))}
         </ol>
       ) : (
-        <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Create a task here to keep the next action attached to this record." /></div>
+        <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Follow-up tasks created here stay attached to this record, so the next action is where the history is." /></div>
       )}
     </Card>
   );

@@ -11,10 +11,17 @@ type Props = {
   searchValue: string;
   onSearchChange: (value: string) => void;
   searchPlaceholder?: string;
-  filtersOpen: boolean;
-  activeFilterCount: number;
-  onToggleFilters: () => void;
-  onClearFilters: () => void;
+  /**
+   * The filter group is optional, and a module whose request layer cannot carry conditions
+   * passes none of it — no `Filters` button, no badge, no `Clear filters` (7.9). Custom
+   * modules are the case: `useCustomModuleRecords` serialises search and sort only, so the
+   * badge used to count conditions the backend never received and the table returned every
+   * row anyway.
+   */
+  filtersOpen?: boolean;
+  activeFilterCount?: number;
+  onToggleFilters?: () => void;
+  onClearFilters?: () => void;
   selectedCount?: number;
   selectionNoun?: string;
   onClearSelection?: () => void;
@@ -27,8 +34,8 @@ export function ModuleListToolbar({
   searchValue,
   onSearchChange,
   searchPlaceholder,
-  filtersOpen,
-  activeFilterCount,
+  filtersOpen = false,
+  activeFilterCount = 0,
   onToggleFilters,
   onClearFilters,
   selectedCount = 0,
@@ -48,11 +55,13 @@ export function ModuleListToolbar({
       <div className="flex flex-col gap-3 px-3 py-2.5 xl:flex-row xl:items-center">
         <SearchBar value={searchValue} onChange={onSearchChange} placeholder={searchPlaceholder} className="md:w-80" />
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-          <Button type="button" variant="outline" size="sm" onClick={onToggleFilters} aria-expanded={filtersOpen}>
-            <Filter />Filters
-            {activeFilterCount ? <span className="rounded-full bg-action-primary-muted px-1.5 py-0.5 text-2xs font-semibold text-copy-primary">{activeFilterCount}</span> : null}
-          </Button>
-          {activeFilterCount ? <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}><SearchX />Clear filters</Button> : null}
+          {onToggleFilters ? (
+            <Button type="button" variant="outline" size="sm" onClick={onToggleFilters} aria-expanded={filtersOpen}>
+              <Filter />Filters
+              {activeFilterCount ? <span className="rounded-full bg-action-primary-muted px-1.5 py-0.5 text-2xs font-semibold text-copy-primary">{activeFilterCount}</span> : null}
+            </Button>
+          ) : null}
+          {activeFilterCount && onClearFilters ? <Button type="button" variant="ghost" size="sm" onClick={onClearFilters}><SearchX />Clear filters</Button> : null}
           <TableDensityToggle />
           <div className="ml-auto flex flex-wrap items-center justify-end gap-2">{actionControls}{primaryAction}</div>
         </div>

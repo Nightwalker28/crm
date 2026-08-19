@@ -838,6 +838,16 @@ Contract:
   `Notes` tab is not an option: `record_activity.py` already emits notes into the feed as
   `type="note"`, so a Notes tab renders the same rows twice and asks the operator which
   copy is authoritative.
+- **The tab is the panel's name, so the panel does not draw it again.** A tab panel holds
+  one panel, the strip above it already says `Timeline` / `Tasks` / `Files`, and a heading
+  repeating that word 40px lower is the same furniture a `Notes` tab would be. `RecordTimeline`
+  was built this way and the two panels the archetype inherited were not: the Files tab opened
+  on a card headed `Documents` — the tab's label *and a different word for it*, which §1.6 is
+  about. So a panel that is a tab's whole content carries **no `PanelHeader`**; its first row
+  is its composer or its action, exactly as `Timeline`'s is. A `PanelHeader` is still correct
+  for a panel that sits beside others on one surface, which is what it was built for.
+  What the heading's description said moves to the empty state, where §7.4 already puts
+  *what this thing is*.
 - **Where a channel has a tracked endpoint, that endpoint *is* the composer's mode for it,
   and the page offers no second untracked path to the same channel.** Contacts are the
   case: click-to-chat posts to `/whatsapp/contacts/{id}/click`, which picks a template,
@@ -907,6 +917,17 @@ Contract:
   once); and letting the button accept the quote *and* convert it in one click (cheaper
   still, but it makes an irreversible two-record change out of one press, which is R1's
   side-effect row).
+- **The same rule reaches the channel buttons, and that is what closed the header.** A
+  channel with no address is not a workflow action, but it fails A12's test identically:
+  `CommunicationActions` drew `Email` and `Call` permanently, disabled whenever the column
+  was empty, and `Email Opt Out` as a third disabled shape. A contact with no phone is the
+  common case rather than the exception, so the header's most frequent state was two inert
+  buttons and one live one. Each channel now renders only when it can be used. The opt-out
+  case was the one worth arguing and it still loses: `email_opt_out` is a field, it is drawn
+  in `Details` as `Opted out`, and a disabled button is a worse place to learn a compliance
+  fact than the field that states it. **Rejected:** keeping the opt-out button alone as a
+  warning (it makes one channel behave unlike the other two, and the operator has to know
+  that a *missing* Email button and a *disabled* one mean different things).
 - **A field the record's own write path maintains is read-only in the rail, dropdown shape
   notwithstanding.** R2 draws its boundary by shape because shape is learnable, and this is
   the one exception the shape rule cannot see: a POS invoice's `payment_status` is an enum,
@@ -1372,6 +1393,37 @@ gets lost.
 rail and the identical select on `/[id]/edit` are one control, so forms render through this
 primitive too — otherwise Owner is searchable in the spine and a 200-row native list on the
 edit page.
+
+---
+
+### 7.9 A control the backend cannot honour is not drawn
+
+§4.7 rules that a workflow action absent in this state is *not rendered* rather than
+rendered disabled. This is the same rule one level up: a control the request layer cannot
+carry at all is not rendered *anywhere*, and it is worse than a disabled button because it
+does not look inert — it looks like it worked.
+
+**Appendix B.2 is the case.** `custom/[moduleKey]` rendered `InlineSavedViewFilters` and
+counted the conditions into the toolbar badge, while `useCustomModuleRecords` serialised
+only `page`, `page_size`, `search`, `sort_by`, `sort_direction`. The operator built two
+conditions, the badge read `Filters ②`, and the table returned every row. A disabled
+control teaches the operator *not yet*; this one taught them the wrong number of records.
+It is the only failure mode in this document where the interface lies rather than nags.
+
+So `ModuleListToolbar`'s filter group is **optional**, and a module that cannot filter
+passes nothing: no `Filters` button, no badge, no `Clear filters`, no condition editor. Not
+a disabled button, and not a tooltip.
+
+**Rejected:** leaving the badge and adding a note that filters are coming (a promise in an
+empty toolbar is still a toolbar that lies about a result set); and disabling the button
+(the operator cannot tell a control that is off from a control that is broken, and here the
+distinction is a data-correctness one). The real fix — EAV filtering over
+`custom_module_record_values` — is a backend query-param contract and it is scheduled
+(`rebuild.md`, after 5.9). Until it lands, the toolbar says what the product can do.
+
+The general form, because this will recur wherever the frontend is ahead of an endpoint:
+**a control's presence is a claim about the response.** If the claim is false, delete the
+control, not the honesty.
 
 ---
 

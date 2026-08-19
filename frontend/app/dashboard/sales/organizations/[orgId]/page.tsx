@@ -326,7 +326,6 @@ export default function OrganizationDetailPage() {
             <CommunicationActions
               email={org.primary_email}
               phone={fieldEnabled("primary_phone") ? org.primary_phone : null}
-              showCopyActions={false}
             />
             {canEditOrganization ? (
               <Button asChild variant="outline">

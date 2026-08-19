@@ -1240,9 +1240,12 @@ it, hanging history off `Updated 2h ago` so the answer sits where the question i
 reads as a contradiction the moment the Tasks tab creates a task. The boundary is the
 record's own fields versus related objects, and §4.7 now carries the one-line test.
 
-### Status: in progress — the archetype, fourteen modules on it, and the tab strips
+### Status: done — the archetype, fourteen modules on it, the tab strips, and close-out
 
-Twelve commits. **Pick up at "What is left", below.** Row 6 — close-out — is all that remains.
+Thirteen commits. **5.3 is closed.** All 35 census rows are marked, the eight deferred
+questions are answered above, and the full gate set is green. The next sub-phase is
+**5.4 — forms**, which inherits the two archetype-3 defects batch 6 found, the
+`SearchableSelect` primitive and `Owner` → State.
 
 | Commit | What landed |
 |---|---|
@@ -1256,6 +1259,7 @@ Twelve commits. **Pick up at "What is left", below.** Row 6 — close-out — is
 | `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
 | `4967bf2` | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
 | `c45cd16` | the `/[id]/edit` round trip's return half on twelve edit surfaces, `useRecordTabHref` replacing the two helpers, `/convert` joining the rule, and A13 |
+| _(this commit)_ | close-out: the three scheduled deletions, the five unswept census rows, §7.9 |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
@@ -1772,6 +1776,151 @@ trap batch 3 and batch 4 both recorded from the other direction. The stop list i
 reading with the raw `outline` and `box-shadow` strings printed beside it, and the
 screenshots are what actually settle it.
 
+**What close-out decided — and the finding is that the sweep was not mechanical.** The row
+said "all 34 census rows, the status note, and the full gate set", and the honest reading of
+that is that a row cannot be marked `done` while the file it names still carries the shape
+the row was opened for. Five rows were unmarked, and reading them found the reason: the
+batches rebuilt the *pages* and the two panels the archetype **inherited** were never
+looked at.
+
+- **`RecordDocumentsPanel` is the one 5.3 row no batch ever touched.** It is the Files tab
+  on all eleven record pages, and it opened on a card headed `Documents` — the tab's own
+  label, one word away from it, in a *second vocabulary* for the same thing (§1.6). Under
+  that heading sat three hand-rolled state boxes — a loading div, a tinted error div, a
+  `DocumentList` with its own empty state — against a `PanelStates` family 5.1 promoted to
+  `components/ui/` for exactly this, plus `Upload Document` in title case that §3.5's grep
+  cannot see because it only catches SHOUTING. It is on `PanelLoading` / `PanelError` now,
+  the empty state went back to `DocumentList`'s own `RecordTable` (§7.4 — the states come
+  from the composition), and what the heading's description said is the empty state's
+  description, which is where §7.4 already puts *what this thing is*.
+- **The rule that came out of it is the one worth keeping: the tab is the panel's name.**
+  `RecordTimeline` — the panel 5.3 *authored* — draws no heading, because the strip above it
+  says `Timeline`. The two panels it inherited both did, and neither was noticed for six
+  batches because a heading is not a defect anywhere else in the app; it is only furniture
+  *inside a tab*. §4.7 carries it, and `RecordTasksPanel` lost `Tasks & reminders` with it.
+- **The green `Complete` button.** `RecordTasksPanel` painted it
+  `border-state-success/40 bg-state-success-muted text-state-success` at the call site.
+  Completing a task is the ordinary forward action on a task, not an exception, so R5 says
+  it carries no colour — and §7.3 says a call site does not paint a `Button` in any case.
+  It is `outline` now, like every other secondary action in that panel.
+
+**The three scheduled items landed as scheduled, and one of them earned a rule.**
+
+- **Deal and quote lost their header channels**, which is deferred question 1 executed. The
+  §4.7 rule was already written when the question was answered, so this was a deletion, not
+  a decision. Both pages were passing `summary?.contact?.primary_email` into their own
+  header. Their Timeline composer's *follow-up* mode keeps that address and is untouched:
+  it logs that a call happened, which is a different act from placing one, and §4.7 draws
+  the line there rather than at the address.
+- **`/dashboard/finance/invoice-generator` is deleted.** Its own census row is 5.7's, and it
+  is marked done there with the reason — a 3-line `redirect()` with zero inbound links was
+  costing both rendered guards a route visit each. `design-rules.spec.ts` now audits 94.
+- **B.2 produced §7.9, and that is the part that generalises.** The fix itself is small: the
+  custom-module list stops rendering `InlineSavedViewFilters` and the toolbar's filter
+  group, because `useCustomModuleRecords` serialises `page`, `page_size`, `search`,
+  `sort_by`, `sort_direction` and nothing else — so the badge read `Filters ②` over a result
+  set that had been filtered by nothing. What made it worth a rule is that this is the only
+  failure mode in `design.md` where **the interface lies rather than nags**: §4.7's A12 rule
+  removes controls that are *inert*, and an inert control at least tells the truth about
+  itself. So `ModuleListToolbar`'s filter group is optional now and a module that cannot
+  filter passes none of it. Search and sort do reach the backend and stay.
+  **And fixing the list page alone would have left the back door open**, which is the part
+  worth writing down: `views/[moduleKey]` — 5.3's own row, closed in batch 5 — builds a
+  `SavedViewConditionEditor` over `buildCustomModuleViewDefinition`'s `filterFields`, so an
+  operator could still author conditions there, save the view, apply it on the list, and get
+  every row back. §7.9 says *not rendered anywhere*, and one surface is not anywhere. The
+  view manager gates the editor and its `N conditions` summary on the same test now.
+
+**The A12 rule turned out to have a second half nobody had applied.** §4.7 says a workflow
+action absent in this state is not rendered rather than rendered disabled — settled in
+batch 3 for `Convert to order`. `CommunicationActions` was failing the identical test three
+ways and had never been read against it: `Email` and `Call` were drawn permanently and
+disabled whenever the column was empty, and opt-out produced a *third* disabled shape
+labelled `Email Opt Out`. A contact with no phone is the common case, so the header's most
+frequent state was two inert buttons beside one live one. Each channel renders only when it
+can be used now. **The opt-out case is the one worth arguing and it still loses**:
+`email_opt_out` is a field and `Details` already draws it as `Opted out`, so the disabled
+button was a worse place to learn a compliance fact than the field that states it.
+**Rejected:** keeping the opt-out button alone as a warning — it makes one channel behave
+unlike the other two, and then the operator has to know that a *missing* Email button and a
+*disabled* one mean different things.
+
+**Five props had zero call sites, and the shape of that is a lesson about migrations.**
+`showCopyActions` was passed `false` at every one of five call sites — so its `true` default,
+the two `Copy` buttons and `Log Follow-up` behind it were unreachable. `followUpTargetId`,
+`onWhatsAppClick`, `whatsAppDisabled` and `whatsAppBusy` had none at all: batch 1 moved the
+tracked WhatsApp click into the Timeline composer and left the props that used to drive it,
+because deleting a prop is not required to make a page work. Six batches of "adopt" left a
+component whose defaults nobody had rendered since batch 1. **A prop every call site
+overrides is a default that is wrong**, and it is invisible to lint, to the build and to
+every assertion.
+
+**One control was audited against the rule and kept its disabled state, which is the
+counter-example the rule needs.** `DocumentReferenceActions` disables `View` when the
+provider link is broken. That is not A12's shape: a missing address means the action does
+not exist, and a `permission_lost` provider means the action exists and is *broken*, which
+is a state the operator has to see in order to fix. It stays disabled — but its reason had
+been a `title` attribute only, which is pointer-only and invisible to the keyboard and to a
+screen reader (§8). It is an `sr-only` line with `aria-describedby` now.
+
+**Two counts were wrong and are corrected.** 5.3 owns **35** census rows, not 34 — batch 4
+added `custom/[moduleKey]/[recordId]/edit/page.tsx`, and the summary table at the foot of the
+census was never updated. And the census's own summary is the thing the coverage contract
+leans on, so a row added mid-sub-phase has to reach it in the same change.
+
+**Verification.** `check-design.sh` 12/14, the same two documented failures at HEAD
+(`LynkSplash.tsx:58` is 5.9's, `ClientPageCreateForm.tsx:335` is 5.8's) and no new ones;
+lint and `next build` clean; `design-rules.spec.ts` and `scroll-containers.spec.ts` both
+green over 94 routes; and the module specs for every touched area — **66 passed / 8 failed,
+all eight confirmed pre-existing by stashing.** Five are batch 6's documented set
+(`accounts-revamp:46`, `contacts-revamp:45`, `leads-revamp:340` and `:832`,
+`opportunities-revamp:22`), two are `view-manager-revamp:91`/`:141`, already written up in
+`docs/e2e-suite-status.md` and verified unchanged at `fe3855e` *after* this batch edited that
+page — and one is `documents-revamp:294`, which is `/dashboard/documents`, a page this batch
+does not touch, failing identically at HEAD.
+
+**Two assertions moved, and the pair is the honest measure of the guards.**
+`leads-revamp.spec.ts:509` asserted `getByRole("heading", { name: "Documents" })` was
+*visible* on the Files tab — so the one assertion in 58 specs that pinned the duplicated
+heading was pinning it as **correct**. It is inverted now: no heading matching
+`/Documents|Files/` inside `record-content`, and the panel identified by `Upload document`,
+which is what it lets you do. The other, `:599`, asserted `Upload Document` at
+`toHaveCount(0)` on a view-only lead, so it would have passed against either casing. That is
+the shape of the gap: **a rendered heading nobody had questioned was load-bearing in a spec,
+and the string that actually changed was asserted only where it could not fail.**
+
+**The browser pass found one defect, and it is not this batch's — but the two things it
+*rejected* are worth more than the finding.**
+
+- **The finding, and it is 5.5's.** `RecordTable` lays its empty state out across the
+  table's `scrollWidth` rather than its visible width, so on a record's narrower content
+  region the empty state renders off-centre and clips. Measured: the Files tab's region is
+  `clientWidth 580 / scrollWidth 920` and the empty state is an 888px box at `left: 662`.
+  It has been there since batch 1, and `/dashboard/documents` is `1280 / 1280` so a
+  full-width list never shows it. Written into 5.5 with the measurement;
+  `RecordDocumentsPanel`'s empty copy is kept short so it reads correctly either way.
+- **A rejected finding: two spine controls that reported no focus ring, and did not have a
+  defect.** The first tab-through recorded `Customer group` (the rail's `InlineFieldEdit`)
+  and `History` (the spine's sheet trigger) with `:focus-visible` matching and a computed
+  `box-shadow` of nothing but transparent placeholders. That reads exactly like batch 1's
+  two keyboard defects, in the same component. It was the **transition**: `Button` animates
+  `box-shadow` over 150ms and the style was read on the same tick as the key press. Waiting
+  260ms, both paint `rgb(11, 13, …)`. This is the third form of the measurement trap this
+  sub-phase has recorded — batch 3 and 4 hit it as a false *positive*, batch 6 as
+  `!== "none"` on empty Tailwind variables, and this one is a false *negative* off a
+  transition. **The rule that survives all three: read the raw strings, wait out the
+  animation, and let a screenshot settle it.** All 8 record stops ring.
+- **A rejected screenshot: two "light theme" captures that were dark.** `next-themes` maps
+  light to a `.light` class from localStorage, so `setAttribute("data-theme", "light")` is
+  stomped on hydration. The screenshots looked plausible — a dark record page is a normal
+  record page — and only reviewing them against the dark set showed they were identical.
+  Asserting `html.light` before the shot is the fix. **A theme capture that does not assert
+  the theme is a capture of the default twice.**
+
+The pass otherwise: both themes on all four tabs, 768px with no sideways scroll, deal and
+quote confirmed channel-free in the header, and the custom-module list and view manager
+confirmed to offer no filter control while `/dashboard/sales/leads` still does.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -1784,7 +1933,7 @@ each — the shape 5.2 used.
 | ~~3~~ | ~~**insertion order, support case, custom record, catalog product/service**~~ | **Done** — see "What batch 4 decided", above. `CrmRecordActivitySection` and its three panels deleted; the rail's own scroll fixed in `RecordSpine` |
 | ~~4~~ | ~~**The two hand-rolled `role="tablist"`**~~ | **Done** — see "What batch 5 decided", above. It was three strips, not two: `RecordTabs` is `SectionTabs` and all three are on it. `SavedViewSelector.tsx:26` is untouched and stays 5.5's |
 | ~~5~~ | ~~**`/[id]/edit` round trip + A13**~~ | **Done** — see "What batch 6 decided", above. The two helpers became one hook, `useRecordTabHref`; twelve edit surfaces carry the tab back; `/convert` joined the rule; A13 closed. The guard is parameterised over all twelve modules |
-| 6 | **Close-out** | All 34 census rows, the status note, and the full gate set. **Every product question this sub-phase accumulated was settled with the owner on 2026-08-19 — see "The eight deferred questions, answered" below.** Close-out no longer carries any of them; it carries only the mechanical sweep and the two archetype-3 defects batch 6 found, which are 5.4's |
+| ~~6~~ | ~~**Close-out**~~ | **Done** — see "What close-out decided", above. All 35 census rows marked (the count was wrong too), the three scheduled deletions, and five rows that were unmarked because the panels the archetype *inherited* had never been swept. §7.9 is new. The two archetype-3 defects batch 6 found are 5.4's and stay there |
 
 ### The eight deferred questions, answered
 
@@ -1849,9 +1998,9 @@ and a contract's `Connected` block keeps its six `Not set` rows.
 
 | Work | Home |
 |---|---|
-| Deal + quote lose header channels | 5.3 close-out (a deletion, ~3 lines × 2 pages) |
-| Delete `/dashboard/finance/invoice-generator` (3-line redirect, zero inbound links) | 5.3 close-out |
-| Hide the custom-module filter control (B.2 — the toolbar badge counts conditions the backend never receives) | 5.3 close-out |
+| ~~Deal + quote lose header channels~~ | ~~5.3 close-out~~ — **done** |
+| ~~Delete `/dashboard/finance/invoice-generator`~~ | ~~5.3 close-out~~ — **done** |
+| ~~Hide the custom-module filter control (B.2)~~ | ~~5.3 close-out~~ — **done**, and it produced §7.9 |
 | `SearchableSelect` primitive; `TimezonePicker` collapses into it | **5.4** — it is a form control as much as a rail one |
 | `Owner` → State on 8 record types, editable | **5.4**, immediately after the primitive |
 | Archetype 3's visible title; `RecordFormLayout.tsx:21` sticky footer (R3) | **5.4** |
@@ -2001,6 +2150,24 @@ tables — no selection, no sort, no row-open gesture. They land in 5.8, on this
 **No table is exempt.** The only files that keep raw `Table` are the primitives that
 *implement* it: `components/ui/{RecordTable,ModuleTableLoading,ModuleListToolbar}.tsx`.
 
+**One defect found and measured in 5.3 close-out, handed here rather than fixed there.**
+`RecordTable` lays its **empty state out across the table's `scrollWidth`, not its visible
+width** — so wherever the table is narrower than its own columns, the empty state renders
+off-centre and clips at the scroller's edge. Measured on the contact record's Files tab: the
+region is `clientWidth 580 / scrollWidth 920`, and the empty state is an 888px box starting
+at `left: 662`, running well past the visible right edge. It has been there since batch 1 and
+was invisible for two reasons — `/dashboard/documents` is `1280 / 1280`, so it never shows on
+a full-width list, and the record panels' empty copy was short enough to look merely
+off-centre rather than cut. **`scroll-containers.spec.ts` passes on it**, correctly: the
+region *is* a scroll container and the page does not scroll sideways. The bug is the empty
+state participating in the scroll width at all.
+
+It is not fixed in 5.3 because the fix is in `RecordTable` and lands on every list in the
+app — the same reasoning batch 6 used to leave archetype 3's two defects to 5.4. The likely
+shape is rendering the empty state outside the overflow container, or `position: sticky;
+left: 0` at the visible width. `RecordDocumentsPanel`'s empty copy is kept short so it reads
+correctly either way.
+
 ### The list workflow — where Appendix A concentrates
 
 - **A1 — list state is not addressable.** `usePagedList` and `useSavedViews` hold search,
@@ -2061,7 +2228,7 @@ The surfaces no phase has touched.
 - `mail/page.tsx` (760) and `calendar/page.tsx` (631) rebuilt onto the archetypes.
 - **A11** — reports costs 2 clicks because a single-item module became a collapsible
   sidebar group, and opening it collapses the group you were in.
-- `finance/invoice-generator/page.tsx` is a 3-line `redirect()` still in the route list.
+- ~~`finance/invoice-generator/page.tsx` is a 3-line `redirect()` still in the route list.~~ **Deleted in 5.3 close-out** — zero inbound links, and it was costing both rendered guards a route visit.
 
 ---
 
@@ -2216,7 +2383,9 @@ and someone looking.
   regression check, not the start of a mobile pass.
 - Not reopening deliberately deferred slices — WhatsApp sending, payment links, broad
   Gmail access, user-created modules (`CLAUDE.md`).
-- **Appendix B.2 stays filed, not fixed here.** Custom-module filters are collected and
-  silently discarded (`custom/[moduleKey]:251` vs `useModuleBuilder.ts:298`). It is a
-  data-correctness bug that likely needs a backend query-param contract, so it is outside
-  a frontend programme's scope.
+- ~~**Appendix B.2 stays filed, not fixed here.**~~ **Half-retired in 5.3 close-out.** The
+  *bug* is still out of scope — EAV filtering over `custom_module_record_values` is a
+  backend query-param contract and it is scheduled after 5.9. What was in scope, and is
+  done, is the interface's claim about it: the custom-module list no longer draws a filter
+  control the request layer cannot carry (§7.9). A frontend programme cannot fix the query;
+  it can stop the toolbar from saying the query happened.

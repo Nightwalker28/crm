@@ -203,7 +203,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/insertion-orders/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `finance/insertion-orders/[ioId]/page.tsx` | 222 | 5.3 | rebuild | Runtime title-caser at `:186` | done |
 | `finance/insertion-orders/[ioId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `finance/invoice-generator/page.tsx` | 5 | 5.7 | **delete** | A 3-line `redirect()` still in the route list | |
+| `finance/invoice-generator/page.tsx` | 5 | 5.7 | **delete** | A 3-line `redirect()` still in the route list | **done** — deleted in 5.3 close-out rather than waiting for 5.7: zero inbound links, and it was costing both rendered guards a route visit each. Owner stays 5.7 for the record |
 
 ### 1.9 `app/dashboard/` — catalog, contracts, support, tasks, documents, custom (24)
 
@@ -233,7 +233,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5** — on `SectionTabs`; the three panels became named consts |
+| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5** — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open |
 | `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | done |
 
@@ -297,12 +297,12 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | **delete** | Replaced by `RecordTimeline` — composer on top, `divide-y` rows (R8) | **done** — file deleted, 0 importers |
 | `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | done — `RecordAuditHistory` replaced it; the old file died with `CrmRecordActivitySection` in batch 4 |
 | `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | done — deleted in batch 4 |
-| `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | |
+| `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | **done, close-out** — 5.2 had given it the panel language; 5.3 took its `PanelHeader` off (`Tasks & reminders` under a `Tasks` tab, §4.7) and dropped the hand-written green on `Complete` (§2.2 — completing a task is not an exception, and a call site does not paint a `Button`) |
 | `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | done — deleted in batch 4 |
-| `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | |
+| `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | **done, close-out** — the deferred-question-1 deletion: deal and quote no longer mount it, and each channel now renders only when the record owns an address (§4.7). `showCopyActions`, `followUpTargetId` and the three WhatsApp override props went with it — 0 call sites between them |
 | `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | **done** — gained the `menuItem` presentation for the header's `[⋯]` (§2.2) |
 | `recordActivity/RecordPanelStates.tsx` | 77 | 5.1 | **move** | The right abstraction, trapped in `recordActivity/`. Promote to `components/ui/` | **done** (A) — now `ui/PanelStates.tsx` |
-| `documents/RecordDocumentsPanel.tsx` | 132 | 5.3 | rebuild | The Files tab | |
+| `documents/RecordDocumentsPanel.tsx` | 132 | 5.3 | rebuild | The Files tab | **done, close-out** — the one 5.3 row never touched by a batch. Heading gone (`Documents` under a `Files` tab, §4.7/§1.6), hand-rolled loading and error boxes onto `PanelStates`, empty state back to `DocumentList`'s own table (§7.4), `Upload Document` → sentence case |
 | `forms/ReadOnlyRecordLayout.tsx` | 58 | 5.3 | rebuild | Emits `"Not recorded"` — the string §3.6 rejects | **done** — `EmptyValue`, R7 value ink, and `omitFieldKeys` for spine-owned fields |
 | `forms/ResolvedRecordLayout.tsx` | 126 | 5.3 | adopt | | **done** — gained `omitFieldKeys`, filtered where sections are built so an emptied section disappears |
 
@@ -420,7 +420,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | |
 | `mail/MailComposePage.tsx` | 239 | 5.7 | rebuild | | |
 | `mail/RecordEmailComposer.tsx` | 498 | 5.7 | rebuild | | |
-| `mail/RecordEmailAction.tsx` | 103 | 5.3 | adopt | A record-page action | |
+| `mail/RecordEmailAction.tsx` | 103 | 5.3 | adopt | A record-page action | **done, close-out** — returns `null` without an address instead of a disabled `Email` / `Email Opt Out` (§4.7). Opt-out is already drawn in `Details` as `Opted out` |
 
 ### 2.6 Shell, search, notifications, identity (8)
 
@@ -443,7 +443,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `crm/RecordTagInput.tsx` | 217 | 5.1 | adopt | Tags are not statuses — no tone (R5) | **done** (E) — its hand-rolled `rounded-full` chip now renders through `Chip` (§4.3) |
 | `customFields/CustomFieldInputs.tsx` | 131 | 5.4 | adopt | | |
 | `customModules/CustomModuleFieldInput.tsx` | 172 | 5.4 | adopt | | |
-| `documents/DocumentReferenceActions.tsx` | 71 | 5.3 | adopt | | |
+| `documents/DocumentReferenceActions.tsx` | 71 | 5.3 | adopt | | **done, close-out** — audited against §4.7's render-only-when-it-works rule and it is the exception: a broken provider link is a state to see and fix, not an absent action. It stays disabled and its reason stopped being `title`-only (§8) |
 | `finance/payments/RecordPaymentDialog.tsx` | 95 | 5.5 | adopt | The faster of A7's two paths | |
 
 ### 2.8 Test harnesses (3)
@@ -585,7 +585,7 @@ in `lib/` or `hooks/` is touched by this programme.
 |---|---|
 | 5.1 — cross-cutting primitives | 60 (18 primitives + 38 route boundaries + globals.css + 3 shell) |
 | 5.2 — panel language | 1 owned (`Card`); it *sweeps* almost every row above without owning them |
-| 5.3 — record detail | 34 |
+| 5.3 — record detail | **35** — was 34. Batch 4 added `custom/[moduleKey]/[recordId]/edit/page.tsx`: R2 sends a record's content fields to `/[id]/edit`, and the custom module was the one module with no such route, because its detail page *was* the form |
 | 5.4 — forms | 55 |
 | 5.5 — one table, list workflow | 43 |
 | 5.6 — settings | 52 |

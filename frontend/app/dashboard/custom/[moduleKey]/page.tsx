@@ -9,12 +9,10 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import CustomModuleRecordsTable from "@/components/customModules/CustomModuleRecordsTable";
 import { ColumnPicker } from "@/components/ui/ColumnPicker";
-import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
-import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { RecordTableSort } from "@/components/ui/RecordTable";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -87,10 +85,9 @@ export default function CustomModulePage() {
         : { key: column, label: fieldsByKey.get(column)?.label ?? column, field: fieldsByKey.get(column) ?? null }
     ))
     .filter((column) => SORTABLE_RECORD_COLUMNS.has(column.key) || column.field);
-  const hasSearch = Boolean(search.trim());
-  const { allConditions, anyConditions } = getConditionGroups(draftConfig.filters);
-  const activeFilterCount = allConditions.length + anyConditions.length;
-  const hasActiveFilters = hasSearch || activeFilterCount > 0;
+  // Search is the only filter this module can apply, so it is the only one the empty state
+  // may offer to clear (7.9).
+  const hasActiveFilters = Boolean(search.trim());
   const rangeStart = records.totalCount ? (records.page - 1) * records.pageSize + 1 : 0;
   const rangeEnd = records.totalCount ? Math.min(records.page * records.pageSize, records.totalCount) : 0;
 
@@ -102,16 +99,10 @@ export default function CustomModulePage() {
     setPage(1);
   }
 
-  function clearFilters() {
+  function clearSearch() {
     setDraftConfig((current) => ({
       ...current,
-      filters: {
-        ...current.filters,
-        search: "",
-        conditions: [],
-        all_conditions: [],
-        any_conditions: [],
-      },
+      filters: { ...current.filters, search: "" },
     }));
     setPage(1);
   }
@@ -165,15 +156,14 @@ export default function CustomModulePage() {
             setPage(1);
           }}
         searchPlaceholder="Search records"
-        filtersOpen={Boolean(draftConfig.filters.filtersOpen)}
-        activeFilterCount={activeFilterCount}
-        onToggleFilters={() =>
-          setDraftConfig((current) => ({
-            ...current,
-            filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen },
-          }))
-        }
-        onClearFilters={clearFilters}
+        /*
+          No filter group (7.9). `useCustomModuleRecords` serialises `page`, `page_size`,
+          `search`, `sort_by` and `sort_direction` and nothing else, so every condition
+          built here was discarded on the way to the request while the badge counted it —
+          the operator read `Filters 2` over an unfiltered result set. The endpoint needs
+          EAV filtering over `custom_module_record_values` before this comes back; that is
+          scheduled (rebuild.md, after 5.9). Search and sort do reach the backend and stay.
+        */
         viewControls={viewDefinition ? (
           <SavedViewSelector
             moduleKey={moduleKey}
@@ -213,18 +203,6 @@ export default function CustomModulePage() {
         }
       />
 
-      {viewDefinition ? (
-        <InlineSavedViewFilters
-          filterFields={viewDefinition.filterFields}
-          filters={draftConfig.filters}
-          onChange={(filters) => {
-            setDraftConfig((current) => ({ ...current, filters }));
-            setPage(1);
-          }}
-          hideHeader
-        />
-      ) : null}
-
       <CustomModuleRecordsTable
         moduleKey={moduleKey}
         moduleLabel={schema.data.name}
@@ -235,7 +213,7 @@ export default function CustomModulePage() {
         hasError={Boolean(records.error)}
         onRetry={() => void records.refresh()}
         hasActiveFilters={hasActiveFilters}
-        onClearFilters={clearFilters}
+        onClearFilters={clearSearch}
         sort={sort ? { column: sort.key, direction: sort.direction } : null}
         onSortChange={handleSortChange}
         canCreate={canCreate}

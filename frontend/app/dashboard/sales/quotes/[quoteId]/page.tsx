@@ -9,7 +9,6 @@ import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
-import CommunicationActions from "@/components/recordActivity/CommunicationActions";
 import RecordAuditHistory, {
   type RecordModuleEvent,
 } from "@/components/recordActivity/RecordAuditHistory";
@@ -326,16 +325,10 @@ export default function QuoteDetailPage() {
       ) : null}
       actions={quote ? (
         <>
-          <CommunicationActions
-            email={summary?.contact?.primary_email}
-            phone={summary?.contact?.contact_telephone}
-            showCopyActions={false}
-            emailContext={{
-              moduleKey: "sales_quotes",
-              entityId: quote.quote_id,
-              recordLabel: quoteName,
-            }}
-          />
+          {/*
+            No channel buttons — same reason as the deal: a quote owns no address, so these
+            were the linked contact's, filed against the quote (4.7).
+          */}
           {canEdit ? (
             <Button asChild variant="outline">
               <Link href={editHref}>

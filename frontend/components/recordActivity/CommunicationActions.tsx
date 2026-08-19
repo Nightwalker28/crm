@@ -1,10 +1,28 @@
 "use client";
 
-import { Copy, Mail, MessageCircle, Phone, RotateCcw } from "lucide-react";
+import { Mail, MessageCircle, Phone } from "lucide-react";
 import { toast } from "sonner";
 
 import RecordEmailAction, { type RecordEmailContext } from "@/components/mail/RecordEmailAction";
 import { Button } from "@/components/ui/button";
+
+/**
+ * The record header's channel row: the actions that *perform* a conversation.
+ *
+ * Its counterpart is the `Timeline` composer, which *records* one. They look similar and
+ * they are not the same thing — one opens WhatsApp, one writes the row saying you did
+ * (4.7).
+ *
+ * Two rules shape what is rendered here, and both are 4.7's:
+ *
+ * - **A channel appears only if this record owns the address.** Only lead, contact and
+ *   account carry `primary_email` / phone columns, so only they mount this. A deal and a
+ *   quote used to pass the linked *contact's* address into their own header and file the
+ *   result against themselves, which split one conversation across two records.
+ * - **A channel with no address is not drawn**, rather than drawn disabled. A contact with
+ *   no phone is the common case, and the header's most frequent state was two inert
+ *   buttons beside one live one.
+ */
 
 type Props = {
   email?: string | null;
@@ -17,30 +35,17 @@ type Props = {
    * for tenants with no connected mailbox.
    */
   emailContext?: RecordEmailContext;
+  /**
+   * Records with a *tracked* click-to-chat endpoint pass `false` and offer WhatsApp as the
+   * composer's mode instead — offering both means the same action logs itself half the
+   * time and the operator cannot tell which button did which (4.7). Contacts are the only
+   * such record today.
+   */
   showWhatsApp?: boolean;
-  whatsAppDisabled?: boolean;
-  whatsAppBusy?: boolean;
-  onWhatsAppClick?: () => Promise<void> | void;
-  followUpTargetId?: string;
-  showCopyActions?: boolean;
 };
 
 function phoneDigits(phone: string) {
   return phone.replace(/\D/g, "");
-}
-
-async function copyValue(value: string, label: string) {
-  try {
-    await navigator.clipboard.writeText(value);
-    toast.success(`${label} copied.`);
-  } catch {
-    toast.error(`Failed to copy ${label.toLowerCase()}.`);
-  }
-}
-
-function scrollToFollowUp(targetId?: string) {
-  if (!targetId) return;
-  document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 export default function CommunicationActions({
@@ -49,22 +54,13 @@ export default function CommunicationActions({
   emailOptOut = false,
   emailContext,
   showWhatsApp = true,
-  whatsAppDisabled = false,
-  whatsAppBusy = false,
-  onWhatsAppClick,
-  followUpTargetId,
-  showCopyActions = true,
 }: Props) {
   const canEmail = Boolean(email) && !emailOptOut;
   const canCall = Boolean(phone);
-  const canWhatsApp = showWhatsApp && Boolean(phone) && !whatsAppDisabled;
+  const canWhatsApp = showWhatsApp && Boolean(phone);
 
   function handleWhatsAppClick() {
-    if (!phone || !canWhatsApp) return;
-    if (onWhatsAppClick) {
-      void onWhatsAppClick();
-      return;
-    }
+    if (!phone) return;
     const digits = phoneDigits(phone);
     if (!digits) {
       toast.error("Add a valid phone number before opening WhatsApp.");
@@ -75,55 +71,30 @@ export default function CommunicationActions({
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {emailContext ? (
+      {canEmail && emailContext ? (
         <RecordEmailAction {...emailContext} email={email} emailOptOut={emailOptOut} />
       ) : canEmail ? (
         <Button asChild size="sm" variant="outline">
           <a href={`mailto:${email}`}>
-            <Mail className="h-4 w-4" />
+            <Mail />
             Email
           </a>
         </Button>
-      ) : (
-        <Button type="button" size="sm" variant="outline" disabled>
-          <Mail className="h-4 w-4" />
-          {emailOptOut ? "Email Opt Out" : "Email"}
-        </Button>
-      )}
+      ) : null}
 
-      {showWhatsApp ? (
-        <Button type="button" size="sm" variant="outline" onClick={handleWhatsAppClick} disabled={!canWhatsApp || whatsAppBusy}>
-          <MessageCircle className="h-4 w-4" />
-          {whatsAppBusy ? "Opening..." : "WhatsApp"}
+      {canWhatsApp ? (
+        <Button type="button" size="sm" variant="outline" onClick={handleWhatsAppClick}>
+          <MessageCircle />
+          WhatsApp
         </Button>
       ) : null}
 
       {canCall ? (
         <Button asChild size="sm" variant="outline">
           <a href={`tel:${phone}`}>
-            <Phone className="h-4 w-4" />
+            <Phone />
             Call
           </a>
-        </Button>
-      ) : (
-        <Button type="button" size="sm" variant="outline" disabled>
-          <Phone className="h-4 w-4" />
-          Call
-        </Button>
-      )}
-
-      {showCopyActions ? <Button type="button" size="sm" variant="ghost" onClick={() => email && void copyValue(email, "Email")} disabled={!email}>
-        <Copy className="h-4 w-4" />
-        Copy Email
-      </Button> : null}
-      {showCopyActions ? <Button type="button" size="sm" variant="ghost" onClick={() => phone && void copyValue(phone, "Phone")} disabled={!phone}>
-        <Copy className="h-4 w-4" />
-        Copy Phone
-      </Button> : null}
-      {followUpTargetId ? (
-        <Button type="button" size="sm" variant="ghost" onClick={() => scrollToFollowUp(followUpTargetId)}>
-          <RotateCcw className="h-4 w-4" />
-          Log Follow-up
         </Button>
       ) : null}
     </div>
