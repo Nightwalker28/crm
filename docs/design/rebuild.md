@@ -2122,7 +2122,7 @@ test*). `SearchableSelect` ships with three adopters in its own batch rather tha
 because a primitive with no consumers is what `ActionBar`, `SectionHeading`, `Avatar` and
 `PanelStates` already are: built, correct, and unenforced.
 
-### Status: batch 1 — verified end to end, committed
+### Status: batch 1 — verified end to end, committed as `0761061`
 
 **Read this first if you are picking the run up.** Batch 1 is done and committed. Lint,
 `npm run build`, `check-design.sh` (2 of 14 failing — the known baseline, unchanged) and
@@ -2258,7 +2258,7 @@ each — the shape 5.2 and 5.3 used.
 
 | # | Batch | Notes |
 |---|---|---|
-| 1 | **`SearchableSelect`** | **In flight, uncommitted** — see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
+| ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | 2 | **`Owner` → State, on all 8 record types** | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit |
 | 3 | **`RecordFormLayout`** | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the 78 hand-written field grids, the four `TextField`s |
 | 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom |
