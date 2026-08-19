@@ -754,6 +754,10 @@ class LinkedRecordUserResponse(BaseModel):
 
 class LinkedRecordUserListResponse(BaseModel):
     results: list[LinkedRecordUserResponse]
+    #: True when the tenant has more active users than `limit` returned. A client that holds
+    #: its options in memory has to be able to tell a complete set from a capped one
+    #: (design.md 7.9) — the alternative is a picker that quietly cannot reach half the staff.
+    has_more: bool = False
 
 
 class LinkedRecordTeamResponse(BaseModel):

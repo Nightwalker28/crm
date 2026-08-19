@@ -41,9 +41,34 @@ class LinkedRecordOptionsTests(unittest.TestCase):
         self.db.close()
 
     def test_user_options_are_active_and_tenant_scoped(self):
-        options = list_linked_record_user_options(self.db, tenant_id=10, query="ada")
+        options, has_more = list_linked_record_user_options(self.db, tenant_id=10, query="ada")
 
         self.assertEqual(options, [{"id": 1, "label": "Ada Lovelace", "email": "ada@example.test"}])
+        self.assertFalse(has_more)
+
+    def test_user_options_list_the_tenant_without_a_query(self):
+        """The record spine's Owner field asks for the whole set: `SearchableSelect` filters
+        options it already holds, so an empty query has to list rather than return nothing."""
+        self.db.add(
+            User(id=4, tenant_id=10, email="grace@example.test", first_name="Grace", last_name="Hopper", is_active=UserStatus.active)
+        )
+        self.db.commit()
+
+        options, has_more = list_linked_record_user_options(self.db, tenant_id=10, query="", limit=50)
+
+        self.assertEqual([option["id"] for option in options], [1, 4])
+        self.assertFalse(has_more)
+
+    def test_user_options_report_a_capped_list_rather_than_truncating_it(self):
+        self.db.add(
+            User(id=4, tenant_id=10, email="grace@example.test", first_name="Grace", last_name="Hopper", is_active=UserStatus.active)
+        )
+        self.db.commit()
+
+        options, has_more = list_linked_record_user_options(self.db, tenant_id=10, query="", limit=1)
+
+        self.assertEqual(len(options), 1)
+        self.assertTrue(has_more)
 
     def test_team_options_are_tenant_scoped(self):
         options = list_linked_record_team_options(self.db, tenant_id=10, query="revenue")
@@ -72,6 +97,7 @@ class LinkedRecordOptionsTests(unittest.TestCase):
         require_module.assert_called_once_with("sales_leads")
         require_action.assert_called_once_with("sales_leads", "edit")
         self.assertEqual(result["results"][0].label, "Ada Lovelace")
+        self.assertFalse(result["has_more"])
 
     def test_user_options_support_view_permission_for_list_filters(self):
         current_user = SimpleNamespace(tenant_id=10)

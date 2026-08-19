@@ -10,6 +10,7 @@ from typing import Any, IO
 
 from docx import Document
 import pdfplumber
+from fastapi import HTTPException, status
 from sqlalchemy import func, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -25,7 +26,7 @@ from app.modules.platform.services.custom_fields import (
 )
 from app.modules.sales.models import SalesContact, SalesOrganization
 from app.modules.user_management.services.profile import get_company_operating_currencies
-from app.modules.user_management.models import Module
+from app.modules.user_management.models import Module, User
 
 # Single folder override via env
 _upload_dir = os.getenv("IO_SEARCH_UPLOAD_DIR")
@@ -226,6 +227,7 @@ def _serialize_finance_record_state(record: FinanceIO, *, current_user=None) -> 
         "notes": _normalize_text(record.notes),
         "custom_fields": record.custom_data or None,
         "file_name": _normalize_text(record.file_name),
+        "user_id": record.user_id,
         "user_name": user_name,
         "photo_url": getattr(getattr(record, "assigned_user", None), "photo_url", None),
         # The record archetype's spine draws a `Created` line, and the response had no
@@ -859,6 +861,21 @@ def update_insertion_order(
     for key in {"subtotal_amount", "tax_amount", "total_amount"}:
         if key in data:
             setattr(record, key, _parse_decimal(data[key]))
+
+    # Reassignment, validated in-tenant the way every other module validates its owner
+    # column. `None` is a legitimate value — an imported insertion order can arrive unowned —
+    # so the check is on the id, not on the key being present.
+    if "user_id" in data:
+        assigned_user_id = data["user_id"]
+        if assigned_user_id is not None:
+            exists = (
+                db.query(User.id)
+                .filter(User.id == assigned_user_id, User.tenant_id == record.tenant_id)
+                .first()
+            )
+            if not exists:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
+        record.user_id = assigned_user_id
 
     if record.external_reference:
         record.file_name = record.external_reference
