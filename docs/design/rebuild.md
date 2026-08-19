@@ -2247,10 +2247,11 @@ component is broken. `document.visibilityState` is `"visible"` and `document.has
 they are captured on demand — which is what makes the phantom so convincing. Bring the window
 to the foreground and every stuck popover unmounts itself at once.
 
-### Status: batch 2 — `Owner` → State, on all nine record types
+### Status: batch 2 — verified end to end, committed as `e62474e` + `853bc33`
 
-**Read this first if you are picking the run up.** Batch 2 is done. Two commits, as the batch
-row said it would be: the backend line, then the sweep that consumes it.
+**Read this first if you are picking the run up.** Batch 2 is done and committed. Two commits,
+as the batch row said it would be: the backend line (`e62474e`), then the sweep that consumes
+it (`853bc33`).
 
 **It is nine record types, not eight, and the ninth is the one the count kept missing.**
 Support cases draw the same field under the module's own word — `Assignee` — so a survey
@@ -2411,7 +2412,7 @@ each — the shape 5.2 and 5.3 used.
 | # | Batch | Notes |
 |---|---|---|
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
-| ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
+| ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | 3 | **`RecordFormLayout`** | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the 78 hand-written field grids, the four `TextField`s |
 | 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
