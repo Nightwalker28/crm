@@ -2106,6 +2106,166 @@ so creating a deal from a contact is currently cheaper than from the deal list.
 **Footers follow R1 and R3.** A `/new` page and a line-item document keep a manual save;
 that action bar is no longer sticky. Every other form footer disappears with autosave.
 
+### Decided before the first line — the batch order, and why a primitive is first
+
+5.4 is the first sub-phase that starts with its answers already written. R1 fixes the commit
+model per surface, R2 makes content read-only, R3 unsticks the footer, §4.7's archetype 3
+says the form draws the record's name, and §7.8 went into `design.md` during 5.3's close-out
+— before a line of `SearchableSelect` existed, which is §12's order and the whole point of
+it. What 5.4 has to decide is **sequence**, and the sequence is forced rather than chosen:
+`Owner` → State cannot land before the primitive it is drawn with, and fifteen form routes
+cannot be swept before the layout they all sit on has moved.
+
+So the two primitives come first, and each is followed immediately by the sweep that proves
+it — the mitigation this programme applies everywhere (*the second call site is the API
+test*). `SearchableSelect` ships with three adopters in its own batch rather than alone,
+because a primitive with no consumers is what `ActionBar`, `SectionHeading`, `Avatar` and
+`PanelStates` already are: built, correct, and unenforced.
+
+### Status: batch 1 — verified end to end, committed
+
+**Read this first if you are picking the run up.** Batch 1 is done and committed. Lint,
+`npm run build`, `check-design.sh` (2 of 14 failing — the known baseline, unchanged) and
+**both rendered guards are green, re-run after the `design-rules.spec.ts:175` edit**
+(`design-rules` 94 routes, no unreachable, 3.4m; `scroll-containers` 2.4m; 5.8m total,
+`--workers=1`). The two unexplained module-spec failures **were measured against HEAD and are
+not ours**. The browser pass is **done** — the hand-rolled listbox that replaced a
+Radix-managed one on 17 call sites has been driven by keyboard on both forms and both
+themes.
+
+**The module spec run: 55 passed, 6 failed** (`leads`, `contracts`, `catalog`,
+`custom-modules`, `insertion-orders`, `opportunities`, `profile`, 7.7m, `--workers=1`). Four
+failures are on the pre-existing list in 5.3's traps — `leads-revamp:340` (narrow viewport),
+`leads-revamp:832` (denied/missing), `opportunities-revamp:22`, `catalog-revamp:246`. **Two
+are not on any list and are the first thing the next run does:**
+
+- `catalog-revamp.spec.ts:397` — *"The record archetype's Timeline, Tasks and Files tabs
+  replace the nested activity section"*. A record page carrying `InlineFieldEdit`.
+- `profile-revamp.spec.ts:146` — *"Profile presents one-time recovery codes after enabling
+  MFA"*, failing on `getByText("MFA enabled")` at `:173`. `/dashboard/profile` is one of
+  `TimezonePicker`'s two call sites.
+
+Both are on surfaces this batch touched, so the priors were bad. **Measured: both fail at
+HEAD with the batch stashed out** (`git stash push -u`, both greps, `git stash pop` — run as
+one shell command with the pop in a `trap`, so an interrupted run cannot strand the batch in
+a stash). They fail on the same assertions with and without the batch:
+`catalog-revamp:478` waiting on `No documents are linked to this record yet.`, and
+`profile-revamp:173` waiting on `MFA enabled`. Neither assertion is near a select or a
+combobox. **They join the pre-existing list — six failures, all inherited, none ours.**
+
+**What landed.**
+
+- **`components/ui/SearchableSelect.tsx` is new** — §7.8's primitive. `Popover` + listbox at
+  every count, with the search `Input` rendered only at or above
+  `SEARCHABLE_SELECT_MIN_OPTIONS` (10). No call site passes a flag.
+- **`selectTriggerVariants` is exported from `select.tsx`** and worn by the new trigger, so
+  the two forms of a select are one class source rather than two that drift (§1.6).
+- **`InlineFieldEdit` renders through it** — all 17 call sites, unchanged at the call site.
+- **`TimezonePicker` collapsed into it**: 93 lines → 59, and the file now holds only what is
+  about timezones. Its two call sites are unchanged.
+
+**Four decisions worth the words, and three of them are about not being seen.**
+
+- **`role="combobox"` on the trigger and `role="option"` on the rows are the compatibility
+  contract, not a detail.** Radix `Select` announced exactly those, and 20-odd specs across
+  nine modules locate this control as `getByRole("combobox", { name })` then
+  `getByRole("option", { name })`. A `Popover` combobox that announced anything else would
+  have been a rewrite of every one of them — and §7.8's "one DOM shape, always" says the two
+  forms must be indistinguishable to a screen reader for the same reason.
+- **The search input is named `Search`, not `Search <field>`.** Playwright's `getByLabel`
+  matches substrings, so `Search Timezone` makes `getByLabel("Timezone")` ambiguous the
+  moment the popover opens — `profile-revamp.spec.ts:48` asserts exactly that locator. The
+  listbox carries the field's name instead, which is where a screen reader wants it.
+- **The empty state says two different things.** `Nothing matched that search` and
+  `There is nothing to choose from yet` are not the same fact, and rendering the first for
+  the second is §7.9's shape at a small scale.
+- **`TimezonePicker`'s `slice(0, 100)` is deleted, and it was a live instance of §7.9.** It
+  capped *every* query including the empty one, so an operator who scrolled without typing
+  reached the end of a list that was not the end. `Intl.supportedValuesOf` returns ~400
+  zones; all of them render now, inside a popover that only mounts when open.
+
+**One guard blind spot closed in the same change.** `design-rules.spec.ts:175` collects the
+§4.2 control-height set by `data-slot`, and a new trigger slot would have escaped it
+silently — the same shape as 5.2's `SummaryTile` sweep, whose own grep could not see the
+thing it was sweeping. `[data-slot="searchable-select-trigger"]` is in the selector list now.
+`/dashboard/profile` and `/dashboard/settings/calendar-booking` are both on the audited route
+list, so the default variant is height-checked for real. **Re-run after that edit and green** —
+the trigger clears §4.2 at both sizes.
+
+**Deliberately not written: a keyboard spec for the primitive.** The testing policy is
+explicit that new coverage lands in 5.10, and this is new coverage rather than a moved
+assertion. It is listed there instead: arrow/Home/End/Enter/Escape, typeahead on the
+unsearchable form, and the search form's `aria-activedescendant`. Until then the browser
+pass is the only thing standing behind a hand-written listbox.
+
+**The browser pass — done, and it found one thing.** Driven on `/dashboard/profile`
+(`TimezonePicker`, 418 options, the searchable form) and `/dashboard/sales/leads/5`
+(`InlineFieldEdit` status, 5 options, the unsearchable form), reading
+`aria-activedescendant` rather than trusting highlights, in both themes:
+
+| | |
+|---|---|
+| Tab to trigger, `ArrowDown` opens | ✓ both forms |
+| Searchable: search takes focus, first option active | ✓ |
+| Unsearchable: listbox takes focus, active starts on the *selected* row | ✓ `fallbackIndex` |
+| Arrow roving, `Home`, `End` | ✓ `End` lands on the true last option |
+| `ArrowUp` at the top clamps, no wrap | ✓ as `move()` documents |
+| `Escape` — closes, no commit, focus back on trigger | ✓ |
+| `Enter` — commits, unmounts, focus back on trigger | ✓ |
+| Typeahead `q`→Qualified, `co`→Contacted, `conv`→Converted, reset after 600ms | ✓ |
+
+Nothing was mutated: `Enter` was pressed on the *already selected* row, where `commit()`
+short-circuits on `option.value !== value`.
+
+**`End` was the one real find, and it is fixed here.** It was the only branch that did not
+skip disabled rows — `visible.length - 1` against `Home`'s
+`findIndex((o) => !o.disabled)` — so a disabled last option would take the active ring and
+then swallow `Enter`, since `commit()` refuses a disabled option. It is now
+`findLastIndex((o) => !o.disabled)`, which is what `move()`'s comment already says the
+control does. **Latent, not live**: no call site passes `disabled: true` today. Found by
+reading the branch, not by the browser — the browser could not have reached it.
+
+### Trap: a Chrome tab that has stopped painting looks exactly like a stuck popover
+
+Cost most of an hour in the browser pass, and it will read as a real defect to the next run.
+**Symptom:** after `Enter` or `Escape` the popover stays visible and mounted, `data-state` is
+`closed`, focus never returns to the trigger. It looks precisely like a broken exit path in
+`SearchableSelect`. **It is not.** Radix `Presence` unmounts on `animationend`, and the tab
+had stopped producing frames, so the 0.15s `exit` animation never advanced.
+
+**The discriminator, before blaming any component that unmounts on animation:**
+
+```js
+requestAnimationFrame(() => …)          // never fires
+document.timeline.currentTime            // still advances — this is the misleading part
+probe.animate(…).currentTime             // frozen at 0 on a *brand new* animation
+```
+
+A fresh probe animation frozen at 0 means the document is not rendering, not that the
+component is broken. `document.visibilityState` is `"visible"` and `document.hasFocus()` is
+`true` throughout, so neither is worth checking. Screenshots keep working the whole time —
+they are captured on demand — which is what makes the phantom so convincing. Bring the window
+to the foreground and every stuck popover unmounts itself at once.
+
+**Next.** Batch 2 — `Owner` → State, on all 8 record types, starting with the
+`/linked-record-options/users` backend line.
+
+
+### What is left, in order
+
+Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
+each — the shape 5.2 and 5.3 used.
+
+| # | Batch | Notes |
+|---|---|---|
+| 1 | **`SearchableSelect`** | **In flight, uncommitted** — see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
+| 2 | **`Owner` → State, on all 8 record types** | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit |
+| 3 | **`RecordFormLayout`** | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the 78 hand-written field grids, the four `TextField`s |
+| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom |
+| 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
+| 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
+| 7 | **Close-out** | The census rows, the browser pass, and whatever the rebuild exposed |
+
 ---
 
 ## 5.5 — One table, and the list workflow

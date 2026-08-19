@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { SaveStateIndicator, type SaveState } from "@/components/ui/SaveStateIndicator";
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select";
+import { SearchableSelect } from "@/components/ui/SearchableSelect";
 import { StatusValue } from "@/components/ui/StatusValue";
 import type { StatusDescriptor } from "@/lib/statusStyles";
 import { cn } from "@/lib/utils";
@@ -37,10 +37,17 @@ const SAVED_RESET_MS = 2000;
  *
  * The closed value renders through `StatusValue` at `context="record"`, so a field looks the
  * same whether or not it turns out to be editable, until the operator notices the chevron —
- * R6's affordance is deliberately quiet rather than a hover reveal (see `SelectTrigger
- * variant="ghost"`). Its own `SaveStateIndicator` sits beside it and is what replaces the Save
- * button R1 removes: `saved` reverts to `idle` after a couple of seconds, `error` does not
- * revert on its own, because an unretryable failure is a dead end.
+ * R6's affordance is deliberately quiet rather than a hover reveal (see the `ghost` trigger
+ * variant).
+ *
+ * The control underneath is `SearchableSelect`, which grows a search field once the option
+ * list passes `SEARCHABLE_SELECT_MIN_OPTIONS` (7.8). No call site passes a flag: status has
+ * five options and never searches, Owner has as many as the tenant has users and always does,
+ * and neither of them says so.
+ *
+ * Its own `SaveStateIndicator` sits beside it and is what replaces the Save button R1 removes:
+ * `saved` reverts to `idle` after a couple of seconds, `error` does not revert on its own,
+ * because an unretryable failure is a dead end.
  *
  * Full contract in `docs/design/design.md`, archetype 2.
  */
@@ -93,22 +100,16 @@ export function InlineFieldEdit({
 
   return (
     <div className={cn("flex flex-wrap items-center gap-3", className)}>
-      <Select
+      <SearchableSelect
+        label={fieldLabel}
         value={value}
+        options={options}
         onValueChange={(next) => void handleValueChange(next)}
+        renderValue={() => <StatusValue status={current} context="record" />}
+        variant="ghost"
+        size="sm"
         disabled={disabled || saveState === "saving"}
-      >
-        <SelectTrigger variant="ghost" size="sm" aria-label={fieldLabel}>
-          <StatusValue status={current} context="record" />
-        </SelectTrigger>
-        <SelectContent>
-          {options.map((option) => (
-            <SelectItem key={option.value} value={option.value}>
-              {option.label}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      />
       <SaveStateIndicator
         state={saveState}
         onRetry={saveState === "error" && pending ? () => void commit(pending) : undefined}

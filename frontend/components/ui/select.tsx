@@ -25,7 +25,13 @@ function SelectValue({
   return <SelectPrimitive.Value data-slot="select-value" {...props} />
 }
 
-const selectTriggerVariants = cva(
+/**
+ * Exported so `SearchableSelect` wears the same trigger. 7.8 splits the *behaviour* of a
+ * select in two — a Radix `Select` below the threshold, a `Popover` combobox above it — and
+ * nothing about that split should be visible, so the two share one class source rather than
+ * two that drift.
+ */
+export const selectTriggerVariants = cva(
   "cursor-pointer flex w-fit items-center justify-between gap-2 text-sm whitespace-nowrap transition-[border-color,box-shadow,background-color] duration-150 outline-none disabled:cursor-not-allowed disabled:text-copy-disabled disabled:opacity-60 data-[size=default]:h-[var(--size-control)] data-[size=sm]:h-[var(--size-control-sm)] *:data-[slot=select-value]:line-clamp-1 *:data-[slot=select-value]:flex *:data-[slot=select-value]:items-center *:data-[slot=select-value]:gap-2 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   {
     variants: {
