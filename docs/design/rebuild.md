@@ -1259,7 +1259,7 @@ questions are answered above, and the full gate set is green. The next sub-phase
 | `86aeb71` | insertion order, support case, custom record and catalog onto the archetype; `CrmRecordActivitySection` and its four panels deleted; the rail's own scroll fixed in the primitive |
 | `4967bf2` | the three card-scoped tab strips onto `SectionTabs` (was `RecordTabs`); §7.7 written; the tabs guard parameterised over every strip |
 | `c45cd16` | the `/[id]/edit` round trip's return half on twelve edit surfaces, `useRecordTabHref` replacing the two helpers, `/convert` joining the rule, and A13 |
-| _(this commit)_ | close-out: the three scheduled deletions, the five unswept census rows, §7.9 |
+| `270e395` | close-out: the three scheduled deletions, the five unswept census rows, §7.9 |
 
 **What batch 1 decided, and the two §4.7 rules it wrote first.** Both pages carried
 information the archetype had no shape for yet, and both answers are now rules rather than
