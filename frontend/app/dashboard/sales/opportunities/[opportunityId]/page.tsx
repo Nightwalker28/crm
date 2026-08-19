@@ -22,6 +22,7 @@ import {
   RecordRelatedLink,
   RecordRelatedList,
 } from "@/components/recordWorkspace/RecordRelatedList";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -266,6 +267,35 @@ export default function OpportunityDetailPage() {
     }
   }
 
+  /** The deal's other state field. `PUT` rather than the stage route's `PATCH`: stage has a
+   *  dedicated endpoint because it moves a pipeline; owner is an ordinary column. */
+  async function updateOwner(nextOwnerId: number | null) {
+    if (!summary) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-opportunity-summary", params.opportunityId], {
+      ...summary,
+      opportunity: { ...summary.opportunity, assigned_to: nextOwnerId },
+    });
+    try {
+      const res = await apiFetch(`/sales/opportunities/${params.opportunityId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: nextOwnerId }),
+      });
+      if (!res.ok) throw new Error("The deal owner could not be saved.");
+      await summaryQuery.refetch();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
+        queryClient.invalidateQueries({
+          queryKey: ["record-audit-history", "sales_opportunities", params.opportunityId],
+        }),
+      ]);
+    } catch (error) {
+      queryClient.setQueryData(["sales-opportunity-summary", params.opportunityId], previous);
+      throw error;
+    }
+  }
+
   const dealValue = deal
     ? formatMoney(deal.total_cost_of_project, deal.currency_type)
     : null;
@@ -364,6 +394,13 @@ export default function OpportunityDetailPage() {
                     />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="sales_opportunities"
+                  ownerId={deal.assigned_to}
+                  ownerName={deal.assigned_to_name}
+                  canEdit={canEditDeal}
+                  onCommit={updateOwner}
+                />
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
@@ -377,7 +414,6 @@ export default function OpportunityDetailPage() {
                   value={summary.organization?.org_name ?? deal.organization_name}
                   href={summary.organization ? `/dashboard/sales/organizations/${summary.organization.org_id}` : null}
                 />
-                <RecordSpineLink label="Owner" value={deal.assigned_to_name} />
                 {summary.can_view_contacts && summary.participant_contacts.length ? (
                   <RecordSpineCollection
                     label="Participants"

@@ -10,6 +10,7 @@ import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -117,6 +118,22 @@ export default function InsertionOrderDetailPage() {
     ]);
   }
 
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/finance/insertion-orders/${params.ioId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The insertion order owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "finance_io", params.ioId],
+      }),
+      orderQuery.refetch(),
+    ]);
+  }
+
   return (
     <RecordWorkspace
       title={orderName}
@@ -189,10 +206,16 @@ export default function InsertionOrderDetailPage() {
                     <StatusValue status={getInsertionOrderStatus(order.status)} context="record" />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="finance_io"
+                  ownerId={order.user_id}
+                  ownerName={order.user_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
-                <RecordSpineLink label="Owner" value={order.user_name} />
                 {/* One customer, held as either a contact or an account. The account wins
                     where both are set, because that is the party the order is against. */}
                 {order.customer_organization_id ? (

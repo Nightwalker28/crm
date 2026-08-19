@@ -13,6 +13,7 @@ import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -79,6 +80,7 @@ type ContactSummary = {
     region?: string | null;
     country?: string | null;
     organization_id?: number | null;
+    assigned_to?: number | null;
     assigned_to_name?: string | null;
     last_contacted_at?: string | null;
     last_contacted_channel?: string | null;
@@ -211,6 +213,32 @@ export default function ContactDetailPage() {
     }
   }
 
+  /** The second state field, same optimistic shape as the group above it. */
+  async function updateOwner(nextOwnerId: number | null) {
+    if (!summary) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-contact-summary", params.contactId], {
+      ...summary,
+      contact: { ...summary.contact, assigned_to: nextOwnerId },
+    });
+    try {
+      const res = await apiFetch(`/sales/contacts/${params.contactId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: nextOwnerId }),
+      });
+      if (!res.ok) throw new Error("The contact owner could not be saved.");
+      await summaryQuery.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["sales-contacts"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_contacts", params.contactId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-contact-summary", params.contactId], previous);
+      throw error;
+    }
+  }
+
   const customerGroups = customerGroupsQuery.data ?? [];
   const currentGroupId = contact?.customer_group_id ?? null;
   // An archived group stays selectable only where it is the current value — otherwise the
@@ -316,6 +344,15 @@ export default function ContactDetailPage() {
             {summary && contact ? (
               <>
                 <RecordSpineBlock title="State">
+                  {fieldEnabled("assigned_to") ? (
+                    <RecordOwnerField
+                      moduleKey="sales_contacts"
+                      ownerId={contact.assigned_to}
+                      ownerName={contact.assigned_to_name}
+                      canEdit={canEditContact}
+                      onCommit={updateOwner}
+                    />
+                  ) : null}
                   <RecordSpineField label="Customer group">
                     {canEditContact ? (
                       <InlineFieldEdit
@@ -342,9 +379,6 @@ export default function ContactDetailPage() {
                           : null
                       }
                     />
-                  ) : null}
-                  {fieldEnabled("assigned_to") ? (
-                    <RecordSpineLink label="Owner" value={contact.assigned_to_name} />
                   ) : null}
                   {canViewOpportunities ? (
                     <RecordSpineCollection

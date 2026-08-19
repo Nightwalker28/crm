@@ -121,6 +121,15 @@ const caseDetailLayout = {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  // The rail's Owner control lists the tenant's users rather than searching for them
+  // (design.md §7.8), so a record page now asks for them on load.
+  await page.route("**/linked-record-options/users?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: 1, label: "Admin User", email: "admin@example.com" }], has_more: false }),
+    }),
+  );
   await cacheSupportPermissions(page);
   await stubDefaultSavedViews(page);
   let supportCase = supportCaseFixture();

@@ -2247,8 +2247,160 @@ component is broken. `document.visibilityState` is `"visible"` and `document.has
 they are captured on demand — which is what makes the phantom so convincing. Bring the window
 to the foreground and every stuck popover unmounts itself at once.
 
-**Next.** Batch 2 — `Owner` → State, on all 8 record types, starting with the
-`/linked-record-options/users` backend line.
+### Status: batch 2 — `Owner` → State, on all nine record types
+
+**Read this first if you are picking the run up.** Batch 2 is done. Two commits, as the batch
+row said it would be: the backend line, then the sweep that consumes it.
+
+**It is nine record types, not eight, and the ninth is the one the count kept missing.**
+Support cases draw the same field under the module's own word — `Assignee` — so a survey
+looking for `Owner` did not see it, and question 3 was answered as "all eight". The rule §4.7
+states is categorical (*a field that points at a user is state*), the freeze on support
+explicitly keeps app-wide sweeps in scope, and support is the one record type with **no
+`/[id]/edit` route at all** — so leaving it out would have made the case's assignee the only
+user field in Lynk that cannot be changed anywhere. It is in, with the label it already had.
+
+**What landed — the backend line (commit 1).**
+
+- **`/linked-record-options/users` can list, not only search.** `query` was `min_length=1`, so
+  the empty query was a 422 and the service short-circuited to `[]`; it now filters only when
+  a query is given. `limit`'s ceiling goes 20 → 500 (`USER_OPTIONS_MAX_LIMIT`), and **the
+  default stays 10** — `LinkedRecordPicker` types first and wants a screen of matches, the
+  rail wants the set. Nothing else about the endpoint moves: the three-layer access check, the
+  tenant scope and the `is_active` filter are untouched, and `action` stays `edit` for the
+  rail because the only reason to list users there is to write one. **It is not a new
+  disclosure**: a caller who could search this endpoint could already walk the directory
+  twenty rows at a time, so listing changes the number of requests and nothing about who can
+  see whom.
+- **The response carries `has_more`.** A list that quietly stops reads as *that person does
+  not exist*, which is a stronger and more wrong claim than *this list is capped* — §7.9 at
+  the scale of one dropdown, and exactly the defect `TimezonePicker`'s `slice(0, 100)` was.
+  One extra row is fetched to learn it.
+- **The insertion order could not carry the write at all.** `InsertionOrderUpdateRequest` had
+  no `user_id` and the response had no `user_id` either — only a `user_name` — so the one of
+  nine that had never been checked against its own contract turned out to have no contract.
+  Both are added, the serializer emits the id (so the audit's before/after states record a
+  reassignment), and the service validates the user in-tenant the way the other eight already
+  do. Found by reading each module's update schema before writing the frontend, which is the
+  cheap half of this kind of sweep.
+
+**What landed — the sweep (commit 2).** `RecordOwnerField` in `components/recordWorkspace/`,
+`useUserOptions` beside it, and all nine call sites in the same commit. `Owner` leaves
+`Connected` on every one of them.
+
+| Record | Column | Write |
+|---|---|---|
+| Lead, contact, account, deal, quote | `assigned_to` | `PUT` |
+| Contract, order | `owner_id` | `PATCH` |
+| Insertion order | `user_id` | `PUT` (new) |
+| Support case | `assigned_to_id` | `PATCH` |
+
+**Four decisions, and the first is the one that stops this being nine copies.**
+
+- **The component owns the options; the call site keeps the write.** The render is six lines
+  and duplicating it would have been survivable. The *options* are not: every one of the nine
+  needs the tenant's users, the unassigned value, the current owner kept selectable when the
+  list does not contain them, and the cap disclosure — and `customer_group_id` had already
+  drifted between the two pages that hand-rolled the same thing. The write stays at the call
+  site because the nine disagree about the column, the verb, and the cache shape the
+  optimistic update has to move, which is why their `updateStatus` functions differ too.
+  Hiding that behind an `endpoint` prop would have bought nothing and cost the rollback.
+- **`Unassigned` is a value, not an empty.** A record can be handed back to the pool, so the
+  option exists and the closed field renders its name rather than `EmptyValue`'s `Not set` —
+  the same call `No group` makes on the customer-group field directly beside it. Written into
+  §4.7 rather than decided per page, because the alternative is the field reading `Not set`
+  with the permission and `Unassigned` without it.
+- **Owner sits directly under the record's status field, or first where there is none.** §4.7
+  now says so. It is the second-most-common edit after status, and the two read in one glance
+  — which is also the answer to the thin rails: contacts and accounts now have two state
+  fields, `Owner` above `Customer group`, and an account's `Connected` block is collections
+  only.
+- **No permission, or no user list, and the field is read-only.** Not a disabled picker: a
+  select whose only options are `Unassigned` and the person already in it looks like a choice
+  and is not (§7.9). The request failing is the interesting half — it is the one case where
+  the control would have been drawn over an answer the request layer never gave.
+
+**Rejected, with reasons, because the shape recurs:**
+
+- *Keep `Owner` in `Connected` and make it a `LinkedRecordPicker`.* It is the pre-5.3 answer
+  with an editor bolted on. `assigned_to` is a value on this row chosen from a closed set, not
+  a reference to another record — §4.7's own test — and `LinkedRecordPicker` is a form control
+  that resolves references over a server search (§7.8's boundary).
+- *A `components/ui` primitive taking `options` as a prop.* It would have pushed the fetch,
+  the sentinel and the fallback option back out to nine call sites, which is precisely the
+  duplication worth removing. The render was never the expensive part.
+- *No cap at all on the listing form.* Honest, and an unbounded list endpoint. `has_more`
+  keeps the honesty and the bound.
+
+**Two consequences, recorded rather than fixed.**
+
+- **A user-scoped reader who reassigns an insertion order loses it.** `get_finance_user_scope`
+  limits a non-admin outside the finance department to their own records, so handing one to a
+  colleague makes the next read a 404 and the page falls to its error state. That is what
+  happened, and the alternative — hiding the control from a reader whose scope the frontend
+  cannot see — would be inventing a permission the API does not expose.
+- **The insertion order's rail no longer says `You`.** `user_name` is `"You"` when the owner
+  is the reader, and the rail now renders the option's own label. The other eight always
+  showed the real name; this makes nine.
+
+**Deferred, deliberately, to batch 3.** §7.8's "the same field behaves the same in both places
+it appears" is not closed: the rail lists users in memory and `/[id]/edit` still resolves them
+through `LinkedRecordPicker`'s server search. Both are searchable comboboxes, so this is drift
+rather than a defect — and the forms are batch 3's, which is where the decision belongs.
+
+**Verification.** Backend: the full suite, **1023 tests, green**, with four new ones — the
+listing form, the cap, and the insertion order's reassignment (in-tenant, cleared, and
+refused across tenants). Frontend: lint, `npm run build`, `check-design.sh` (2 of 14 — the
+known baseline, unchanged), both rendered guards, and the module specs for the nine surfaces.
+Fixtures that carried a `*_name` and no id had to gain one — a rail that selects by id cannot
+render a name it has no value for, and `insertion-orders-revamp` was the case that proved it.
+
+### The browser pass — and the defect it found is in the primitive, not the field
+
+**The Chrome extension was not connected this run**, so the pass was driven through
+Playwright instead: a throwaway spec against real seeded data and the real backend, deleted
+before the commit (new coverage lands in 5.10, and this is not that). Same browser, and it had
+one advantage over clicking — it reads `aria-activedescendant` and computed style rather than
+trusting a highlight.
+
+| | |
+|---|---|
+| Field order in State | ✓ `Status`, `Owner`, `Next follow-up` |
+| Option set | ✓ 13, searchable (≥ 10), `Unassigned` first, each user's email as the second line |
+| Active on open | ✓ the *selected* option, not the first |
+| `End`, `Home`, `ArrowUp` clamping at the top | ✓ |
+| `Enter` on `Unassigned` — a real write | ✓ committed, and it survived a reload |
+| Search, then `Enter` — a second real write | ✓ filtered to 1, active tracked the filter, restored |
+| `Escape` | ✓ closes, does not commit |
+| Focus ring on the trigger after a keyboard exit | ✓ 2px ring on a 2px ground |
+| Both themes, and 768px | ✓ sampled rather than eyeballed — page ground `rgb(18,22,28)` dark, `rgb(255,255,255)` light |
+
+**What it found: every keyboard commit dropped focus to `<body>`.** `InlineFieldEdit` disables
+its trigger while the write is in flight, and **a disabled element cannot hold focus** — so
+Radix's restore-on-close handed focus to a button that was about to be taken away, the browser
+dropped it to the body, and the operator's next Tab restarted at the top of the page. This is
+**not** new in batch 2: it is every state field on every record type, and it has been there
+since `InlineFieldEdit` shipped in 5.1. Nothing could see it, because the value saved
+correctly the whole time — the same shape as the History sheet's missing `SheetTrigger`, found
+the same way, by tabbing.
+
+Fixed in the primitive: when the control leaves `saving`, if focus went nowhere, it goes back
+to the trigger. Guarded on `document.activeElement === document.body`, so an operator who has
+already moved on keeps their place. Verified on two real writes — which is why the pass was
+re-run with a value that actually *changed*: the first attempt re-selected the current owner,
+`commit()` short-circuited on `option.value !== value`, and the save path was never exercised
+at all. **A green browser pass that never took the branch is worth less than no pass**, and
+this one nearly shipped as evidence.
+
+**One measurement handed to 5.10 rather than changed here.** The listbox's active row is
+`bg-accent` (`--color-primary-muted`), and against the popover ground that is **1.24:1 in dark
+and 1.08:1 in light**. It is the keyboard focus indicator inside the listbox and 1.08:1 is
+thin. It is also the app's existing menu-highlight vocabulary — `select.tsx` uses the same
+token for the same job — so raising it is a token decision affecting every menu in the app,
+not a fix to this field. Recorded with numbers, and 5.10 gains the check that can see it.
+
+**Next.** Batch 3 — `RecordFormLayout`: archetype 3's visible title, the sticky footer (R3),
+the 78 hand-written field grids and the four `TextField`s, and the Owner control's form half.
 
 
 ### What is left, in order
@@ -2259,7 +2411,7 @@ each — the shape 5.2 and 5.3 used.
 | # | Batch | Notes |
 |---|---|---|
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
-| 2 | **`Owner` → State, on all 8 record types** | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit |
+| ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | 3 | **`RecordFormLayout`** | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the 78 hand-written field grids, the four `TextField`s |
 | 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
@@ -2474,6 +2626,11 @@ Checks carried from the original Phase 8:
 - **Focus is visible** (§2.3, §8) — the spec never focuses anything today, which is why 68
   scattered `focus-visible` uses have never been checked. Focus a sampled set per route
   and assert the computed `outline` or `box-shadow` actually changes.
+- **The active option in a listbox is visible too.** `aria-activedescendant` is not DOM focus,
+  so the check above cannot see it: open a `SearchableSelect`, move the active row, and assert
+  its ground differs from the popover's by a real margin. Measured in 5.4 batch 2 at **1.24:1
+  dark / 1.08:1 light** — the token is `--color-primary-muted`, shared with `select.tsx`, so
+  the fix is a vocabulary decision and it needs the owner.
 - **Reduced motion is respected** (§6) — re-run one route under
   `emulateMedia({ reducedMotion: "reduce" })` and assert nothing reports a running
   animation.

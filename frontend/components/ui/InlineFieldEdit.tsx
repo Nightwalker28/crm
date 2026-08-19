@@ -8,7 +8,15 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import type { StatusDescriptor } from "@/lib/statusStyles";
 import { cn } from "@/lib/utils";
 
-export type InlineFieldEditOption = StatusDescriptor & { value: string };
+export type InlineFieldEditOption = StatusDescriptor & {
+  value: string;
+  /** A second line under the option — a user's email. Searched as well as shown, and never
+   *  drawn on the closed value, which stays the label alone. */
+  description?: string;
+  /** Reaches `SearchableSelect` as an unselectable row. Used for the note that says an option
+   *  list was capped (design.md §7.8), not for options the operator merely may not pick. */
+  disabled?: boolean;
+};
 
 type InlineFieldEditProps = {
   /** The field's name — the trigger's accessible name. Not shown; the value is. */
@@ -63,6 +71,8 @@ export function InlineFieldEdit({
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [pending, setPending] = useState<InlineFieldEditOption | null>(null);
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const wasSaving = useRef(false);
 
   useEffect(
     () => () => {
@@ -70,6 +80,32 @@ export function InlineFieldEdit({
     },
     [],
   );
+
+  /**
+   * Give the trigger its focus back when the write lands.
+   *
+   * The control is disabled while saving, and a *disabled element cannot hold focus* — so
+   * Radix's restore-on-close puts focus on a button that is about to be taken away, the
+   * browser drops it to `<body>`, and the next Tab restarts at the top of the page. Every
+   * keyboard commit of every state field did this. Found by driving the rail from the
+   * keyboard; nothing in the suite could see it, because the value saved correctly the whole
+   * time (§8, and the same class of defect as the History sheet's missing `SheetTrigger`).
+   *
+   * Only when focus actually went nowhere: an operator who has already moved on keeps their
+   * place.
+   */
+  useEffect(() => {
+    if (saveState === "saving") {
+      wasSaving.current = true;
+      return;
+    }
+    if (!wasSaving.current) return;
+    wasSaving.current = false;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    rootRef.current
+      ?.querySelector<HTMLButtonElement>('[data-slot="searchable-select-trigger"]')
+      ?.focus();
+  }, [saveState]);
 
   const current: InlineFieldEditOption =
     options.find((option) => option.value === value) ?? { value, tone: null, label: value };
@@ -99,7 +135,7 @@ export function InlineFieldEdit({
   }
 
   return (
-    <div className={cn("flex flex-wrap items-center gap-3", className)}>
+    <div ref={rootRef} className={cn("flex flex-wrap items-center gap-3", className)}>
       <SearchableSelect
         label={fieldLabel}
         value={value}

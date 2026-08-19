@@ -488,8 +488,11 @@ taken. Counted here so the denominator stays honest.
 | `SegmentedControl.tsx` | **new** | **Not in the plan.** `secondary` was 47 sites carrying a role, not 8 carrying none — see `rebuild.md` 5.1 and §2.2 | **done** (A) |
 | `dropdown-menu.tsx` | **new** | **Not in the plan.** No existing radix vendor for a menu; `ExportControls` / `ImportControls` needed one to leave `@headlessui/react` — see `rebuild.md` 5.1 batch D | **done** (D) |
 | `ModuleImportExportControls.tsx` | 79 | adopt | Headless UI `Menu` → radix | **done** (D) |
-| `InlineFieldEdit.tsx` | **new** | The R2/R6 state-field control. 5 pages hand-rolled this, each differently — see `rebuild.md` 5.1 batch E | **done** (E) |
+| `InlineFieldEdit.tsx` | **new** | The R2/R6 state-field control. 5 pages hand-rolled this, each differently — see `rebuild.md` 5.1 batch E | **done** (E). Renders through `SearchableSelect` since 5.4 b1; 5.4 b2 gave its options a `description` line and put focus back on the trigger after a save, which the disabled-while-saving trigger had been dropping to `<body>` since it shipped |
 | `RecordSpine.tsx` | **new** | The signature (R9). Built in **5.3**, with its first real call site | **done** — rail, lifecycle track, State/Connected blocks, and the meta foot carrying the History sheet. Batch 1 added `RecordSpineCollection` (a Connected entry for a related *collection*) and gave the History sheet a real `SheetTrigger`, so closing it returns focus |
+| `SearchableSelect.tsx` | **new** | §7.8's primitive, built in **5.4** batch 1. `Popover` + listbox at every count, with the search input rendered only at or above `SEARCHABLE_SELECT_MIN_OPTIONS`; no call site passes a flag. `selectTriggerVariants` is exported from `select.tsx` so the two forms of a select are one class source | **done** (5.4 b1) — `InlineFieldEdit`'s 17 call sites and `TimezonePicker` |
+| `recordWorkspace/RecordOwnerField.tsx` | **new** | The record's owner, in the spine's State block, on all **nine** record types (§4.7). Built in **5.4** batch 2, with every one of its call sites in the same commit | **done** (5.4 b2) |
+| `hooks/useUserOptions.ts` | **new** | The tenant's active users for a select that filters in memory, one cached request per module key. Carries `has_more` so a capped list can say so (§7.8) | **done** (5.4 b2) |
 
 ### 3.2 Existing primitives
 
@@ -533,7 +536,7 @@ taken. Counted here so the denominator stays honest.
 | `popover.tsx` | 48 | — | unchanged | | |
 | `CustomFieldValue.tsx` | 20 | 5.5 | adopt | Content-only since Phase 3 | |
 | `ImageAssetField.tsx` | 115 | 5.4 | adopt | | |
-| `TimezonePicker.tsx` | 93 | 5.6 | adopt | | |
+| `TimezonePicker.tsx` | 93 → 59 | 5.4 | adopt | Collapsed into `SearchableSelect` — the file now holds only what is about timezones, and its `slice(0, 100)` over ~400 zones (a live §7.9 defect) went with the hand-rolled list | **done** (5.4 batch 1) |
 | `UserTeamPicker.tsx` | 214 | 5.6 | adopt | | |
 | `DataTransferJobProgress.tsx` | 86 | 5.6 | adopt | | |
 | `chart.tsx` | 78 | 5.7 | adopt | Load the `dataviz` skill | |

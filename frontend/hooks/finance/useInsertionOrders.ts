@@ -31,6 +31,7 @@ export type InsertionOrder = {
   custom_fields?: Record<string, unknown> | null;
   file_name?: string | null;
   file_url?: string | null;
+  user_id?: number | null;
   user_name?: string | null;
   photo_url?: string | null;
   created_at?: string | null;

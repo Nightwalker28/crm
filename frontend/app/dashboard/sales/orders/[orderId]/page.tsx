@@ -10,6 +10,7 @@ import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -144,6 +145,22 @@ export default function OrderDetailPage() {
     ]);
   }
 
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/sales/orders/${params.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_id: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The order owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_orders", params.orderId],
+      }),
+      orderQuery.refetch(),
+    ]);
+  }
+
   return (
     <RecordWorkspace
       title={orderName}
@@ -209,10 +226,16 @@ export default function OrderDetailPage() {
                     <StatusValue status={getOrderStatus(order.status)} context="record" />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="sales_orders"
+                  ownerId={order.owner_id}
+                  ownerName={order.owner_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
-                <RecordSpineLink label="Owner" value={order.owner_name} />
                 {/* `Quote #12` until the response started carrying the number — the same
                     response-shape defect the contract rebuild found, in the same place. */}
                 <RecordSpineLink

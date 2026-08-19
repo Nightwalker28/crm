@@ -181,6 +181,7 @@ const contactSummary = {
     contact_telephone: "+94770000200",
     email_opt_out: false,
     organization_id: accountId,
+    assigned_to: 7,
     assigned_to_name: "Ada Owner",
     custom_fields: {},
     updated_at: "2099-07-20T09:30:00Z",

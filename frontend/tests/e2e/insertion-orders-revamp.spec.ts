@@ -31,6 +31,7 @@ function orderFixture() {
     },
     file_name: "IO-2099-07301.pdf",
     file_url: "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
+    user_id: 7,
     user_name: "Finance Owner",
     created_at: "2099-07-24T08:00:00Z",
     updated_at: "2099-07-24T09:00:00Z",
@@ -185,6 +186,15 @@ test.beforeEach(async ({ page }) => {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ operating_currencies: ["USD", "LKR"] }),
+    }),
+  );
+  // The rail's Owner control lists the tenant's users rather than searching for them
+  // (design.md §7.8), so a record page now asks for them on load.
+  await page.route("**/linked-record-options/users?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: 7, label: "Finance Owner", email: "finance@example.com" }], has_more: false }),
     }),
   );
 });

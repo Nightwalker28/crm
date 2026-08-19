@@ -10,6 +10,7 @@ import RecordAuditHistory, {
 } from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Card } from "@/components/ui/Card";
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
@@ -146,6 +147,27 @@ export default function SupportCaseDetailPage() {
     ]);
   }
 
+  /** The assignee is an id rather than an enum, so it does not go through `updateField` —
+   *  everything else about the write is the same. */
+  async function updateAssignee(nextOwnerId: number | null) {
+    if (!item) return;
+    const res = await apiFetch(`/support/cases/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigned_to_id: nextOwnerId }),
+    });
+    const body = (await res.json().catch(() => null)) as SupportCase | null;
+    if (!res.ok || !body) throw new Error("The case could not be saved.");
+    queryClient.setQueryData(supportCaseQueryKey(item.id), body);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "support_cases", String(item.id)],
+      }),
+    ]);
+  }
+
   return (
     <RecordWorkspace
       title={caseName}
@@ -205,6 +227,14 @@ export default function SupportCaseDetailPage() {
                     <StatusValue status={getSupportCaseStatus(item.status)} context="record" />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  label="Assignee"
+                  moduleKey="support_cases"
+                  ownerId={item.assigned_to_id}
+                  ownerName={item.assigned_to_name}
+                  canEdit={canEdit}
+                  onCommit={updateAssignee}
+                />
                 <RecordSpineField label="Priority">
                   {canEdit ? (
                     <InlineFieldEdit
@@ -235,7 +265,6 @@ export default function SupportCaseDetailPage() {
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
-                <RecordSpineLink label="Assignee" value={item.assigned_to_name} />
                 <RecordSpineLink
                   label="Contact"
                   value={item.contact_name}

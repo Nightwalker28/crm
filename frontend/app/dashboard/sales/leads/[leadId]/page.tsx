@@ -11,6 +11,7 @@ import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -209,6 +210,32 @@ export default function LeadDetailPage() {
     }
   }
 
+  /** The same single-field `PUT`, for the other state field the rail owns (design.md §4.7). */
+  async function updateOwner(nextOwnerId: number | null) {
+    if (!summary) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-lead-summary", params.leadId], {
+      ...summary,
+      lead: { ...summary.lead, assigned_to: nextOwnerId },
+    });
+    try {
+      const res = await apiFetch(`/sales/leads/${params.leadId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: nextOwnerId }),
+      });
+      if (!res.ok) throw new Error("The lead owner could not be saved.");
+      await summaryQuery.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["sales-leads"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_leads", params.leadId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-lead-summary", params.leadId], previous);
+      throw error;
+    }
+  }
+
   return (
     <RecordWorkspace
       title={leadName}
@@ -299,6 +326,15 @@ export default function LeadDetailPage() {
                     <StatusValue status={getLeadStatus(status)} context="record" />
                   )}
                 </RecordSpineField>
+                {fieldEnabled("assigned_to") ? (
+                  <RecordOwnerField
+                    moduleKey="sales_leads"
+                    ownerId={lead.assigned_to}
+                    ownerName={lead.assigned_to_name}
+                    canEdit={canEditLead}
+                    onCommit={updateOwner}
+                  />
+                ) : null}
                 {fieldEnabled("next_follow_up_at") ? (
                   <RecordSpineField label="Next follow-up">
                     {lead.next_follow_up_at ? (
@@ -318,9 +354,6 @@ export default function LeadDetailPage() {
               <RecordSpineBlock title="Connected">
                 {fieldEnabled("company") ? (
                   <RecordSpineLink label="Company" value={lead.company} />
-                ) : null}
-                {fieldEnabled("assigned_to") ? (
-                  <RecordSpineLink label="Owner" value={lead.assigned_to_name} />
                 ) : null}
                 {fieldEnabled("team_id") ? (
                   <RecordSpineLink label="Team" value={lead.team_name} />

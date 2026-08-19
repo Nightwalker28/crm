@@ -795,8 +795,9 @@ Contract:
   metadata carrying the `History` disclosure. State fields are `InlineFieldEdit` and
   autosave (R1). Connected entries are links, never free text.
 - **A field that points at a *user* is state, not a relationship.** Owner / `assigned_to` /
-  `owner_id` is a column on **this** row, so the spine's own test puts it in **State**, as an
-  `InlineFieldEdit` that autosaves — not in `Connected` as a read-only name. It shipped as a
+  `owner_id` / `user_id` / `assigned_to_id` is a column on **this** row, so the spine's own
+  test puts it in **State**, as an `InlineFieldEdit` that autosaves — not in `Connected` as a
+  read-only name. It shipped as a
   `RecordSpineLink` on all eight record types, which made reassignment a page trip for the
   second-most-common edit an operator makes after status. The confusion is understandable and
   worth naming: Connected is for links to *other records*, and a user is a record — but the
@@ -804,6 +805,24 @@ Contract:
   *on* the row, chosen from a closed set. This is also the answer to the thin rails on
   contacts and accounts: they have two state fields, and one of them was being drawn in the
   wrong block.
+
+  Three consequences, because "a user field" is a wider set than "Owner" and the difference
+  decides what is editable:
+
+  - **The record's own owner is one control everywhere**, drawn by `RecordOwnerField` — the
+    same options, the same unassigned value, the same commit shape on all nine record types
+    that carry one. The label follows the module's own word (`Assignee` on a support case),
+    the behaviour does not. **Position in the block: directly under the record's status
+    field, or first where the record has none** — it is the second-most-common edit after
+    status and it reads in the same glance.
+  - **`Unassigned` is a value, not an empty.** An owner-less record can be given an owner and
+    an owned one can be handed back to the pool, so the option set carries the empty value
+    and the field renders that value's name — not `EmptyValue`'s `Not set`, which is the
+    spelling for a field that has nothing to say. Same reasoning as `No group` on the
+    customer-group field beside it.
+  - **A user *stamp* is not an owner and stays read-only** — the POS invoice's `Raised by`,
+    `created_by_id`. It records who did something, and the denormalised-stamp rule above
+    already covers it: nobody reassigns a past event.
 - **Connected carries two kinds of entry: a record, and a collection.** A record is
   `RecordSpineLink` — a name and the way to it. A collection is `RecordSpineCollection` —
   a label, how many, and a link into the module tab that lists them (`Deals 3 ›`). Both
@@ -1393,6 +1412,15 @@ gets lost.
 rail and the identical select on `/[id]/edit` are one control, so forms render through this
 primitive too — otherwise Owner is searchable in the spine and a 200-row native list on the
 edit page.
+
+**A truncated option set says it is truncated.** Options held in memory come from somewhere,
+and every source has a ceiling: `/linked-record-options/users` returns at most 500 active
+users. A list that quietly stops is §7.9 in miniature — the operator reads the absence of a
+name as *that person does not exist*, which is a stronger and more wrong claim than *this
+list is capped*. So the endpoint reports `has_more` and the call site renders the last row as
+a disabled note saying what is missing and where to find it. `TimezonePicker` shipped the
+other version of this for a year (`slice(0, 100)` over ~400 zones, including the unfiltered
+list) and no assertion could see it, because a short list looks exactly like a complete one.
 
 ---
 

@@ -14,6 +14,7 @@ import RecordAuditHistory, {
 } from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -175,6 +176,25 @@ export default function ContractDetailPage() {
     ]);
   }
 
+  /** No confirm, unlike the status above: a contract's status change is recorded as a
+   *  contract event and can trigger signing, and a reassignment is neither. */
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/contracts/${params.contractId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_id: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The contract owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["contracts"] }),
+      queryClient.invalidateQueries({ queryKey: ["contract-edit", params.contractId] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "contracts", params.contractId],
+      }),
+      contractQuery.refetch(),
+    ]);
+  }
+
   return (
     <RecordWorkspace
       title={contractName}
@@ -236,13 +256,19 @@ export default function ContractDetailPage() {
                     <ContractStatus status={item.status} />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="contracts"
+                  ownerId={item.owner_id}
+                  ownerName={item.owner_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
               </RecordSpineBlock>
 
               {/* Six relationships, every one of which rendered as `Contact #12` before the
                   service started resolving names. A link labelled with an id is a link the
                   operator has to follow to find out where it goes. */}
               <RecordSpineBlock title="Connected">
-                <RecordSpineLink label="Owner" value={item.owner_name} />
                 <RecordSpineLink
                   label="Contact"
                   value={item.contact_name}

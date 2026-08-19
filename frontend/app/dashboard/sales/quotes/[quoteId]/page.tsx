@@ -15,6 +15,7 @@ import RecordAuditHistory, {
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -275,6 +276,23 @@ export default function QuoteDetailPage() {
     ]);
   }
 
+  /** No confirm: reassigning a quote publishes nothing, unlike the status beside it. */
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/sales/quotes/${params.quoteId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigned_to: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The quote owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_quotes", params.quoteId],
+      }),
+      summaryQuery.refetch(),
+    ]);
+  }
+
   async function convertToOrder() {
     if (converting) return;
     try {
@@ -388,10 +406,16 @@ export default function QuoteDetailPage() {
                     <QuoteStatus status={status} />
                   )}
                 </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="sales_quotes"
+                  ownerId={quote.assigned_to}
+                  ownerName={quote.assigned_to_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
-                <RecordSpineLink label="Owner" value={quote.assigned_to_name} />
                 <RecordSpineLink
                   label="Contact"
                   value={contactLabel(summary.contact)}

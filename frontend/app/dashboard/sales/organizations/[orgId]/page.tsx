@@ -20,6 +20,7 @@ import {
   RecordRelatedLink,
   RecordRelatedList,
 } from "@/components/recordWorkspace/RecordRelatedList";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -33,7 +34,6 @@ import {
   RecordSpineBlock,
   RecordSpineCollection,
   RecordSpineField,
-  RecordSpineLink,
   RecordSpineMeta,
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -252,6 +252,32 @@ export default function OrganizationDetailPage() {
     }
   }
 
+  /** The account's other state field, on the same optimistic contract as the group. */
+  async function updateOwner(nextOwnerId: number | null) {
+    if (!summary) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-organization-summary", params.orgId], {
+      ...summary,
+      organization: { ...summary.organization, assigned_to: nextOwnerId },
+    });
+    try {
+      const res = await apiFetch(`/sales/organizations/${params.orgId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: nextOwnerId }),
+      });
+      if (!res.ok) throw new Error("The account owner could not be saved.");
+      await summaryQuery.refetch();
+      await queryClient.invalidateQueries({ queryKey: ["sales-organizations"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_organizations", params.orgId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-organization-summary", params.orgId], previous);
+      throw error;
+    }
+  }
+
   const customerGroups = customerGroupsQuery.data ?? [];
   const currentGroupId = org?.customer_group_id ?? null;
   const customerGroupOptions: InlineFieldEditOption[] = [
@@ -352,6 +378,15 @@ export default function OrganizationDetailPage() {
             {summary && org ? (
               <>
                 <RecordSpineBlock title="State">
+                  {fieldEnabled("assigned_to") ? (
+                    <RecordOwnerField
+                      moduleKey="sales_organizations"
+                      ownerId={org.assigned_to}
+                      ownerName={org.assigned_to_name}
+                      canEdit={canEditOrganization}
+                      onCommit={updateOwner}
+                    />
+                  ) : null}
                   <RecordSpineField label="Customer group">
                     {canEditOrganization ? (
                       <InlineFieldEdit
@@ -368,9 +403,6 @@ export default function OrganizationDetailPage() {
                 </RecordSpineBlock>
 
                 <RecordSpineBlock title="Connected">
-                  {fieldEnabled("assigned_to") ? (
-                    <RecordSpineLink label="Owner" value={org.assigned_to_name} />
-                  ) : null}
                   {canViewContacts ? (
                     <RecordSpineCollection
                       label="Contacts"

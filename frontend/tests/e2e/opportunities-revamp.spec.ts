@@ -17,7 +17,18 @@ const pipelineSummary = {
   ],
 };
 
-test.beforeEach(async ({ page }) => { await loginAsAdmin(page); });
+test.beforeEach(async ({ page }) => {
+  await loginAsAdmin(page);
+  // The rail's Owner control lists the tenant's users rather than searching for them
+  // (design.md §7.8), so a record page now asks for them on load.
+  await page.route("**/linked-record-options/users?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: 7, label: "Ada Owner", email: "ada@example.com" }], has_more: false }),
+    }),
+  );
+});
 
 test("Deals expose the shared table and pipeline controls", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
