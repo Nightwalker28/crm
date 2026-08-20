@@ -3003,13 +3003,37 @@ All three are fixed; no test run accompanied the fix.**
   takes an optional `placeholder` and all four quick-create renderers pass `field.placeholder`,
   so a tenant-configured placeholder survives.
 
-**Open — the narrow-list overlay defect is still unidentified.** `design-rules.spec.ts` now
-retries keyboard activation when a pointer click on the first row is intercepted, which is what
-took the audit to all 94 routes. The workaround is sound, but **the intercepting element was
-never named**: we do not know which list it is on or what is drawing over the rows. That is a
-real interaction defect on a real list — a row that cannot be clicked open — hiding behind a
-green guard. Someone has to run the audit, capture the list and the intercepting element, and
-fix it. Not 5.4's, but it must not be lost.
+**~~Open — the narrow-list overlay defect is still unidentified.~~ Closed 2026-08-20 in 5.5's
+close-out, and it was not what this paragraph said it was.** The original note read: *"That is
+a real interaction defect on a real list — a row that cannot be clicked open — hiding behind a
+green guard."* It is neither an overlay nor a defect, and the correction is kept here rather
+than deleted because the wrong version would have sent someone hunting for a phantom element.
+
+**What was actually measured.** A probe walked every module list at 1440, 1280, 1024, 900 and
+768. **At 1440 — the viewport `design-rules.spec.ts` actually runs at — nothing is intercepted
+on any list.** Two lists intercept at 768, and the geometry says why. On
+`/dashboard/documents` the scroll region is `l:264 → r:744` (`clientWidth 478 /
+scrollWidth 1047`, `scrollLeft 0`) while the row's second cell is `l:707 → r:787`. The cell
+**extends past its scroll container's clip**, so its geometric centre lands at `cx 747` —
+three pixels beyond the container — and `elementFromPoint` there returns the dashboard's own
+content scroller (`app/dashboard/layout.tsx:155`, `relative z-30`), which is the row's
+*ancestor*, not something drawn over it. `/dashboard/tasks` is the same class: the centre
+falls outside the viewport entirely.
+
+**So nothing is drawing over the rows.** A synthetic click computed from a bounding rect
+lands on a clipped point; a person clicking a visible part of the row opens it normally.
+There is no product bug and nothing to fix — Lynk's tables scroll sideways at narrow widths
+by design (§4.5).
+
+**The keyboard retry in the guard stays**, on its own merits rather than as a workaround: a
+`RecordTable` row promises Enter as an open gesture, so exercising that contract is worth
+doing, and it keeps route discovery independent of cell geometry. What changes is the
+comment's claim about *why*.
+
+**The trap worth keeping.** "Playwright says the click was intercepted" reads as *something is
+covering the element*. It can equally mean *the element's centre is not where you can click
+it* — which is the normal state of any cell in a horizontally scrolled table. Check the
+geometry before looking for an overlay.
 
 ---
 
@@ -3681,7 +3705,7 @@ above.
 | `settings/automation`'s `?view=runs\|rules` — the word means "saved view id" on every other list | 5.6 |
 | `settings/users` keeps its own filter-value shape in `userFilters.tsx`, so no column picker | 5.6 |
 | **B.2** — custom modules collect conditions the request layer discards; the filter group stays undrawn (§7.9) | Filed, after 5.9 |
-| The narrow-list overlay defect: a row that cannot be clicked open, still unidentified, still hidden behind the guard's keyboard-activation retry | Inherited from 5.4, still nobody's |
+| ~~The narrow-list overlay defect~~ | **Closed.** Diagnosed in this close-out and it was not a defect — a clipped cell centre at 768, no overlay, nothing intercepted at the guard's own 1440. Written up at the end of 5.4 |
 | 62 suite failures, all pre-existing, grouped in `docs/e2e-suite-status.md` | Not this programme's |
 
 ---

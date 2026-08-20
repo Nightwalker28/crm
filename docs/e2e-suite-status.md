@@ -1,9 +1,19 @@
-# E2E Suite Status — 43 Remaining Failures
+# E2E Suite Status
 
-Snapshot taken 2026-08-11 from a full serial run on `docs/crm-evolution-2026-plan`, with the
-two `mail-revamp` locator failures cleared on 2026-08-12.
+**Current: 236 passed / 64 failed of 300 tests** — full serial run 2026-08-20, during rebuild
+5.5's close-out, routes warmed. Two of those 64 were cleared in that close-out (see below), so
+a clean run today should show **62**.
 
-**201 passed / 43 failed**, up from 159 passed / 85 failed at the start of the 2026-08-11 session.
+**Do not compare that to the older snapshot below.** The 2026-08-11 run was **201 passed / 43
+failed of 244 tests**, and the suite has gained 56 tests since. The counts have different
+denominators and the difference between them is not a regression count. The groups below are
+still the right triage — they were written against causes, not totals — but treat the
+per-group counts as "at least this many".
+
+**To attribute a failure to a slice, do not use this document.** Check out the pre-slice tree
+(`git checkout <sha> -- frontend/`) and re-run only the specs covering surfaces that slice
+touched, then diff the two failure lists. 5.5 did this across eleven specs in ~9 minutes and
+the two sets came back identical, which is a stronger claim than any count comparison.
 
 This is a working document for picking the failures back up later. Each group below records what
 was actually observed, how confident the root cause is, and what the fix looks like. Groups are
@@ -134,7 +144,7 @@ linked requester rather than the plain summary tile.
 | `client-portal-revamp.spec.ts:47` | `getByLabel("Customer")` | 2 |
 | `client-portal-revamp.spec.ts:80` | `button "Publish"` | 2 |
 | `fields-revamp.spec.ts:124` | `button /Contract Term/` | 2 |
-| `opportunities-revamp.spec.ts:21` | `button "Table"` | 3 |
+| ~~`opportunities-revamp.spec.ts:21`~~ | ~~`button "Table"`~~ | **Fixed.** It asserts `role="radio"` now — the segmented control's real role. Passing as of 2026-08-20 |
 | `payments-revamp.spec.ts:56` | `getByText("Paid", { exact: true })` | 2 |
 | `permissions-revamp.spec.ts:194` | `getByText("Sales", { exact: true })` | 2 — sidebar nav group + the table's module-group row |
 | `profile-revamp.spec.ts:146` | `getByText("MFA enabled")` | 2 |
@@ -182,9 +192,22 @@ was written against whatever preceded that primitive and has matched nothing sin
 `role="radio"` passes, and it is the more useful assertion — the ARIA role is the contract a
 screen-reader user actually gets.
 
-**Worth generalising:** any spec reaching for `role="button"` on a `SegmentedControl` segment
-is in the same position. That is the view switcher on deals, `SegmentedBoolean`, and the
-density toggle wherever it appears.
+**Generalised, and the remaining instances are named.** Every `SegmentedControl` in the app is
+a Radix ToggleGroup with `type="single"`, so **every** segment is a `radio`. A sweep of the
+suite found exactly three call sites and two still to fix:
+
+| Spec | Line | Locator | State |
+| --- | --- | --- | --- |
+| `foundation-revamp.spec.ts` | 32, 41 | `button "Compact/Comfortable table density"` | **Fixed** 2026-08-20 |
+| `opportunities-revamp.spec.ts` | 42–43 | `button "Table"/"Pipeline"` | **Already fixed** — asserts `radio`, passing |
+| `automation-builder-revamp.spec.ts` | 104, 128 | `button "Rules"`, `button "Runs"` | **Open** — `app/dashboard/settings/automation/page.tsx:135-136` |
+
+The `automation-builder` pair was **not** fixed speculatively: both tests die earlier, at
+`:98` and `:126`, on the Group 5 `getByLabel('Name', { exact: true })` signature, so changing
+the role could not be verified to help. Fix it when Group 5 is cleared — and note the second
+hazard there, `page.tsx:151` renders a real `<Button>` also named "Rules" (the back control in
+the runs workspace), so `getByRole("button", { name: "Rules" })` is ambiguous as well as
+wrong.
 
 **`catalog-revamp.spec.ts:397` — the record archetype's Files tab.** Asserted
 `"No documents are linked to this record yet."`, which **5.3 batch 7 renamed** to `"Files
