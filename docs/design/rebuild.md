@@ -3211,7 +3211,7 @@ programme's two full-suite runs**.
 | ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `a63091e`. `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — `8f6fa20`. POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
 | ~~5~~ | ~~**The documents straggler**~~ | **Done** — `f36283d`. The toolbar, real pagination, and the backend param it needed |
-| ~~6~~ | ~~**The client-portal straggler**~~ | **Done** — two page-local tables extracted, both `shellVariant="nested"`, the page 456 → 330 lines |
+| ~~6~~ | ~~**The client-portal straggler**~~ | **Done** — `f77a968`. Two page-local tables extracted, both `shellVariant="nested"`, the page 456 → 330 lines |
 | 7 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
