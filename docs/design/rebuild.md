@@ -2616,10 +2616,10 @@ waits for `tbody tr` now. **Read the `Audited N routes. Unreachable:` line befor
 pass** — a guard that quietly stops looking at a sixth of its routes is worse than one that
 fails.
 
-### Status: batch 4 — the stragglers and the idioms
+### Status: batch 4 — the stragglers and the idioms, committed as `3d86163`
 
-**Read this first if you are picking the run up.** Batch 4 is done. It is the **first batch
-under the revised cadence** (scoping decision 9): lint + build only, no guards, no specs, no
+**Read this first if you are picking the run up.** Batch 4 is done and committed as
+`3d86163`. It is the **first batch under the revised cadence** (scoping decision 9): lint + build only, no guards, no specs, no
 browser pass. Those run once, in batch 7, over everything batches 1–6 touched.
 
 **What landed.**
@@ -2721,7 +2721,7 @@ sub-phase.
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
-| ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — see the status above. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
+| ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — `3d86163`. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
 | 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |
