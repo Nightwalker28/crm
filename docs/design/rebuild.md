@@ -2746,7 +2746,7 @@ sub-phase.
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
 | 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |
 
-### Status: batch 5 — the line-item documents, committed as `PENDING`
+### Status: batch 5 — the line-item documents, committed as `cafa456`
 
 **Read this first if you are picking the run up.** Batch 5 is done and committed. Cadence
 unchanged from batch 4 (scoping decision 9): lint + `npm run build`, plus `check-design.sh`
