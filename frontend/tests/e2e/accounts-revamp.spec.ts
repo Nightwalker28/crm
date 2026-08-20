@@ -103,10 +103,10 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByText("Account name is required.")).toBeVisible();
   await expect(page.getByText("Primary email is required.")).toBeVisible();
   await expect(page.getByLabel("Account name")).toBeFocused();
-  const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
-  await ownerPicker.fill("Ada");
+  const ownerPicker = page.getByRole("combobox", { name: "Owner" });
+  await ownerPicker.click();
   await page.getByRole("option", { name: /Ada Owner/ }).click();
-  await expect(ownerPicker).toHaveValue("Ada Owner");
+  await expect(ownerPicker).toHaveText(/Ada Owner/);
 
   await page.goto(`/dashboard/sales/organizations/${fakeAccountId}`);
   await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Account");
@@ -128,6 +128,6 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByRole("heading", { name: "Edit account" })).toBeVisible();
   await expect(page.getByLabel("Account name")).toHaveValue("Browser Account");
   await expect(page.getByLabel("Primary email")).toHaveValue("account@example.com");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

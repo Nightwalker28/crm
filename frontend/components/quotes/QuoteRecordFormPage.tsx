@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
@@ -745,28 +746,15 @@ function QuoteSummary({
         {enabled("assigned_to") ? (
           <Field>
             <FieldLabel htmlFor="quote-owner">Owner</FieldLabel>
-            <LinkedRecordPicker
-              inputId="quote-owner"
-              recordType="user"
-              valueId={form.assigned_to}
-              displayValue={form.assigned_to_name}
-              onDisplayValueChange={(assigned_to_name) =>
-                onChange({ ...form, assigned_to: null, assigned_to_name })
+            <OwnerSelect
+              id="quote-owner"
+              moduleKey="sales_quotes"
+              action={mode === "edit" ? "edit" : "create"}
+              ownerId={form.assigned_to}
+              ownerName={form.assigned_to_name}
+              onChange={(assigned_to, assigned_to_name) =>
+                onChange({ ...form, assigned_to, assigned_to_name })
               }
-              onSelect={(option) =>
-                onChange({
-                  ...form,
-                  assigned_to: option.id,
-                  assigned_to_name: option.label,
-                })
-              }
-              onClear={() =>
-                onChange({ ...form, assigned_to: null, assigned_to_name: "" })
-              }
-              placeholder="Search owners (defaults to you)"
-              queryKeyPrefix="quote-page-owner"
-              sourceModuleKey="sales_quotes"
-              sourceAction={mode === "edit" ? "edit" : "create"}
             />
           </Field>
         ) : (

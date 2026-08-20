@@ -238,7 +238,7 @@ test("Create & open opens the new Lead record", async ({ page }) => {
   await panel.getByRole("button", { name: "Create & open" }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/leads/${createdLeadId}$`));
-  await expect(page.getByRole("heading", { name: "Quick Opened" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Quick Opened");
 });
 
 test("recovers from validation and duplicate responses without losing entered data", async ({ page }) => {
@@ -311,7 +311,7 @@ test("More details continues on the canonical create route with the entered valu
   await expect(page.getByRole("group").filter({ hasText: "First name" }).getByRole("textbox")).toHaveValue("Handed");
   await expect(page.getByRole("group").filter({ hasText: "Company" }).getByRole("textbox")).toHaveValue("Lynk QA");
   // Restored values count as unsaved work, so the page guards them.
-  await expect(page.getByText("You have unsaved changes.")).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
 
   // The draft is consumed once: a later visit to the canonical route starts clean.
   await page.goto("/dashboard/sales/leads/new?draft=quick-create");

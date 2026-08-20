@@ -31,10 +31,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test("Deals expose the shared table and pipeline controls", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/sales/opportunities");
   await expect(page.getByRole("heading", { name: "Deals" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Add deal" })).toBeVisible();
+  await page.getByRole("button", { name: "Create deal" }).click();
+  const quickCreate = page.getByRole("dialog", { name: "Create deal" });
+  await expect(quickCreate).toBeVisible();
+  await quickCreate.getByRole("button", { name: "Close Create deal" }).click();
+  await expect(quickCreate).toBeHidden();
   await expect(page.getByPlaceholder("Search deals")).toBeVisible();
   await expect(page.getByRole("radio", { name: "Table", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("radio", { name: "Pipeline" }).click();
@@ -91,6 +94,6 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await page.goto(`/dashboard/sales/opportunities/${dealId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit deal" })).toBeVisible();
   await expect(page.getByLabel("Deal name")).toHaveValue("Browser Deal");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

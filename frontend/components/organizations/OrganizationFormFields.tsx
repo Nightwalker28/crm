@@ -1,7 +1,7 @@
 "use client";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -98,7 +98,7 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return (
     <FormSection title="Ownership" description="Assign responsibility for this account.">
-      {enabled("assigned_to") ? <Field><FieldLabel>Owner</FieldLabel><LinkedRecordPicker recordType="user" valueId={value.assigned_to} displayValue={value.assigned_to_name} onDisplayValueChange={(assigned_to_name) => onChange({ ...value, assigned_to: null, assigned_to_name })} onSelect={(option) => onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })} onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })} placeholder={mode === "create" ? "Search owners (defaults to you)" : "Search owners"} queryKeyPrefix="account-owner" noResultsText="No active users matched this search." sourceModuleKey="sales_organizations" sourceAction={mode} allowClear={mode === "create"} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
+      {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
     </FormSection>
   );
 }

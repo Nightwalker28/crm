@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo } from "react";
-import Link from "next/link";
 import { BriefcaseBusiness } from "lucide-react";
 
 import { StatusValue } from "@/components/ui/StatusValue";
@@ -30,6 +29,7 @@ type Props = {
   onSortChange?: (sort: RecordTableSort) => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
+  onCreateOpportunity?: () => void;
 };
 
 const HEADERS: Record<string, string> = {
@@ -166,6 +166,7 @@ export default function OpportunitiesTable({
   onSortChange,
   hasActiveFilters = false,
   onClearFilters,
+  onCreateOpportunity,
 }: Props) {
   const columns = useMemo<RecordTableColumn<Opportunity>[]>(
     () =>
@@ -209,7 +210,7 @@ export default function OpportunitiesTable({
         icon: BriefcaseBusiness,
         title: "No deals yet",
         description: "Create your first deal to start tracking the pipeline.",
-        action: <Button asChild><Link href="/dashboard/sales/opportunities/new">Add deal</Link></Button>,
+        action: onCreateOpportunity ? <Button type="button" onClick={onCreateOpportunity}>Create deal</Button> : undefined,
       }}
       filteredEmptyState={{
         icon: BriefcaseBusiness,

@@ -55,7 +55,10 @@ type SearchableSelectProps = {
   variant?: "default" | "ghost";
   size?: "sm" | "default";
   disabled?: boolean;
+  required?: boolean;
   id?: string;
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
   searchPlaceholder?: string;
   emptyMessage?: string;
   className?: string;
@@ -100,7 +103,10 @@ export function SearchableSelect({
   variant = "default",
   size = "default",
   disabled,
+  required,
   id,
+  ariaDescribedBy,
+  ariaInvalid,
   searchPlaceholder = "Search",
   emptyMessage = "Nothing matched that search.",
   className,
@@ -264,6 +270,9 @@ export function SearchableSelect({
           aria-expanded={open}
           aria-haspopup="listbox"
           aria-controls={open ? listboxId : undefined}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
+          aria-required={required}
           disabled={disabled}
           data-slot="searchable-select-trigger"
           data-size={size}

@@ -59,9 +59,9 @@ test("prevents duplicate submissions while pending and exposes busy state", asyn
   await create.click();
 
   await expect(surface).toHaveAttribute("aria-busy", "true");
-  const pendingCreate = surface.getByRole("button", { name: "Creating...", exact: true });
+  const pendingCreate = surface.getByRole("button", { name: "Creating…", exact: true });
   await expect(pendingCreate).toBeDisabled();
-  await expect(surface.getByRole("status")).toContainText("Creating...");
+  await expect(surface.getByRole("status")).toContainText("Creating…");
   await pendingCreate.evaluate((button) => button.click());
   await expect(page.getByTestId("submit-count")).toHaveText("1");
   await expect(surface).toHaveAttribute("aria-busy", "false");

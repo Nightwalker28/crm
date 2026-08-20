@@ -3,7 +3,10 @@
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
 import { RecordSpineField } from "@/components/ui/RecordSpine";
 import { StatusValue } from "@/components/ui/StatusValue";
-import { useUserOptions, USER_OPTIONS_LIMIT } from "@/hooks/useUserOptions";
+import {
+  UNASSIGNED_OWNER,
+  useOwnerSelectOptions,
+} from "@/components/forms/OwnerSelect";
 
 /**
  * The empty owner, as a value.
@@ -13,11 +16,7 @@ import { useUserOptions, USER_OPTIONS_LIMIT } from "@/hooks/useUserOptions";
  * an absent one: a record can be handed back to the pool, so the option exists and the field
  * renders its name rather than `EmptyValue`'s `Not set`.
  */
-export const UNASSIGNED_OWNER = "";
-const UNASSIGNED_OWNER_LABEL = "Unassigned";
-
-/** Never selectable, and never a real user id — see `cappedNote` below. */
-const CAPPED_NOTE_VALUE = "__owner_options_capped__";
+export { UNASSIGNED_OWNER } from "@/components/forms/OwnerSelect";
 
 /**
  * The record's owner, in the spine's State block, on every record type that has one.
@@ -59,13 +58,13 @@ export function RecordOwnerField({
    *  rolls its own optimistic update back, exactly as the status fields do. */
   onCommit: (ownerId: number | null) => Promise<void>;
 }) {
-  const { users, hasMore, isLoading, isError } = useUserOptions(moduleKey, { enabled: canEdit });
-
-  const value = ownerId ? String(ownerId) : UNASSIGNED_OWNER;
-  // Never `User #7`: §5.9 has a whole row about raw foreign keys reaching the operator, and
-  // this branch is only reachable if the response carried an id whose name it could not
-  // resolve — a fact about the data, not a number the operator can use.
-  const displayName = ownerName || (ownerId ? "Unknown user" : UNASSIGNED_OWNER_LABEL);
+  const { value, displayName, options: selectOptions, isLoading, isError } = useOwnerSelectOptions({
+    moduleKey,
+    action: "edit",
+    ownerId,
+    ownerName,
+    enabled: canEdit,
+  });
 
   if (!canEdit || isError) {
     // `StatusValue`, not plain text, so the field is drawn identically whether or not it turns
@@ -77,37 +76,10 @@ export function RecordOwnerField({
     );
   }
 
-  const options: InlineFieldEditOption[] = [
-    { value: UNASSIGNED_OWNER, tone: null, label: UNASSIGNED_OWNER_LABEL },
-    ...users.map((user) => ({
-      value: String(user.id),
-      tone: null,
-      label: user.label,
-      // Two people share a first name more often than a tenant would like, and the email is
-      // what tells them apart. It is searched as well as drawn (§7.8).
-      description: user.email,
-    })),
-  ];
-
-  // The record arrives before the user list does, and a deactivated owner is never in it at
-  // all. Without this the rail would render the raw id for the length of that request, and
-  // permanently for anyone who has left — `InlineFieldEdit` falls back to the value when no
-  // option matches. Same shape as the archived customer group on the contact rail.
-  if (value !== UNASSIGNED_OWNER && !options.some((option) => option.value === value)) {
-    options.push({ value, tone: null, label: displayName });
-  }
-
-  if (hasMore) {
-    // A capped list that does not say so reads as "that person does not exist" (§7.8). It is a
-    // row rather than a toast because it belongs where the absence is noticed, and it is
-    // disabled because it is not an owner — arrow keys skip it and Enter refuses it.
-    options.push({
-      value: CAPPED_NOTE_VALUE,
-      tone: null,
-      label: `Only the first ${USER_OPTIONS_LIMIT} users are listed. Search for the rest on the edit page.`,
-      disabled: true,
-    });
-  }
+  const options: InlineFieldEditOption[] = selectOptions.map((option) => ({
+    ...option,
+    tone: null,
+  }));
 
   return (
     <RecordSpineField label={label}>

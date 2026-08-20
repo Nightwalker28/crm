@@ -140,6 +140,19 @@ test("design rule audit", async ({ page }) => {
         } catch { /* ignore */ }
       }
     }
+    if (!href) {
+      // Route discovery is not a pointer-only audit. RecordTable rows also promise Enter as
+      // their open gesture; using that second contract keeps an unrelated overlay defect on
+      // one list from silently dropping its record and edit routes from this guard.
+      const recordRow = page.locator("tbody tr").first();
+      try {
+        await recordRow.focus({ timeout: 4000 });
+        await page.keyboard.press("Enter");
+        await page.waitForTimeout(1800);
+        const path = new URL(page.url()).pathname;
+        if (new RegExp(l.re).test(path)) href = path;
+      } catch { /* ignore */ }
+    }
     if (!href) { unreachable.push(l.list); continue; }
     for (const s of l.suffixes) routes.push(href + s);
   }

@@ -3,7 +3,8 @@
 **Status:** approved 2026-08-14. **Sub-phase 5.0 done** — direction, law and census landed;
 the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B, C, D and E
 (cross-cutting primitives, the status sweep that deletes `Pill`, the route-boundary sweep, the
-Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2 is done.**
+Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2, 5.3 and
+5.4 are done.**
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -2743,8 +2744,8 @@ sub-phase.
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
 | ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — `3d86163`. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
 | ~~5~~ | ~~**The line-item documents**~~ | **Done** — `TransactionTotals` and three adopters, the invoice's missing `Total` row, the order's either-or `RequiredMark`s, the section names taken from the record layout, 18 unassociated labels. See the status below |
-| 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
-| 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |
+| ~~6~~ | ~~**A3 — one quick-create pattern, and the deals list**~~ | **Done** — the shared layout/custom-field renderer owns the repeatable frame while four module renderers keep their domain rules; Lead joined the shared state machine; the deals list and its empty state open `OpportunityQuickCreate`; every in-scope form Owner uses `SearchableSelect`. Quick create on the nine modules that lack one stays with the crm-evolution roll |
+| ~~7~~ | ~~**Close-out, and 5.4's only verification pass**~~ | **Done** — source guard at the two known failures, rendered guards green, 118 module tests swept and the in-scope correction set rerun, dark/light browser pass, all 74 census rows marked |
 
 ### Status: batch 5 — the line-item documents, committed as `cafa456`
 
@@ -2865,9 +2866,148 @@ remove:**
   has both.** That is a product gap rather than a design one — the two forms would need the
   hooks, the payload picker and a `Custom fields` section — and it is not 5.4's to open.
 
-**Next.** Batch 6 — A3: `QuickCreateSurface` for the fast create and `/new` for the detailed
-one across all 15 modules, `OpportunityQuickCreate` finally wired into the deals list, and
-the Owner-on-form sweep above.
+### Scoping decision 10 — A3's rollout half belongs to the crm-evolution roll
+
+**Decided by the owner 2026-08-20, before batch 6 was written.** A3 asked for both create
+paths on all 15 modules. Measured, that splits cleanly in two, and only one half is a design
+problem:
+
+- **Quick create is layout-driven**, and `quick_create` is opened for exactly four modules —
+  `sales_leads`, `sales_contacts`, `sales_organizations`, `sales_opportunities`
+  (`record_layouts.py:41–44`). Six more in-scope modules already carry a system field catalog
+  (`sales_quotes`, `sales_orders`, `finance_pos`, `finance_io`, `catalog_products`,
+  `catalog_services`), so opening the surface for them is a seed plus a set-membership line.
+  **Three carry no catalog at all** — custom modules, message templates, client-portal pages —
+  and would need a second, frontend-declared mechanism.
+- `CODEX-RUNBOOK.md` **already owns that rollout**: Wave 2A rolls Quick Create to Contact and
+  Organization, Wave 2D to Opportunity, each "using the resolved layouts", each seeding a
+  module's layout before rendering it. Building the same thing here would land it twice.
+
+**So batch 6 keeps the pattern work and hands over the rollout.** What 5.4 owes the roll is
+*one* quick create to roll, not nine hand-built ones — and today there are two:
+`ContactQuickCreate`, `OrganizationQuickCreate` and `OpportunityQuickCreate` are on
+`useQuickCreateRecord` + the `quickCreateLayout` helpers, while **`LeadQuickCreate` is on
+neither** (199 lines of its own state machine, 285 lines of its own per-field `Field` frame) —
+the pilot the pattern was proven on is the copy that never adopted it. That is 3-of-N drift
+pointed at the exact surface the next roll will multiply.
+
+**Next.** Batch 6 — the shared layout-driven quick-create field renderer, the four existing
+quick creates collapsed onto it (Lead included), `OpportunityQuickCreate` wired into the deals
+list to close A3's named defect, and the Owner-on-form sweep above (13 call sites minus
+contracts and support, so **11**). Quick create for the nine modules without one is **not
+5.4's** — it is the crm-evolution roll's, off the layouts this batch leaves behind.
+
+### Status: batch 6 — the quick-create pattern and Owner on forms
+
+**Batch 6 is done.** It followed the revised cadence: lint and `npm run build` are green;
+`check-design.sh` remains at the documented two unrelated failures. Rendered guards, module
+specs and the browser pass belong to batch 7, the sub-phase's single close-out.
+
+**The shared renderer owns the repeatable frame, not the domain.** Two alternatives were
+worked before implementation:
+
+- A config-driven renderer mapping every system field key to a generic control was rejected.
+  Contact selection fills its account, contextual Deal creation locks only the relationship
+  it arrived with, and Lead owns teams and tags. Encoding those as generic modes would turn
+  one renderer into the domain matrix §0 warns against.
+- `LayoutDrivenQuickCreateFields` was chosen. It owns resolved-layout traversal, custom-field
+  construction, locked/read-only state, ids, ARIA/error wiring and invalid-section opening.
+  Each module still renders its system fields. The four private files lost their repeated
+  layout and custom-field scaffolding without losing the rules that make them different.
+
+**Lead is no longer the pilot that missed its own pattern.** `LeadQuickCreate` now uses
+`useQuickCreateRecord`, the same layout/state/validation/submit state machine as Contact,
+Account and Deal. The shared path now has four adopters, so the crm-evolution roll has one
+quick-create pattern to extend rather than two.
+
+**A3's named Deal defect is closed.** The Deals list's primary action and empty-state action
+both open `OpportunityQuickCreate`; create permission gates both, focus returns to the
+trigger, and the existing `/new` route remains behind *Full deal form*. The contextual Contact
+and Account entry points still pass their locked relationship; the list passes no context.
+
+**Owner is a value select everywhere in scope.** `OwnerSelect` is the form wrapper over
+`SearchableSelect`, and its option builder is shared with `RecordOwnerField`: active tenant
+users, `Unassigned`, the current deactivated/loading owner, email disambiguation and the
+500-user cap disclosure are one implementation. `useUserOptions` keys and authorizes the
+request by `create` / `edit`, so a form asks for the same permission as the write it serves.
+The ten in-scope call sites are the four full CRM forms, their four quick-create renderers,
+Quote and Order. The plan's **11** was a counting error: there are 12 total, and the other two
+are exactly Contract and Support, both out of scope by decision 8. Insertion Order has a
+read-only creator stamp, not an assignable form owner, so §4.7 correctly excludes it.
+
+**Existing specs moved with the control.** Assertions that drove Owner as a server-search
+text input now drive the `combobox` and select its in-memory option; the Deals list assertion
+expects the new quick-create button. No new spec was added ahead of batch 7's one verification
+pass.
+
+**Next.** Batch 7 — 5.4 close-out and its single full verification/correction pass.
+
+### Status: batch 7 — 5.4 close-out
+
+**Batch 7 is done, and 5.4 is closed.** Final lint and the production build are green.
+`check-design.sh` remains at the same two separately owned failures (`LynkSplash` in 5.9 and
+`ClientPageCreateForm` in 5.8); no 5.4 file adds a source-rule failure. Both rendered guards
+are green. The design audit now reaches **all 94 discovered routes with none unreachable**, and
+the scroll-container guard passes.
+
+**The one module sweep did its job as a correction pass, not as a claim that the inherited
+suite is clean.** Across the 118 selected tests, 88 passed and 30 exposed the already tracked
+responsive, portal, route-state and assertion debt. The affected correction set was rerun:
+Lead Quick Create, Contact/Account/Deal contextual Quick Create, the shared surface at narrow
+and full widths, and the Account, Contact, Lead, Deal, Quote and Order form workflows pass.
+The Deals spec passes **3/3** on its supported viewport, including list Quick Create, pipeline
+and record/edit. The remaining reduced-motion assertion observes Chromium's `0.00001s`
+normalisation rather than a 5.4 behaviour regression.
+
+**The browser pass covered the new surface in both themes.** Deal Quick Create was inspected
+in light and dark mode with the layout-driven sections, required marks and Owner select
+visible. The hierarchy and control states remain readable in both. Temporary visual fixtures
+and screenshots were removed after inspection.
+
+**The guard was corrected where it had been hiding coverage.** Pointer clicks can be consumed
+by the known narrow-list overlay defect, so route discovery now retries keyboard activation
+before declaring a link unreachable. That changed the audit from silently dropping whichever
+record route lost the race to deterministically walking all 94 routes; it does not relax any
+rendered rule.
+
+**The census is fully marked.** The final denominator is **74 5.4 rows**, not the provisional
+55: the earlier count omitted route shims, data helpers and the new shared `OwnerSelect` row.
+Every row is now either done or explicitly out of scope under decision 8. The final diff adds
+no backend, persistence, public-surface or delete behaviour; tenant user options stay behind
+the existing tenant-scoped endpoint and create/edit permission action.
+
+### Post-close review pass — three corrections, and one defect left open
+
+**A read-through on 2026-08-20, after batch 7 closed, found three things in the Owner sweep.
+All three are fixed; no test run accompanied the fix.**
+
+- **`Unassigned` was asserting something untrue on create forms.** `SearchableSelect` resolves
+  its trigger label by exact value match, and `UNASSIGNED_OWNER` is `""` — the same value an
+  empty create form carries. So the `Unassigned` option always matched, the trigger drew
+  `Unassigned`, and `OwnerSelect`'s own create placeholder was unreachable code. An owner left
+  empty on create is the creator, not nobody. `OwnerSelect` now passes `renderValue`: the empty
+  **create** state draws `Select owner (defaults to you)`, and only `edit` — where the value is
+  a real saved state — draws `Unassigned`. The record spine is unchanged; `Unassigned` is
+  correct there. `LeadFormFields` also gained the `FieldDescription` its three siblings already
+  had.
+- **A failed user list left an inert box.** `disabled={disabled || isLoading || isError}` went
+  quiet with nothing to explain it, where the old picker at least stayed typeable. The control
+  still disables — there is no list to offer — but `OwnerSelect` now renders the reason beneath
+  it, worded for the action: create says the record will be assigned to you, edit says the owner
+  cannot be changed right now. It carries `data-slot="owner-load-error"` rather than
+  `field-error`, so it is not picked up by the specs' single-element `field-error` locator.
+- **The resolved layout's own `placeholder` was being dropped for owner fields.** The contact
+  quick create used to pass `field.placeholder ?? …`; `OwnerSelect` hardcoded its own. It now
+  takes an optional `placeholder` and all four quick-create renderers pass `field.placeholder`,
+  so a tenant-configured placeholder survives.
+
+**Open — the narrow-list overlay defect is still unidentified.** `design-rules.spec.ts` now
+retries keyboard activation when a pointer click on the first row is intercepted, which is what
+took the audit to all 94 routes. The workaround is sound, but **the intercepting element was
+never named**: we do not know which list it is on or what is drawing over the rows. That is a
+real interaction defect on a real list — a row that cannot be clicked open — hiding behind a
+green guard. Someone has to run the audit, capture the list and the intercepting element, and
+fix it. Not 5.4's, but it must not be lost.
 
 ---
 

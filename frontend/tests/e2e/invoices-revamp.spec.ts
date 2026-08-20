@@ -110,7 +110,7 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await expect(page.getByText("Pricing and tax")).toBeVisible();
   await expect(page.getByText("Payment", { exact: true })).toBeVisible();
   await expect(page.getByText("Invoice details")).toBeVisible();
-  await expect(page.getByText("Totals")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Create invoice" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();

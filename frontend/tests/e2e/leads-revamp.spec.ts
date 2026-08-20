@@ -453,14 +453,10 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
   await expect(page.getByLabel("Email")).toBeFocused();
 
-  const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
-  await ownerPicker.fill("Ada");
-  // ArrowDown no-ops until the debounced lookup returns, so wait for the option to exist.
-  await expect(page.getByRole("option", { name: /Ada Owner/ })).toBeVisible();
-  await ownerPicker.press("ArrowDown");
-  await expect(ownerPicker).toHaveAttribute("aria-activedescendant", /-user-7$/);
-  await ownerPicker.press("Enter");
-  await expect(ownerPicker).toHaveValue("Ada Owner");
+  const ownerPicker = page.getByRole("combobox", { name: "Owner" });
+  await ownerPicker.click();
+  await page.getByRole("option", { name: /Ada Owner/ }).click();
+  await expect(ownerPicker).toHaveText(/Ada Owner/);
 
   const teamPicker = page.getByPlaceholder("Search teams (defaults to yours)");
   await teamPicker.fill("Rev");
@@ -523,7 +519,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit lead" })).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue("browser.fixture@example.com");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByPlaceholder("Search teams")).toHaveValue("Revenue");
   await expect(page.getByRole("button", { name: "Remove Enterprise tag" })).toBeVisible();
   await expect(page.getByLabel("Next follow-up")).not.toHaveValue("");

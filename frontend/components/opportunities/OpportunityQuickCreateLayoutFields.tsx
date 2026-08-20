@@ -1,18 +1,14 @@
 "use client";
 
-import { CustomFieldInput } from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import {
-  ResolvedRecordLayout,
-  type ResolvedRecordLayoutViewport,
-} from "@/components/forms/ResolvedRecordLayout";
-import {
+  LayoutDrivenQuickCreateFields,
+  type LayoutDrivenQuickCreateFieldContext,
   QuickCreateField,
-  invalidFieldKeys,
   makeQuickCreateInputId,
-  quickCreateFieldAria,
   quickCreateInputType,
-  validateQuickCreateLayout,
+  validateLayoutDrivenQuickCreate,
 } from "@/components/forms/quickCreateLayout";
 import type { OpportunityFormValue } from "@/components/opportunities/OpportunityFormFields";
 import {
@@ -22,19 +18,11 @@ import {
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
+import type { ResolvedRecordLayoutViewport } from "@/components/forms/ResolvedRecordLayout";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
-
-const CUSTOM_FIELD_TYPES = new Set<CustomFieldDefinition["field_type"]>([
-  "text",
-  "long_text",
-  "number",
-  "date",
-  "boolean",
-]);
 
 const TEXT_FIELD_KEYS = ["opportunity_name", "expected_close_date", "total_cost_of_project"] as const;
 
@@ -57,26 +45,12 @@ type Props = {
   viewport?: ResolvedRecordLayoutViewport;
 };
 
-function resolvedOpportunityFieldValue(
-  field: ResolvedRecordLayoutField,
-  value: OpportunityFormValue,
-  customValues: Record<string, unknown>,
-) {
-  if (field.field_key.startsWith("custom:")) {
-    return customValues[field.field_key.slice("custom:".length)];
-  }
-  if (field.field_key in value) return value[field.field_key as keyof OpportunityFormValue];
-  return undefined;
-}
-
 export function validateOpportunityQuickCreateLayout(
   layout: ResolvedRecordLayoutContract,
   value: OpportunityFormValue,
   customValues: Record<string, unknown>,
 ) {
-  return validateQuickCreateLayout(layout, (field) =>
-    resolvedOpportunityFieldValue(field, value, customValues),
-  );
+  return validateLayoutDrivenQuickCreate(layout, value, customValues);
 }
 
 export function OpportunityQuickCreateLayoutFields({
@@ -90,46 +64,10 @@ export function OpportunityQuickCreateLayoutFields({
   contactOrganizationFilter = null,
   viewport = "auto",
 }: Props) {
-  const locked = new Set(lockedFieldKeys);
-
-  function renderCustomField(field: ResolvedRecordLayoutField) {
-    const fieldType = field.field_type as CustomFieldDefinition["field_type"];
-    if (!CUSTOM_FIELD_TYPES.has(fieldType)) return null;
-    const fieldKey = field.field_key.slice("custom:".length);
-    const definition: CustomFieldDefinition = {
-      id: 0,
-      module_key: "sales_opportunities",
-      field_key: fieldKey,
-      label: field.label,
-      field_type: fieldType,
-      placeholder: field.placeholder,
-      help_text: field.help_text,
-      is_required: field.required,
-      is_active: true,
-      sort_order: field.position,
-    };
-    return (
-      <CustomFieldInput
-        definition={definition}
-        value={customValues[fieldKey]}
-        onChange={(nextValue) => onCustomChange(fieldKey, nextValue)}
-        disabled={field.readonly}
-        error={errors[field.field_key]}
-      />
-    );
-  }
-
-  function renderField(field: ResolvedRecordLayoutField) {
-    if (field.field_source === "custom_field" && field.field_key.startsWith("custom:")) {
-      return renderCustomField(field);
-    }
-
-    const inputId = opportunityQuickCreateInputId(field.field_key);
-    const error = errors[field.field_key] ?? null;
-    const aria = quickCreateFieldAria(field, inputId, error);
-    const isLocked = locked.has(field.field_key);
-    const disabled = field.readonly || isLocked;
-
+  function renderField(
+    field: ResolvedRecordLayoutField,
+    { inputId, error, aria, disabled }: LayoutDrivenQuickCreateFieldContext,
+  ) {
     if (field.field_key === "contact_id") {
       return (
         <QuickCreateField field={field} aria={aria} error={error}>
@@ -208,24 +146,19 @@ export function OpportunityQuickCreateLayoutFields({
     if (field.field_key === "assigned_to") {
       return (
         <QuickCreateField field={field} aria={aria} error={error}>
-          <LinkedRecordPicker
-            inputId={inputId}
-            recordType="user"
-            valueId={value.assigned_to}
-            displayValue={value.assigned_to_name}
-            onDisplayValueChange={(assigned_to_name) =>
-              onChange({ ...value, assigned_to: null, assigned_to_name })
+          <OwnerSelect
+            id={inputId}
+            label={field.label}
+            moduleKey="sales_opportunities"
+            action="create"
+            ownerId={value.assigned_to}
+            ownerName={value.assigned_to_name}
+            onChange={(assigned_to, assigned_to_name) =>
+              onChange({ ...value, assigned_to, assigned_to_name })
             }
-            onSelect={(option) =>
-              onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })
-            }
-            onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })}
-            placeholder={field.placeholder ?? "Search owners (defaults to you)"}
             disabled={disabled}
-            queryKeyPrefix="deal-quick-create-owner"
-            noResultsText="No active users matched this search."
-            sourceModuleKey="sales_opportunities"
-            sourceAction="create"
+            required={field.required}
+            placeholder={field.placeholder}
             ariaDescribedBy={aria.describedBy}
             ariaInvalid={aria.invalid}
           />
@@ -281,11 +214,16 @@ export function OpportunityQuickCreateLayoutFields({
   }
 
   return (
-    <ResolvedRecordLayout
+    <LayoutDrivenQuickCreateFields
+      moduleKey="sales_opportunities"
       layout={layout}
-      renderField={renderField}
+      inputId={opportunityQuickCreateInputId}
+      customValues={customValues}
+      onCustomChange={onCustomChange}
+      errors={errors}
+      lockedFieldKeys={lockedFieldKeys}
       viewport={viewport}
-      invalidFieldKeys={invalidFieldKeys(errors)}
+      renderSystemField={renderField}
     />
   );
 }

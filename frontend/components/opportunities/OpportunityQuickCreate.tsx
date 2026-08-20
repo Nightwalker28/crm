@@ -30,12 +30,8 @@ import {
 import { RecordLayoutContractError } from "@/hooks/useResolvedRecordLayout";
 
 /**
- * The contextual "+ Deal" surface reachable from a Contact or an Account.
- *
- * This is deliberately not wired into the Deals list: rolling Quick Create and the workspace
- * to Opportunity as a whole depends on the explicit participant model, which is a separate
- * slice. What this surface does is stop the CRM asking for a relationship it already knows.
- * The canonical /dashboard/sales/opportunities/new page remains the complete entry point.
+ * The layout-driven Deal Quick Create used by the list and contextual record actions.
+ * Context stops the CRM asking for a relationship it already knows; the list supplies none.
  */
 
 const FULL_CREATE_ROUTE = "/dashboard/sales/opportunities/new";
@@ -46,7 +42,7 @@ type Props = {
   returnFocusRef?: RefObject<HTMLElement | null>;
   onCreated?: (opportunityId: number | null) => void;
   /** The record this was opened from. Its ids are prefilled and re-validated server-side. */
-  context: QuickCreateContext<OpportunityFormValue>;
+  context?: QuickCreateContext<OpportunityFormValue>;
 };
 
 function layoutErrorMessage(error: unknown) {
@@ -84,7 +80,7 @@ export function OpportunityQuickCreate({
 }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const defaults = context.defaults ?? {};
+  const defaults = context?.defaults ?? {};
   // Only the relationship the source record actually establishes is locked. A deal opened
   // from an Account still needs its contact chosen, so that field stays editable.
   const lockedFieldKeys = (["contact_id", "organization_id"] as const).filter(
@@ -139,9 +135,11 @@ export function OpportunityQuickCreate({
       onOpenChange={onOpenChange}
       title="Create deal"
       description={
-        context.sourceModuleKey === "sales_organizations"
+        context?.sourceModuleKey === "sales_organizations"
           ? "This deal will be linked to the account you came from."
-          : "This deal will be linked to the contact you came from."
+          : context?.sourceModuleKey === "sales_contacts"
+            ? "This deal will be linked to the contact you came from."
+            : "Capture the essentials now. The full form stays available under More details."
       }
       returnFocusRef={returnFocusRef}
       isDirty={quickCreate.isDirty}
@@ -176,7 +174,7 @@ export function OpportunityQuickCreate({
           errors={quickCreate.errors}
           lockedFieldKeys={lockedFieldKeys}
           contactOrganizationFilter={
-            context.sourceModuleKey === "sales_organizations"
+            context?.sourceModuleKey === "sales_organizations"
               ? (defaults.organization_id as number | null | undefined) ?? null
               : null
           }

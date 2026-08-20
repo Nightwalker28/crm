@@ -84,7 +84,7 @@ export function QuickCreateSurface({
   showCreateAndOpen = true,
   createAndOpenLabel = "Create & open",
   moreDetailsLabel = "More details",
-  pendingLabel = "Creating...",
+  pendingLabel = "Creating…",
   submitErrorMessage = "We could not create this record. Check your entries and try again.",
   discardTitle = "Discard quick create draft?",
   discardDescription = "Your unsaved changes will be lost.",

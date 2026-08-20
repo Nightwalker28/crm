@@ -31,18 +31,22 @@ export const USER_OPTIONS_LIMIT = 500;
  * with the rows because a capped list has to be able to say so (§7.9); the caller renders
  * that, this only carries it.
  *
- * `action` is `edit` rather than `view`: the only reason to list users here is to reassign a
- * record, so the request asks for exactly the permission the write will need. A reader
- * without it gets a 403 and the field stays read-only, which is the correct answer rather
- * than a picker that fails on commit.
+ * The caller supplies the action the form will perform. A record spine asks for `edit`; a
+ * create form asks for `create`, so the list is authorized against the same write it serves.
  */
-export function useUserOptions(moduleKey: string, options?: { enabled?: boolean }) {
+export type UserOptionsAction = "create" | "edit" | "view";
+
+export function useUserOptions(
+  moduleKey: string,
+  options?: { action?: UserOptionsAction; enabled?: boolean },
+) {
+  const action = options?.action ?? "edit";
   const query = useQuery({
-    queryKey: ["linked-record-user-options", moduleKey],
+    queryKey: ["linked-record-user-options", moduleKey, action],
     queryFn: async (): Promise<UserOptionsResponse> => {
       const params = new URLSearchParams({
         module_key: moduleKey,
-        action: "edit",
+        action,
         limit: String(USER_OPTIONS_LIMIT),
       });
       const res = await apiFetch(`/linked-record-options/users?${params.toString()}`);

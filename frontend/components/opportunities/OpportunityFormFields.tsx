@@ -2,6 +2,7 @@
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { getOpportunityStageLabel, OPPORTUNITY_STAGE_ORDER } from "@/components/opportunities/opportunityStages";
@@ -100,6 +101,6 @@ export function OpportunityFormSidebarFields({ value, onChange, moduleFields, mo
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return <>
     <FormSection title="Pipeline" description="Set the stage used in pipeline reporting.">{enabled("sales_stage") ? <Field><FieldLabel>Stage</FieldLabel><Select value={value.sales_stage || "lead"} onValueChange={(sales_stage) => onChange({ ...value, sales_stage })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{OPPORTUNITY_STAGE_ORDER.map((stage) => <SelectItem key={stage} value={stage}>{getOpportunityStageLabel(stage)}</SelectItem>)}</SelectContent></Select></Field> : <p className="text-sm text-copy-muted">Pipeline stage is not enabled.</p>}</FormSection>
-    <FormSection title="Ownership" description="Assign responsibility for moving this deal forward.">{enabled("assigned_to") ? <Field><FieldLabel>Owner</FieldLabel><LinkedRecordPicker recordType="user" valueId={value.assigned_to} displayValue={value.assigned_to_name} onDisplayValueChange={(assigned_to_name) => onChange({ ...value, assigned_to: null, assigned_to_name })} onSelect={(option) => onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })} onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })} placeholder={mode === "create" ? "Search owners (defaults to you)" : "Search owners"} queryKeyPrefix="deal-form-owner" noResultsText="No active users matched this search." sourceModuleKey="sales_opportunities" sourceAction={mode} allowClear={mode === "create"} /><FieldDescription>New deals default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled.</p>}</FormSection>
+    <FormSection title="Ownership" description="Assign responsibility for moving this deal forward.">{enabled("assigned_to") ? <Field><FieldLabel htmlFor="deal-owner">Owner</FieldLabel><OwnerSelect id="deal-owner" moduleKey="sales_opportunities" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New deals default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled.</p>}</FormSection>
   </>;
 }

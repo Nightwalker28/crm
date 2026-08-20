@@ -124,10 +124,10 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
   await expect(page.getByRole("textbox", { name: "Email", exact: true })).toBeFocused();
 
-  const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
-  await ownerPicker.fill("Ada");
+  const ownerPicker = page.getByRole("combobox", { name: "Owner" });
+  await ownerPicker.click();
   await page.getByRole("option", { name: /Ada Owner/ }).click();
-  await expect(ownerPicker).toHaveValue("Ada Owner");
+  await expect(ownerPicker).toHaveText(/Ada Owner/);
   const accountPicker = page.getByPlaceholder("Search accounts");
   await accountPicker.fill("Lynk");
   await page.getByRole("option", { name: "Lynk QA" }).click();
@@ -162,7 +162,7 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await page.goto(`/dashboard/sales/contacts/${fakeContactId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit contact" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Email", exact: true })).toHaveValue("browser.contact@example.com");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByPlaceholder("Search accounts")).toHaveValue("Lynk QA");
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

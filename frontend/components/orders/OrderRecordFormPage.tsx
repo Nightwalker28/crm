@@ -8,6 +8,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
@@ -622,28 +623,15 @@ function OrderSidebar({
       >
         <Field>
           <FieldLabel htmlFor="order-owner">Owner</FieldLabel>
-          <LinkedRecordPicker
-            inputId="order-owner"
-            recordType="user"
-            valueId={form.owner_id}
-            displayValue={form.owner_name}
-            onDisplayValueChange={(owner_name) =>
-              onChange({ ...form, owner_id: null, owner_name })
+          <OwnerSelect
+            id="order-owner"
+            moduleKey="sales_orders"
+            action={mode === "edit" ? "edit" : "create"}
+            ownerId={form.owner_id}
+            ownerName={form.owner_name}
+            onChange={(owner_id, owner_name) =>
+              onChange({ ...form, owner_id, owner_name })
             }
-            onSelect={(option) =>
-              onChange({
-                ...form,
-                owner_id: option.id,
-                owner_name: option.label,
-              })
-            }
-            onClear={() =>
-              onChange({ ...form, owner_id: null, owner_name: "" })
-            }
-            placeholder="Search owners (defaults to you)"
-            queryKeyPrefix="order-page-owner"
-            sourceModuleKey="sales_orders"
-            sourceAction={mode === "edit" ? "edit" : "create"}
           />
         </Field>
       </FormSection>

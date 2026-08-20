@@ -2,6 +2,7 @@
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import RecordTagInput from "@/components/crm/RecordTagInput";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
@@ -116,20 +117,18 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
       <FieldGroup>
         {enabled("assigned_to") ? (
           <Field>
-            <FieldLabel>Owner</FieldLabel>
-            <LinkedRecordPicker
-              recordType="user"
-              valueId={value.assigned_to}
-              displayValue={value.assigned_to_name}
-              onDisplayValueChange={(assigned_to_name) => onChange({ ...value, assigned_to: null, assigned_to_name })}
-              onSelect={(option) => onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })}
-              onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })}
-              placeholder={mode === "create" ? "Search owners (defaults to you)" : "Search owners"}
-              queryKeyPrefix="lead-owner"
-              noResultsText="No active users matched this search."
-              sourceModuleKey="sales_leads"
-              sourceAction={mode}
+            <FieldLabel htmlFor="lead-owner">Owner</FieldLabel>
+            <OwnerSelect
+              id="lead-owner"
+              moduleKey="sales_leads"
+              action={mode}
+              ownerId={value.assigned_to}
+              ownerName={value.assigned_to_name}
+              onChange={(assigned_to, assigned_to_name) =>
+                onChange({ ...value, assigned_to, assigned_to_name })
+              }
             />
+            <FieldDescription>New leads default to you when no owner is selected.</FieldDescription>
           </Field>
         ) : null}
         {enabled("team_id") ? (
