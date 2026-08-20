@@ -302,6 +302,47 @@ class DocumentServiceTests(unittest.TestCase):
         self.assertEqual(total, 3)
         self.assertEqual([document.title for document in documents], ["Alpha"])
 
+    def test_list_documents_offset_pages_through_the_sorted_result(self):
+        """The library list is paged (rebuild.md 5.5); `total` stays the unpaged count."""
+        self.db.add_all(
+            [
+                Document(
+                    id=5,
+                    tenant_id=10,
+                    uploaded_by_user_id=1,
+                    title="Beta",
+                    original_filename="beta.pdf",
+                    content_type="application/pdf",
+                    extension="pdf",
+                    file_size_bytes=1_500,
+                    storage_provider="local",
+                    storage_path="tenant-10/beta.pdf",
+                    created_at=datetime(2024, 1, 3, tzinfo=timezone.utc),
+                    updated_at=datetime(2024, 1, 3, tzinfo=timezone.utc),
+                ),
+            ]
+        )
+        self.db.commit()
+
+        everything, total = list_documents(
+            self.db, tenant_id=10, limit=100, offset=0, sort_by="title", sort_direction="asc"
+        )
+        expected = [document.title for document in everything]
+        self.assertGreater(len(expected), 1)
+
+        first, first_total = list_documents(
+            self.db, tenant_id=10, limit=1, offset=0, sort_by="title", sort_direction="asc"
+        )
+        second, second_total = list_documents(
+            self.db, tenant_id=10, limit=1, offset=1, sort_by="title", sort_direction="asc"
+        )
+
+        # `total` is the unpaged count on every page — it is what drives the pager.
+        self.assertEqual(first_total, total)
+        self.assertEqual(second_total, total)
+        self.assertEqual([document.title for document in first], expected[:1])
+        self.assertEqual([document.title for document in second], expected[1:2])
+
     def test_list_documents_cursor_uses_linked_record_access_check(self):
         current_user = SimpleNamespace(id=1, tenant_id=10)
 

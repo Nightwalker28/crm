@@ -103,6 +103,14 @@ class DocumentVersionResponse(BaseModel):
 class DocumentListResponse(BaseModel):
     results: list[DocumentResponse]
     total: int
+    # The shared paged envelope (app/core/pagination.py). Optional because the same route
+    # still serves the record panels, which ask for one window and read `total` only.
+    range_start: int | None = None
+    range_end: int | None = None
+    total_count: int | None = None
+    total_pages: int | None = None
+    page: int | None = None
+    page_size: int | None = None
 
 
 class ClientDocumentResponse(BaseModel):

@@ -3210,8 +3210,9 @@ programme's two full-suite runs**.
 | ~~2~~ | ~~**The codec, and A1 + A5 in the hook**~~ | **Done** — `ed41566`. The address-bar codec beside `appendSavedViewFilterParams`, `useListAddress` as the single writer, `useSavedViews` and `usePagedList` backed by the URL, the debounce in one place. It landed on all sixteen lists with no page edited: A1 was never at the call site |
 | ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `a63091e`. `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — `8f6fa20`. POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
-| 5 | **The two stragglers** | `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component instead of two inline `RecordTable` calls |
-| 6 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
+| ~~5~~ | ~~**The documents straggler**~~ | **Done** — the toolbar, real pagination, and the backend param it needed |
+| 6 | **The client-portal straggler** | `client-portal/page.tsx` calls `RecordTable` inline twice with no module table component |
+| 7 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
 
@@ -3452,6 +3453,60 @@ deleting rather than after.
 **Next.** Batch 5 — the two migration stragglers: `documents` has no toolbar and no
 pagination, and `client-portal/page.tsx` calls `RecordTable` inline twice with no module
 table component.
+
+### Status: batch 5 — documents, and the pagination that needed a backend line
+
+**Read this first if you are picking the run up.** Batch 5 is done. Lint and build green,
+plus the backend checks the change earned: `compileall`, `verify_openapi` (357 paths, 469
+schemas), the documents module tests (46, all passing, one new), and the generated-contract
+drift check. The client-portal straggler moved to batch 6 — see the note at the end.
+
+**"No pagination" was not a missing control, it was missing data.** `documents/page.tsx`
+asked for `limit: 100` and drew whatever came back. A tenant with more than a hundred
+documents had documents **it could not reach from its own library** — not a slow list, an
+unreachable one. `GET /documents` took a `limit` and no offset, so no amount of frontend
+work could have fixed it.
+
+**The backend change is one parameter and the shared envelope.** `list_documents` takes an
+`offset` (repository and service), and the route takes `page` / `page_size` and returns
+`build_paged_response(...)` — the same `app/core/pagination.py` envelope every other list
+route returns, so `usePagedList` consumes it with no special casing.
+
+Two compatibility decisions, both deliberate:
+
+- **`limit` stays**, as the alias `page_size` falls back to. The same route serves the
+  record panels and the mail composer, which ask for one window of 25 and do not page. The
+  skill's rule is to preserve existing offset list routes, and inventing a second concept
+  for those callers would have been the drift, not the fix.
+- **`total` stays beside the envelope's `total_count`**, for the same two callers. The
+  envelope fields are optional on `DocumentListResponse`, so a paged list is an *addition*
+  to this route rather than a replacement of it.
+
+**Then documents became an ordinary list.** It goes through `usePagedList` now, which means
+it inherits batch 2's work without asking: page and page size in the address, the search
+debounce, the refreshing marker. The hand-built header row — an `h2`, a description, a
+`Select`, a bare `SearchBar` and the upload button in a three-column grid — was the toolbar
+written again by hand, and it is `ModuleListToolbar` now. `PageShell` takes
+`variant="list"`, so the rows are the only scroller like everywhere else.
+
+**No filter group and no column picker on this one, on purpose.** Documents has no
+saved-view definition, so neither control has anything to offer, and §7.9 says a control
+with nothing behind it is not drawn. The type filter (`All documents` / `Templates` /
+`Non-templates`) sits in `viewControls`, which is where a list's own scope switcher goes.
+
+**Its draft still travels in one vocabulary.** With no saved views, documents' draft is two
+fields, and both go through `useListAddress` — `search` under the same key every other list
+writes, and the type filter under `type`. The page already read `?search=` and never wrote
+it; it writes it now, so the address behaves the same way it does on a saved-view list.
+
+**The one thing to watch at close-out.** `variant="list"` puts the three storage cards and
+the storage-unavailable banner inside a full-height flex column above a `flex-1` table.
+That is the archetype's intent and the same shape every other list uses, but documents is
+the only list with fixed content above the toolbar, so the browser pass should confirm the
+cards are not squeezed and the table still gets the remaining height.
+
+**Next.** Batch 6 — `client-portal/page.tsx`, the last straggler: two inline `RecordTable`
+calls and no module table component.
 
 ---
 

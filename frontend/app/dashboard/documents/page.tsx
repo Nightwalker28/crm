@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { HardDrive, RefreshCw, Upload } from "lucide-react";
@@ -9,13 +9,18 @@ import { toast } from "sonner";
 import DocumentList from "@/components/documents/DocumentList";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { FieldDescription } from "@/components/ui/field";
+import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageShell } from "@/components/ui/PageShell";
-import SearchBar from "@/components/ui/SearchBar";
+import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useDocumentActions, useDocuments, useDocumentStorageUsage, type DocumentSortState } from "@/hooks/useDocuments";
+import { useDocumentActions, usePagedDocuments, useDocumentStorageUsage, type DocumentSortState } from "@/hooks/useDocuments";
 import { useConfirm } from "@/hooks/useConfirm";
+import { useListAddress } from "@/hooks/useListAddress";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
+import { LIST_ADDRESS_KEYS } from "@/lib/savedViewQuery";
 import type { DocumentItem } from "@/hooks/useDocuments";
+
+const DOCUMENT_TYPE_KEY = "type";
 
 function formatBytes(bytes: number) {
   if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
@@ -30,15 +35,26 @@ export default function DocumentsPage() {
   const requestedSearch = searchParams.get("search") ?? "";
   const documentIdParam = searchParams.get("documentId");
   const requestedDocumentId = documentIdParam && /^\d+$/.test(documentIdParam) ? Number(documentIdParam) : null;
+  const { updateAddress } = useListAddress();
   const [search, setSearch] = useState(requestedSearch);
-  const [documentFilter, setDocumentFilter] = useState<"all" | "templates" | "files">("all");
-  const [sort, setSort] = useState<DocumentSortState>(null);
-  const documentsQuery = useDocuments({
-    search,
-    isTemplate: documentFilter === "all" ? undefined : documentFilter === "templates",
-    limit: 100,
-    sort,
+  /**
+   * Documents has no saved views, so its draft is these two fields. They still go through
+   * `useListAddress` and the same `search` key every other list writes, so the page reads
+   * and writes one vocabulary rather than inventing a second (rebuild.md 5.5).
+   */
+  const [documentFilter, setDocumentFilter] = useState<"all" | "templates" | "files">(() => {
+    const requested = searchParams.get(DOCUMENT_TYPE_KEY);
+    return requested === "templates" || requested === "files" ? requested : "all";
   });
+  const [sort, setSort] = useState<DocumentSortState>(null);
+  const filters = useMemo<SavedViewFilters>(
+    () => ({
+      search,
+      ...(documentFilter === "all" ? {} : { is_template: documentFilter === "templates" }),
+    }),
+    [documentFilter, search],
+  );
+  const documentsQuery = usePagedDocuments(filters, sort);
   const storageUsageQuery = useDocumentStorageUsage();
   const { deleteDocument, isDeletingDocument } = useDocumentActions();
   const storageUsage = storageUsageQuery.data;
@@ -54,6 +70,15 @@ export default function DocumentsPage() {
   useEffect(() => {
     setSearch(requestedSearch);
   }, [requestedSearch]);
+
+  useEffect(() => {
+    updateAddress((next) => {
+      if (search.trim()) next.set(LIST_ADDRESS_KEYS.search, search.trim());
+      else next.delete(LIST_ADDRESS_KEYS.search);
+      if (documentFilter === "all") next.delete(DOCUMENT_TYPE_KEY);
+      else next.set(DOCUMENT_TYPE_KEY, documentFilter);
+    });
+  }, [documentFilter, search, updateAddress]);
 
   async function handleDelete(document: DocumentItem) {
     const confirmed = await confirm({
@@ -74,7 +99,7 @@ export default function DocumentsPage() {
   // No `description` on the shell: the library card below carries that sentence visibly,
   // and the shell's copy is sr-only, so supplying both announces it twice.
   return (
-    <PageShell title="Documents">
+    <PageShell variant="list" title="Documents">
       <div className="grid gap-3 md:grid-cols-3">
         <Card variant="status" className="px-4 py-3">
           <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Used</div>
@@ -98,50 +123,61 @@ export default function DocumentsPage() {
         </div>
       ) : null}
 
-      <Card className="px-5 py-5">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Document Library</h2>
-            <FieldDescription className="mt-1">Standalone uploads and documents linked from CRM records.</FieldDescription>
-          </div>
-          <div className="grid gap-2 md:grid-cols-[180px_288px_auto]">
-            <Select value={documentFilter} onValueChange={(value) => setDocumentFilter(value as "all" | "templates" | "files")}>
-              <SelectTrigger className="w-full" aria-label="Document type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All documents</SelectItem>
-                <SelectItem value="templates">Templates</SelectItem>
-                <SelectItem value="files">Non-templates</SelectItem>
-              </SelectContent>
-            </Select>
-            <SearchBar value={search} onChange={setSearch} placeholder="Search documents" className="md:w-full" />
-            <Button asChild><Link href="/dashboard/documents/upload"><Upload className="h-4 w-4" />Upload</Link></Button>
-          </div>
-        </div>
-        <div className="mt-4">
-          {/* One data view, one set of states: the table supplies loading, empty and error
-              (§7.4). This page used to draw all three itself and only mount the table once
-              rows had arrived, so the same list spoke three different vocabularies. */}
-          <DocumentList
-            documents={documentsQuery.data?.results ?? []}
-            highlightedDocumentId={requestedDocumentId}
-            emptyText={
-              search || documentFilter !== "all"
-                ? "Adjust the search or document filter."
-                : "Upload the first controlled document to this tenant library."
-            }
-            onDelete={(document) => void handleDelete(document)}
-            isDeleting={isDeletingDocument}
-            sort={sort}
-            onSortChange={setSort}
-            isLoading={documentsQuery.isLoading}
-            isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
-            hasError={Boolean(documentsQuery.error)}
-            onRetry={() => void documentsQuery.refetch()}
-          />
-        </div>
-      </Card>
+      {/* The library is a list, so it is drawn as one (design.md §4.7 archetype 1). It used
+          to be a `Card` with a hand-built header row — an `h2`, a description, a `Select`, a
+          bare `SearchBar` and the upload button in a three-column grid — which is the
+          toolbar written again by hand, one page at a time. There is no filter group and no
+          column picker: documents has no saved-view definition, so neither control has
+          anything to offer and §7.9 says an empty control is not drawn. */}
+      <ModuleListToolbar
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Search documents"
+        viewControls={
+          <Select value={documentFilter} onValueChange={(value) => setDocumentFilter(value as "all" | "templates" | "files")}>
+            <SelectTrigger className="w-48" aria-label="Document type">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All documents</SelectItem>
+              <SelectItem value="templates">Templates</SelectItem>
+              <SelectItem value="files">Non-templates</SelectItem>
+            </SelectContent>
+          </Select>
+        }
+        primaryAction={<Button asChild><Link href="/dashboard/documents/upload"><Upload />Upload</Link></Button>}
+      />
+      {/* One data view, one set of states: the table supplies loading, empty and error
+          (§7.4). This page used to draw all three itself and only mount the table once rows
+          had arrived, so the same list spoke three different vocabularies. */}
+      <DocumentList
+        documents={documentsQuery.items}
+        highlightedDocumentId={requestedDocumentId}
+        emptyText={
+          search || documentFilter !== "all"
+            ? "Adjust the search or document filter."
+            : "Upload the first controlled document to this tenant library."
+        }
+        onDelete={(document) => void handleDelete(document)}
+        isDeleting={isDeletingDocument}
+        sort={sort}
+        onSortChange={setSort}
+        isLoading={documentsQuery.isLoading}
+        isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
+        hasError={Boolean(documentsQuery.error)}
+        onRetry={() => void documentsQuery.refresh()}
+      />
+      <Pagination
+        page={documentsQuery.page}
+        totalPages={documentsQuery.totalPages}
+        totalCount={documentsQuery.totalCount}
+        rangeStart={documentsQuery.rangeStart}
+        rangeEnd={documentsQuery.rangeEnd}
+        pageSize={documentsQuery.pageSize}
+        isRefreshing={documentsQuery.isFetching && !documentsQuery.isLoading}
+        onPageChange={documentsQuery.goToPage}
+        onPageSizeChange={documentsQuery.onPageSizeChange}
+      />
     </PageShell>
   );
 }

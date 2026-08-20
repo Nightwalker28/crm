@@ -225,7 +225,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **out of scope** (scoping decision 8) — the module may be removed|
 | `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | done; **out of scope** (scoping decision 8) — the module may be removed |
 | `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | |
-| `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | |
+| `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | **done, batch 5** — the toolbar, real pagination on a new `page`/`page_size` backend param, `variant="list"`, and both draft fields written to the address |
 | `documents/upload/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `custom/[moduleKey]/page.tsx` | 263 | 5.5 | rebuild | **B.2** — filters collected and silently discarded. Filed, not fixed here | |
 | `custom/[moduleKey]/new/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -367,7 +367,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `tasks/TasksTable.tsx` | 171 | 5.5 | adopt | Priority becomes a category — no tone (R5) | |
 | `catalog/CatalogRecordsTable.tsx` | 289 | 5.5 | adopt | | |
 | `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | |
-| `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | |
+| `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | **done, batch 5 — unchanged, deliberately.** It was already on `RecordTable`; the toolbar and pager were the page's to supply |
 | `finance/insertionOrderList.tsx` | 265 | 5.5 | adopt | | |
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | **done, batch 4** — selection props removed (**A6**) |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | **batch 4** — selection props removed (**A6**); the row action was always the verb. The overdue tone is still open |

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.pagination import build_paged_response, create_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.documents.schema import (
@@ -163,6 +164,11 @@ def get_documents(
     module_key: str | None = Query(default=None, max_length=100),
     entity_id: str | None = Query(default=None, max_length=100),
     is_template: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
+    # The library list had no paging at all and asked for one window of `limit` rows. The
+    # scoped panels that mount this route inside a record still do, so `limit` stays as the
+    # alias for `page_size` rather than becoming a second concept.
     limit: int = Query(default=50, ge=1, le=100),
     sort_by: str | None = Query(default=None, max_length=80),
     sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
@@ -171,6 +177,7 @@ def get_documents(
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "view")),
 ):
+    pagination = create_pagination(page, page_size or limit)
     documents, total = list_documents(
         db,
         tenant_id=current_user.tenant_id,
@@ -178,12 +185,16 @@ def get_documents(
         module_key=module_key,
         entity_id=entity_id,
         is_template=is_template,
-        limit=limit,
+        limit=pagination.limit,
+        offset=pagination.offset,
         sort_by=sort_by,
         sort_direction=sort_direction,
         current_user=current_user,
     )
-    return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
+    results = [DocumentResponse.model_validate(document) for document in documents]
+    # `total` is kept beside the shared envelope: the record panels and the mail composer
+    # read it, and a paged list is an addition to this route rather than a replacement.
+    return {**build_paged_response(results, total, pagination), "total": total}
 
 
 @router.get("/cursor")
