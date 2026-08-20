@@ -5,15 +5,7 @@ import { Plus, Trash2 } from "lucide-react";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
+import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
 
@@ -30,11 +22,239 @@ export function areTransactionItemsValid(items: TransactionLineItem[]) { return 
 export function serializeTransactionItems(items: TransactionLineItem[]) { return items.map((item, index) => ({ name: item.name.trim(), description: item.description.trim() || null, quantity: item.quantity, unit_price: item.unit_price, discount_amount: item.discount_amount, tax_amount: item.tax_amount, sort_order: index })); }
 export function formatTransactionMoney(value: number, currency: string) { return formatMoney(value, currency, { maximumFractionDigits: 2 }) ?? EMPTY_CELL_VALUE; }
 
-export function TransactionLineItemsEditor({ items, onChange, currency, error, idPrefix, itemLabel = "Item", showDescription = true, showAdjustments = true }: { items: TransactionLineItem[]; onChange: (items: TransactionLineItem[]) => void; currency: string; error?: string | null; idPrefix: string; itemLabel?: string; showDescription?: boolean; showAdjustments?: boolean }) {
-  function updateItem(index: number, field: ItemField, value: string) { onChange(items.map((item, itemIndex) => itemIndex === index ? { ...item, [field]: value } : item)); }
-  function addItem(focusField: ItemField = "name") { const nextIndex = items.length; onChange([...items, createTransactionLineItem(idPrefix)]); requestAnimationFrame(() => document.querySelector<HTMLInputElement>(`[data-${idPrefix}-row="${nextIndex}"][data-transaction-field="${focusField}"]`)?.focus()); }
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) { if (event.key !== "Enter") return; event.preventDefault(); if (index === items.length - 1) addItem(field); else document.querySelector<HTMLInputElement>(`[data-${idPrefix}-row="${index + 1}"][data-transaction-field="${field}"]`)?.focus(); }
-  return <FormSection title="Line items" description="Press Enter in a cell to move to the same field on the next row; Enter on the last row adds another item."><div className="overflow-x-auto"><Table className={`${showDescription && showAdjustments ? "min-w-[900px]" : "min-w-[620px]"} border-separate border-spacing-0`}><TableHeader><TableHeaderRow><TableHead className="px-2 py-2">{itemLabel}</TableHead>{showDescription ? <TableHead className="px-2 py-2">Description</TableHead> : null}<TableHead className="w-24 px-2 py-2">Qty</TableHead><TableHead className="w-32 px-2 py-2">Unit price</TableHead>{showAdjustments ? <><TableHead className="w-28 px-2 py-2">Discount</TableHead><TableHead className="w-28 px-2 py-2">Tax</TableHead></> : null}<TableHead className="w-32 px-2 py-2 text-right">Total</TableHead><TableHead className="w-12" aria-label="Actions" /></TableHeaderRow></TableHeader><TableBody>{items.map((item, index) => <TableRow key={item.key}><ItemInput idPrefix={idPrefix} index={index} field="name" value={item.name} onChange={updateItem} onKeyDown={handleKeyDown} placeholder="Service or product" />{showDescription ? <ItemInput idPrefix={idPrefix} index={index} field="description" value={item.description} onChange={updateItem} onKeyDown={handleKeyDown} placeholder="Optional details" /> : null}<ItemInput idPrefix={idPrefix} index={index} field="quantity" value={item.quantity} onChange={updateItem} onKeyDown={handleKeyDown} type="number" /><ItemInput idPrefix={idPrefix} index={index} field="unit_price" value={item.unit_price} onChange={updateItem} onKeyDown={handleKeyDown} type="number" />{showAdjustments ? <><ItemInput idPrefix={idPrefix} index={index} field="discount_amount" value={item.discount_amount} onChange={updateItem} onKeyDown={handleKeyDown} type="number" /><ItemInput idPrefix={idPrefix} index={index} field="tax_amount" value={item.tax_amount} onChange={updateItem} onKeyDown={handleKeyDown} type="number" /></> : null}<TableCell className="px-2 py-2 text-right text-sm font-medium tabular-nums text-copy-primary">{formatTransactionMoney(transactionLineTotal(item), currency)}</TableCell><TableCell className="px-1 py-2"><Button type="button" variant="ghost" size="icon" aria-label={`Remove ${item.name || `line ${index + 1}`}`} disabled={items.length === 1} onClick={() => onChange(items.filter((_, itemIndex) => itemIndex !== index))}><Trash2 /></Button></TableCell></TableRow>)}</TableBody></Table></div>{error ? <p role="alert" className="mt-3 text-sm text-state-danger">{error}</p> : null}<Button type="button" variant="outline" className="mt-4" onClick={() => addItem()}><Plus />Add line item</Button></FormSection>;
+/**
+ * The editable grid inside a line-item document (design.md §7.10, `variant="lineItems"`).
+ *
+ * It is the one editable table in the app, and the reason the variant exists rather than a
+ * second table: the difference from a module list is *shape* — an input per cell, an
+ * add/remove row, Enter walking down a column — not a different set of rules about
+ * padding, scroll region or states. It used to hand-assemble a raw `Table` with two
+ * hardcoded `min-w-[Npx]` values chosen by eye; the min-width is derived from the columns
+ * actually drawn now, so hiding Description or the adjustments narrows the grid instead of
+ * leaving a scrollbar behind.
+ */
+export function TransactionLineItemsEditor({
+  items,
+  onChange,
+  currency,
+  error,
+  idPrefix,
+  itemLabel = "Item",
+  showDescription = true,
+  showAdjustments = true,
+}: {
+  items: TransactionLineItem[];
+  onChange: (items: TransactionLineItem[]) => void;
+  currency: string;
+  error?: string | null;
+  idPrefix: string;
+  itemLabel?: string;
+  showDescription?: boolean;
+  showAdjustments?: boolean;
+}) {
+  function updateItem(index: number, field: ItemField, value: string) {
+    onChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)));
+  }
+
+  function focusCell(index: number, field: ItemField) {
+    document.querySelector<HTMLInputElement>(`[data-${idPrefix}-row="${index}"][data-transaction-field="${field}"]`)?.focus();
+  }
+
+  function addItem(focusField: ItemField = "name") {
+    const nextIndex = items.length;
+    onChange([...items, createTransactionLineItem(idPrefix)]);
+    requestAnimationFrame(() => focusCell(nextIndex, focusField));
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    if (index === items.length - 1) addItem(field);
+    else focusCell(index + 1, field);
+  }
+
+  const columns: RecordTableColumn<TransactionLineItem>[] = [
+    {
+      key: "name",
+      label: itemLabel,
+      size: "lg",
+      render: (item: TransactionLineItem) => (
+        <ItemInput
+          idPrefix={idPrefix}
+          index={items.indexOf(item)}
+          field="name"
+          value={item.name}
+          onChange={updateItem}
+          onKeyDown={handleKeyDown}
+          placeholder="Service or product"
+        />
+      ),
+    },
+    ...(showDescription
+      ? [
+        {
+          key: "description",
+          label: "Description",
+          size: "lg" as const,
+          render: (item: TransactionLineItem) => (
+            <ItemInput
+              idPrefix={idPrefix}
+              index={items.indexOf(item)}
+              field="description"
+              value={item.description}
+              onChange={updateItem}
+              onKeyDown={handleKeyDown}
+              placeholder="Optional details"
+            />
+          ),
+        },
+        ]
+      : []),
+    {
+      key: "quantity",
+      label: "Qty",
+      size: "sm",
+      render: (item: TransactionLineItem) => (
+        <ItemInput
+          idPrefix={idPrefix}
+          index={items.indexOf(item)}
+          field="quantity"
+          value={item.quantity}
+          onChange={updateItem}
+          onKeyDown={handleKeyDown}
+          type="number"
+        />
+      ),
+    },
+    {
+      key: "unit_price",
+      label: "Unit price",
+      size: "sm",
+      render: (item: TransactionLineItem) => (
+        <ItemInput
+          idPrefix={idPrefix}
+          index={items.indexOf(item)}
+          field="unit_price"
+          value={item.unit_price}
+          onChange={updateItem}
+          onKeyDown={handleKeyDown}
+          type="number"
+        />
+      ),
+    },
+    ...(showAdjustments
+      ? [
+        {
+          key: "discount_amount",
+          label: "Discount",
+          size: "sm" as const,
+          render: (item: TransactionLineItem) => (
+            <ItemInput
+              idPrefix={idPrefix}
+              index={items.indexOf(item)}
+              field="discount_amount"
+              value={item.discount_amount}
+              onChange={updateItem}
+              onKeyDown={handleKeyDown}
+              type="number"
+            />
+          ),
+        },
+        {
+          key: "tax_amount",
+          label: "Tax",
+          size: "sm" as const,
+          render: (item: TransactionLineItem) => (
+            <ItemInput
+              idPrefix={idPrefix}
+              index={items.indexOf(item)}
+              field="tax_amount"
+              value={item.tax_amount}
+              onChange={updateItem}
+              onKeyDown={handleKeyDown}
+              type="number"
+            />
+          ),
+        },
+        ]
+      : []),
+    {
+      key: "line_total",
+      label: "Total",
+      align: "right",
+      size: "sm",
+      render: (item: TransactionLineItem) => (
+        <span className="text-sm font-medium tabular-nums text-copy-primary">
+          {formatTransactionMoney(transactionLineTotal(item), currency)}
+        </span>
+      ),
+    },
+  ];
+
+  return (
+    <FormSection
+      title="Line items"
+      description="Press Enter in a cell to move to the same field on the next row; Enter on the last row adds another item."
+    >
+      <RecordTable
+        variant="lineItems"
+        shellVariant="nested"
+        label="Line items"
+        columns={columns}
+        rows={items}
+        rowKey={(item) => item.key}
+        rowActions={(item) => (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={`Remove ${item.name || `line ${items.indexOf(item) + 1}`}`}
+            disabled={items.length === 1}
+            onClick={() => onChange(items.filter((candidate) => candidate.key !== item.key))}
+          >
+            <Trash2 />
+          </Button>
+        )}
+      />
+      {error ? <p role="alert" className="mt-3 text-sm text-state-danger">{error}</p> : null}
+      <Button type="button" variant="outline" className="mt-4" onClick={() => addItem()}>
+        <Plus />Add line item
+      </Button>
+    </FormSection>
+  );
 }
 
-function ItemInput({ idPrefix, index, field, value, onChange, onKeyDown, type = "text", placeholder }: { idPrefix: string; index: number; field: ItemField; value: string; onChange: (index: number, field: ItemField, value: string) => void; onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) => void; type?: string; placeholder?: string }) { return <TableCell className="px-1 py-2"><Input {...{ [`data-${idPrefix}-row`]: index }} data-transaction-field={field} type={type} min={type === "number" ? "0" : undefined} step={type === "number" ? "0.01" : undefined} value={value} placeholder={placeholder} onChange={(event) => onChange(index, field, event.target.value)} onKeyDown={(event) => onKeyDown(event, index, field)} aria-label={`${field.replaceAll("_", " ")} line ${index + 1}`} /></TableCell>; }
+function ItemInput({
+  idPrefix,
+  index,
+  field,
+  value,
+  onChange,
+  onKeyDown,
+  type = "text",
+  placeholder,
+}: {
+  idPrefix: string;
+  index: number;
+  field: ItemField;
+  value: string;
+  onChange: (index: number, field: ItemField, value: string) => void;
+  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) => void;
+  type?: string;
+  placeholder?: string;
+}) {
+  return (
+    <Input
+      {...{ [`data-${idPrefix}-row`]: index }}
+      data-transaction-field={field}
+      type={type}
+      min={type === "number" ? "0" : undefined}
+      step={type === "number" ? "0.01" : undefined}
+      value={value}
+      placeholder={placeholder}
+      onChange={(event) => onChange(index, field, event.target.value)}
+      onKeyDown={(event) => onKeyDown(event, index, field)}
+      aria-label={`${field.replaceAll("_", " ")} line ${index + 1}`}
+    />
+  );
+}

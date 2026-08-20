@@ -17,7 +17,6 @@ import {
 } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
 import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
@@ -29,17 +28,8 @@ import {
   RecordSpineTrack,
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
-import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
+import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import type { Order } from "@/hooks/sales/useOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
@@ -338,9 +328,6 @@ function OrderOverview({
     );
   }
 
-  const money = (value: string | number | null | undefined) =>
-    formatMoney(value, order.currency) ?? EMPTY_CELL_VALUE;
-
   return (
     <div className="grid gap-4">
       <ReadOnlyRecordLayout
@@ -354,50 +341,7 @@ function OrderOverview({
         }
       />
       {order.items?.length ? (
-        <Card className="px-5 py-5">
-          <SectionHeading>Line items</SectionHeading>
-          <div className="mt-4 overflow-x-auto">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <TableHead className="px-3 py-2">Item</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Quantity</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Unit price</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Discount</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Tax</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Total</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {order.items.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="px-3 py-3">
-                      <div className="font-medium text-copy-primary">{item.name}</div>
-                      {item.description ? (
-                        <div className="mt-1 text-xs text-copy-muted">{item.description}</div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {Number(item.quantity)}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {money(item.unit_price)}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {money(item.discount_amount)}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {money(item.tax_amount)}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
-                      {money(item.line_total)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+        <TransactionLineItemsTable items={order.items} currency={order.currency} />
       ) : null}
     </div>
   );

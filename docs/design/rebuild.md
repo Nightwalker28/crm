@@ -2744,8 +2744,8 @@ sub-phase.
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
 | ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — `3d86163`. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
 | ~~5~~ | ~~**The line-item documents**~~ | **Done** — `TransactionTotals` and three adopters, the invoice's missing `Total` row, the order's either-or `RequiredMark`s, the section names taken from the record layout, 18 unassociated labels. See the status below |
-| ~~6~~ | ~~**A3 — one quick-create pattern, and the deals list**~~ | **Done** — the shared layout/custom-field renderer owns the repeatable frame while four module renderers keep their domain rules; Lead joined the shared state machine; the deals list and its empty state open `OpportunityQuickCreate`; every in-scope form Owner uses `SearchableSelect`. Quick create on the nine modules that lack one stays with the crm-evolution roll |
-| ~~7~~ | ~~**Close-out, and 5.4's only verification pass**~~ | **Done** — source guard at the two known failures, rendered guards green, 118 module tests swept and the in-scope correction set rerun, dark/light browser pass, all 74 census rows marked |
+| ~~6~~ | ~~**A3 — one quick-create pattern, and the deals list**~~ | **Done** — `ac5b16c`. The shared layout/custom-field renderer owns the repeatable frame while four module renderers keep their domain rules; Lead joined the shared state machine; the deals list and its empty state open `OpportunityQuickCreate`; every in-scope form Owner uses `SearchableSelect`. Quick create on the nine modules that lack one stays with the crm-evolution roll |
+| ~~7~~ | ~~**Close-out, and 5.4's only verification pass**~~ | **Done** — `ac5b16c`. Source guard at the two known failures, rendered guards green, 118 module tests swept and the in-scope correction set rerun, dark/light browser pass, all 74 census rows marked |
 
 ### Status: batch 5 — the line-item documents, committed as `cafa456`
 
@@ -3021,7 +3021,9 @@ programme** (scoping decision 8), so **16 move**. `contracts/page.tsx` and
 `support/cases/page.tsx` drop out of 5.5's list-workflow sweep for the same reason. The variant
 set is decided in 5.0, so this is execution rather than discovery.
 
-**Move to `RecordTable` as-is — lists wearing a different coat (11):**
+**Move to `RecordTable` as-is — lists wearing a different coat (11).** *Corrected below:
+these eleven, and `reports/page.tsx`, are owned by 5.6 and 5.7 and move when their pages
+are rebuilt. Read "What the measurement says now" before acting on this list.*
 
 `settings/customer-groups/page.tsx` · `settings/modules/page.tsx` ·
 `settings/modules/[moduleId]/page.tsx` · `settings/permissions/page.tsx` ·
@@ -3093,6 +3095,201 @@ correctly either way.
   component.
 
 **Full suite runs once at the end of this sub-phase.**
+
+### What the measurement says now — re-measured 2026-08-20, at the start of the sub-phase
+
+The brief above was written in 5.0. Three of its numbers have moved, and one of them
+changes what gets built.
+
+- **18 files import `components/ui/Table` outside the three primitives — and only four of
+  them are 5.5's.** Neither out-of-scope table is among the 18: `ContractsTable` and
+  `SupportCasesTable` reached `RecordTable` before decision 8 was taken, so the "18 raw,
+  16 move" arithmetic is stale in the harmless direction. What is *not* harmless is the
+  ownership. **The census assigns every one of the twelve settings, automation,
+  integration, reports and dashboard tables to 5.6 or 5.7**, and `settings/modules/
+  [moduleId]` already carries the precedent in writing — 5.4 took its tab strip and left
+  the row reading *"the raw `Table` stays 5.6's"*.
+
+  **That is the ruling, and 5.0's list is corrected by it.** The census rule is that the
+  owner is the sub-phase which *rebuilds* the file, and 5.6 rebuilds all 23 settings pages
+  while 5.7 rebuilds reports and the dashboard. Swapping those tables here and rebuilding
+  the pages around them one sub-phase later is the same file done twice, which is exactly
+  the cost decision 9 was taken to stop paying. **So 5.5 owns the table *primitive* and
+  the list *workflow*; each of the twelve moves when its own page is rebuilt**, and their
+  census rows keep their existing owner.
+
+  The consequence to carry forward: **R10's "only three files may import `Table`" becomes
+  true at the end of 5.7, not 5.5.** The source-level check that enforces it is 5.10's
+  either way, so nothing is lost — but a run reading R10 at the end of 5.5 and finding
+  twelve importers should read this paragraph, not open a defect.
+
+  What is left here is four files: `TransactionLineItemsEditor` and the three record
+  line-item tables.
+
+- **`variant="lineItems"` has one editable consumer, not five.** The three form pages
+  share `TransactionLineItemsEditor` already — 5.4 batch 5 hoisted their totals and left
+  the grid. The three *record* line-item tables (quote, order, POS invoice) are
+  **read-only**: they render `item.line_total`, carry no inputs and no add-row. They are
+  `readOnly`, the same variant the two portal tables take. R10's consumer column is
+  corrected below; **the variant set itself does not change** — it is still three.
+- **`density` is not a prop on `RecordTable` and must not become one.** R10 listed it
+  beside `selectable` and `rowActions`. It is already an app-wide preference:
+  `useTableDensity` feeds a context inside `Table`, which picks the cell padding. It is
+  satisfied one level below `RecordTable` and stays there.
+
+**R10, corrected:**
+
+| Variant | Shape | Consumers, measured |
+|---|---|---|
+| `default` | selection, sort, row-open, pagination | the 24 module lists + the 12 settings / automation / integration / reports lists that move here |
+| `lineItems` | editable rows, add and remove row, Enter walks the column; no selection, no sort, no pagination | **1** — `TransactionLineItemsEditor`, behind the quote, order and POS invoice form pages |
+| `readOnly` | no selection, no sort, no row-open | **5** — the quote / order / invoice record line-item tables, plus the two portal tables (5.8) |
+
+### The design decision — the address bar holds the draft saved view
+
+The table half of this sub-phase is mechanical. The workflow half is not, and it does not
+survive being done sixteen times.
+
+**What the measurement shows.** `app/dashboard/sales/leads/page.tsx` is 158 lines, and
+about ninety of them are a composition every list repeats verbatim: `useModuleCustomFields`
+→ `useModuleFieldConfigs` → `buildModuleViewDefinition` → `useSavedViews` →
+`resolveVisibleColumns` → `resolveSavedViewFilters` → a hand-rolled sort mapping → a
+hand-rolled selection pair → toolbar → inline filters → table → `Pagination`. **That
+repetition is why A1, A2 and A5 are the shape they are.** A1 is 15 of 16 because no owner
+holds the state; A2 is 1 of 16 because `ColumnPicker` writes into `draftConfig`, and a
+draft that only exists in React state has nowhere to go except a saved view the operator
+did not want; A5 is 14 of 14 because there is no single place a keystroke passes through.
+Three appendix items, one missing owner.
+
+**The decision: the URL is the draft saved view.** Lynk already has a canonical shape for
+list state — `SavedViewConfig`: `visible_columns`, `filters`, `sort` — and a server-side
+place to persist it. What it lacks is the *unsaved* copy. So the address bar holds exactly
+that object, one serializer, every list:
+
+```
+/dashboard/sales/leads?view=12&q=acme&sort=-updated_at&cols=name,status,owner&page=4
+```
+
+`view` names what the draft started from; everything after it is the divergence.
+"Save view" stops being a way to keep your filters and becomes what it says — a promotion
+of the state already in the address bar. Back from a record lands on page 4 of the
+filtered list because the list state *is* the address, not because a page remembered it.
+
+**Why this and not the two cheaper answers:**
+
+- **Per-page `useSearchParams` wiring.** Sixteen pages read and write their own params.
+  Cheapest per page, and it rebuilds the exact drift this sub-phase exists to delete —
+  sixteen param vocabularies, `?search=` on one list and `?q=` on the next, and A2 still
+  unanswered because the columns are still not in an address.
+- **`sessionStorage`, or Next's history state, restored on back.** Fixes the back-button
+  symptom and nothing else. The list still cannot be sent to a colleague, `ColumnPicker`
+  still has nowhere to write, and state silently resurrecting on a *fresh* open is a worse
+  default than page 1.
+
+**Calibration.** *Would I have produced this for any CRM?* Putting filters in the query
+string, yes — that is ordinary. What is Lynk's is that the serialized object is not a bag
+of query params invented for the address bar: it is `SavedViewConfig`, the same type the
+saved-view API already stores, so there is one vocabulary and the URL and the server are
+two destinations for one shape. That only works because saved views were built first.
+
+**Where it lives.** `lib/savedViewQuery.ts` already serializes a `SavedViewFilters` into
+`URLSearchParams` for the *request*. The address-bar codec is its sibling in the same file,
+and `useSavedViews` gains the URL as its state backing rather than each page gaining a
+`useSearchParams`.
+
+### What is left, in order
+
+Cadence is decision 9: per batch, `npm run lint` + `npm run build`, one commit, one
+`Status` block. `check-design.sh`, both rendered guards, the module specs and the browser
+pass run once, in the close-out batch — which for 5.5 also carries **the first of the
+programme's two full-suite runs**.
+
+| # | Batch | Notes |
+|---|---|---|
+| 1 | **`RecordTable`'s two variants, and the empty-state defect** | `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
+| 2 | **The codec, and A1 + A5 in the hook** | The address-bar codec beside `appendSavedViewFilterParams`; `useSavedViews` backed by the URL; the debounce in one place. Proven on two lists, not sixteen |
+| 3 | **The roll — A1, A5 and A2 across the sixteen lists** | Every list on the URL-backed hook; `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it. Minus `contracts` and `support/cases` (decision 8) |
+| 4 | **A6, A7, and the two stragglers** | POS's selection with no verb and payments' 3-row answer; the payments header button that is the slower path; `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component |
+| 5 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
+
+### Status: batch 1 — the two variants, and the empty state that was never centred
+
+**Read this first if you are picking the run up.** Batch 1 is done. Cadence is decision 9:
+`npm run lint` and `npm run build`, both green, nothing else. `check-design.sh` was run at
+the *start* of the sub-phase as the policy requires and is at **2 of 14, the known
+baseline** (`LynkSplash` 5.9, `ClientPageCreateForm` 5.8). The rendered guards, the specs
+and the browser pass are batch 5's.
+
+**The load-bearing question of 5.5 was answered, and the answer was not the one the census
+predicted.** R10 asked whether `RecordTable` could carry an editable row without
+contorting, and required the finding to be written down and taken to the owner if it could
+not. It can, and it needed **one `cva` variant and no new structure**: `lineItems` is
+`px-2 py-2` on the cell, no selection column, no sort affordance, no row-open gesture. The
+Enter-walks-the-column behaviour that makes the grid usable was always call-site logic
+inside the cell renderers, and it stays there — `RecordTable` never needed to know about
+it. No second table, no exemption, nothing to escalate.
+
+**What the census got wrong was the count, not the design.** It listed five `lineItems`
+consumers: three form pages, `TransactionLineItemsEditor`, and the three record pages. In
+fact the three form pages *are* `TransactionLineItemsEditor` — 5.4 batch 5 shared it — so
+there is exactly **one** editable grid in the app. And the three record line-item tables
+are **read-only**: they render `item.line_total`, hold no inputs and have no add-row. They
+are `readOnly`, the same variant the two portal tables take in 5.8. So the variant set is
+unchanged at three, and its consumer split is 1 editable / 5 read-only.
+
+**The three record tables were one component written three times** — the `SummaryRow` story
+from 5.4 batch 5, one level up. Quote and order were character-identical at six columns;
+POS is the same table at four. They are
+`components/transactions/TransactionLineItemsTable.tsx` now, and each page's copy went from
+~40 lines of hand-assembled `thead`/`tbody` to one element. Three hand-rolled
+`overflow-x-auto` wrappers went with them: `ModuleTableShell` is the scroll region, and
+`shellVariant="nested"` stops it drawing a second panel edge inside the `Card`'s (§4.5).
+Two local `money()` closures and their `EMPTY_CELL_VALUE` imports went too — `Money` is the
+primitive and it already spells the empty cell.
+
+**The empty-state defect is fixed, and the fix moved three states, not one.** 5.3 close-out
+measured it on the contact record's Files tab: `clientWidth 580 / scrollWidth 920`, an
+888px empty state starting at `left: 662`. The cause is that a `td colSpan` is laid out
+across the table's derived `min-width`, so any table wider than the region it scrolls
+inside pushes its own empty state out of view. Permission-denied, error and empty now
+render as a **block sibling of the table inside the shell**, which takes the scroll
+container's *content* width — the visible one — with `sticky left-0` holding it at the
+visible left edge while the columns scroll under it. It carries
+`data-slot="record-table-state"`, so 5.10 has something to assert on.
+
+**Loading deliberately stayed inside the table.** Skeleton rows are column-shaped and
+*should* span the columns they stand in for; they were never the bug. What changed is that
+`renderBody` now returns `null` whenever a state is showing, so the header row survives and
+the box appears under it rather than inside it.
+
+**Two smaller decisions, recorded because they are contracts now:**
+
+- **The variant is enforced, not advisory.** A `readOnly` table handed a `selection` draws
+  no checkboxes; sort heads only appear on `default`. The wrong variant is visible
+  immediately instead of shipping as a subtle difference.
+- **`emptyState` is a discriminated union, not an optional prop.** §7.4 makes the empty
+  state mandatory precisely because every page that *could* omit it did. `lineItems` may
+  omit it — a form's grid never empties, it has a minimum of one row — and the two list
+  variants still cannot.
+
+**Row hover is now variant-aware.** `TableRow` always lit up under the pointer. On a
+`readOnly` or `lineItems` row that is an affordance pointing at nothing, so both are
+`quiet`.
+
+**Also removed:** the public props no longer intersect the row `cva`. `interactive`,
+`highlighted` and `quiet` are computed from `variant` and the gesture props, and a call
+site that could pass `highlighted` would be styling a row without telling the table why.
+No call site was using them.
+
+**Batch 5 must verify in the browser**, because this batch's headline fix is invisible to
+every assertion the repo has — §5 of the design skill records the sticky column that passed
+lint, typecheck, build, both guards and 99 specs with a real bug in the tree. The specific
+check: open a `RecordTable` narrower than its own columns with no rows — the contact
+record's Files tab is the measured case — and confirm the empty state is centred in the
+*visible* region and stays there when the columns are scrolled sideways.
+
+**Next.** Batch 2 — the address-bar codec, and A1 + A5 inside `useSavedViews`, proven on
+two lists.
 
 ---
 

@@ -170,14 +170,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `sales/quotes/page.tsx` | 87 | 5.5 | rebuild | | |
 | `sales/quotes/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | done |
+| `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `sales/quotes/[quoteId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/quotes/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `sales/quotes/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `sales/quotes/not-found.tsx` | 11 | 5.1 | rebuild | | done |
 | `sales/orders/page.tsx` | 68 | 5.5 | rebuild | | |
 | `sales/orders/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | done |
+| `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `sales/orders/[orderId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/orders/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `sales/orders/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -189,7 +189,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `finance/pos/page.tsx` | 65 | 5.5 | rebuild | **A6** — selection with no verb | |
 | `finance/pos/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | done |
+| `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `finance/pos/[invoiceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `finance/pos/[invoiceId]/print/page.tsx` | 349 | — | unchanged | **§2.5 exception 2** — its own document theme, must not follow the app theme | done |
 | `finance/pos/error.tsx` | 18 | 5.1 | rebuild | | done |
@@ -352,7 +352,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | **done, close-out** — archetype 3; A7 remains a 5.5 workflow decision with the faster dialog path |
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 
-### 2.3 Tables and lists (16) — owner 5.5
+### 2.3 Tables and lists (18) — owner 5.5
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
@@ -372,8 +372,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | |
 | `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | |
-| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) ||
+| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
+| `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice |
 
 ### 2.4 Settings, users, automation, integrations, record layouts (21) — owner 5.6
 
@@ -503,8 +504,8 @@ taken. Counted here so the denominator stays honest.
 | `PageShell.tsx` | 144 | 5.3 | adopt | Gains `variant="record"` | **done** — full-height column from `lg`; below it the page reverts to a document scroll |
 | `PageHeader.tsx` | 71 | 5.1 | adopt | | |
 | `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels, and `data-slot="card"` so 5.10's nesting guard can see a panel (§7.6) | done |
-| `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | |
-| `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. After 5.5 only 3 files may import it | |
+| `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | **done** — batch 1. Both variants, the enforced variant contract, the `emptyState` union, and the empty state moved out of the table's scroll width |
+| `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. **After 5.7**, not 5.5, only 3 files may import it — the twelve settings / automation / integration / reports / dashboard tables move with their own pages. See 5.5 "What the measurement says now" | **done** — unchanged, as specified |
 | `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | |
 | `ModuleTableLoading.tsx` | 49 | 5.5 | adopt | | |
 | `ModuleListToolbar.tsx` | 69 | 5.5 | adopt | | |

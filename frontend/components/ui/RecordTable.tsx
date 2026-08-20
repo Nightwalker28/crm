@@ -3,7 +3,7 @@
 import { Fragment, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 import { Inbox, ShieldX, TriangleAlert } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -95,6 +95,9 @@ type StateSlot = {
 
 const recordTableRowVariants = cva("group", {
   variants: {
+    // A row that cannot be opened must not light up under the pointer. The hover tint is
+    // an affordance, and `readOnly` / `lineItems` rows have nothing behind them to reach.
+    quiet: { true: "hover:bg-transparent", false: "" },
     interactive: {
       // The ring is drawn as an outline: a table row in a `border-collapse` table does
       // not paint a box-shadow reliably, and an invisible focus point is the one
@@ -106,7 +109,7 @@ const recordTableRowVariants = cva("group", {
     // action colour that a focus ring is forbidden from using either (2.3).
     highlighted: { true: "bg-action-primary-muted ring-1 ring-inset ring-line-strong", false: "" },
   },
-  defaultVariants: { interactive: false, highlighted: false },
+  defaultVariants: { quiet: false, interactive: false, highlighted: false },
 });
 
 /**
@@ -131,19 +134,32 @@ const recordTableCellVariants = cva("", {
   variants: {
     align: { left: "", right: "text-right" },
     selection: { true: "w-12", false: "" },
+    // The editable grid is a form, not a list: every cell holds a control, so the list's
+    // own `px-4` would put more gutter between two inputs than the form around it puts
+    // between two fields (design.md 4.4).
+    variant: { default: "", readOnly: "", lineItems: "px-2 py-2" },
   },
-  defaultVariants: { align: "left", selection: false },
+  defaultVariants: { align: "left", selection: false, variant: "default" },
 });
 
 const recordTableHeadVariants = cva("", {
   variants: {
     align: { left: "", right: "text-right" },
     selection: { true: "w-12", false: "" },
+    variant: { default: "", readOnly: "", lineItems: "px-2" },
   },
-  defaultVariants: { align: "left", selection: false },
+  defaultVariants: { align: "left", selection: false, variant: "default" },
 });
 
-type RecordTableProps<T> = VariantProps<typeof recordTableRowVariants> & {
+export type RecordTableVariant = "default" | "lineItems" | "readOnly";
+
+/**
+ * `interactive`, `highlighted` and `quiet` are computed here from `variant` and the
+ * gesture props, so the row `cva` is deliberately *not* intersected into the public
+ * props: a call site that could pass `highlighted` would be styling a row without
+ * telling the table why.
+ */
+type RecordTableBaseProps<T> = {
   columns: RecordTableColumn<T>[];
   rows: T[];
   rowKey: (row: T) => RecordRowId;
@@ -175,7 +191,6 @@ type RecordTableProps<T> = VariantProps<typeof recordTableRowVariants> & {
   onRetry?: () => void;
   errorState?: Partial<StateSlot>;
   permissionDeniedState?: Partial<StateSlot>;
-  emptyState: StateSlot;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
   filteredEmptyState?: Partial<StateSlot>;
@@ -185,6 +200,18 @@ type RecordTableProps<T> = VariantProps<typeof recordTableRowVariants> & {
   className?: string;
 };
 
+/**
+ * `emptyState` is required on the two variants that show a list, and optional on the one
+ * that shows a form. §7.4 makes the empty state mandatory precisely because every page
+ * that *could* omit it did, so the union keeps the floor rather than handing every caller
+ * a default that says "No rows".
+ */
+type RecordTableProps<T> = RecordTableBaseProps<T> &
+  (
+    | { variant?: "default" | "readOnly"; emptyState: StateSlot }
+    | { variant: "lineItems"; emptyState?: StateSlot }
+  );
+
 function isInteractiveTarget(target: EventTarget | null) {
   if (!(target instanceof Element)) return false;
   return Boolean(
@@ -193,6 +220,7 @@ function isInteractiveTarget(target: EventTarget | null) {
 }
 
 export function RecordTable<T>({
+  variant = "default",
   columns,
   rows,
   rowKey,
@@ -223,10 +251,15 @@ export function RecordTable<T>({
 }: RecordTableProps<T>) {
   const router = useRouter();
 
-  const hasSelection = Boolean(selection);
+  // The variant is a contract, not a suggestion (design.md 7.10). A `readOnly` table
+  // handed a `selection` draws no checkboxes rather than quietly becoming a list, so the
+  // wrong variant is visible immediately instead of shipping as a subtle difference.
+  const isList = variant === "default";
+  const hasSelection = isList && Boolean(selection);
   const hasRowActions = Boolean(rowActions);
   const columnCount = columns.length + (hasSelection ? 1 : 0) + (hasRowActions ? 1 : 0);
-  const canOpenRow = Boolean(onOpenRow || rowHref);
+  const canOpenRow = isList && Boolean(onOpenRow || rowHref);
+  const canSort = isList && Boolean(onSortChange);
 
   const minWidth =
     columns.reduce((total, column) => total + COLUMN_WIDTH[column.size ?? "md"], 0) +
@@ -255,76 +288,99 @@ export function RecordTable<T>({
     if (rowHref) router.push(rowHref(row));
   }
 
-  function renderStateRow(content: ReactNode, alert = false) {
-    return (
-      <TableRow className="hover:bg-transparent">
-        <TableCell colSpan={columnCount} className="py-12" {...(alert ? { role: "alert" } : {})}>
-          {content}
-        </TableCell>
-      </TableRow>
-    );
-  }
-
-  function renderBody() {
-    // The four 7.4 states, in the order the operator can act on them: no access at all,
-    // then still arriving, then failed, then arrived empty.
+  /**
+   * The three states that draw a centred box, and why they are **not** a `td colSpan`.
+   *
+   * The table carries a derived `min-width`, so wherever it is wider than the region it
+   * scrolls inside, a `colSpan` cell is laid out across `scrollWidth`, not the visible
+   * width — measured on the contact record's Files tab at `clientWidth 580 /
+   * scrollWidth 920`, where the empty state was an 888px box starting at `left: 662` and
+   * running past the visible right edge. It was invisible on a full-width list, where the
+   * two widths are equal, and read as merely off-centre wherever the copy was short.
+   *
+   * A block sibling of the table takes the scroll container's *content* width instead —
+   * the visible one — and `sticky left-0` keeps it there while the columns scroll under
+   * it. `scroll-containers.spec.ts` was always right about this: the region is a
+   * legitimate scroller, and the bug was the empty state participating in its width.
+   *
+   * Loading stays inside the table, because skeleton rows are column-shaped and *should*
+   * span the columns they stand in for.
+   */
+  function renderState() {
+    // The 7.4 states, in the order the operator can act on them: no access at all, then
+    // failed, then arrived empty. Loading is handled in the body.
     if (isPermissionDenied) {
-      return renderStateRow(
-        <EmptyState
-          icon={permissionDeniedState?.icon ?? ShieldX}
-          title={permissionDeniedState?.title ?? `You do not have access to ${label.toLocaleLowerCase()}`}
-          description={
-            permissionDeniedState?.description ?? "Ask an administrator for the required module or action access."
-          }
-          action={permissionDeniedState?.action}
-        />,
-        true,
-      );
+      return {
+        alert: true,
+        content: (
+          <EmptyState
+            icon={permissionDeniedState?.icon ?? ShieldX}
+            title={permissionDeniedState?.title ?? `You do not have access to ${label.toLocaleLowerCase()}`}
+            description={
+              permissionDeniedState?.description ?? "Ask an administrator for the required module or action access."
+            }
+            action={permissionDeniedState?.action}
+          />
+        ),
+      };
     }
 
-    if (isLoading) {
+    if (isLoading) return null;
+
+    if (hasError) {
+      return {
+        alert: true,
+        content: (
+          <EmptyState
+            icon={errorState?.icon ?? TriangleAlert}
+            title={errorState?.title ?? `${label} could not be loaded`}
+            description={errorState?.description ?? "Check your connection and try again."}
+            action={
+              errorState?.action ??
+              (onRetry ? (
+                <Button type="button" variant="outline" onClick={onRetry}>
+                  Try again
+                </Button>
+              ) : undefined)
+            }
+          />
+        ),
+      };
+    }
+
+    if (rows.length) return null;
+
+    const slot: StateSlot = hasActiveFilters
+      ? {
+          icon: filteredEmptyState?.icon ?? emptyState?.icon,
+          title: filteredEmptyState?.title ?? `No ${label.toLocaleLowerCase()} match these filters`,
+          description: filteredEmptyState?.description ?? "Clear one or more filters and try again.",
+          action:
+            filteredEmptyState?.action ??
+            (onClearFilters ? (
+              <Button type="button" variant="outline" onClick={onClearFilters}>
+                Clear filters
+              </Button>
+            ) : undefined),
+        }
+      : emptyState ?? { title: `No ${label.toLocaleLowerCase()} yet` };
+
+    return {
+      alert: false,
+      content: (
+        <EmptyState icon={slot.icon ?? Inbox} title={slot.title} description={slot.description} action={slot.action} />
+      ),
+    };
+  }
+
+  const state = renderState();
+
+  function renderBody() {
+    if (isLoading && !isPermissionDenied) {
       return <ModuleTableLoading columnCount={columnCount} withCheckbox={hasSelection} />;
     }
 
-    if (hasError) {
-      return renderStateRow(
-        <EmptyState
-          icon={errorState?.icon ?? TriangleAlert}
-          title={errorState?.title ?? `${label} could not be loaded`}
-          description={errorState?.description ?? "Check your connection and try again."}
-          action={
-            errorState?.action ??
-            (onRetry ? (
-              <Button type="button" variant="outline" onClick={onRetry}>
-                Try again
-              </Button>
-            ) : undefined)
-          }
-        />,
-        true,
-      );
-    }
-
-    if (!rows.length) {
-      const filtered = hasActiveFilters;
-      const slot: StateSlot = filtered
-        ? {
-            icon: filteredEmptyState?.icon ?? emptyState.icon,
-            title: filteredEmptyState?.title ?? `No ${label.toLocaleLowerCase()} match these filters`,
-            description: filteredEmptyState?.description ?? "Clear one or more filters and try again.",
-            action:
-              filteredEmptyState?.action ??
-              (onClearFilters ? (
-                <Button type="button" variant="outline" onClick={onClearFilters}>
-                  Clear filters
-                </Button>
-              ) : undefined),
-          }
-        : emptyState;
-      return renderStateRow(
-        <EmptyState icon={slot.icon ?? Inbox} title={slot.title} description={slot.description} action={slot.action} />,
-      );
-    }
+    if (state) return null;
 
     return rows.map((row) => {
       const id = rowKey(row);
@@ -333,7 +389,11 @@ export function RecordTable<T>({
       return (
         <Fragment key={id}>
           <TableRow
-            className={recordTableRowVariants({ interactive: canOpenRow, highlighted: isRowHighlighted?.(row) ?? false })}
+            className={recordTableRowVariants({
+              quiet: !canOpenRow,
+              interactive: canOpenRow,
+              highlighted: isRowHighlighted?.(row) ?? false,
+            })}
             {...(canOpenRow
               ? {
                   tabIndex: 0,
@@ -355,7 +415,7 @@ export function RecordTable<T>({
               : {})}
           >
             {selection ? (
-              <TableCell className={recordTableCellVariants({ selection: true })}>
+              <TableCell className={recordTableCellVariants({ selection: true, variant })}>
                 <Checkbox
                   checked={selectedIds.includes(id)}
                   onCheckedChange={(checked) => selection.onToggleRow(id, checked === true)}
@@ -370,7 +430,7 @@ export function RecordTable<T>({
                 <TableCell
                   key={column.key}
                   className={cn(
-                    recordTableCellVariants({ align: column.align ?? "left" }),
+                    recordTableCellVariants({ align: column.align ?? "left", variant }),
                     column.className,
                   )}
                   {...(column.interactive ? { "data-no-row-open": "" } : {})}
@@ -394,7 +454,7 @@ export function RecordTable<T>({
               );
             })}
             {rowActions ? (
-              <TableCell className={recordTableCellVariants({ align: "right" })} data-no-row-open="">
+              <TableCell className={recordTableCellVariants({ align: "right", variant })} data-no-row-open="">
                 {rowActions(row)}
               </TableCell>
             ) : null}
@@ -413,11 +473,11 @@ export function RecordTable<T>({
 
   return (
     <ModuleTableShell isRefreshing={isRefreshing} label={label} variant={shellVariant} className={className}>
-      <Table style={{ minWidth: `${minWidth}px` }}>
+      <Table data-variant={variant} style={{ minWidth: `${minWidth}px` }}>
         <TableHeader>
           <TableHeaderRow>
             {selection ? (
-              <TableHead className={recordTableHeadVariants({ selection: true })}>
+              <TableHead className={recordTableHeadVariants({ selection: true, variant })}>
                 <Checkbox
                   checked={headerSelectionState}
                   onCheckedChange={(checked) => selection.onToggleAll(checked === true)}
@@ -426,8 +486,8 @@ export function RecordTable<T>({
               </TableHead>
             ) : null}
             {columns.map((column) => {
-              const headClassName = recordTableHeadVariants({ align: column.align ?? "left" });
-              return column.sortable && onSortChange ? (
+              const headClassName = recordTableHeadVariants({ align: column.align ?? "left", variant });
+              return column.sortable && canSort ? (
                 <SortableHead
                   key={column.key}
                   sorted={sort?.column === column.key}
@@ -444,14 +504,26 @@ export function RecordTable<T>({
               );
             })}
             {rowActions ? (
-              <TableHead className={recordTableHeadVariants({ align: "right" })}>{rowActionsLabel}</TableHead>
+              <TableHead className={recordTableHeadVariants({ align: "right", variant })}>{rowActionsLabel}</TableHead>
             ) : null}
           </TableHeaderRow>
         </TableHeader>
         <TableBody>{renderBody()}</TableBody>
       </Table>
+      {state ? (
+        // `sticky left-0` against the scroll container, `w-full` against its *content*
+        // box — so this box is the visible width and stays at the visible left edge no
+        // matter how far the columns have been scrolled. See `renderState`.
+        <div
+          data-slot="record-table-state"
+          className="sticky left-0 w-full border-t border-line-subtle py-12"
+          {...(state.alert ? { role: "alert" } : {})}
+        >
+          {state.content}
+        </div>
+      ) : null}
     </ModuleTableShell>
   );
 }
 
-export { recordTableCellVariants, recordTableRowVariants };
+export { recordTableCellVariants, recordTableHeadVariants, recordTableRowVariants };

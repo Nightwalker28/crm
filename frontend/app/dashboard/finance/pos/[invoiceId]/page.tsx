@@ -30,17 +30,8 @@ import {
   RecordSpineTrack,
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
-import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
+import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import {
   usePosInvoice,
   PosInvoiceRequestError,
@@ -361,39 +352,18 @@ function InvoiceOverview({
         }}
       />
       {invoice.lines?.length ? (
-        <Card className="px-5 py-5">
-          <SectionHeading>Line items</SectionHeading>
-          <div className="mt-4 overflow-x-auto">
-            <Table className="min-w-[640px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <TableHead className="px-3 py-2">Description</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Quantity</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Unit price</TableHead>
-                  <TableHead className="px-3 py-2 text-right">Total</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {invoice.lines.map((line, index) => (
-                  <TableRow key={line.id ?? index}>
-                    <TableCell className="px-3 py-3 font-medium text-copy-primary">
-                      {line.description}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {line.quantity}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right tabular-nums text-copy-secondary">
-                      {money(line.unit_price, invoice.currency)}
-                    </TableCell>
-                    <TableCell className="px-3 py-3 text-right font-medium tabular-nums text-copy-primary">
-                      {money(line.line_total ?? line.quantity * line.unit_price, invoice.currency)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
+        <TransactionLineItemsTable
+          items={invoice.lines.map((line, index) => ({
+            id: line.id ?? index,
+            name: line.description,
+            quantity: line.quantity,
+            unit_price: line.unit_price,
+            line_total: line.line_total ?? line.quantity * line.unit_price,
+          }))}
+          currency={invoice.currency}
+          itemLabel="Description"
+          showAdjustments={false}
+        />
       ) : null}
     </div>
   );

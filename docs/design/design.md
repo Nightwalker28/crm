@@ -1282,7 +1282,7 @@ exists. The list-and-record language in particular is not optional:
 
 | Need | Use |
 |---|---|
-| A module list | `ModuleTableShell` + `Table` |
+| Any table at all | `RecordTable` — see §7.10. `Table` is a cell primitive and is not importable outside it |
 | Toolbar above a list | `ModuleListToolbar` |
 | Search | `SearchBar` |
 | Saved views / filters | `SavedViewSelector`, `InlineSavedViewFilters` |
@@ -1542,6 +1542,37 @@ The general form, because this will recur wherever the frontend is ahead of an e
 control, not the honesty.
 
 ---
+
+### 7.10 Every table is `RecordTable`, and its differences are variants
+
+There is one table in Lynk. `Table` is the **cell** primitive — padding, stripes, the
+sticky header, the sort affordance, the density context — and everything above the cell
+is `RecordTable`: the derived min-width, the selection column, the one row-open gesture,
+and all four §7.4 states. Thirteen modules hand-assembled that upper layer once and
+drifted nine ways; that is the drift this rule closes.
+
+**Only three files may import `components/ui/Table`:** `RecordTable`,
+`ModuleTableLoading` and `ModuleListToolbar` — the primitives that implement it. Every
+other table, in `app/**` or `components/**`, goes through `RecordTable`. This is checked
+at source level.
+
+A table that is genuinely a different *shape* is a variant, never a second table (§7.3).
+There are three, and the set is closed:
+
+| Variant | What it is | Drops |
+|---|---|---|
+| `default` | A module list | — |
+| `lineItems` | The editable grid inside a line-item document: an input per cell, add and remove row, Enter walks down a column | selection, sort, row-open, pagination |
+| `readOnly` | The same document's items once saved, and the client portal's tables | selection, sort, row-open |
+
+`selectable` and `rowActions` are independent props, because they combine freely with
+all three: a settings list is `default` with no selection, not a fourth variant.
+**Density is not a prop here.** It is an app-wide operator preference — `useTableDensity`
+feeds a context that `Table` reads to pick the cell padding — so it is already answered
+one level below and must not be lifted.
+
+A fourth variant is a design change and takes §12: the rule first, with the reason, and
+a second table stays forbidden either way.
 
 ## 8. Accessibility floors
 
