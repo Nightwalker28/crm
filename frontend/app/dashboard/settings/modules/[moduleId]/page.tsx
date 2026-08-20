@@ -6,6 +6,7 @@ import { ArrowLeft, Building2, Repeat2, Save, Users } from "lucide-react";
 
 import { Chip } from "@/components/ui/Chip";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -20,7 +21,6 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
-import { cn } from "@/lib/utils";
 
 function parseModuleId(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
@@ -274,13 +274,17 @@ function ModuleAccessEditor({
             { id: "teams", label: `Teams (${access.teams.length})`, content: teamsPanel },
           ]}
         />
-        <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center gap-3 bg-surface/95 backdrop-blur">
-          <p className={cn("mr-auto text-sm font-medium", hasChanges ? "text-state-warning" : "text-state-success")}>
+        {/* Department and team access commit together in one write, so the manual save
+            stays (archetype 4). R3 takes the stickiness; R5 takes the colour. */}
+        <CardFooter className="flex flex-wrap items-center gap-3">
+          <p className="mr-auto text-sm text-copy-muted">
             {hasChanges ? "Unsaved changes" : "All changes saved"}
           </p>
-          <Button type="button" onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>
-            <Save />{isSaving ? "Saving..." : "Save Access"}
-          </Button>
+          <ActionBar size="default">
+            <Button type="button" onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>
+              <Save />{isSaving ? "Saving..." : "Save Access"}
+            </Button>
+          </ActionBar>
         </CardFooter>
       </Card>
     </PageShell>

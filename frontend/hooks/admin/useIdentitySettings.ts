@@ -42,8 +42,10 @@ export function useAuthenticationSettings() {
       if (!response.ok) throw new Error("MFA policy update failed");
       return response.json() as Promise<{ policy: MfaPolicy }>;
     },
-    onSuccess: (data) => { queryClient.setQueryData(["admin-mfa-policy"], data); void queryClient.invalidateQueries({ queryKey: ["users-paged"] }); toast.success("MFA policy updated."); },
-    onError: () => toast.error("MFA policy could not be updated. Please try again."),
+    // No toast either way. The MFA policy autosaves (R1) and reports through the
+    // `SaveStateIndicator` in its own `SettingsRow` — a toast for the same event is a
+    // second notice of one write, and at settings-wide autosave it would be constant.
+    onSuccess: (data) => { queryClient.setQueryData(["admin-mfa-policy"], data); void queryClient.invalidateQueries({ queryKey: ["users-paged"] }); },
   });
   const testSso = useMutation({
     mutationFn: async () => {
@@ -59,7 +61,7 @@ export function useAuthenticationSettings() {
     },
     onError: () => toast.error("SSO connection could not be tested. Review the provider settings and try again."),
   });
-  return { mfaPolicy: mfa.data?.policy ?? "off", passwordPolicy: password.data, ssoSettings: sso.data, isLoading: mfa.isLoading || sso.isLoading, isPasswordPolicyLoading: password.isLoading, isSaving: updateMfa.isPending || updateSso.isPending, isTesting: testSso.isPending, updateMfaPolicy: updateMfa.mutate, updateSsoSettings: updateSso.mutateAsync, testSsoSettings: testSso.mutateAsync };
+  return { mfaPolicy: mfa.data?.policy ?? "off", passwordPolicy: password.data, ssoSettings: sso.data, isLoading: mfa.isLoading || sso.isLoading, isPasswordPolicyLoading: password.isLoading, isSaving: updateMfa.isPending || updateSso.isPending, isTesting: testSso.isPending, updateMfaPolicy: updateMfa.mutateAsync, updateSsoSettings: updateSso.mutateAsync, testSsoSettings: testSso.mutateAsync };
 }
 
 export function useProvisioningSettings() {

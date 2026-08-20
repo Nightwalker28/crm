@@ -586,13 +586,16 @@ function ModuleWorkspace({
           />
         )}
 
-        <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 bg-surface/95 backdrop-blur">
+        {/* A module definition commits as a whole — fields, layout and flags in one write —
+            so the manual save stays (archetype 4). R3 takes the stickiness; R5 takes the
+            colour off the dirty line and leaves it on the save error. */}
+        <CardFooter className="flex flex-wrap items-center gap-2">
           {deleted ? (
             <Button type="button" onClick={() => void onRestore().catch(() => undefined)} disabled={disabled}><RotateCcw />Restore module</Button>
           ) : (
             <>
               <div className="mr-auto">
-                <p className={cn("text-sm font-medium", isDirty ? "text-state-warning" : "text-state-success")}>{isDirty ? "Unsaved changes" : "All changes saved"}</p>
+                <p className="text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "All changes saved"}</p>
                 {saveError ? <p role="alert" className="mt-1 text-sm text-state-danger">{saveError}</p> : null}
               </div>
               <Button type="button" variant="outline" onClick={discard} disabled={disabled || !isDirty}>Discard</Button>

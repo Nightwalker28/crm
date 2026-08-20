@@ -1193,6 +1193,12 @@ attached — a connection test, a re-issued token, a domain re-verification. Fie
 commit on those saves states the backend rejects, and it fires the side effect on a
 half-typed issuer URL. Autosaving one is the same defect R1 refuses on a line-item document.
 
+**An autosaving control reports through its `SaveStateIndicator`, not through a toast.**
+The indicator is attached to the thing that changed and disappears on its own; a toast for
+the same write is a second notice of one event, in a corner the operator was not looking
+at. Toasts stay for what has no control to sit beside — a background job finishing, an
+import completing, a manual save on a configuration record.
+
 **What R3 removes is the stickiness, not always the button.** All six sticky Save/Discard
 bars go; where the model is autosave the button goes with them, and where the model is a
 configuration record the action becomes an ordinary flex sibling at the end of the page.

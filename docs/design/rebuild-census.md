@@ -233,7 +233,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | **done, batch 6** — both extracted to `components/client-portal/`; 456 → 330 lines; the missing `shellVariant="nested"` fixed on both |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5** — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open |
+| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5**; **footer corrected in 5.6 batch 2** — it kept a `sticky bottom-0` save bar that R3's count of ten had missed — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open |
 | `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | done |
 
@@ -254,13 +254,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `settings/layout.tsx` | 5 | 5.6 | rebuild | A 5-line passthrough. **Becomes the nav rail (A8)** | **done, batch 1** — full-height two-column grid, `SettingsNavRail` + a scrolling content column. Not sticky |
 | `settings/page.tsx` | 180 | 5.6 | rebuild | The hub's `SETTINGS_SECTIONS` is the second, disagreeing IA | **done, batch 1** — 180 → 58 lines, rendering `SETTINGS_NAV_GROUPS`. The second IA is gone |
-| `settings/general/page.tsx` | 357 | 5.6 | rebuild | | |
-| `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | |
+| `settings/general/page.tsx` | 357 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, `ActionBar`, R5 on the dirty line. The page body is batch 7's |
+| `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | **done, batch 2** — three `FormSection`s; MFA on `SettingsRow` + `useAutosave`, SSO on a non-sticky `FormFooter` |
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | |
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | |
-| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `RecordTable` (R10) | |
+| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `RecordTable` (R10) | **footer done, batch 2** — `FormFooter`, un-stickied. The table is batch 4's |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
@@ -274,7 +274,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | |
-| `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | |
+| `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | **done, batch 2** — `FormSection` + `SettingsRow`, non-sticky footer, checkbox → `SegmentedBoolean` |
 | `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | |
 | `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | |
 | `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
@@ -388,7 +388,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `users/userFilters.tsx` | 200 | 5.6 | rebuild | | |
 | `automation/AutomationRulesTable.tsx` | 105 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
 | `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
-| `automation/AutomationRuleEditor.tsx` | 137 | 5.6 | rebuild | | |
+| `automation/AutomationRuleEditor.tsx` | 137 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, R5 on the dirty line |
 | `automation/AutomationStepList.tsx` | 58 | 5.6 | rebuild | | |
 | `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | **boolean only, batch 1** — on `SettingsRow` + `SegmentedBoolean`. The rest of the file stays 5.6's |
 | `automation/AutomationRunDetails.tsx` | 45 | 5.6 | rebuild | | |

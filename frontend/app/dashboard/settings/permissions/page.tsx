@@ -4,6 +4,7 @@ import { Fragment, useMemo, useState } from "react";
 import { Plus, ShieldCheck, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -509,22 +510,26 @@ export default function RolesPermissionsPage() {
                   </ModuleTableShell>
                 </div>
 
-                <div className="sticky bottom-0 z-30 flex flex-col gap-3 border-t border-line-default bg-surface-raised/95 px-5 py-4 backdrop-blur sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <div className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>
-                      {isDirty ? "Unsaved changes" : "All changes saved"}
-                    </div>
-                    {saveError ? <p className="mt-1 text-sm text-state-danger" role="alert">{saveError}</p> : null}
-                  </div>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" disabled={!isDirty || isSaving} onClick={discardPermissionChanges}>
-                      Discard
-                    </Button>
-                    <Button type="button" disabled={!isDirty || isSaving} onClick={() => void handleSave()}>
-                      {isSaving ? "Saving…" : "Save Permissions"}
-                    </Button>
-                  </div>
-                </div>
+                {/* The matrix is a configuration record: every checkbox in it commits in one
+                    write, so it keeps a manual save (archetype 4). R3 takes the stickiness,
+                    and R5 takes the colour — a dirty form is not an exception state. The
+                    save error stays `state-danger`, because that one is. */}
+                <FormFooter
+                  className="px-5 pb-4"
+                  status={
+                    <>
+                      <span className="font-medium">{isDirty ? "Unsaved changes" : "All changes saved"}</span>
+                      {saveError ? <p className="mt-1 text-sm text-state-danger" role="alert">{saveError}</p> : null}
+                    </>
+                  }
+                >
+                  <Button type="button" variant="outline" disabled={!isDirty || isSaving} onClick={discardPermissionChanges}>
+                    Discard
+                  </Button>
+                  <Button type="button" disabled={!isDirty || isSaving} onClick={() => void handleSave()}>
+                    {isSaving ? "Saving…" : "Save Permissions"}
+                  </Button>
+                </FormFooter>
               </>
             ) : (
               <EmptyState className="py-16" icon={ShieldCheck} title="Select or create a role" description="A role is required before module permissions can be configured." />

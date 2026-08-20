@@ -3892,6 +3892,63 @@ commit model. `authentication` still autosaves its MFA select and shows a sticky
 forty lines below it — that page is batch 2's first, because it is the defect the archetype
 was written against.
 
+### Status: batch 2 — the commit model, and the eleventh save bar
+
+**Landed.** `lint` and `build` green.
+
+**All seven sticky save bars are gone, and an eighth turned up.** `grep -rn "sticky
+bottom-0" app components` now returns **zero** live matches across the frontend — the
+remaining hits are the comments explaining where the bars used to be. R3's census counted
+ten; 5.4 took three, this batch took seven, and the arithmetic only works because
+**`app/dashboard/views/[moduleKey]/page.tsx:190` was an eleventh**. The census marks that
+file done at 5.3 — which rebuilt its hand-rolled tab strip and left the footer alone — so
+R3's original count was one short. It was un-stickied here rather than filed to a
+sub-phase that has already closed.
+
+**Which ones kept their button, and why.** Ruling 3 splits by control, and every one of
+the seven turned out to be a **configuration record**: the SSO credentials, the company
+profile, the provisioning claim map, the permission matrix, the module-access grid, the
+module definition, the automation rule. Each commits as a whole in one write with fields
+that validate together, so the button stays and only the stickiness goes. **Exactly one
+control in the seven was genuinely autosave-shaped** — `authentication`'s MFA policy — and
+it is the one the archetype was written against.
+
+That is worth stating plainly, because the plan implied the opposite: *"settings controls
+autosave, so all six sticky Save/Discard footers in settings go"* reads as though the
+button disappears seven times. It disappears once. What the archetype actually buys is
+that **each control now says which model it is on**, which was the real defect — the same
+page autosaving a select and demanding a Save forty lines below, with nothing marking the
+boundary.
+
+**`authentication` rebuilt onto the archetype.** Three `Card`s → three `FormSection`s. The
+MFA select is a `SettingsRow` driven by `useAutosave`, so it carries `Saving… / Saved /
+Couldn't save — Retry` in the row itself. The SSO card keeps a manual save behind a
+non-sticky `FormFooter`; autosaving it would fire `testSsoSettings` against a half-typed
+issuer URL, which is R1's line-item-document argument wearing different clothes. Its
+`Enabled` checkbox became a `SegmentedBoolean` (ruling 4), as did `provisioning`'s
+auto-provision checkbox — a lone `Checkbox` for one boolean is the drift.
+
+**A rule added to `design.md` archetype 4: an autosaving control reports through its
+`SaveStateIndicator`, not through a toast.** `updateMfaPolicy` lost both its success and
+its error toast and moved from `mutate` to `mutateAsync` so the row can await it. The
+indicator is attached to the thing that changed and clears itself; a toast for the same
+write is a second notice of one event, in a corner nobody is looking at, and it would be
+constant once settings autosaves broadly. Toasts stay for what has no control to sit
+beside — a background job, an import, a manual save.
+
+**R5 applied to seven dirty-state lines.** Every one of them painted `text-state-warning`
+when dirty and `text-state-success` when clean. A form with unsaved edits is not an
+exception, it is the ordinary middle of editing, so the line is `text-copy-muted` and says
+the same thing in words. The save *errors* keep `text-state-danger`; those are exceptions.
+
+**A run-shape trap, new and cheap to fall into.** Two concurrent `next build` runs in the
+same container: the second prints `⨯ Another next build process is already running` and
+**exits 0**. It reads as a green build in a task summary. Check the output, not the exit
+code.
+
+**Batch 3 starts here.** The permission walls and A9's three admin-only links, none of
+which is touched yet.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

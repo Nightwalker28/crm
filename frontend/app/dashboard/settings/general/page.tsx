@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -334,11 +335,15 @@ export default function CompanyPage() {
             </CardBody>
             </section>
 
-            <CardFooter className="sticky bottom-0 z-20 flex flex-wrap items-center justify-between gap-3 bg-surface-raised/95 backdrop-blur">
-              <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>
+            {/* The company profile is a configuration record — the fields validate together
+                and one write commits them — so it keeps a manual save (archetype 4). What
+                goes is the stickiness (R3) and the colour: R5 paints exception, and a form
+                with unsaved edits is not one, so the dirty line is ordinary muted ink. */}
+            <CardFooter className="flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm text-copy-muted">
                 {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
               </span>
-              <div className="flex flex-wrap gap-2">
+              <ActionBar size="default">
                 <Button type="button" variant="outline" disabled={!isDirty || saving || logoBusyAction !== null} onClick={() => void handleDiscard()}>
                   <RotateCcw />
                   Discard
@@ -347,7 +352,7 @@ export default function CompanyPage() {
                   <Save />
                   {saving ? "Saving..." : "Save company"}
                 </Button>
-              </div>
+              </ActionBar>
             </CardFooter>
           </Card>
         </form>
