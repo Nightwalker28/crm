@@ -4,12 +4,10 @@ import { Copy, Edit3, History, MoreHorizontal, Power, PowerOff, Trash2, Workflow
 
 import type { AutomationRule } from "./types";
 import { formatModuleLabel, statusToneFor } from "./utils";
-import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { formatDateTime } from "@/lib/datetime";
 
 type Props = {
@@ -26,6 +24,12 @@ type Props = {
   onViewRuns: (rule: AutomationRule) => void;
 };
 
+/**
+ * R10, and one affordance gained on the way: the rule name was a `<button>` inside the
+ * cell, so the row itself was inert and the only way into a rule was a 200px target. It is
+ * `onOpenRow` now — click, Enter and Space anywhere on the row, with a focus ring — which
+ * is the gesture every other list in the app already had.
+ */
 export function AutomationRulesTable({
   rules,
   triggerLabels,
@@ -39,67 +43,78 @@ export function AutomationRulesTable({
   onDelete,
   onViewRuns,
 }: Props) {
+  const columns: RecordTableColumn<AutomationRule>[] = [
+    {
+      key: "rule",
+      label: "Rule",
+      size: "lg",
+      render: (rule) => (
+        <>
+          <div className="font-medium text-copy-primary">{rule.name}</div>
+          {rule.description ? <p className="mt-1 truncate text-xs text-copy-muted">{rule.description}</p> : null}
+        </>
+      ),
+    },
+    {
+      key: "trigger",
+      label: "Module / trigger",
+      render: (rule) => (
+        <>
+          <div className="text-copy-primary">{rule.module_key ? formatModuleLabel(rule.module_key) : "Platform"}</div>
+          <div className="mt-1 text-xs text-copy-muted">{triggerLabels.get(rule.trigger_event) ?? rule.trigger_event}</div>
+        </>
+      ),
+    },
+    { key: "conditions", label: "Conditions", size: "sm", render: (rule) => rule.conditions_json.length || "Always" },
+    { key: "actions", label: "Actions", size: "sm", render: (rule) => rule.actions_json.length },
+    {
+      key: "status",
+      label: "Status",
+      size: "sm",
+      render: (rule) => (
+        <StatusValue status={{ tone: statusToneFor(rule.enabled ? "enabled" : "disabled"), label: rule.enabled ? "Enabled" : "Disabled" }} />
+      ),
+    },
+    { key: "updated", label: "Last updated", render: (rule) => <span className="whitespace-nowrap">{formatDateTime(rule.updated_at)}</span> },
+  ];
+
   return (
-    <ModuleTableShell isRefreshing={isRefreshing} className="min-h-56">
-      <Table>
-        <TableHeader>
-          <TableHeaderRow>
-            <TableHead>Rule</TableHead>
-            <TableHead>Module / trigger</TableHead>
-            <TableHead className="hidden md:table-cell">Conditions</TableHead>
-            <TableHead className="hidden md:table-cell">Actions</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="hidden lg:table-cell">Last updated</TableHead>
-            <TableHead className="w-16 text-right">Actions</TableHead>
-          </TableHeaderRow>
-        </TableHeader>
-        <TableBody>
-          {rules.map((rule) => (
-            <TableRow key={rule.id}>
-              <TableCell>
-                <button type="button" className="max-w-72 text-left font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" onClick={() => onEdit(rule)}>
-                  {rule.name}
-                </button>
-                {rule.description ? <p className="mt-1 max-w-72 truncate text-xs text-copy-muted">{rule.description}</p> : null}
-              </TableCell>
-              <TableCell>
-                <div className="text-copy-primary">{rule.module_key ? formatModuleLabel(rule.module_key) : "Platform"}</div>
-                <div className="mt-1 text-xs text-copy-muted">{triggerLabels.get(rule.trigger_event) ?? rule.trigger_event}</div>
-              </TableCell>
-              <TableCell className="hidden md:table-cell">{rule.conditions_json.length || "Always"}</TableCell>
-              <TableCell className="hidden md:table-cell">{rule.actions_json.length}</TableCell>
-              <TableCell><StatusValue status={{ tone: statusToneFor(rule.enabled ? "enabled" : "disabled"), label: rule.enabled ? "Enabled" : "Disabled" }} /></TableCell>
-              <TableCell className="hidden whitespace-nowrap lg:table-cell">{formatDateTime(rule.updated_at)}</TableCell>
-              <TableCell className="text-right">
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${rule.name}`}><MoreHorizontal /></Button>
-                  </PopoverTrigger>
-                  <PopoverContent align="end" className="w-52 border-line-default bg-surface-raised p-2 text-copy-primary">
-                    <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onEdit(rule)}><Edit3 />Edit</Button>
-                    <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onDuplicate(rule)}><Copy />Duplicate</Button>
-                    <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onToggle(rule)}>{rule.enabled ? <PowerOff /> : <Power />}{rule.enabled ? "Disable" : "Enable"}</Button>
-                    <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onViewRuns(rule)}><History />View runs</Button>
-                    <Button type="button" variant="destructiveGhost" className="w-full justify-start" onClick={() => onDelete(rule)}><Trash2 />Delete</Button>
-                  </PopoverContent>
-                </Popover>
-              </TableCell>
-            </TableRow>
-          ))}
-          {!rules.length ? (
-            <TableRow>
-              <TableCell colSpan={7} className="p-0">
-                <EmptyState
-                  icon={Workflow}
-                  title={hasFilters ? "No rules match these filters" : "No automation rules yet"}
-                  description={hasFilters ? "Clear the search or choose different filters." : "Create a rule to respond to CRM events automatically."}
-                  action={<Button type="button" variant={hasFilters ? "outline" : "default"} onClick={hasFilters ? onClearFilters : onCreate}>{hasFilters ? "Clear filters" : "Create rule"}</Button>}
-                />
-              </TableCell>
-            </TableRow>
-          ) : null}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Automation rules"
+      columns={columns}
+      rows={rules}
+      rowKey={(rule) => rule.id}
+      onOpenRow={onEdit}
+      rowLabel={(rule) => `Edit ${rule.name}`}
+      isRefreshing={isRefreshing}
+      shellVariant="nested"
+      rowActions={(rule) => (
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${rule.name}`}><MoreHorizontal /></Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-52 border-line-default bg-surface-raised p-2 text-copy-primary">
+            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onEdit(rule)}><Edit3 />Edit</Button>
+            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onDuplicate(rule)}><Copy />Duplicate</Button>
+            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onToggle(rule)}>{rule.enabled ? <PowerOff /> : <Power />}{rule.enabled ? "Disable" : "Enable"}</Button>
+            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onViewRuns(rule)}><History />View runs</Button>
+            <Button type="button" variant="destructiveGhost" className="w-full justify-start" onClick={() => onDelete(rule)}><Trash2 />Delete</Button>
+          </PopoverContent>
+        </Popover>
+      )}
+      hasActiveFilters={hasFilters}
+      onClearFilters={onClearFilters}
+      filteredEmptyState={{
+        icon: Workflow,
+        title: "No rules match these filters",
+        description: "Clear the search or choose different filters.",
+      }}
+      emptyState={{
+        icon: Workflow,
+        title: "No automation rules yet",
+        description: "Create a rule to respond to CRM events automatically.",
+        action: <Button type="button" onClick={onCreate}>Create rule</Button>,
+      }}
+    />
   );
 }

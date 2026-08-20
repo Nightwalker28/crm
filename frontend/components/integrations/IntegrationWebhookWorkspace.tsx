@@ -5,9 +5,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Send, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
+import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -259,7 +259,7 @@ export function IntegrationWebhookWorkspace() {
             {channelsQuery.isError ? (
               <TableRow>
                 <TableCell colSpan={5} className="py-6">
-                  <IntegrationSectionError message="Notification channels could not be loaded. Existing webhooks are unchanged." retry={() => void channelsQuery.refetch()} />
+                  <PanelError message="Notification channels could not be loaded. Existing webhooks are unchanged." onRetry={() => void channelsQuery.refetch()} />
                 </TableCell>
               </TableRow>
             ) : loading ? (

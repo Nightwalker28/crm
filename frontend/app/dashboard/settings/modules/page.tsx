@@ -1,8 +1,6 @@
 "use client";
 
-import type { SyntheticEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { Boxes, RefreshCw, Repeat2, Save, Settings2, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
@@ -13,10 +11,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -29,7 +26,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModulesAdmin, useSidebarTabsAdmin } from "@/hooks/admin/useModulesAdmin";
 import type { AdminModule } from "@/hooks/admin/useModulesAdmin";
@@ -46,10 +42,6 @@ type ModuleDraft = {
   import_duplicate_mode: "skip" | "overwrite" | "merge";
   is_enabled: boolean;
 };
-
-function stopRowNavigation(event: SyntheticEvent) {
-  event.stopPropagation();
-}
 
 function moduleDraft(module: AdminModule): ModuleDraft {
   return {
@@ -71,7 +63,6 @@ function duplicateModeLabel(mode: AdminModule["import_duplicate_mode"]) {
 }
 
 export default function ModulesPage() {
-  const router = useRouter();
   const { confirm } = useConfirm();
   const { modules, isLoading, error, refetch, updateModule, isSaving } = useModulesAdmin();
   const { tabs, error: tabsError, refetch: refetchTabs } = useSidebarTabsAdmin();
@@ -180,82 +171,80 @@ export default function ModulesPage() {
         </div>
       ) : null}
 
-      {(
-        <ModuleTableShell>
-          <div className="flex flex-col gap-3 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-            <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
-            <span className="text-sm text-copy-muted">{isLoading ? "Loading..." : `${visibleModules.length} of ${modules.length} modules`}</span>
-          </div>
-          <Table className="min-w-[880px]">
-            <TableHeader>
-              <TableHeaderRow>
-                <TableHead>Module</TableHead>
-                <TableHead>Navigation</TableHead>
-                <TableHead>Duplicate Handling</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableHeaderRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={5} className="py-10 text-center text-copy-muted" aria-busy="true">Loading modules...</TableCell></TableRow>
-              ) : visibleModules.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={5}>
-                    <EmptyState
-                      icon={Boxes}
-                      title={modules.length ? "No matching modules" : "No modules found"}
-                      description={modules.length ? "Adjust the search to find another module." : "No tenant modules are available to configure."}
-                    />
-                  </TableCell>
-                </TableRow>
-              ) : (
-                visibleModules.map((module) => {
-                  const displayName = getModuleDisplayName(module.name, module.description ?? undefined);
-                  return (
-                    <TableRow
-                      key={module.id}
-                      tabIndex={0}
-                      className="cursor-pointer focus:outline-none focus:ring-2 focus:ring-inset focus:ring-focus"
-                      onClick={() => router.push(SETTINGS_ROUTES.moduleAccess(module.id))}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          router.push(SETTINGS_ROUTES.moduleAccess(module.id));
-                        }
-                      }}
-                    >
-                      <TableCell>
-                        <div className="font-medium text-copy-primary">{displayName}</div>
-                        <div className="mt-1 text-xs text-copy-muted">{module.name}</div>
-                      </TableCell>
-                      <TableCell>
-                        <div className="text-copy-primary">{module.display_name || displayName}</div>
-                        <div className="mt-1 text-xs text-copy-muted">{module.sidebar_tab_label || "Not shown in sidebar"}</div>
-                      </TableCell>
-                      <TableCell className="text-copy-secondary">{duplicateModeLabel(module.import_duplicate_mode)}</TableCell>
-                      <TableCell>
-                        <StatusValue status={{ tone: module.is_enabled ? "success" : "neutral", label: module.is_enabled ? "Enabled" : "Disabled" }} />
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2" onClick={stopRowNavigation} onKeyDown={stopRowNavigation}>
-                          <Button type="button" variant="outline" size="sm" aria-label={`Edit ${displayName} settings`} onClick={() => openEditor(module)}><Settings2 />Edit</Button>
-                          <Button asChild variant="ghost" size="sm">
-                            <Link href={SETTINGS_ROUTES.moduleAccess(module.id)}><ShieldCheck />Access</Link>
-                          </Button>
-                          <Button asChild variant="ghost" size="sm">
-                            <Link href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(module.name)}`}><Repeat2 />Automation</Link>
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </TableBody>
-          </Table>
-        </ModuleTableShell>
-      )}
+      {/* R10. The hand-rolled row gesture went with it: this file had its own `tabIndex`,
+          `onKeyDown` and a `stopRowNavigation` helper on the action cell, all of which
+          `RecordTable` owns — the action column is `interactive`, so a click there never
+          opens the row. The `min-w-[880px]` is derived from the columns now. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:max-w-sm" />
+        <span className="text-sm text-copy-muted">{isLoading ? "Loading…" : `${visibleModules.length} of ${modules.length} modules`}</span>
+      </div>
+      <RecordTable
+        label="Modules"
+        columns={[
+          {
+            key: "module",
+            label: "Module",
+            size: "lg",
+            render: (module) => (
+              <>
+                <div className="font-medium text-copy-primary">{getModuleDisplayName(module.name, module.description ?? undefined)}</div>
+                <div className="mt-1 text-xs text-copy-muted">{module.name}</div>
+              </>
+            ),
+          },
+          {
+            key: "navigation",
+            label: "Navigation",
+            size: "lg",
+            render: (module) => (
+              <>
+                <div className="text-copy-primary">{module.display_name || getModuleDisplayName(module.name, module.description ?? undefined)}</div>
+                <div className="mt-1 text-xs text-copy-muted">{module.sidebar_tab_label || "Not shown in sidebar"}</div>
+              </>
+            ),
+          },
+          { key: "duplicates", label: "Duplicate handling", render: (module) => duplicateModeLabel(module.import_duplicate_mode) },
+          {
+            key: "status",
+            label: "Status",
+            size: "sm",
+            render: (module) => <StatusValue status={{ tone: module.is_enabled ? "success" : "neutral", label: module.is_enabled ? "Enabled" : "Disabled" }} />,
+          },
+        ]}
+        rows={visibleModules}
+        rowKey={(module) => module.id}
+        rowHref={(module) => SETTINGS_ROUTES.moduleAccess(module.id)}
+        rowLabel={(module) => `Open access settings for ${getModuleDisplayName(module.name, module.description ?? undefined)}`}
+        isLoading={isLoading}
+        rowActionsLabel="Actions"
+        rowActions={(module) => {
+          const displayName = getModuleDisplayName(module.name, module.description ?? undefined);
+          return (
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" size="sm" aria-label={`Edit ${displayName} settings`} onClick={() => openEditor(module)}><Settings2 />Edit</Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href={SETTINGS_ROUTES.moduleAccess(module.id)}><ShieldCheck />Access</Link>
+              </Button>
+              <Button asChild variant="ghost" size="sm">
+                <Link href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(module.name)}`}><Repeat2 />Automation</Link>
+              </Button>
+            </div>
+          );
+        }}
+        hasActiveFilters={Boolean(search.trim())}
+        onClearFilters={() => setSearch("")}
+        filteredEmptyState={{
+          icon: Boxes,
+          title: "No matching modules",
+          description: "Adjust the search to find another module.",
+        }}
+        emptyState={{
+          icon: Boxes,
+          title: "No modules found",
+          description: "No tenant modules are available to configure.",
+        }}
+      />
 
       <Sheet open={editorOpen} onOpenChange={(open) => { if (!open) void closeEditor(); }}>
         <SheetPortal>

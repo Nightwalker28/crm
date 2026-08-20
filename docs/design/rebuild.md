@@ -4010,6 +4010,58 @@ there rather than smuggled in as an "update".
 
 **Batch 4 starts here** — the ten raw-`Table` files, 3,885 lines, none touched yet.
 
+### Status: batch 4a — five of the ten tables, and a duplicate primitive retired
+
+**Landed.** `lint` and `build` green. **Batch 4 is split**: 3,885 lines across ten files is
+too much for one commit to be a useful handover unit, and the five here are the ones whose
+shape is a list. The five in 4b are matrices and workspaces and need their own decisions.
+
+| File | Was | Now |
+|---|---|---|
+| `automation/AutomationRunsTable.tsx` | Raw `Table`, 3 columns dropped below `lg` | `RecordTable` |
+| `automation/AutomationRulesTable.tsx` | Raw `Table`, 2 columns dropped below `lg` | `RecordTable` |
+| `integrations/IntegrationEventHistory.tsx` | Raw `Table`, `min-w-[980px]` hardcoded | `RecordTable` |
+| `settings/customer-groups/page.tsx` | Raw `Table` + `SortableHead` | `RecordTable` with `sortable` columns |
+| `settings/modules/page.tsx` | Raw `Table`, `min-w-[880px]` hardcoded | `RecordTable` |
+
+**`hidden md:table-cell` is the pre-R10 answer and it is a data loss, not a layout.** Four
+of the five dropped columns entirely below a breakpoint — the automation run's success
+count and start time, the rule's condition and action counts. `RecordTable` derives its
+min-width from the visible columns and scrolls inside its own region, so the operator keeps
+the data and loses only the width. That is the trade R10 already made everywhere else.
+
+**Two hardcoded min-widths deleted.** `min-w-[980px]` and `min-w-[880px]` are wrong the
+moment a column is not rendered — the same defect §4.4 records for the nine module lists
+before `RecordTable` existed.
+
+**`settings/modules` had hand-rolled the row gesture**, including its own `tabIndex`,
+`onKeyDown` for Enter and Space, and a module-local `stopRowNavigation` helper on the
+action cell so a click on *Access* would not also open the row. All three are the
+primitive's, and the action column is `interactive`. 12 lines deleted, and the row now has
+a focus ring it did not have.
+
+**`IntegrationSectionError` is deleted — a 5.1 row left open.** The census marked it
+`delete` as one of the three competing settings error idioms, and it survived because
+nothing rehomed its four call sites. It was a **verbatim duplicate of `PanelError`**, which
+already takes `message` and `onRetry`. All four moved.
+
+**`IntegrationEventHistory` was drawing three states in prose.** A loading row that said
+`Loading event history...`, an empty row that said `No CRM events found.`, and an error
+banner *above* the table that left an empty table body rendering underneath it. All three
+are `RecordTable`'s §7.4 states now, and the panel keeps only its two filters.
+
+**Three page-local state blocks went with them** — `customer-groups` had a loading row, an
+error block inside a `colSpan={6}` cell, and an `EmptyState` that had to be told the column
+count. A state that knows the column count is a state in the wrong place.
+
+**Batch 4b starts here.** Five files, 2,676 lines, none touched:
+`settings/permissions` (594) and `settings/modules/[moduleId]` (339) are **matrices**, not
+lists — rows × action checkboxes — and the open question is whether `RecordTable` with
+`interactive` columns is the honest fit or whether R10 needs a `matrix` variant.
+`users/userManagementTable` (792) is the largest raw-`Table` consumer in the app and has
+its own selection, sort and filter state. `IntegrationWebhookWorkspace` (304) and
+`IntegrationWebsiteWorkspace` (647) carry several small tables each.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

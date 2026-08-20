@@ -1,19 +1,20 @@
 "use client";
 
 import { FormEvent, useMemo, useState } from "react";
-import { BadgePercent, Plus, RefreshCw, X } from "lucide-react";
+import { BadgePercent, Plus, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
 import { isForbiddenError } from "@/lib/api";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -27,7 +28,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useCustomerGroupActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
@@ -61,12 +61,6 @@ const EMPTY_DRAFT: CustomerGroupDraft = {
   is_default: false,
   is_active: true,
 };
-
-function nextSort(current: SortState, key: SortState["key"]): SortState {
-  return current.key === key
-    ? { key, direction: current.direction === "asc" ? "desc" : "asc" }
-    : { key, direction: "asc" };
-}
 
 export default function CustomerGroupsSettingsPage() {
   const { confirm } = useConfirm();
@@ -412,81 +406,78 @@ export default function CustomerGroupsSettingsPage() {
         </SheetPortal>
       </Sheet>
 
-      <ModuleTableShell>
-        <div className="flex flex-col gap-3 border-b border-line-subtle px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-          <SearchBar value={search} onChange={setSearch} placeholder="Search customer groups" className="sm:max-w-sm" />
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-copy-muted">{groups.isLoading ? "Loading..." : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}</span>
-            <Button type="button" size="sm" onClick={() => void startNewGroup()}><Plus />New group</Button>
-          </div>
-        </div>
-        <Table>
-          <TableHeader>
-            <TableHeaderRow>
-              <SortableHead sorted={sort.key === "name"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "name"))}>Group</SortableHead>
-              <SortableHead sorted={sort.key === "group_key"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "group_key"))}>Key</SortableHead>
-              <SortableHead sorted={sort.key === "discount_type"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "discount_type"))}>Discount</SortableHead>
-              <SortableHead sorted={sort.key === "is_active"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "is_active"))}>Status</SortableHead>
-              <SortableHead sorted={sort.key === "is_default"} direction={sort.direction} onClick={() => setSort((current) => nextSort(current, "is_default"))}>Default</SortableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {groups.isLoading ? (
-              <TableRow>
-                <TableCell colSpan={6} className="py-10 text-center text-sm text-copy-muted" aria-busy="true">
-                  Loading customer groups...
-                </TableCell>
-              </TableRow>
-            ) : groups.error ? (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <div role="alert" className="flex flex-col items-center px-4 py-8 text-center">
-                    <p className="text-sm font-medium text-copy-primary">Customer groups could not be loaded.</p>
-                    <p className="mt-1 text-sm text-copy-muted">Check your connection and try again.</p>
-                    <Button type="button" variant="outline" size="sm" className="mt-4" onClick={() => void groups.refetch()}>
-                      <RefreshCw />
-                      Try again
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : visibleGroups.length ? (
-              visibleGroups.map((group) => (
-                <TableRow key={group.id}>
-                  <TableCell>
-                    <div className="font-medium text-copy-primary">{group.name}</div>
-                    {group.description ? <div className="mt-1 text-xs text-copy-muted">{group.description}</div> : null}
-                  </TableCell>
-                  <TableCell className="text-xs text-copy-muted">{group.group_key}</TableCell>
-                  <TableCell className="text-copy-secondary">{formatDiscount(group.discount_type, group.discount_value)}</TableCell>
-                  <TableCell>
-                    <StatusValue status={{ tone: group.is_active ? "success" : "neutral", label: group.is_active ? "Active" : "Inactive" }} />
-                  </TableCell>
-                  <TableCell className="text-copy-secondary">
-                    {group.is_default ? <StatusValue status={{ tone: "neutral", label: "Default" }} /> : "-"}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button type="button" size="sm" variant="outline" onClick={() => void editGroup(group)}>
-                      Edit
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={6}>
-                  <EmptyState
-                    icon={BadgePercent}
-                    title={groups.data?.length ? "No matching groups" : "No customer groups"}
-                    description={groups.data?.length ? "Adjust the search to find another customer group." : "Customer groups will appear here once the backend provides them."}
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      {/* R10: a hand-assembled `Table` with three page-local states — a loading row that
+          said "Loading customer groups...", an error block inside a `colSpan={6}` cell, and
+          an `EmptyState` that had to know the column count. `RecordTable` owns all four,
+          and the header row above it is the toolbar the list language already has. */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SearchBar value={search} onChange={setSearch} placeholder="Search customer groups" className="sm:max-w-sm" />
+        <ActionBar size="sm">
+          <span className="text-sm text-copy-muted">{groups.isLoading ? "Loading…" : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}</span>
+          <Button type="button" onClick={() => void startNewGroup()}><Plus />New group</Button>
+        </ActionBar>
+      </div>
+      <RecordTable
+        label="Customer groups"
+        columns={[
+          {
+            key: "name",
+            label: "Group",
+            size: "lg",
+            sortable: true,
+            render: (group) => (
+              <>
+                <div className="font-medium text-copy-primary">{group.name}</div>
+                {group.description ? <div className="mt-1 text-xs text-copy-muted">{group.description}</div> : null}
+              </>
+            ),
+          },
+          { key: "group_key", label: "Key", sortable: true, render: (group) => <span className="text-xs text-copy-muted">{group.group_key}</span> },
+          { key: "discount_type", label: "Discount", sortable: true, render: (group) => formatDiscount(group.discount_type, group.discount_value) },
+          {
+            key: "is_active",
+            label: "Status",
+            size: "sm",
+            sortable: true,
+            render: (group) => <StatusValue status={{ tone: group.is_active ? "success" : "neutral", label: group.is_active ? "Active" : "Inactive" }} />,
+          },
+          {
+            key: "is_default",
+            label: "Default",
+            size: "sm",
+            sortable: true,
+            render: (group) => (group.is_default ? <StatusValue status={{ tone: "neutral", label: "Default" }} /> : <EmptyValue />),
+          },
+        ]}
+        rows={visibleGroups}
+        rowKey={(group) => group.id}
+        onOpenRow={(group) => void editGroup(group)}
+        rowLabel={(group) => `Edit ${group.name}`}
+        sort={{ column: sort.key, direction: sort.direction }}
+        onSortChange={(next) => setSort({ key: next.column as SortState["key"], direction: next.direction })}
+        isLoading={groups.isLoading}
+        isRefreshing={groups.isFetching && !groups.isLoading}
+        isPermissionDenied={isForbiddenError(groups.error)}
+        hasError={Boolean(groups.error) && !isForbiddenError(groups.error)}
+        onRetry={() => void groups.refetch()}
+        errorState={{ title: "Customer groups could not be loaded" }}
+        hasActiveFilters={Boolean(search.trim())}
+        onClearFilters={() => setSearch("")}
+        filteredEmptyState={{
+          icon: BadgePercent,
+          title: "No matching groups",
+          description: "Adjust the search to find another customer group.",
+        }}
+        emptyState={{
+          icon: BadgePercent,
+          title: "No customer groups",
+          description: "Customer groups will appear here once the backend provides them.",
+          action: <Button type="button" onClick={() => void startNewGroup()}><Plus />New group</Button>,
+        }}
+        rowActions={(group) => (
+          <Button type="button" size="sm" variant="outline" onClick={() => void editGroup(group)}>Edit</Button>
+        )}
+      />
     </PageShell>
   );
 }

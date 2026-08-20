@@ -7,8 +7,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -349,9 +349,9 @@ export function IntegrationWebsiteWorkspace() {
         </Button>
       </div>
       {websiteQuery.isError ? (
-        <IntegrationSectionError
+        <PanelError
           message="Website integration data could not be loaded. Existing API keys, catalog settings, and orders are unchanged."
-          retry={() => void websiteQuery.refetch()}
+          onRetry={() => void websiteQuery.refetch()}
         />
       ) : null}
 

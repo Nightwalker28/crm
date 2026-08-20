@@ -1,16 +1,14 @@
 "use client";
 
-import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { Eye, History } from "lucide-react";
 
 import type { AutomationRun } from "./types";
 import { formatModuleLabel, statusToneFor } from "./utils";
-import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { formatDateTime } from "@/lib/datetime";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 
 function sourceLabel(run: AutomationRun) {
   if (run.source_label) return run.source_label;
@@ -19,6 +17,13 @@ function sourceLabel(run: AutomationRun) {
   return "Not recorded";
 }
 
+/**
+ * R10: every table is `RecordTable`. This hand-assembled `Table` and dropped three columns
+ * below `lg` with `hidden md:table-cell`, which is the pre-R10 answer to a table that does
+ * not fit — the operator loses the data rather than the width. `RecordTable` derives its
+ * min-width from the visible columns and scrolls inside its own region instead, so the run
+ * count and the start time are still reachable at any viewport.
+ */
 export function AutomationRunsTable({ runs, isRefreshing, hasFilters, onClearFilters, onInspect }: {
   runs: AutomationRun[];
   isRefreshing?: boolean;
@@ -26,27 +31,53 @@ export function AutomationRunsTable({ runs, isRefreshing, hasFilters, onClearFil
   onClearFilters: () => void;
   onInspect: (run: AutomationRun) => void;
 }) {
+  const columns: RecordTableColumn<AutomationRun>[] = [
+    {
+      key: "rule",
+      label: "Rule",
+      size: "lg",
+      render: (run) => (
+        <>
+          <div className="font-medium text-copy-primary">{run.rule_name ?? `Rule #${run.rule_id}`}</div>
+          <div className="mt-1 text-xs text-copy-muted">{run.trigger_event_key ?? "Unknown trigger"}</div>
+        </>
+      ),
+    },
+    { key: "source", label: "Source", render: (run) => sourceLabel(run) },
+    {
+      key: "status",
+      label: "Status",
+      size: "sm",
+      render: (run) => <StatusValue status={{ tone: statusToneFor(run.status), label: formatSnakeCaseLabel(run.status) }} />,
+    },
+    { key: "actions", label: "Actions", render: (run) => `${run.action_success_count}/${run.action_attempt_count} succeeded` },
+    { key: "started", label: "Started", render: (run) => <span className="whitespace-nowrap">{formatDateTime(run.started_at)}</span> },
+  ];
+
   return (
-    <ModuleTableShell isRefreshing={isRefreshing} className="min-h-56">
-      <Table>
-        <TableHeader><TableHeaderRow>
-          <TableHead>Rule</TableHead><TableHead>Source</TableHead><TableHead>Status</TableHead>
-          <TableHead className="hidden md:table-cell">Actions</TableHead><TableHead className="hidden lg:table-cell">Started</TableHead><TableHead className="w-20 text-right">Details</TableHead>
-        </TableHeaderRow></TableHeader>
-        <TableBody>
-          {runs.map((run) => (
-            <TableRow key={run.id}>
-              <TableCell><div className="font-medium text-copy-primary">{run.rule_name ?? `Rule #${run.rule_id}`}</div><div className="mt-1 text-xs text-copy-muted">{run.trigger_event_key ?? "Unknown trigger"}</div></TableCell>
-              <TableCell>{sourceLabel(run)}</TableCell>
-              <TableCell><StatusValue status={{ tone: statusToneFor(run.status), label: formatSnakeCaseLabel(run.status) }} /></TableCell>
-              <TableCell className="hidden md:table-cell">{run.action_success_count}/{run.action_attempt_count} succeeded</TableCell>
-              <TableCell className="hidden whitespace-nowrap lg:table-cell">{formatDateTime(run.started_at)}</TableCell>
-              <TableCell className="text-right"><Button type="button" variant="ghost" size="sm" onClick={() => onInspect(run)}><Eye />Inspect</Button></TableCell>
-            </TableRow>
-          ))}
-          {!runs.length ? <TableRow><TableCell colSpan={6} className="p-0"><EmptyState icon={History} title={hasFilters ? "No runs match these filters" : "No automation runs yet"} description={hasFilters ? "Clear the filters to see other runs." : "Execution history appears here after a rule is triggered."} action={hasFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined} /></TableCell></TableRow> : null}
-        </TableBody>
-      </Table>
-    </ModuleTableShell>
+    <RecordTable
+      label="Automation runs"
+      columns={columns}
+      rows={runs}
+      rowKey={(run) => run.id}
+      isRefreshing={isRefreshing}
+      shellVariant="nested"
+      rowActions={(run) => (
+        <Button type="button" variant="ghost" size="sm" onClick={() => onInspect(run)}><Eye />Inspect</Button>
+      )}
+      rowActionsLabel="Details"
+      hasActiveFilters={hasFilters}
+      onClearFilters={onClearFilters}
+      filteredEmptyState={{
+        icon: History,
+        title: "No runs match these filters",
+        description: "Clear the filters to see other runs.",
+      }}
+      emptyState={{
+        icon: History,
+        title: "No automation runs yet",
+        description: "Execution history appears here after a rule is triggered.",
+      }}
+    />
   );
 }

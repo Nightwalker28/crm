@@ -263,14 +263,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `RecordTable` (R10) | **footer done, batch 2** — `FormFooter`, un-stickied. The table is batch 4's |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
+| `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **table, batch 4a** — `RecordTable`; the hand-rolled row gesture and `stopRowNavigation` deleted |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | **strip only, batch 5** — the third card-scoped tab strip; moved to `SectionTabs` so all three share one dialect. The raw `Table` stays 5.6's |
 | `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5**; **booleans done, 5.6 batch 1** — five `SettingsSwitchRow`s → `SettingsRow` + `SegmentedBoolean`. The page rebuild is 5.6 batch 6 |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **error idiom done, batch 3** — the hand-rolled error card moved onto `PageShell`. A10 is batch 5's; the page rebuild is batch 6's |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **leak closed, batch 1** — it is in the one IA now, so ⌘K finds it and its header stops using the Title Case fallback. The page itself stays 5.6's |
-| `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | |
+| `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **table + denied state, batch 4a** — `RecordTable` with sortable columns; three page-local states deleted |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **denied state, batch 3.** `?view=` → `?tab=` is batch 5's |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
@@ -386,19 +386,19 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `users/createUserDialog.tsx` | 285 | 5.6 | rebuild | | |
 | `users/editUserDialog.tsx` | 331 | 5.6 | rebuild | | |
 | `users/userFilters.tsx` | 200 | 5.6 | rebuild | | |
-| `automation/AutomationRulesTable.tsx` | 105 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
-| `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
+| `automation/AutomationRulesTable.tsx` | 105 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — and the row gained an open gesture; the name had been a 200px `<button>` |
+| `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** |
 | `automation/AutomationRuleEditor.tsx` | 137 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, R5 on the dirty line |
 | `automation/AutomationStepList.tsx` | 58 | 5.6 | rebuild | | |
 | `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | **boolean only, batch 1** — on `SettingsRow` + `SegmentedBoolean`. The rest of the file stays 5.6's |
 | `automation/AutomationRunDetails.tsx` | 45 | 5.6 | rebuild | | |
 | `automation/types.ts` | 118 | — | unchanged | Data | |
 | `automation/utils.ts` | 116 | — | unchanged | Data | |
-| `integrations/IntegrationEventHistory.tsx` | 211 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
+| `integrations/IntegrationEventHistory.tsx` | 211 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — three prose states replaced by `RecordTable`'s |
 | `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` | |
 | `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` | |
-| `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | |
-| `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | |
+| `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | **error state, batch 4a** — on `PanelError` |
+| `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | **done, 5.6 batch 4a** — a verbatim duplicate of `PanelError`; all 4 call sites moved |
 | `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | 6 raw HTML5 DnD implementations start here | |
 | `recordLayouts/RecordLayoutPreview.tsx` | 95 | 5.6 | rebuild | | |
 | `recordLayouts/RecordLayoutValidationPanel.tsx` | 69 | 5.6 | rebuild | | |

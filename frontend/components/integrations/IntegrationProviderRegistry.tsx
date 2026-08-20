@@ -2,8 +2,8 @@ import type { StatusTone } from "@/lib/statusStyles";
 import Link from "next/link";
 import { PlugZap, RefreshCw } from "lucide-react";
 
-import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
@@ -112,7 +112,7 @@ export function IntegrationProviderRegistry({
           Refresh
         </Button>
       </div>
-      {isError ? <IntegrationSectionError message="Provider health is temporarily unavailable. Your existing connections have not been changed." retry={onRetry} /> : null}
+      {isError ? <PanelError message="Provider health is temporarily unavailable. Your existing connections have not been changed." onRetry={onRetry} /> : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {isLoading ? (
           <Card className="px-5 py-5 text-sm text-copy-muted md:col-span-2 xl:col-span-3">Loading provider health...</Card>
