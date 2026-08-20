@@ -148,7 +148,13 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
     rangeStart: data?.range_start ?? 0,
     rangeEnd: data?.range_end ?? 0,
     isLoading: query.isLoading,
-    isFetching: query.isFetching,
+    /**
+     * Includes the debounce window. Without it a list looks frozen for 300ms after every
+     * keystroke — nothing is in flight yet, so the shell's "Refreshing" marker is off
+     * while the operator can plainly see the rows do not match what they typed. Callers
+     * that need the strict react-query flag still have it on the returned `query`.
+     */
+    isFetching: query.isFetching || search !== debouncedSearch,
     /** True while a typed search is still inside the debounce window. */
     isSearchPending: search !== debouncedSearch,
     error: query.error ? (errorMessage ? errorMessage(query.error) : query.error instanceof Error ? query.error.message : fallbackErrorMessage) : null,

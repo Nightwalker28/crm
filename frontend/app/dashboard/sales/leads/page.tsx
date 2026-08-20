@@ -84,6 +84,9 @@ export default function LeadsPage() {
         filtersOpen={Boolean(activeFilters.filtersOpen)}
         activeFilterCount={activeFilterCount}
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        columnOptions={definition?.columns ?? []}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         selectedCount={selectedIds.length}
         selectionNoun="lead"

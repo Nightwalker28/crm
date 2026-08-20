@@ -63,6 +63,9 @@ export default function PaymentsPage() {
         filtersOpen={Boolean(activeFilters.filtersOpen)}
         activeFilterCount={activeFilterCount}
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        columnOptions={definition?.columns ?? []}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         onClearFilters={clearFilters}
         selectedCount={selectedIds.length}
         selectionNoun="invoice"

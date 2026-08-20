@@ -151,6 +151,9 @@ export default function InsertionOrdersPage() {
             }))
           }
           onClearFilters={clearFilters}
+          columnOptions={definition?.columns ?? []}
+          visibleColumns={visibleColumns}
+          onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
           selectedCount={selectedIds.length}
           selectionNoun="order"
           onClearSelection={() => setSelectedIds([])}

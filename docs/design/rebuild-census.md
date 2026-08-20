@@ -508,11 +508,11 @@ taken. Counted here so the denominator stays honest.
 | `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. **After 5.7**, not 5.5, only 3 files may import it — the twelve settings / automation / integration / reports / dashboard tables move with their own pages. See 5.5 "What the measurement says now" | **done** — unchanged, as specified |
 | `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | |
 | `ModuleTableLoading.tsx` | 49 | 5.5 | adopt | | |
-| `ModuleListToolbar.tsx` | 69 | 5.5 | adopt | | |
+| `ModuleListToolbar.tsx` | 69 | 5.5 | adopt | | **done, batch 3** — draws the `[columns]` control archetype 1 has always shown in it |
 | `TableDensityToggle.tsx` | 16 | 5.5 | adopt | | |
 | `Pagination.tsx` | 194 | 5.5 | adopt | | |
 | `SearchBar.tsx` | 37 | 5.5 | rebuild | **A5** — debounce. No debounce anywhere today | **done, batch 2 — unchanged, deliberately.** The debounce belongs in `usePagedList`: the input must stay instant and only the query waits |
-| `ColumnPicker.tsx` | 143 | 5.5 | adopt | **A2** — wired into 1 of 16 pages | |
+| `ColumnPicker.tsx` | 143 | 5.5 | adopt | **A2** — wired into 1 of 16 pages | **done, batch 3** — unchanged itself; `ModuleListToolbar` owns its placement now, so it is on every list |
 | `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | |
 | `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | |
 | `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | |

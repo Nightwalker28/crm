@@ -8,7 +8,6 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import CustomModuleRecordsTable from "@/components/customModules/CustomModuleRecordsTable";
-import { ColumnPicker } from "@/components/ui/ColumnPicker";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageShell } from "@/components/ui/PageShell";
@@ -156,6 +155,9 @@ export default function CustomModulePage() {
             setPage(1);
           }}
         searchPlaceholder="Search records"
+        columnOptions={viewDefinition?.columns ?? []}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         /*
           No filter group (7.9). `useCustomModuleRecords` serialises `page`, `page_size`,
           `search`, `sort_by` and `sort_direction` and nothing else, so every condition
@@ -178,18 +180,6 @@ export default function CustomModulePage() {
         primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}><Plus />New record</Link></Button> : undefined}
         actionControls={
           <>
-            {viewDefinition ? (
-            <ColumnPicker
-              options={viewDefinition.columns}
-              visibleColumns={visibleColumns}
-              onChange={(nextColumns) =>
-                setDraftConfig((current) => ({
-                  ...current,
-                  visible_columns: nextColumns,
-                }))
-              }
-            />
-            ) : null}
             {canCreate || canExport ? (
             <ModuleImportExportControls
               importEndpoint={canCreate ? `/custom-modules/${moduleKey}/import` : undefined}

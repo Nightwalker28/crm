@@ -3208,7 +3208,7 @@ programme's two full-suite runs**.
 |---|---|---|
 | ~~1~~ | ~~**`RecordTable`'s two variants, and the empty-state defect**~~ | **Done** — `7cb268e`. `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
 | ~~2~~ | ~~**The codec, and A1 + A5 in the hook**~~ | **Done** — `ed41566`. The address-bar codec beside `appendSavedViewFilterParams`, `useListAddress` as the single writer, `useSavedViews` and `usePagedList` backed by the URL, the debounce in one place. It landed on all sixteen lists with no page edited: A1 was never at the call site |
-| 3 | **A2, and the search-pending state** | `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
+| ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | 4 | **A6, A7, and the two stragglers** | POS's selection with no verb and payments' 3-row answer; the payments header button that is the slower path; `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component |
 | 5 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
@@ -3371,6 +3371,49 @@ way, since the change cannot be withheld from one caller of a shared hook.
 **Next.** Batch 3 — A2 (`ColumnPicker` into the toolbar, wired on 1 of 16 today) and the
 `isSearchPending` wiring. Much smaller than planned, for the reason at the top of this
 block.
+
+### Status: batch 3 — A2, and the reason it was stuck at one page
+
+**Read this first if you are picking the run up.** Batch 3 is done. Lint and build green.
+
+**`ColumnPicker` was not missing — it was unplaceable.** It has existed since Phase 3 and
+reached exactly one page, `custom/[moduleKey]`, where it sits in `actionControls` as a
+nine-line block next to the import/export controls. That is the whole of A2: not a control
+that needed building, but a control with no home, so hiding a column cost six clicks
+through the saved-view editor and left the operator owning a view they did not ask for.
+
+**It belongs to the toolbar, and archetype 1 already said so.** The §4.7 wireframe draws
+`[search] [view ▾] [filters ②] [columns]` and has since 5.0. So `ModuleListToolbar` owns
+it now, in the filter group, and a page contributes three props instead of assembling a
+block: `columnOptions`, `visibleColumns`, `onVisibleColumnsChange`. Eleven lists gained it,
+and `custom/[moduleKey]`'s hand-placed copy moved into the slot — the picker is drawn in
+the same place on every list for the first time.
+
+It draws only when there is something to pick (§7.9): a list whose view definition has not
+resolved yet gets no dead control rather than an empty popover.
+
+**A2 only became safe to do *after* batch 2, which is why it is here and not earlier.** The
+appendix's complaint was that hiding a column "leaves you owning a saved view you did not
+want" — true while the only durable place to put a column choice was a saved view. Now the
+choice goes into `cols` in the address: it survives the trip to a record and back, it can
+be sent to a colleague, and it is discarded by closing the tab. The saved view is what you
+get when you *ask* for one.
+
+**`isSearchPending` is consumed, and the loose end batch 2 left is closed.** `usePagedList`
+now folds the debounce window into `isFetching`, so all sixteen lists show the shell's
+"Refreshing" marker while a typed search is still settling. Without it the list looked
+frozen for 300ms after every keystroke — nothing in flight, so the marker was off while the
+operator could plainly see the rows did not match what they had typed. The strict
+react-query flag is still available on the returned `query` for anything that needs it.
+
+**Two lists were deliberately not touched.** `settings/users` draws its toolbar through
+`components/users/userFilters.tsx`, which has its own filter-value shape rather than a
+`SavedViewConfig` draft — it is 5.6's, with the rest of settings, under the same ruling
+batch 1 recorded. `documents` and `client-portal` have no toolbar at all yet; they are
+batch 4's stragglers and get the picker when they get the toolbar.
+
+**Next.** Batch 4 — A6 (POS's selection with no verb, payments' 3-row answer), A7
+(payments' header button is the slower path), and the two migration stragglers.
 
 ---
 
