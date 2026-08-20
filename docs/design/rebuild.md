@@ -3211,7 +3211,7 @@ programme's two full-suite runs**.
 | ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `a63091e`. `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — `8f6fa20`. POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
 | ~~5~~ | ~~**The documents straggler**~~ | **Done** — `f36283d`. The toolbar, real pagination, and the backend param it needed |
-| 6 | **The client-portal straggler** | `client-portal/page.tsx` calls `RecordTable` inline twice with no module table component |
+| ~~6~~ | ~~**The client-portal straggler**~~ | **Done** — two page-local tables extracted, both `shellVariant="nested"`, the page 456 → 330 lines |
 | 7 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
@@ -3507,6 +3507,38 @@ cards are not squeezed and the table still gets the remaining height.
 
 **Next.** Batch 6 — `client-portal/page.tsx`, the last straggler: two inline `RecordTable`
 calls and no module table component.
+
+### Status: batch 6 — the last straggler, and a border nobody had noticed
+
+**Read this first if you are picking the run up.** Batch 6 is done. Lint and build green.
+
+**Two page-local tables, which §7.1 names as a review failure outright.** `client-portal/
+page.tsx` held roughly two hundred lines of column definitions across two inline
+`RecordTable` calls, and none of it was page state. They are
+`components/client-portal/ClientPagesTable.tsx` and `ClientAccountsTable.tsx` now, and the
+page went **456 → 330 lines**. The programme's own rule is the stricter one: a sub-phase
+that ends with a shared shape still living in a page file has not ended.
+
+**The extraction found a real defect.** Neither inline table passed `shellVariant="nested"`,
+so both drew a second panel edge one pixel inside the `Card` they sit in. That is the exact
+divergence `ModuleTableShell`'s `nested` variant exists to absorb, and it was invisible
+because nobody had put the two borders side by side. Both pass it now.
+
+**The two hand-written `<h2 className="text-base font-semibold">` are `SectionHeading`.**
+They were the pre-R7 heading — one step *louder* than the values under them — and they also
+carried title case, so `Shared Pages` and `Client Accounts` became `Shared pages` and
+`Client accounts` (§3.5). The pages heading's description moved into `SectionHeading`'s own
+`description` slot rather than staying a `FieldDescription` beside it.
+
+**`statusTone` and `actionLabel` moved verbatim.** The first draft of the extraction quietly
+rewrote both — a three-tone `statusTone` and a `formatSnakeCaseLabel` action label — which
+would have changed what the page renders under cover of a refactor. They are the originals,
+copied, with a comment saying so. Worth recording as the trap: an extraction that restates a
+rule instead of moving it is a behaviour change wearing a refactor's clothes.
+
+**Next.** Batch 7 — close-out: `check-design.sh`, both rendered guards, **the full suite —
+the first of the programme's two**, the module specs for everything 5.5 touched, the browser
+pass in both themes at 1280 and 768, and every 5.5 census row marked.
 
 ---
 

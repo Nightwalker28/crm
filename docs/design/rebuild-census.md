@@ -231,7 +231,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `custom/[moduleKey]/new/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `custom/[moduleKey]/[recordId]/page.tsx` | 320 | 5.3 | rebuild | Archetype 5 — inline-edit form | done |
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
-| `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | |
+| `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | **done, batch 6** — both extracted to `components/client-portal/`; 456 → 330 lines; the missing `shellVariant="nested"` fixed on both |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5** — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open |
 | `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
@@ -352,7 +352,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | **done, close-out** — archetype 3; A7 remains a 5.5 workflow decision with the faster dialog path |
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 
-### 2.3 Tables and lists (18) — owner 5.5
+### 2.3 Tables and lists (20) — owner 5.5
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
@@ -375,6 +375,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
 | `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice |
+| `client-portal/ClientPagesTable.tsx` | 160 | 5.5 | new | Extracted from the page | **done, batch 6** |
+| `client-portal/ClientAccountsTable.tsx` | 130 | 5.5 | new | Extracted from the page | **done, batch 6** |
 
 ### 2.4 Settings, users, automation, integrations, record layouts (21) — owner 5.6
 
