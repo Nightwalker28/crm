@@ -337,9 +337,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunityQuickCreateLayoutFields.tsx` | 291 | 5.4 | adopt | | |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | |
 | `opportunities/opportunityStages.ts` | 32 | 5.1 | rebuild | Tone classification (R5) | **done** (B) |
-| `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
-| `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
-| `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
+| `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); **batch 5** — `TransactionTotals`, `Review summary` → `Totals`, `Delivery and validity` → `Quote details`, six labels associated. Owner is still `LinkedRecordPicker` (batch 6); the line-item table is 5.5's |
+| `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); **batch 5** — `TransactionTotals`, `Totals` / `Fulfillment` / `Order details`, the two wrong `RequiredMark`s and the anchor span gone, six labels associated. Owner is still `LinkedRecordPicker` (batch 6); the line-item table is 5.5's |
+| `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); **batch 5** — `TransactionTotals` **plus the missing `Total` row**, the aside regrouped into `Pricing and tax` / `Payment` / `Invoice details` / `Print`, one vague pricing error split into three, six labels associated; the line-item table is 5.5's |
 | `finance/InsertionOrderRecordFormPage.tsx` | 416 | 5.4 | rebuild | **Two Cancel buttons** — `:265` and `:305` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the duplicate Cancel is still there and is batch 4's |
 | `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField`; **out of scope from 5.4 batch 4** (scoping decision 8); **out of scope** (scoping decision 8) — the module may be removed |
 | `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched; **out of scope from 5.4 batch 4** (scoping decision 8); **out of scope** (scoping decision 8) — the module may be removed |
@@ -371,7 +371,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | |
 | `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | |
-| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | |
+| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) ||
+| `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
 
 ### 2.4 Settings, users, automation, integrations, record layouts (21) — owner 5.6
 

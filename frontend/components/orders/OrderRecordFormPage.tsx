@@ -18,11 +18,11 @@ import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
-  formatTransactionMoney,
   serializeTransactionItems,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
+import { TransactionTotals } from "@/components/transactions/TransactionTotals";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -33,7 +33,6 @@ import {
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -214,8 +213,7 @@ function OrderRecordFormEditor({
         ? null
         : "Each line needs a name, positive quantity, and valid non-negative amounts.",
     );
-    if (!validCustomer)
-      document.getElementById("order-customer-anchor")?.focus();
+    if (!validCustomer) document.getElementById("order-account")?.focus();
     else if (!validItems)
       document
         .querySelector<HTMLInputElement>("[data-transaction-field='name']")
@@ -325,18 +323,23 @@ function OrderRecordFormEditor({
           </>
         )}
       >
+        {/* The requirement is `account || contact`, which no per-field `RequiredMark` can
+            state — and the backend requires neither, so two marks made a claim that was
+            wrong twice over (design.md §4.7). It is stated once in the description and
+            enforced by the section's own `role="alert"`. */}
         <FormSection
           title="Customer and billing details"
-          description="Link this order to the customer records used throughout the CRM."
+          description="Link this order to the customer records used throughout the CRM. An account or a contact is required."
         >
-          <span id="order-customer-anchor" tabIndex={-1} />
-          {customerError ? <FieldError>{customerError}</FieldError> : null}
-          <FieldGroup columns={2} className="mt-3">
+          {customerError ? (
+            <FieldError className="mb-3">{customerError}</FieldError>
+          ) : null}
+          <FieldGroup columns={2}>
             <Field>
-              <FieldLabel>
-                Account <RequiredMark />
-              </FieldLabel>
+              <FieldLabel htmlFor="order-account">Account</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-account"
+                ariaInvalid={Boolean(customerError)}
                 recordType="organization"
                 valueId={form.organization_id}
                 displayValue={form.organization_name}
@@ -379,10 +382,10 @@ function OrderRecordFormEditor({
               />
             </Field>
             <Field>
-              <FieldLabel>
-                Contact <RequiredMark />
-              </FieldLabel>
+              <FieldLabel htmlFor="order-contact">Contact</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-contact"
+                ariaInvalid={Boolean(customerError)}
                 recordType="contact"
                 valueId={form.contact_id}
                 displayValue={form.contact_name}
@@ -416,8 +419,9 @@ function OrderRecordFormEditor({
               />
             </Field>
             <Field className="md:col-span-2">
-              <FieldLabel>Deal</FieldLabel>
+              <FieldLabel htmlFor="order-deal">Deal</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-deal"
                 recordType="opportunity"
                 valueId={form.opportunity_id}
                 displayValue={form.opportunity_name}
@@ -467,7 +471,7 @@ function OrderRecordFormEditor({
           idPrefix="order"
         />
         <FormSection
-          title="Delivery and payment details"
+          title="Fulfillment"
           description="Set fulfillment expectations and customer-facing payment terms."
         >
           <FieldGroup columns={2}>
@@ -548,34 +552,18 @@ function OrderSidebar({
 }) {
   return (
     <>
-      <FormSection
-        title="Review summary"
+      <TransactionTotals
         description="Totals are calculated from the items and verified by the server."
-      >
-        <dl className="space-y-3">
-          <SummaryRow
-            label="Subtotal"
-            value={formatTransactionMoney(totals.subtotal, form.currency)}
-          />
-          <SummaryRow
-            label="Discount"
-            value={`− ${formatTransactionMoney(totals.discount, form.currency)}`}
-          />
-          <SummaryRow
-            label="Tax"
-            value={formatTransactionMoney(totals.tax, form.currency)}
-          />
-          <div className="border-t border-line-default pt-3">
-            <SummaryRow
-              label="Total"
-              value={formatTransactionMoney(totals.total, form.currency)}
-              strong
-            />
-          </div>
-        </dl>
-      </FormSection>
+        currency={form.currency}
+        rows={[
+          { label: "Subtotal", amount: totals.subtotal },
+          { label: "Discount", amount: totals.discount, negative: true },
+          { label: "Tax", amount: totals.tax },
+          { label: "Total", amount: totals.total, resolved: true },
+        ]}
+      />
       <FormSection
-        title="Order settings"
+        title="Order details"
         description="Control numbering, currency, and lifecycle status."
       >
         <div className="space-y-4">
@@ -591,12 +579,12 @@ function OrderSidebar({
             />
           </Field>
           <Field>
-            <FieldLabel>Currency</FieldLabel>
+            <FieldLabel htmlFor="order-currency">Currency</FieldLabel>
             <Select
               value={form.currency}
               onValueChange={(currency) => onChange({ ...form, currency })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="order-currency">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -609,12 +597,12 @@ function OrderSidebar({
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel htmlFor="order-status">Status</FieldLabel>
             <Select
               value={form.status}
               onValueChange={(status) => onChange({ ...form, status })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="order-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -633,8 +621,9 @@ function OrderSidebar({
         description="Assign responsibility for fulfillment."
       >
         <Field>
-          <FieldLabel>Owner</FieldLabel>
+          <FieldLabel htmlFor="order-owner">Owner</FieldLabel>
           <LinkedRecordPicker
+            inputId="order-owner"
             recordType="user"
             valueId={form.owner_id}
             displayValue={form.owner_name}
@@ -659,23 +648,5 @@ function OrderSidebar({
         </Field>
       </FormSection>
     </>
-  );
-}
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 ${strong ? "text-base font-semibold text-copy-primary" : "text-sm text-copy-secondary"}`}
-    >
-      <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
-    </div>
   );
 }

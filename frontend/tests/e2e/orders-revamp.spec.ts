@@ -15,8 +15,10 @@ test("Order creation uses the shared itemized transaction workflow", async ({
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
-  await expect(page.getByText("Delivery and payment details")).toBeVisible();
-  await expect(page.getByText("Review summary")).toBeVisible();
+  // Both names come from the record layout now (design.md 4.7): the record has called
+  // this field set `Fulfillment` and the money block `Totals` since the layouts were seeded.
+  await expect(page.getByText("Fulfillment")).toBeVisible();
+  await expect(page.getByText("Totals")).toBeVisible();
 
   await page.getByRole("button", { name: "Create order" }).click();
   await expect(

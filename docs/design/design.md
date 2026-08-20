@@ -1070,6 +1070,7 @@ second recipe in.
 | `FormSection` | the panel + `SectionHeading` | the pre-R7 `<h2 class="text-base font-semibold text-copy-primary">`, at 66 call sites |
 | `FieldGroup columns={2}` | `grid gap-4 md:grid-cols-2` | the hand-written responsive field grid |
 | `TextField` | `Field` + `FieldLabel` + `Input`, wired by `id` | five private copies, one of which wired no `id` at all |
+| `TransactionTotals` | the document's money ledger in the aside | three private `SummaryRow`s, one of which withheld a figure it had already computed |
 
 A field spanning both columns writes `md:col-span-2` on the `Field`, matching the grid's own
 breakpoint. That stays at the call site because it is a property of the field, not of the
@@ -1097,6 +1098,45 @@ lands in lists, counts and reports.
 The action bar is **at the end of the document, not stuck to the viewport** (R3). It carries
 the dirty-state string and both actions, once — `insertion-orders` currently renders two
 Cancel buttons because the page header and the footer each supplied one.
+
+**A line-item document's totals are a ledger, and the primitive owns the arithmetic's
+appearance.** Quote, order and POS invoice each drew the same block — subtotal, the
+adjustments, the resolved figure — from a private `SummaryRow` copied three times.
+`TransactionTotals` draws it once, and three things it owns were wrong in at least one copy:
+
+- **The resolved figure is separated by weight, not size.** All three grand-total rows were
+  `text-base font-semibold`, which is the 16px step §3.3 removed from the ramp — the same
+  pre-R7 string `FormSection`'s heading carried, arriving here as a *value* instead of a
+  heading. A total is the value role at `font-semibold` (§3.4): same size as the rows above
+  it, heavier, and `tabular-nums` so the column of figures aligns.
+- **A subtraction carries its sign from the ledger.** Discount and Paid had a minus prepended
+  to a formatted currency string at the call site, in three places, so the sign was a
+  property of the sentence rather than of the row.
+- **Every figure the form computes is drawn.** The invoice ledger read
+  Subtotal - Discount - Tax - Paid - Balance and never showed **Total**, though it had
+  computed it and validated `amount_paid` against it — so the operator typed a payment
+  against a number the form knew and would not display. That is §7.9 pointed the other way:
+  not a control the backend cannot honour, but an answer the form has and withholds. A row
+  the ledger can compute is a row the ledger renders.
+
+**A form section that draws the same field group as the record layout carries the record's
+name for it.** §1.6, at the scale it costs most — an operator moves between a record and its
+edit page constantly. All three documents titled their totals block *Review summary* while
+the record page has called that exact field set `Totals` since the layouts were seeded, and
+the order form called its delivery-date / payment-terms / delivery-address section *Delivery
+and payment details* against the record's `Fulfillment`. Where the form draws a group the
+record has no name for — the document's number, currency, dates and status, which a record
+splits between its header, its rail and its sections — the section is named after the
+document (`Quote details`, `Order details`, `Invoice details`), so the three share a shape
+and each says which one it is.
+
+**A requirement that spans two fields is not two `RequiredMark`s.** The order form marked
+*Account* and *Contact* required and validated `account || contact`, against a backend that
+requires neither — so the mark made a claim that was wrong twice over, and `RequiredMark` is
+`aria-hidden` (§8), so the real rule reached nobody. An either-or requirement is stated once,
+in the section's own description, and enforced by the section-level `role="alert"` the
+validation already renders. `RequiredMark` stays what §7.5 says it is: this **field** must
+have a value, and the backend agrees.
 
 ---
 

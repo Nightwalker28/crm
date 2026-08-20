@@ -107,9 +107,10 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pricing, discounts, and taxes")).toBeVisible();
-  await expect(page.getByText("Delivery and payment details")).toBeVisible();
-  await expect(page.getByText("Review summary")).toBeVisible();
+  await expect(page.getByText("Pricing and tax")).toBeVisible();
+  await expect(page.getByText("Payment", { exact: true })).toBeVisible();
+  await expect(page.getByText("Invoice details")).toBeVisible();
+  await expect(page.getByText("Totals")).toBeVisible();
 
   await page.getByRole("button", { name: "Create invoice" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
@@ -122,7 +123,9 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await page.getByLabel("unit price line 1").fill("100");
   await page.getByLabel("Discount amount").fill("10");
   await page.getByLabel("Tax rate (%)").fill("10");
-  await expect(page.getByText("$209.00", { exact: true })).toBeVisible();
+  // Two now: the ledger draws `Total` as well as `Balance`. It always computed the total
+  // and validated the amount paid against it, and drew only the balance.
+  await expect(page.getByText("$209.00", { exact: true })).toHaveCount(2);
   await page.getByLabel("name line 1").press("Enter");
   await expect(page.getByLabel("name line 2")).toBeFocused();
 });

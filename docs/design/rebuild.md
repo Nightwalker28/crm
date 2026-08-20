@@ -2742,9 +2742,132 @@ sub-phase.
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
 | ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — `3d86163`. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
-| 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
+| ~~5~~ | ~~**The line-item documents**~~ | **Done** — `TransactionTotals` and three adopters, the invoice's missing `Total` row, the order's either-or `RequiredMark`s, the section names taken from the record layout, 18 unassociated labels. See the status below |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
 | 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |
+
+### Status: batch 5 — the line-item documents, committed as `PENDING`
+
+**Read this first if you are picking the run up.** Batch 5 is done and committed. Cadence
+unchanged from batch 4 (scoping decision 9): lint + `npm run build`, plus `check-design.sh`
+because the batch retires a class-level rule. Both green; the design check is **2 of 14, the
+known baseline, unchanged**. No guards, no specs, no browser pass — those are batch 7's.
+
+**What the three documents actually had in common was one component written three times.**
+`SummaryRow` — 15 lines, `flex items-center justify-between` over a `dt`/`dd` — was defined
+in `QuoteRecordFormPage`, `OrderRecordFormPage` and `PosInvoiceRecordFormPage`, character for
+character. It is `components/transactions/TransactionTotals.tsx` now, and **each of the three
+things the primitive took ownership of was wrong in at least one copy**:
+
+- **`text-base font-semibold text-copy-primary` on every grand total** — the 16px step §3.3
+  removed from the ramp, and the same string batch 3 deleted from `FormSection`'s heading,
+  arriving here as a *value* instead. Batch 3 saw all three and deferred them by name
+  (*"those are values, not section headings, and the line-item documents are batch 5's"*),
+  which was right about the role and did not make 16px legal. The ledger separates the
+  resolved figure by **weight** (§3.4): same 14px, `font-semibold`, `tabular-nums`.
+- **The minus sign was assembled at the call site**, three times, as
+  `` `− ${formatTransactionMoney(...)}` `` — so the sign belonged to the sentence rather than
+  to the row. The ledger takes a magnitude and a `negative` flag.
+- **`formatTransactionMoney` is not the app's money renderer.** It passes
+  `maximumFractionDigits: 2`, which is a no-op for USD and wrong for a zero-decimal currency
+  (`¥209.00`). The ledger renders `Money`, which is 5.1's single formatter.
+
+**The real find: the invoice ledger withheld a figure it had already computed.** It read
+Subtotal → Discount → Tax → Paid → Balance, and **never drew `Total`** — although `totals.total`
+is computed on every keystroke and `validate()` rejects `amount_paid > totals.total`. So the
+operator typed a payment against a number the form knew, used to judge them, and would not
+show. §7.9 says a control the backend cannot honour is not drawn; this is the same rule
+pointed the other way, and it is now written into §4.7: **a row the ledger can compute is a
+row the ledger renders.** Nothing could see it — the three ledgers were never side by side,
+and each one looked internally consistent.
+
+**The section names came from the record layout, not from taste.** All three titled the money
+block *Review summary*; `record_layouts.py` has seeded that exact field set as **`Totals`**
+since 5.3, and the operator moves between a record and its edit page constantly. Same for the
+order's *Delivery and payment details* (delivery date, payment terms, delivery address),
+which the record calls **`Fulfillment`** — the identical three fields. Where the form draws a
+group the record has no name for, because a record splits it between its header, its rail and
+its sections, the section is named after the document:
+
+| | Quote | Order | Invoice |
+|---|---|---|---|
+| aside 1 | `Totals` | `Totals` | `Totals` |
+| aside 2 | `Quote details` | `Order details` | `Pricing and tax` |
+| aside 3 | `Ownership` | `Ownership` | `Payment` |
+| aside 4 | | | `Invoice details` |
+| aside 5 | | | `Print` |
+| content | … `Terms and notes` | … `Fulfillment`, `Terms and notes` | … `Terms and notes` |
+
+**The invoice's aside was a nine-field grab bag and is now four blocks.** *Delivery and
+payment details* held the invoice's number, currency, two dates, two statuses, the payment
+method, the print template and the accent colour — document identity, workflow state and
+*print presentation* in one panel — while `amount_paid` sat in a different panel from
+`payment_status`. Reconciling a part-paid invoice meant reading two panels to answer one
+question. **The invoice has no `Ownership` block and that is correct**: batch 2 measured nine
+record types with an owner and POS was not one of them. `finance_pos_invoices.user_id` exists,
+but `pos_invoice_services.py:415` sets it to `current_user.id` at creation and neither the
+create nor the update schema accepts it — it is the cashier who rang the sale, not an
+assignable owner. Drawing a picker over it would be §7.9 exactly: a control the request layer
+cannot carry.
+
+**Two accessibility defects, and both are batch 3's rule catching up with its own files.**
+
+- **The order form marked *Account* and *Contact* required, and validated `account || contact`
+  against a backend that requires neither.** `SalesOrderCreateRequest` has both as
+  `int | None = None` and nothing enforces one-of. So the mark was wrong twice: it claimed
+  each field individually, and it claimed a backend constraint that does not exist —
+  §4.7's *"required sets match the backend exactly"*. `RequiredMark` is `aria-hidden` (§8),
+  so the actual rule reached sighted operators only. Both marks are gone, the requirement is
+  one clause in the section's description, and the section-level `role="alert"` that already
+  existed does the enforcing. The hand-rolled `<span id="order-customer-anchor" tabIndex={-1} />`
+  and the `mt-3` that compensated for it went with them — the error focuses the Account field
+  now, which it could not before because that field had no `id`.
+- **18 labels were adjacent to their control and not associated with it** — six in each
+  file, and every bare `<FieldLabel>` in the three is gone. Every
+  `LinkedRecordPicker` and every `Select` in the three files rendered a bare
+  `<FieldLabel>Account</FieldLabel>` beside a control with no `id` — so *Account*, *Contact*,
+  *Deal*, *Owner*, *Currency*, *Status*, *Payment status* and *Print template* had **no
+  accessible name at all** across the three documents, and clicking the label did nothing.
+  §7.5 already says a label is associated, not merely adjacent; batch 3 wrote that rule after
+  finding six such inputs on the lead form and made `TextField` take a required `id`. It
+  could not reach these, because `LinkedRecordPicker` and `SelectTrigger` are not `TextField`
+  — both already accepted `inputId` / `id`, and no call site here passed one.
+
+**One vague error became three that name their fix.** The invoice's `pricingError` covered
+discount, tax rate and amount paid with *"Discount, tax, or paid amount is outside the
+allowed range."* — a message naming none of the three fields it fails, against §7.5's *name
+the fix, not the failure*. It is `discountError` / `taxRateError` / `paidError` now, each
+under its own field with `aria-invalid`, and `validate()` focuses the first one that failed.
+
+**Spec updates, per the testing policy** (existing specs get updated where a rebuild moves
+what they assert; no new coverage). `quotes-revamp:16`, `orders-revamp:18–19` and
+`invoices-revamp:110–112` follow the renamed sections. `invoices-revamp:124` goes
+`toBeVisible()` → `toHaveCount(2)`, because `$209.00` is now drawn as `Total` *and* as
+`Balance` — the assertion is the evidence that the missing row is there. The order and quote
+`toHaveCount(2)` assertions are untouched; their ledgers gained no rows.
+
+**Scheduled here rather than done, both because 3-of-N is the drift this programme exists to
+remove:**
+
+- **Owner on a form is still `LinkedRecordPicker`, on 13 call sites → batch 6.** §7.8 says in
+  as many words that *"a select reached through the rail and the identical select on
+  `/[id]/edit` are one control, so forms render through this primitive too"*, and §4.7 says a
+  field pointing at a user is state rather than a reference. The rail has been
+  `RecordOwnerField` since batch 2, which deferred the form half to batch 3, which did not
+  take it. It is 13 files — leads, contacts, accounts, deals, quotes, orders, contracts,
+  support and the four quick-create layouts — and batch 6 is *"both create paths, all 15
+  modules"*, which touches every one of them anyway.
+- **`h1` ⊃ `h2` on the document modules** — `Edit SAMPLE-QT-0003` over `SAMPLE-QT-0003`.
+  Batch 3 recorded it and pointed at five existing assertions; batch 4 did not take it. Three
+  of the five are these documents and two are contracts / catalog / insertion-orders, so it
+  is a document-module sweep, not a line-item one. **Batch 7**, with the other corrections.
+- **Order and invoice have no custom fields and no `useModuleFieldConfigs` gating; the quote
+  has both.** That is a product gap rather than a design one — the two forms would need the
+  hooks, the payload picker and a `Custom fields` section — and it is not 5.4's to open.
+
+**Next.** Batch 6 — A3: `QuickCreateSurface` for the fast create and `/new` for the detailed
+one across all 15 modules, `OpportunityQuickCreate` finally wired into the deals list, and
+the Owner-on-form sweep above.
 
 ---
 

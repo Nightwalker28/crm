@@ -19,11 +19,11 @@ import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
-  formatTransactionMoney,
   serializeTransactionItems,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
+import { TransactionTotals } from "@/components/transactions/TransactionTotals";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -431,8 +431,9 @@ function QuoteRecordFormEditor({
             ) : null}
             {enabled("organization_id") ? (
               <Field>
-                <FieldLabel>Account</FieldLabel>
+                <FieldLabel htmlFor="quote-account">Account</FieldLabel>
                 <LinkedRecordPicker
+                  inputId="quote-account"
                   recordType="organization"
                   valueId={form.organization_id}
                   displayValue={form.organization_name}
@@ -477,8 +478,9 @@ function QuoteRecordFormEditor({
             ) : null}
             {enabled("contact_id") ? (
               <Field>
-                <FieldLabel>Contact</FieldLabel>
+                <FieldLabel htmlFor="quote-contact">Contact</FieldLabel>
                 <LinkedRecordPicker
+                  inputId="quote-contact"
                   recordType="contact"
                   valueId={form.contact_id}
                   displayValue={form.contact_name}
@@ -514,8 +516,9 @@ function QuoteRecordFormEditor({
             ) : null}
             {enabled("opportunity_id") ? (
               <Field className="md:col-span-2">
-                <FieldLabel>Deal</FieldLabel>
+                <FieldLabel htmlFor="quote-deal">Deal</FieldLabel>
                 <LinkedRecordPicker
+                  inputId="quote-deal"
                   recordType="opportunity"
                   valueId={form.opportunity_id}
                   displayValue={form.opportunity_name}
@@ -638,34 +641,18 @@ function QuoteSummary({
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return (
     <>
-      <FormSection
-        title="Review summary"
+      <TransactionTotals
         description="Totals are calculated from the line items and verified again by the server."
-      >
-        <dl className="space-y-3">
-          <SummaryRow
-            label="Subtotal"
-            value={formatTransactionMoney(totals.subtotal, form.currency)}
-          />
-          <SummaryRow
-            label="Discount"
-            value={`− ${formatTransactionMoney(totals.discount, form.currency)}`}
-          />
-          <SummaryRow
-            label="Tax"
-            value={formatTransactionMoney(totals.tax, form.currency)}
-          />
-          <div className="border-t border-line-default pt-3">
-            <SummaryRow
-              label="Total"
-              value={formatTransactionMoney(totals.total, form.currency)}
-              strong
-            />
-          </div>
-        </dl>
-      </FormSection>
+        currency={form.currency}
+        rows={[
+          { label: "Subtotal", amount: totals.subtotal },
+          { label: "Discount", amount: totals.discount, negative: true },
+          { label: "Tax", amount: totals.tax },
+          { label: "Total", amount: totals.total, resolved: true },
+        ]}
+      />
       <FormSection
-        title="Delivery and validity"
+        title="Quote details"
         description="Control numbering, dates, currency, and workflow status."
       >
         <div className="space-y-4">
@@ -684,12 +671,12 @@ function QuoteSummary({
           ) : null}
           {enabled("currency") ? (
             <Field>
-              <FieldLabel>Currency</FieldLabel>
+              <FieldLabel htmlFor="quote-currency">Currency</FieldLabel>
               <Select
                 value={form.currency}
                 onValueChange={(currency) => onChange({ ...form, currency })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="quote-currency">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -731,12 +718,12 @@ function QuoteSummary({
           ) : null}
           {enabled("status") ? (
             <Field>
-              <FieldLabel>Status</FieldLabel>
+              <FieldLabel htmlFor="quote-status">Status</FieldLabel>
               <Select
                 value={form.status}
                 onValueChange={(status) => onChange({ ...form, status })}
               >
-                <SelectTrigger>
+                <SelectTrigger id="quote-status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -757,8 +744,9 @@ function QuoteSummary({
       >
         {enabled("assigned_to") ? (
           <Field>
-            <FieldLabel>Owner</FieldLabel>
+            <FieldLabel htmlFor="quote-owner">Owner</FieldLabel>
             <LinkedRecordPicker
+              inputId="quote-owner"
               recordType="user"
               valueId={form.assigned_to}
               displayValue={form.assigned_to_name}
@@ -786,23 +774,5 @@ function QuoteSummary({
         )}
       </FormSection>
     </>
-  );
-}
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 ${strong ? "text-base font-semibold text-copy-primary" : "text-sm text-copy-secondary"}`}
-    >
-      <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
-    </div>
   );
 }
