@@ -1163,15 +1163,58 @@ have a value, and the backend agrees.
 ```
 
 Contract: **every settings page has a visible title and a description** — none of the 19
-does today. **Autosave** (R1), because a settings control is one independent reversible
-field and a switch with a Save button is a UX smell; `SaveStateIndicator` replaces the
-removed footer, so the operator still gets feedback. All six sticky Save/Discard bars go
-(R3). `PermissionDeniedState` on **all 23** pages, not 1 — settings is entirely admin-gated,
-so a missing permission wall is exactly what a non-admin hits.
+does today. `PermissionDeniedState` on **all 23** pages, not 1 — settings is entirely
+admin-gated, so a missing permission wall is exactly what a non-admin hits.
 
 The nav rail closes A8 and settles the IA: `SETTINGS_NAV_ITEMS` (flat, 18) and the hub's
 `SETTINGS_SECTIONS` (6 groups, 19) become **one** source, which is what currently leaks
 `record-layouts` — invisible to ⌘K and rendering Title Case from a label fallback.
+
+**The rail is pinned and the content column is the scroller** — the same mechanism as
+archetype 2's spine, and for the same reason: an operator three panels down a 900-line
+backups page must still be able to reach Domains. It is *not* `position: sticky` (R3);
+the settings layout is a full-height two-column grid and the right column owns the scroll,
+so §4.5 still holds at one *page* scroll region — the same two-scroller shape archetype
+2 already ships. Below `lg` the rail is not drawn and the page reverts to a document
+scroll, with the hub as the narrow-viewport index.
+
+##### The commit model, per control (R1 applied)
+
+R1's table already contains both answers, and a settings page can hold both kinds. The
+test is **what the operator is committing**, not what page they are on:
+
+| The control | Model | Feedback |
+|---|---|---|
+| One independent reversible field — a `SegmentedBoolean`, a `Select`, a switch row | **Autosave on change** | `SaveStateIndicator` beside the control, in its `SettingsRow` |
+| A **configuration record** — SSO credentials, the company profile, a booking link | **Manual save** | A `FormFooter` at the end of the document |
+
+A configuration record is a set of fields validated *together*, usually with a side effect
+attached — a connection test, a re-issued token, a domain re-verification. Field-by-field
+commit on those saves states the backend rejects, and it fires the side effect on a
+half-typed issuer URL. Autosaving one is the same defect R1 refuses on a line-item document.
+
+**What R3 removes is the stickiness, not always the button.** All six sticky Save/Discard
+bars go; where the model is autosave the button goes with them, and where the model is a
+configuration record the action becomes an ordinary flex sibling at the end of the page.
+The failure this closes is `settings/authentication`, which autosaved a select at `:45` and
+demanded an explicit footer forty lines below with **nothing visually separating the two**.
+Now the select carries `Saved` and the SSO card carries a footer, and each one says which
+it is from its own control.
+
+##### `SettingsRow` is the unit, and `SegmentedBoolean` is the boolean
+
+A settings page is a stack of `FormSection` panels whose rows are `SettingsRow` — label,
+optional description, the control, and the save-state slot. It is the archetype's only new
+primitive, and it exists because the save-state slot is what makes autosave legible: eight
+editing patterns across 19 pages collapse to one because the row, not the page, owns the
+pairing of a control with its confirmation.
+
+**The boolean is `SegmentedBoolean`** and there is only one. `SettingsSwitchRow`'s
+`SettingsSwitch` was a hand-rolled Off/On segmented pair — 112 lines reimplementing the
+primitive §7.1 already names, in 2 files, while the real one was in 7. It is deleted.
+`Checkbox` keeps its own job: **many from a set**, which is what the permissions matrix and
+the module-access grid are. A lone `Checkbox` standing in for a single on/off setting is
+the drift, not a third option.
 
 ---
 
@@ -1306,6 +1349,8 @@ exists. The list-and-record language in particular is not optional:
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | Autosave feedback | `SaveStateIndicator` (R1) |
+| A settings control and its save state | `SettingsRow` inside a `FormSection` — archetype 4. **`SettingsSwitchRow` is deleted** |
+| An on/off setting | `SegmentedBoolean`. `Checkbox` is for *many from a set*, never for one boolean |
 | Linked record | `LinkedRecordPicker` |
 | Import / export | `ImportControls`, `ExportControls`, `ModuleImportExportControls` |
 

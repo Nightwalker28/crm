@@ -252,8 +252,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `settings/layout.tsx` | 5 | 5.6 | rebuild | A 5-line passthrough. **Becomes the nav rail (A8)** | |
-| `settings/page.tsx` | 180 | 5.6 | rebuild | The hub's `SETTINGS_SECTIONS` is the second, disagreeing IA | |
+| `settings/layout.tsx` | 5 | 5.6 | rebuild | A 5-line passthrough. **Becomes the nav rail (A8)** | **done, batch 1** — full-height two-column grid, `SettingsNavRail` + a scrolling content column. Not sticky |
+| `settings/page.tsx` | 180 | 5.6 | rebuild | The hub's `SETTINGS_SECTIONS` is the second, disagreeing IA | **done, batch 1** — 180 → 58 lines, rendering `SETTINGS_NAV_GROUPS`. The second IA is gone |
 | `settings/general/page.tsx` | 357 | 5.6 | rebuild | | |
 | `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | |
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | |
@@ -265,11 +265,11 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | **strip only, batch 5** — the third card-scoped tab strip; moved to `SectionTabs` so all three share one dialect. The raw `Table` stays 5.6's |
-| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5** — on `SectionTabs`, controlled so the page can still gate its field inspector. The rest of the page stays 5.6's |
+| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5**; **booleans done, 5.6 batch 1** — five `SettingsSwitchRow`s → `SettingsRow` + `SegmentedBoolean`. The page rebuild is 5.6 batch 6 |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | |
+| `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **leak closed, batch 1** — it is in the one IA now, so ⌘K finds it and its header stops using the Title Case fallback. The page itself stays 5.6's |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | |
@@ -277,7 +277,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | |
 | `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | |
 | `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | |
-| `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | Raw `Table` | |
+| `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
 | `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | |
 | `settings/message-templates/page.tsx` | 168 | 5.6 | rebuild | | |
 | `settings/message-templates/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -390,7 +390,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | |
 | `automation/AutomationRuleEditor.tsx` | 137 | 5.6 | rebuild | | |
 | `automation/AutomationStepList.tsx` | 58 | 5.6 | rebuild | | |
-| `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | |
+| `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | **boolean only, batch 1** — on `SettingsRow` + `SegmentedBoolean`. The rest of the file stays 5.6's |
 | `automation/AutomationRunDetails.tsx` | 45 | 5.6 | rebuild | | |
 | `automation/types.ts` | 118 | — | unchanged | Data | |
 | `automation/utils.ts` | 116 | — | unchanged | Data | |
@@ -487,6 +487,8 @@ taken. Counted here so the denominator stays honest.
 | `Avatar.tsx` | **new** | Replaces 2 bespoke, one falling back to `"US"` and one to `"?"` | **done** (A) |
 | `SaveStateIndicator.tsx` | **new** | R1 requires it: autosave removes the button, which was the only feedback | **done** (A) |
 | `ActionBar.tsx` | **new** | `ActionBar` + `FormFooter`. Owns its children's control height (R4) via context; not sticky (R3) | **done** (A) — built; **0 app consumers**, so R4 is unenforced until 5.4/5.6 |
+| `SettingsRow.tsx` | **new** | Archetype 4's unit — label / description / control slot / save-state. Replaces `SettingsSwitchRow` | **done** (5.6 batch 1) |
+| `hooks/useAutosave.ts` | **new** | R1's commit machine, extracted from `InlineFieldEdit` | **done** (5.6 batch 1) |
 | `PanelStates.tsx` | **new** | Promoted from `recordActivity/`. Header steps down to R7; loading and empty stop being boxes (R8) | **done** (A) |
 | `StatusValue.tsx` | **new** | Renders a tone per context; accepts a caller-computed override for derived tones like overdue | **done** (B) |
 | `Chip.tsx` | **new** | The tag/count/marker R5 says needs "a different component with a different name" | **done** (B) |
@@ -532,8 +534,8 @@ taken. Counted here so the denominator stays honest.
 | `input-group.tsx` | 171 | — | unchanged | same | |
 | `checkbox.tsx` | 142 | — | unchanged | same | |
 | `radio-group.tsx` | 130 | — | unchanged | | |
-| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | |
-| `SettingsSwitchRow.tsx` | 112 | 5.6 | adopt | A purpose-built settings primitive used in **2** files | |
+| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | **ruled, batch 1** — `SegmentedBoolean` is the boolean (ruling 4). Its 3 call sites are not 5.6's rows: `CatalogRecordsTable` and `LeadConversionForm` → 5.3, `CalendarEventDialog` → 5.7 |
+| `SettingsSwitchRow.tsx` | 112 | 5.6 | **delete** | A purpose-built settings primitive used in **2** files | **done, batch 1** — a hand-rolled `SegmentedBoolean` (ruling 4). Replaced by `SettingsRow`, whose control is a slot |
 | `label.tsx` | 24 | — | unchanged | | |
 | `field.tsx` | 248 | 5.4 | adopt | | **done, close-out** — shared form framing adopted |
 | `RequiredMark.tsx` | 3 | — | unchanged | | |

@@ -1,3 +1,25 @@
+import {
+  Activity,
+  BadgePercent,
+  Blocks,
+  Building2,
+  CalendarDays,
+  Database,
+  FileText,
+  Fingerprint,
+  Globe,
+  KeyRound,
+  LayoutTemplate,
+  Plug,
+  Recycle,
+  Repeat2,
+  Settings2,
+  ShieldCheck,
+  UserCog,
+  UsersRound,
+  Wrench,
+} from "lucide-react";
+
 import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
 
 export type ModuleStatus = "tier1" | "tier2" | "experimental" | "deprecated" | "hidden";
@@ -54,26 +76,86 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "integrations", label: "Integrations", route: SETTINGS_ROUTES.integrations, group: "settings", status: "tier1", enabled: true, sortOrder: 90, adminOnly: true, quickAction: { label: "Configure integration", description: "Review providers and connect an integration", href: `${SETTINGS_ROUTES.integrations}#provider-registry`, requiredAction: "configure" } },
 ] as const;
 
-export const SETTINGS_NAV_ITEMS = [
-  { href: SETTINGS_ROUTES.general, label: "General", sortOrder: 10 },
-  { href: SETTINGS_ROUTES.users, label: "Users", sortOrder: 20 },
-  { href: SETTINGS_ROUTES.authentication, label: "Authentication", sortOrder: 21 },
-  { href: SETTINGS_ROUTES.domains, label: "Domains", sortOrder: 22 },
-  { href: SETTINGS_ROUTES.provisioning, label: "Provisioning", sortOrder: 23 },
-  { href: SETTINGS_ROUTES.teams, label: "Teams", sortOrder: 30 },
-  { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups", sortOrder: 40 },
-  { href: SETTINGS_ROUTES.permissions, label: "Permissions", sortOrder: 50 },
-  { href: SETTINGS_ROUTES.modules, label: "Module Settings", sortOrder: 60 },
-  { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder", sortOrder: 70 },
-  { href: SETTINGS_ROUTES.fields, label: "Field Config", sortOrder: 80 },
-  { href: SETTINGS_ROUTES.automation, label: "Automation", sortOrder: 90 },
-  { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links", sortOrder: 100 },
-  { href: SETTINGS_ROUTES.backups, label: "Backups", sortOrder: 110 },
-  { href: SETTINGS_ROUTES.integrations, label: "Integrations", sortOrder: 120 },
-  { href: SETTINGS_ROUTES.templates, label: "Templates", sortOrder: 130 },
-  { href: SETTINGS_ROUTES.activityLog, label: "Activity Log", sortOrder: 140 },
-  { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", sortOrder: 150 },
+/**
+ * The settings information architecture, in **one** place (rebuild.md 5.6, ruling 2).
+ *
+ * There were two. `SETTINGS_NAV_ITEMS` was flat with 18 entries and fed the command palette,
+ * the recent-pages labeller and the dashboard layout's admin-only prefix list;
+ * `settings/page.tsx` held a second, grouped, 19-entry copy for the hub. They disagreed about
+ * `record-layouts`, which existed only in the hub — so it was invisible to the palette and its
+ * header rendered Title Case out of a label fallback. Two lists is one list plus a bug.
+ *
+ * Everything now derives from here: the rail in `settings/layout.tsx`, the hub, the flat list
+ * below. Adding a settings page means adding one row.
+ */
+export const SETTINGS_NAV_GROUPS = [
+  {
+    key: "workspace",
+    title: "Workspace",
+    items: [
+      { href: SETTINGS_ROUTES.general, label: "General", description: "Manage company profile and tenant setup.", icon: Building2, sortOrder: 10 },
+      { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links", description: "Manage public scheduling links and booking availability.", icon: CalendarDays, sortOrder: 100 },
+    ],
+  },
+  {
+    key: "users-organization",
+    title: "Users and organization",
+    items: [
+      { href: SETTINGS_ROUTES.users, label: "Users", description: "Invite users, manage accounts, and keep access current.", icon: UsersRound, sortOrder: 20 },
+      { href: SETTINGS_ROUTES.teams, label: "Teams", description: "Organize departments and team membership.", icon: Blocks, sortOrder: 30 },
+      { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups", description: "Review customer segmentation used by contacts, accounts, and client portal context.", icon: BadgePercent, sortOrder: 40 },
+    ],
+  },
+  {
+    key: "security-access",
+    title: "Security and access",
+    items: [
+      { href: SETTINGS_ROUTES.permissions, label: "Permissions", description: "Control role actions across enabled modules.", icon: ShieldCheck, sortOrder: 50 },
+      { href: SETTINGS_ROUTES.modules, label: "Module Settings", description: "Enable modules and assign department or team access.", icon: KeyRound, sortOrder: 60 },
+      { href: SETTINGS_ROUTES.authentication, label: "Authentication", description: "Configure MFA, password policy, and tenant SSO.", icon: Fingerprint, sortOrder: 21 },
+      { href: SETTINGS_ROUTES.domains, label: "Domains", description: "Verify workspace domains for tenant sign-in.", icon: Globe, sortOrder: 22 },
+      { href: SETTINGS_ROUTES.provisioning, label: "Provisioning", description: "Map verified identities to roles and teams.", icon: UserCog, sortOrder: 23 },
+    ],
+  },
+  {
+    key: "customization",
+    title: "Customization",
+    items: [
+      { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder", description: "Create and maintain custom module definitions.", icon: Wrench, sortOrder: 70 },
+      { href: SETTINGS_ROUTES.fields, label: "Field Config", description: "Add configurable fields to supported modules.", icon: Settings2, sortOrder: 80 },
+      { href: SETTINGS_ROUTES.recordLayouts, label: "Record Layouts", description: "Arrange and preview the Lead Quick Create form.", icon: LayoutTemplate, sortOrder: 85 },
+      { href: SETTINGS_ROUTES.templates, label: "Templates", description: "Manage reusable message templates.", icon: FileText, sortOrder: 130 },
+      { href: SETTINGS_ROUTES.automation, label: "Automation", description: "Configure event-based workflow rules and review run history.", icon: Repeat2, sortOrder: 90 },
+    ],
+  },
+  {
+    key: "integrations",
+    title: "Integrations",
+    items: [
+      { href: SETTINGS_ROUTES.integrations, label: "Integrations", description: "Connect platform services and operational feeds.", icon: Plug, sortOrder: 120 },
+    ],
+  },
+  {
+    key: "data-maintenance",
+    title: "Data and maintenance",
+    items: [
+      { href: SETTINGS_ROUTES.backups, label: "Backups", description: "Configure tenant-scoped backup exports and retention.", icon: Database, sortOrder: 110 },
+      { href: SETTINGS_ROUTES.activityLog, label: "Activity Log", description: "Review audited writes, restores, and configuration events.", icon: Activity, sortOrder: 140 },
+      { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", description: "Restore recoverable records from one place.", icon: Recycle, sortOrder: 150 },
+    ],
+  },
 ] as const;
+
+export type SettingsNavItem = (typeof SETTINGS_NAV_GROUPS)[number]["items"][number];
+
+/**
+ * The flat projection, in `sortOrder`. Derived rather than authored — the command palette,
+ * `lib/recent-pages.ts` and the dashboard layout's admin-only prefix list all read it, and
+ * before this they read a hand-kept copy that was missing a page.
+ */
+export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = SETTINGS_NAV_GROUPS
+  .flatMap<SettingsNavItem>((group) => [...group.items])
+  .sort((left, right) => left.sortOrder - right.sortOrder);
 
 export const ADMIN_QUICK_ACTIONS = [
   {

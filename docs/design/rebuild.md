@@ -3731,6 +3731,167 @@ above.
 - The large ones get rebuilt, not patched: `backups` 938, `module-builder` 874, `fields`
   788.
 
+### Decided before the first line — the measurement, the batch order, and five rulings
+
+**Measured at the start of the sub-phase, 2026-08-21.** `check-design.sh` is at the known
+**2 of 14** (`LynkSplash` → 5.9, `ClientPageCreateForm` → 5.8). The settings tree is
+**7,136 lines across 23 pages** plus 21 component files; the four largest pages —
+`backups` 905, `module-builder` 869, `fields` 771, `calendar-booking` 601 — are 3,146 of
+them, 44% of the surface in four files.
+
+**Three claims in the plan above were re-measured and two of them moved.**
+
+- **The sticky footers are seven, not six.** Six are in settings pages (`authentication`,
+  `general`, `permissions`, `provisioning`, `module-builder`, `modules/[moduleId]`) and the
+  seventh is `AutomationRuleEditor.tsx:126`, a component. R3 counts ten `sticky bottom-0`
+  across the app; 5.4 took three, and these seven are the rest of them.
+- **`PermissionDeniedState` reaching 1 of 23 pages is true of the page files and false of
+  the rendered app.** `app/dashboard/layout.tsx` gates the whole `/dashboard/settings`
+  prefix on `isAdmin` and renders `PermissionDeniedState` in place of `children`, so a
+  non-admin already hits a wall on all 23. What is genuinely missing is the *finer* check:
+  an admin who lacks `configure` on a module, and a 403 arriving from the page's own fetch,
+  which today surfaces as a generic error state. `record-layouts` is the only page that
+  does this properly, which is why it was the only match. **The work is to make a 403 read
+  as denied rather than broken, not to bolt a redundant `isAdmin` check onto 22 pages.**
+- **`recycle-bin` is already on `RecordTable`.** The census note is stale. The raw-`Table`
+  set for 5.6 is **ten** files, listed in batch 4.
+
+#### Ruling 1 — the rail is pinned, and it is not sticky
+
+The settings layout becomes a full-height two-column grid: a `16rem` rail and a content
+column that owns the scroll. This is archetype 2's spine mechanism, already proven inside
+the same `overflow-y-auto` wrapper by every list page, and it means **no new
+`position: sticky` enters the app** — R3 stands.
+
+**Rejected: the rail scrolls with the document.** Simpler, and one fewer thing to get
+wrong, but on `backups` (905 lines) the rail is gone by the second panel, which puts the
+operator back through the hub — A8 with extra steps. The whole point of the rail is
+lateral movement.
+
+**Rejected: `lg:sticky top-0` on the rail column.** It reads as the cheap version of the
+same thing and it would be the eleventh sticky in a programme that just deleted ten.
+
+#### Ruling 2 — the hub survives, rebuilt from the one source
+
+With a rail, `settings/page.tsx` is no longer the only way in, so it could be a
+`redirect()` to `general`. It is kept: it is where the sidebar's single `Settings` entry
+lands, it is where every state's `Back to Settings` goes, and it carries the one-line
+descriptions a 16rem rail has no room for. What changes is that **it no longer holds an
+IA.** `SETTINGS_NAV_GROUPS` in `lib/module-registry.ts` becomes the single definition —
+grouped, with label, description and icon — and `SETTINGS_NAV_ITEMS` is derived flat from
+it. The hub renders it, the rail renders it, ⌘K and recent-pages read the derived flat
+list, and `record-layouts` stops leaking because there is nowhere left for it to leak
+*from*.
+
+#### Ruling 3 — the commit model splits by control, not by page
+
+Written into `design.md` archetype 4 before any code. R1's table already answers both
+halves and a settings page can hold both: an independent reversible control autosaves with
+a `SaveStateIndicator`, and a **configuration record** — SSO credentials, the company
+profile, a booking link — keeps a manual save because its fields validate together and
+carry a side effect (a connection test, a re-verification). What R3 removes from all seven
+is the *stickiness*; the button survives only where the model is genuinely manual.
+
+Autosaving SSO would fire `testSsoSettings` against a half-typed issuer URL. That is the
+same defect R1 refuses on a line-item document, and "it is a settings page" is not a
+reason to accept it here.
+
+#### Ruling 4 — `SegmentedBoolean` is the boolean, and `SettingsSwitch` is deleted
+
+The question 5.4 transferred here (census 2.3, `CatalogRecordFormPage`). Four idioms exist:
+`SegmentedBoolean` (7 files, 5 of them settings pages), the Radix `switch.tsx` (3 files,
+none in settings), `SettingsSwitch` (2 files) and a bare `Checkbox` standing in for a
+boolean (6 settings pages).
+
+`SegmentedBoolean` wins on evidence — §7.1 already names it and it already has the most
+call sites. **`SettingsSwitchRow` is deleted**: its `SettingsSwitch` is 112 lines
+reimplementing `SegmentedBoolean` with a different focus ring. `Checkbox` keeps *many from
+a set*, which is exactly what the permissions matrix and the module-access grid are.
+
+The three `switch.tsx` call sites are **not 5.6's rows** — `CatalogRecordsTable` and
+`LeadConversionForm` are 5.3's, `CalendarEventDialog` is 5.7's. The ruling is written now
+and filed to them, per the census rule that the owner is whoever rebuilds the file.
+
+#### Ruling 5 — `?view=` on automation becomes `?tab=`
+
+5.5 made `?view=` mean *saved view id* on every list in the app. `settings/automation`
+uses it for `runs|rules`, which is a tab strip. It moves to `?tab=`, which is what the
+record archetype already calls the same thing. A10's deep links land in the same batch and
+use the same vocabulary: `?module=` on `fields` and `module-builder`.
+
+#### The batch order
+
+| | Batch | Why here |
+|---|---|---|
+| 1 | The archetype — one IA source, the rail, the hub, `SettingsRow` | The mitigation rule: the shared shape is hoisted before page two |
+| 2 | The seven sticky footers, R1/R3 applied | The commit model has to be settled before the pages that use it are rebuilt |
+| 3 | Permission walls that read as denied, and A9's three admin-only links | Cheap, and it is what a non-admin actually experiences |
+| 4 | The ten raw `Table` files → `RecordTable` (R10) | Mechanical, and it unblocks R10's three-importer count at the end of 5.7 |
+| 5 | A10 deep links + `?tab=` on automation | Address vocabulary, one commit |
+| 6 | The four large pages rebuilt — `backups`, `module-builder`, `fields`, `calendar-booking` | 44% of the surface; they need batches 1–5 in place first |
+| 7 | The stragglers — `profile`, `teams`, record layouts, activity log, templates, integrations, domains, automation components | |
+| 8 | Close-out — the end-of-sub-phase pass and one correction commit | |
+
+### Status: batch 1 — the archetype, and one list where there had been two
+
+**Landed.** `lint` and `build` green; nothing else run, per the revised cadence.
+
+**One IA, and `record-layouts` stops leaking.** `SETTINGS_NAV_GROUPS` in
+`lib/module-registry.ts` is now the only settings information architecture — grouped, with
+the label, the one-line description and the icon on each row. `SETTINGS_NAV_ITEMS` is
+**derived** from it (flat, sorted by `sortOrder`) rather than authored, so the hub, the
+rail, ⌘K, `lib/recent-pages.ts` and the dashboard layout's admin-only prefix list all read
+the same nineteen rows. `record-layouts` was in the hub's copy and not the flat one, which
+is why it was invisible to the palette and why `settingsPageTitle` fell through to the
+Title Case route-label fallback; both fix themselves the moment the second list stops
+existing. The palette's settings rows also stop using the raw href as their subtitle —
+the description is now on the row, so it says what the page does.
+
+**The rail (A8).** `settings/layout.tsx` went from a 5-line passthrough to a full-height
+two-column grid: `SettingsNavRail` at `w-64`, and a content column that owns the scroll.
+**No `position: sticky`** — this is archetype 2's mechanism, and the two-scroller shape is
+the one `RecordSpine` already ships and `scroll-containers.spec.ts` already passes, because
+the rule forbids a page scroll *plus* a nested one, not two siblings inside a full-height
+page. The rail carries `-mx-2 px-2` for the same reason the spine does: the active item's
+left bar and focus ring bleed outside the link's box, and inside a scroll container that
+bleed is horizontal overflow.
+
+The active treatment is copied from `SidebarMenuItemLink` on purpose — left bar, primary
+tint, `aria-current="page"`. Two navigations in one viewport marking their position
+differently would read as two different kinds of thing.
+
+**The hub survives, emptied.** `settings/page.tsx` keeps its shape and loses its IA: 180
+lines to 58, rendering `SETTINGS_NAV_GROUPS`. It is still where the sidebar's one
+`Settings` entry lands, still where `Back to Settings` goes, and below `lg` — where the
+rail is not drawn — it is the only index.
+
+**`SettingsRow`, and `SettingsSwitchRow` deleted.** The new primitive is label /
+description / control / save-state, and the save-state slot is the point: it is what makes
+autosave legible, and its absence is why settings had eight editing patterns. The control
+is a **slot**, because a setting is as often a `Select` or an input as a toggle — which is
+the flaw in the thing it replaces. `SettingsSwitchRow`'s `SettingsSwitch` was 112 lines of
+hand-rolled Off/On segmented pair, in 2 files, while `SegmentedBoolean` — the primitive
+§7.1 already named for the job — was in 7. Both call sites (`module-builder`'s field
+inspector, `AutomationInspector`) moved to `SettingsRow` + `SegmentedBoolean`, with **no**
+`saveState`, because both edit a draft that commits with its parent and a `Saved` there
+would claim a write that has not happened.
+
+**`useAutosave`.** The `idle → saving → saved → idle` machine `InlineFieldEdit` grew inline
+for the record spine, extracted so nineteen pages share one rather than re-deriving it. It
+does not debounce: R1 asks for debouncing on *typed* fields, and an autosaving settings
+control is a toggle or a select — one deliberate change, one write. A page autosaving text
+debounces the value before calling `save`, where the field's shape is known.
+
+Two lint/type facts worth keeping, both cheap to hit again: the `react-hooks/refs` rule
+rejects reading `ref.current` in a hook's return value, so `retry` is gated on `state`
+alone; and `flatMap` over a `readonly` tuple of heterogeneous groups infers `unknown[]`,
+so the flat projection needs its type argument (`.flatMap<SettingsNavItem>`).
+
+**Not yet done, and batch 2 starts here.** No settings page has been converted to the new
+commit model. `authentication` still autosaves its MFA select and shows a sticky footer
+forty lines below it — that page is batch 2's first, because it is the defect the archetype
+was written against.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

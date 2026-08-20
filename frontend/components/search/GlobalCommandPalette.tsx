@@ -180,9 +180,12 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
         href: action.href,
         group: "Actions",
       })) : []),
+      // The subtitle was the raw href. `SETTINGS_NAV_GROUPS` carries the one-line
+      // description the hub shows, so the palette says what the page does instead of
+      // repeating the path already under the operator's cursor (rebuild.md 5.6).
       ...(isAdmin ? SETTINGS_NAV_ITEMS.map((item) => ({
         label: item.label,
-        subtitle: item.href,
+        subtitle: item.description,
         href: item.href,
         group: "Settings",
       })) : []),

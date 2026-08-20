@@ -28,7 +28,8 @@ import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SettingsSwitchRow } from "@/components/ui/SettingsSwitchRow";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
+import { SettingsRow } from "@/components/ui/SettingsRow";
 import {
   Sheet,
   SheetClose,
@@ -264,17 +265,20 @@ function FieldInspector({
               <Textarea id="builder-field-options" value={field.options_text} onChange={(event) => onChange({ options_text: event.target.value })} placeholder="One option per line" disabled={disabled} />
             </Field>
           ) : null}
-          <SettingsSwitchRow id="builder-field-required" label="Required" description="Require a value when records are saved." checked={field.is_required} onCheckedChange={(checked) => onChange({ is_required: checked })} disabled={disabled} />
-          <SettingsSwitchRow id="builder-field-unique" label="Unique values" description="Prevent two records from using the same value." checked={field.is_unique} onCheckedChange={(checked) => onChange({ is_unique: checked })} disabled={disabled || field.field_type === "multi_select"} />
-          <SettingsSwitchRow
-            id="builder-field-list"
-            label="Include in initial system default view"
-            description="Used only when the system default view is first created. Saved Views controls each user's ongoing column visibility and ordering."
-            checked={field.display_in_list}
-            onCheckedChange={(checked) => onChange({ display_in_list: checked })}
-            disabled={disabled}
-          />
-          <SettingsSwitchRow id="builder-field-active" label="Enabled" description={field.is_protected ? "Protected fields must remain enabled." : "Make this field available in records, lists, and filters."} checked={field.is_active} onCheckedChange={(checked) => onChange({ is_active: checked })} disabled={disabled || field.is_protected} />
+          {/* No `saveState`: the inspector edits a draft that commits with the module, so a
+              `Saved` here would claim a write that has not happened (archetype 4). */}
+          <SettingsRow label="Required" description="Require a value when records are saved.">
+            <SegmentedBoolean aria-label="Required" value={field.is_required} onValueChange={(checked) => onChange({ is_required: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled} />
+          </SettingsRow>
+          <SettingsRow label="Unique values" description="Prevent two records from using the same value.">
+            <SegmentedBoolean aria-label="Unique values" value={field.is_unique} onValueChange={(checked) => onChange({ is_unique: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled || field.field_type === "multi_select"} />
+          </SettingsRow>
+          <SettingsRow label="Include in initial system default view" description="Used only when the system default view is first created. Saved Views controls each user's ongoing column visibility and ordering.">
+            <SegmentedBoolean aria-label="Include in initial system default view" value={field.display_in_list} onValueChange={(checked) => onChange({ display_in_list: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled} />
+          </SettingsRow>
+          <SettingsRow label="Enabled" description={field.is_protected ? "Protected fields must remain enabled." : "Make this field available in records, lists, and filters."}>
+            <SegmentedBoolean aria-label="Field enabled" value={field.is_active} onValueChange={(checked) => onChange({ is_active: checked })} trueLabel="On" falseLabel="Off" disabled={disabled || field.is_protected} />
+          </SettingsRow>
         </FieldGroup>
       </div>
       <SheetFooter className="flex items-center justify-between gap-3 border-t border-line-subtle bg-surface px-5 py-4">
@@ -471,7 +475,9 @@ function ModuleWorkspace({
         <FieldLabel htmlFor="builder-module-description">Description</FieldLabel>
         <Textarea id="builder-module-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} disabled={disabled} />
       </Field>
-      <SettingsSwitchRow id="builder-module-active" label="Module enabled" description="Make this module available to users who have access to it." checked={draft.is_active} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} disabled={disabled} />
+      <SettingsRow label="Module enabled" description="Make this module available to users who have access to it.">
+        <SegmentedBoolean aria-label="Module enabled" value={draft.is_active} onValueChange={(checked) => setDraft((current) => ({ ...current, is_active: checked }))} trueLabel="On" falseLabel="Off" disabled={disabled} />
+      </SettingsRow>
     </FieldGroup>
   );
 
