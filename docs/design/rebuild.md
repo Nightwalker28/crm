@@ -4,8 +4,9 @@
 the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B, C, D and E
 (cross-cutting primitives, the status sweep that deletes `Pill`, the route-boundary sweep, the
 Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2, 5.3 and
-5.4 are done.** **5.5 is done bar its browser pass** — seven batches, `7cb268e` through
-`3463874`; the one outstanding item is written at the end of that sub-phase.
+5.4 are done.** **5.5 is done** — seven batches, `7cb268e` through `8577c87`. Its browser pass
+found a layout defect every automated check had passed over; that is written up at the end of
+the sub-phase.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -3213,7 +3214,7 @@ programme's two full-suite runs**.
 | ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — `8f6fa20`. POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
 | ~~5~~ | ~~**The documents straggler**~~ | **Done** — `f36283d`. The toolbar, real pagination, and the backend param it needed |
 | ~~6~~ | ~~**The client-portal straggler**~~ | **Done** — `f77a968`. Two page-local tables extracted, both `shellVariant="nested"`, the page 456 → 330 lines |
-| 7 | **Close-out** | **Verification done — `3463874`; the browser pass is the one item outstanding.** Source guard at the known 2 of 14, both rendered guards green at 94/94 routes, the full suite (236/64) with a pre-5.5 baseline proving **zero regressions on every touched surface**, the documents module tests, and all 55 census rows marked. See the status block below |
+| ~~7~~ | ~~**Close-out**~~ | **Done** — `8577c87`. Source guard at the known 2 of 14, both rendered guards green at 94/94 routes, the full suite (236/64) with a pre-5.5 baseline proving **zero regressions on every touched surface**, the documents module tests, and all 55 census rows marked. See the status block below |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
 
@@ -3616,22 +3617,61 @@ every list route underneath the tests. Nineteen tests in, failures had already s
 as 30s timeouts. A suite run is only evidence about the tree it ran against — finish the edits,
 then start the clock.
 
-**Still outstanding: the browser pass.** Both themes, 1280 and 768, over 5.5's surfaces. It
-has not run, because it needs a signed-in session and this agent does not enter passwords into
-forms. The `/auth` honeycomb was checked from the login screen and renders as a honeycomb
-(§9). What the pass still owes:
+### The browser pass — and the defect only it could find
 
-1. **The empty-state fix, looked at.** Open a `RecordTable` narrower than its own columns with
-   no rows — the contact record's Files tab is the measured case — and confirm the box is
-   centred in the *visible* region and stays there when the columns are scrolled sideways.
-   The repaired catalog spec covers rendering; it does not cover *placement*.
-2. **`documents` at `variant="list"`.** It is the only list with fixed content above the
-   toolbar — three storage cards and a storage-unavailable banner. Confirm they are not
-   squeezed and the table still takes the remaining height.
-3. **The `lineItems` grid's derived width.** The two hardcoded `min-w-[Npx]` values became a
-   derived ~1032px against a hand-tuned 900px, so the editable grid scrolls sideways a little
-   sooner inside the form. Check it reads as intended at 1280 rather than merely working.
-4. **The two client-portal tables**, now `shellVariant="nested"` — one panel edge, not two.
+**Run 2026-08-20, both themes, 1280–1400 and 768.** The `/auth` honeycomb renders as a
+honeycomb (§9). Four things were on the list; three passed and **the third was broken**.
+
+**1. The empty-state fix, measured on the surface it was measured on.** The contact record's
+Files tab reproduces the defect condition exactly — `clientWidth 701 / scrollWidth 920`. The
+state box is now `left 646, right 1346, width 701` against a shell of `left 645, right 1347`:
+it *is* the visible region. Scrolled fully right (`scrollLeft 219`) it does not move —
+`left 646, right 1346`, still wholly inside, page still not scrolling sideways. The
+screenshot shows the empty state centred while the header row has scrolled its first column
+out of view. That is the batch 1 claim, verified.
+
+**2. `documents` at `variant="list"` is right.** The three storage cards keep their height,
+the toolbar sits under them, the table takes what is left, and **pagination is pinned at the
+bottom where there was none at all**.
+
+**3. The `lineItems` grid was painting under the record rail. This is the one.** On the quote
+form the grid's derived 1032px min-width had stretched the *form column* to 1082px inside a
+692px track, so the line-item table — and the Customer name field above it — ran underneath
+the Totals rail.
+
+**The cause is a rule worth knowing:** a grid item's automatic minimum size is its content's
+min-content, so a card containing one wide child grows the whole column rather than letting
+the child scroll. `FormSection`'s `Card` had no `min-w-0`. The old code did not hit it because
+it wrapped the table in a plain `overflow-x-auto` block that took its parent's width;
+`ModuleTableShell` sizes to the derived min-width instead. Fixed with `min-w-0` on
+`FormSection` and on `TransactionLineItemsTable`'s card — after which the shell reports
+`clientWidth 430 / scrollWidth 1032`, scrolling inside its column, and the rail is clear.
+
+**Every check had passed on the broken layout** — lint, build, `check-design.sh`, both
+rendered guards, 17 of 20 line-item document specs. `scroll-containers.spec.ts` was *right*
+every time: the region is a legitimate scroller and the page never scrolled sideways. The
+table stretched its parent, which no assertion in the repo looks for. This is the §5
+"sticky column that passed everything" lesson repeating, and it is why the browser is on the
+exit criteria rather than in the nice-to-have column.
+
+**4. The two client-portal tables** report `shellVariant="nested"` and `border-top-width: 0px`
+— one panel edge, not two — with `Shared pages` and `Client accounts` in sentence case.
+
+**Also confirmed in passing:** `Columns` is in the toolbar on every list, in the position
+archetype 1 draws it; POS and payments report **zero header checkboxes**; payments draws
+`Open invoices` and `Record payment` as two outline controls with **no primary action**; the
+`readOnly` variant on the invoice record reports `sortButtons: 0, checkboxes: 0`, so the
+variant contract is enforced in the DOM and not merely in the types.
+
+**A1, end to end, in the browser.** `/dashboard/sales/contacts` at rest has a clean URL;
+typing gives `?search=acme`; sorting gives `?sort=first_name`; page 2 gives `?page=2`. Opening
+a record from page 2 and pressing **back lands on page 2, `Showing 11 – 19 of 19 entries`** —
+the appendix's highest cost × frequency item, fixed and seen.
+
+**After the fix:** build clean, `check-design.sh` still 2 of 14, both rendered guards green at
+94/94 routes, and the line-item document specs at 17 passed / 3 failed — all three
+(`insertion-orders:226`, `invoices:143`, `invoices:178`) in the pre-5.5 baseline captured
+above.
 
 ### What 5.5 leaves open, deliberately
 

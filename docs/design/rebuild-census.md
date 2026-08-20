@@ -374,7 +374,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
-| `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice |
+| `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice; gained `min-w-0` in the close-out |
 | `client-portal/ClientPagesTable.tsx` | 160 | 5.5 | new | Extracted from the page | **done, batch 6** |
 | `client-portal/ClientAccountsTable.tsx` | 130 | 5.5 | new | Extracted from the page | **done, batch 6** |
 
