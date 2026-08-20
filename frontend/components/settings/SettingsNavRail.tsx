@@ -36,8 +36,10 @@ export function SettingsNavRail({ className }: { className?: string }) {
       {SETTINGS_NAV_GROUPS.map((group) => (
         <div key={group.key} className="flex min-w-0 flex-col gap-1">
           {/* §3.3: a group marker, not a heading — the page's one h1 is the surface title
-              `PageShell` renders in the column beside this. */}
-          <div className="px-2 text-2xs font-semibold uppercase tracking-wide text-copy-label">
+              `PageShell` renders in the column beside this. §3.5 forbids the `uppercase
+              tracking-wide` this first reached for: the size and ink step already mark it,
+              and shouting a nav label is the one thing a quiet rail must not do. */}
+          <div className="px-2 text-2xs font-semibold text-copy-label">
             {group.title}
           </div>
           {group.items.map((item) => (

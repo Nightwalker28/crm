@@ -4054,6 +4054,15 @@ are `RecordTable`'s §7.4 states now, and the panel keeps only its two filters.
 error block inside a `colSpan={6}` cell, and an `EmptyState` that had to be told the column
 count. A state that knows the column count is a state in the wrong place.
 
+**One source-rule failure of ours, found and fixed.** `check-design.sh` went to **3 of 14**
+after batch 1 and nobody noticed until it was re-run here: `SettingsNavRail`'s group marker
+took `uppercase tracking-wide`, which §3.5 forbids. The size and ink step already mark a
+group label, and shouting one is the one thing a quiet rail must not do. Back to the known
+2 of 14. **The lesson is the cadence's own**: lint and build per batch cannot see a design
+rule, so a source-rule failure survives every batch until the sub-phase pass runs it. Worth
+running `check-design.sh` after any batch that adds a new *visual* file, which is cheap —
+it is a grep, not a browser.
+
 **Batch 4b starts here.** Five files, 2,676 lines, none touched:
 `settings/permissions` (594) and `settings/modules/[moduleId]` (339) are **matrices**, not
 lists — rows × action checkboxes — and the open question is whether `RecordTable` with
