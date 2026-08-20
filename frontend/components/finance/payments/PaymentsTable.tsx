@@ -20,14 +20,11 @@ type Props = {
   isRefreshing: boolean;
   hasError?: boolean;
   onRetry?: () => void;
-  selectedIds: number[];
   sort: PosInvoiceSortState;
   hasActiveFilters: boolean;
   canCreateInvoice: boolean;
   canRecordPayment: boolean;
   onSortChange: (sort: PosInvoiceSortState) => void;
-  onToggle: (id: number, checked: boolean) => void;
-  onTogglePage: (checked: boolean) => void;
   onRecordPayment: (invoice: PosInvoice) => void;
   onClearFilters: () => void;
 };
@@ -128,14 +125,11 @@ export default function PaymentsTable({
   isRefreshing,
   hasError = false,
   onRetry,
-  selectedIds,
   sort,
   hasActiveFilters,
   canCreateInvoice,
   canRecordPayment,
   onSortChange,
-  onToggle,
-  onTogglePage,
   onRecordPayment,
   onClearFilters,
 }: Props) {
@@ -160,16 +154,6 @@ export default function PaymentsTable({
       rowKey={(invoice) => invoice.id}
       rowHref={(invoice) => `/dashboard/finance/pos/${invoice.id}`}
       rowLabel={(invoice) => `Open invoice ${invoice.invoice_number}`}
-      selection={
-        canRecordPayment
-          ? {
-              selectedIds,
-              onToggleRow: (id, checked) => onToggle(Number(id), checked),
-              onToggleAll: onTogglePage,
-              rowLabel: (invoice) => `Select ${invoice.invoice_number}`,
-            }
-          : undefined
-      }
       rowActions={
         canRecordPayment
           ? (invoice) => (

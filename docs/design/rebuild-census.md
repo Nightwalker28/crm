@@ -187,7 +187,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `finance/pos/page.tsx` | 65 | 5.5 | rebuild | **A6** — selection with no verb | |
+| `finance/pos/page.tsx` | 65 | 5.5 | rebuild | **A6** — selection with no verb | **done, batch 4** — the selection is deleted; nothing consumed it |
 | `finance/pos/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `finance/pos/[invoiceId]/page.tsx` | 308 | 5.3 | rebuild | **Nested tabs at `:268`** | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `finance/pos/[invoiceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -195,7 +195,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/pos/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `finance/pos/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `finance/pos/not-found.tsx` | 11 | 5.1 | rebuild | | done |
-| `finance/payments/page.tsx` | 80 | 5.5 | rebuild | **A6, A7** — the header button is the slower path | |
+| `finance/payments/page.tsx` | 80 | 5.5 | rebuild | **A6, A7** — the header button is the slower path | **done, batch 4** — selection deleted (the row action already was the verb), header button demoted out of the primary slot |
 | `finance/payments/record/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `finance/payments/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `finance/payments/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -369,8 +369,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | |
 | `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | |
 | `finance/insertionOrderList.tsx` | 265 | 5.5 | adopt | | |
-| `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | |
-| `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | |
+| `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | **done, batch 4** — selection props removed (**A6**) |
+| `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | **batch 4** — selection props removed (**A6**); the row action was always the verb. The overdue tone is still open |
 | `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | |
 | `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |

@@ -3209,8 +3209,9 @@ programme's two full-suite runs**.
 | ~~1~~ | ~~**`RecordTable`'s two variants, and the empty-state defect**~~ | **Done** — `7cb268e`. `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
 | ~~2~~ | ~~**The codec, and A1 + A5 in the hook**~~ | **Done** — `ed41566`. The address-bar codec beside `appendSavedViewFilterParams`, `useListAddress` as the single writer, `useSavedViews` and `usePagedList` backed by the URL, the debounce in one place. It landed on all sixteen lists with no page edited: A1 was never at the call site |
 | ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `a63091e`. `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
-| 4 | **A6, A7, and the two stragglers** | POS's selection with no verb and payments' 3-row answer; the payments header button that is the slower path; `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component |
-| 5 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
+| ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
+| 5 | **The two stragglers** | `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component instead of two inline `RecordTable` calls |
+| 6 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
 
@@ -3414,6 +3415,43 @@ batch 4's stragglers and get the picker when they get the toolbar.
 
 **Next.** Batch 4 — A6 (POS's selection with no verb, payments' 3-row answer), A7
 (payments' header button is the slower path), and the two migration stragglers.
+
+### Status: batch 4 — two selections deleted, and a primary action demoted
+
+**Read this first if you are picking the run up.** Batch 4 is done. Lint and build green.
+The two stragglers moved to batch 5 — they are a page rebuild each, not an appendix fix,
+and pairing them with A6/A7 made one batch out of two unrelated jobs.
+
+**A6 on POS: the selection was deleted, not given a verb.** POS shipped per-row checkboxes,
+select-all and a "3 invoices selected" bar, and **nothing consumed any of it** — no bulk
+action, no export-selected, no import/export controls on the page at all. §7.9 already
+says a control the backend cannot honour is not drawn; a selection with no verb is the same
+rule one level up. Giving it a verb would mean inventing a bulk operation to justify a
+control, which is the tail wagging the dog.
+
+**A6 on payments: the same deletion, and it removed a sentence that was apologising for the
+interface.** Payments answered a three-row selection with *"Select one invoice to record a
+payment"* — a line of copy explaining why what you just did was wrong. The reason it
+existed is that payments' only verb is single-record, and `PaymentsTable` **already has it
+as a row action**. So the selection was a second, worse path to a button already on every
+row, and the sentence was the seam showing. Both are gone.
+
+**A7: the header button kept its place and lost its fill.** From the payments list the fast
+path is the row's own `Record payment` against an invoice already on screen; the standalone
+page at `/payments/record` makes you search for the invoice you were just looking at. That
+path is not wrong — it is the one that works when the invoice is not in the current view —
+but it was wearing the primary fill, which is the interface saying *this is the thing you
+came here to do*. It is an outline control beside `Open invoices` now, **under the same
+name**, because an action keeps its name for the whole flow (§7.4). The payments list has
+no primary action at all any more, and that is the correct answer for a list whose verbs
+are per row (§2.2, R4).
+
+**Nothing referenced the removed UI** — no spec, no other component. Checked before
+deleting rather than after.
+
+**Next.** Batch 5 — the two migration stragglers: `documents` has no toolbar and no
+pagination, and `client-portal/page.tsx` calls `RecordTable` inline twice with no module
+table component.
 
 ---
 

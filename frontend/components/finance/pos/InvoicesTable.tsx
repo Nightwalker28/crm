@@ -20,13 +20,10 @@ type Props = {
   isRefreshing: boolean;
   hasError?: boolean;
   onRetry?: () => void;
-  selectedIds: number[];
   sort: PosInvoiceSortState;
   hasActiveFilters: boolean;
   canCreateInvoice: boolean;
   onSortChange: (sort: PosInvoiceSortState) => void;
-  onToggle: (id: number, checked: boolean) => void;
-  onTogglePage: (checked: boolean) => void;
   onClearFilters: () => void;
 };
 
@@ -119,13 +116,10 @@ export default function InvoicesTable({
   isRefreshing,
   hasError = false,
   onRetry,
-  selectedIds,
   sort,
   hasActiveFilters,
   canCreateInvoice,
   onSortChange,
-  onToggle,
-  onTogglePage,
   onClearFilters,
 }: Props) {
   const columns = useMemo<RecordTableColumn<PosInvoice>[]>(
@@ -149,12 +143,6 @@ export default function InvoicesTable({
       rowKey={(invoice) => invoice.id}
       rowHref={(invoice) => `/dashboard/finance/pos/${invoice.id}`}
       rowLabel={(invoice) => `Open invoice ${invoice.invoice_number}`}
-      selection={{
-        selectedIds,
-        onToggleRow: (id, checked) => onToggle(Number(id), checked),
-        onToggleAll: onTogglePage,
-        rowLabel: (invoice) => `Select ${invoice.invoice_number}`,
-      }}
       rowActions={(invoice) => (
         <Button asChild variant="ghost" size="icon-sm">
           <Link href={`/dashboard/finance/pos/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}>
