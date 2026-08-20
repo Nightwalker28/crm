@@ -16,6 +16,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { usePaymentInvoices, type PosInvoice } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
@@ -106,9 +107,10 @@ export default function RecordPaymentPage() {
       actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
     >
       <RecordFormLayout
+        title="New payment"
         sidebar={
           <Card className="p-5">
-            <h2 className="text-sm font-semibold text-copy-primary">Selected invoice</h2>
+            <SectionHeading>Selected invoice</SectionHeading>
             {invoice ? (
               <dl className="mt-4 grid gap-3 text-sm">
                 <div><dt className="text-copy-muted">Invoice</dt><dd className="mt-1 font-medium text-copy-primary">{invoice.invoice_number}</dd></div>
@@ -121,18 +123,16 @@ export default function RecordPaymentPage() {
             )}
           </Card>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{invoice ? `Recording against ${invoice.invoice_number}` : "Select an invoice to continue"}</span>
-            <div className="flex gap-2">
-              <Button asChild variant="outline"><Link href="/dashboard/finance/payments">Cancel</Link></Button>
-              <Button type="button" onClick={() => void submitPayment()} disabled={!invoice || payments.isRecordingPayment}>
-                <CreditCard />
-                {payments.isRecordingPayment ? "Recording..." : "Record payment"}
-              </Button>
-            </div>
-          </div>
-        }
+        status={invoice ? `Recording against ${invoice.invoice_number}` : "Select an invoice to continue"}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href="/dashboard/finance/payments">Cancel</Link></Button>
+            <Button type="button" onClick={() => void submitPayment()} disabled={!invoice || payments.isRecordingPayment}>
+              <CreditCard />
+              {payments.isRecordingPayment ? "Recording..." : "Record payment"}
+            </Button>
+          </>
+        )}
       >
         <FormSection title="Outstanding invoice" description="Search by invoice number, customer, method, or payment status.">
           <Field>

@@ -182,6 +182,7 @@ function CustomModuleRecordCreateEditor({
           and focus handling would never be reached. */}
       <form id="custom-module-create-form" onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title={`New ${moduleName.toLocaleLowerCase()} record`}
           sidebar={
             <FormSection title="Module context" description="This record uses your tenant-configured module schema.">
               <dl className="grid gap-4 text-sm">
@@ -206,28 +207,24 @@ function CustomModuleRecordCreateEditor({
               </dl>
             </FormSection>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">
-                {isDirty ? "You have unsaved changes." : "Complete the configured fields to create this record."}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline">
-                  <Link href={backHref}>Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={isSaving}>
-                  <Save />
-                  {isSaving ? "Creating…" : "Create record"}
-                </Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "You have unsaved changes." : "Complete the configured fields to create this record."}
+          actions={(
+            <>
+              <Button asChild variant="outline">
+                <Link href={backHref}>Cancel</Link>
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                <Save />
+                {isSaving ? "Creating…" : "Create record"}
+              </Button>
+            </>
+          )}
         >
           <FormSection
             title="Record details"
             description="Required fields are controlled by the current module configuration."
           >
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup columns={2}>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="custom-record-title">Record title</FieldLabel>
                 <Input

@@ -204,6 +204,7 @@ export default function OpportunityRecordFormPage({
         </div>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "New deal"}
         sidebar={
           <OpportunityFormSidebarFields
             value={form}
@@ -212,33 +213,29 @@ export default function OpportunityRecordFormPage({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "You have unsaved changes."
+          : mode === "edit"
+          ? "No unsaved changes."
+          : "Complete the required fields to create this deal."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={cancelHref}>Cancel</Link>
+            </Button>
+            <Button
+              onClick={() => void submit()}
+              disabled={submitting || (mode === "edit" && !dirty)}
+            >
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Complete the required fields to create this deal."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={cancelHref}>Cancel</Link>
-              </Button>
-              <Button
-                onClick={() => void submit()}
-                disabled={submitting || (mode === "edit" && !dirty)}
-              >
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create deal"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create deal"}
+            </Button>
+          </>
+        )}
       >
         <OpportunityFormMainFields
           value={form}

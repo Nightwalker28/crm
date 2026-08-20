@@ -12,11 +12,12 @@ import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayo
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Contract } from "@/hooks/contracts/useContracts";
 import {
@@ -340,10 +341,10 @@ function ContractRecordFormEditor({
       ) : null}
 
       <RecordFormLayout
+        title={mode === "edit" ? (form.title.trim() || contractNumber || "Contract") : "New contract"}
         sidebar={
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-copy-primary">Lifecycle and ownership</h2>
-            <FieldDescription className="mt-1">Set who owns the contract and its current stage.</FieldDescription>
+            <SectionHeading description="Set who owns the contract and its current stage.">Lifecycle and ownership</SectionHeading>
             <FieldGroup className="mt-5">
               {enabled("status") ? (
                 <Field>
@@ -363,18 +364,16 @@ function ContractRecordFormEditor({
             </FieldGroup>
           </Card>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contract."}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contract"}</Button>
-            </div>
-          </div>
-        }
+        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contract."}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contract"}</Button>
+          </>
+        )}
       >
         <FormSection title="Contract details" description={mode === "edit" ? "The contract number remains fixed while its commercial details can be updated." : "The contract number is generated automatically after creation."}>
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field className="md:col-span-2">
               <FieldLabel htmlFor="contract-title">Title <RequiredMark /></FieldLabel>
               <Input id="contract-title" value={form.title} onChange={(event) => { setForm((current) => ({ ...current, title: event.target.value })); if (titleError) setTitleError(null); }} aria-invalid={Boolean(titleError)} aria-describedby={titleError ? "contract-title-error" : undefined} placeholder="Annual services agreement" />
@@ -398,7 +397,7 @@ function ContractRecordFormEditor({
 
         {(enabled("effective_date") || enabled("expiration_date") || enabled("renewal_date")) ? (
           <FormSection title="Key dates" description="Track the effective period and upcoming renewal window.">
-            <FieldGroup className="grid gap-4 md:grid-cols-3">
+            <FieldGroup columns={3}>
               {enabled("effective_date") ? (
                 <Field>
                   <FieldLabel htmlFor="contract-effective-date">Effective date</FieldLabel>
@@ -423,7 +422,7 @@ function ContractRecordFormEditor({
         ) : null}
 
         <FormSection title="Related records" description="Search by name or record number. Changing a parent record clears incompatible child links.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             {enabled("organization_id") ? (
               <Field>
                 <FieldLabel>Account</FieldLabel>

@@ -135,6 +135,11 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   }
 
   const title = mode === "edit" ? "Edit contact" : "Create contact";
+  const contact = summaryQuery.data?.contact;
+  const recordName =
+    [contact?.first_name, contact?.last_name].filter(Boolean).join(" ").trim() ||
+    contact?.primary_email ||
+    "Contact";
   return (
     <PageShell
       title={title}
@@ -144,8 +149,10 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     >
       {submitError ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><div className="font-medium">We could not save this contact.</div><div className="mt-1 text-copy-secondary">{submitError}</div></div> : null}
       <RecordFormLayout
+        title={mode === "edit" ? recordName : "New contact"}
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
-        footer={<div className="flex flex-wrap items-center justify-between gap-3"><span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contact."}</span><div className="flex items-center gap-2"><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contact"}</Button></div></div>}
+        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contact."}
+        actions={<><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contact"}</Button></>}
       >
         <ContactFormMainFields
           value={form}

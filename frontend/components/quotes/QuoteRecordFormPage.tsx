@@ -28,6 +28,7 @@ import {
   Field,
   FieldDescription,
   FieldError,
+  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -376,6 +377,7 @@ function QuoteRecordFormEditor({
         </div>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? form.quote_number : "New quote"}
         sidebar={
           <QuoteSummary
             form={form}
@@ -386,36 +388,32 @@ function QuoteRecordFormEditor({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "You have unsaved changes."
+          : mode === "edit"
+          ? "No unsaved changes."
+          : "Add the customer and line items to create this quote."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={backHref}>Cancel</Link>
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Add the customer and line items to create this quote."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={backHref}>Cancel</Link>
-              </Button>
-              <Button onClick={() => void submit()} disabled={submitting}>
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create quote"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create quote"}
+            </Button>
+          </>
+        )}
       >
         <FormSection
           title="Customer and billing details"
           description="Link the quote to canonical CRM records while preserving the customer-facing name."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             {enabled("customer_name") ? (
               <Field
                 data-invalid={Boolean(customerError)}
@@ -565,7 +563,7 @@ function QuoteRecordFormEditor({
                 </FieldDescription>
               </Field>
             ) : null}
-          </div>
+          </FieldGroup>
         </FormSection>
         <TransactionLineItemsEditor
           items={items}
@@ -581,7 +579,7 @@ function QuoteRecordFormEditor({
           title="Terms and notes"
           description="Customer-facing context included with the quote."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             {enabled("title") ? (
               <Field className="md:col-span-2">
                 <FieldLabel htmlFor="quote-title">Title</FieldLabel>
@@ -608,7 +606,7 @@ function QuoteRecordFormEditor({
                 />
               </Field>
             ) : null}
-          </div>
+          </FieldGroup>
         </FormSection>
         {customFields.data?.length ? (
           <FormSection

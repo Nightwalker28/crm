@@ -221,6 +221,7 @@ export default function OrganizationRecordFormPage({
         </div>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? (form.org_name.trim() || "Account") : "New account"}
         sidebar={
           <OrganizationFormSidebarFields
             value={form}
@@ -229,33 +230,29 @@ export default function OrganizationRecordFormPage({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {isDirty
-                ? "You have unsaved changes."
+        status={isDirty
+          ? "You have unsaved changes."
+          : mode === "edit"
+          ? "No unsaved changes."
+          : "Complete the required fields to create this account."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={cancelHref}>Cancel</Link>
+            </Button>
+            <Button
+              onClick={() => void submit()}
+              disabled={submitting || (mode === "edit" && !isDirty)}
+            >
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Complete the required fields to create this account."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={cancelHref}>Cancel</Link>
-              </Button>
-              <Button
-                onClick={() => void submit()}
-                disabled={submitting || (mode === "edit" && !isDirty)}
-              >
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create account"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create account"}
+            </Button>
+          </>
+        )}
       >
         <OrganizationFormMainFields
           value={form}

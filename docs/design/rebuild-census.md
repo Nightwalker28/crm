@@ -310,45 +310,45 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `forms/RecordFormLayout.tsx` | 48 | 5.4 | rebuild | The sticky footer goes (R3) | |
+| `forms/RecordFormLayout.tsx` | 48 | 5.4 | rebuild | The sticky footer goes (R3) | **done, batch 3** — it now draws the title and the `FormFooter` too, so neither can be re-invented at a call site |
 | `forms/quickCreateLayout.tsx` | 120 | 5.4 | adopt | | |
-| `leads/LeadRecordFormPage.tsx` | 184 | 5.4 | adopt | | |
-| `leads/LeadFormFields.tsx` | 204 | 5.4 | rebuild | Local `TextField` — 1 of 4 | |
+| `leads/LeadRecordFormPage.tsx` | 184 | 5.4 | adopt | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `leads/LeadFormFields.tsx` | 204 | 5.4 | rebuild | Local `TextField` — 1 of 4, and the one that wired no `id` | **done, batch 3** |
 | `leads/LeadQuickCreate.tsx` | 199 | 5.4 | adopt | | |
 | `leads/LeadQuickCreateLayoutFields.tsx` | 285 | 5.4 | adopt | | |
 | `leads/leadQuickCreateDraft.ts` | 28 | 5.4 | unchanged | Data | |
 | `leads/leadMutation.ts` | 117 | 5.4 | unchanged | Data | |
 | `leads/LeadConversionForm.tsx` | 213 | 5.3 | rebuild | **A13** | **done, batch 6** — `useUnsavedChangesGuard` on a snapshot of the state the page opened in, so the permission-derived defaults do not prompt; the guard lifts once the conversion has run |
-| `contacts/ContactRecordFormPage.tsx` | 159 | 5.4 | adopt | | |
-| `contacts/ContactFormFields.tsx` | 179 | 5.4 | rebuild | Local `TextField` — 2 of 4 | |
+| `contacts/ContactRecordFormPage.tsx` | 159 | 5.4 | adopt | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `contacts/ContactFormFields.tsx` | 179 | 5.4 | rebuild | Local `TextField` — 2 of 4 | **done, batch 3** |
 | `contacts/ContactQuickCreate.tsx` | 166 | 5.4 | adopt | | |
 | `contacts/ContactQuickCreateLayoutFields.tsx` | 269 | 5.4 | adopt | | |
 | `contacts/contactQuickCreateDraft.ts` | 23 | 5.4 | unchanged | Data | |
 | `contacts/contactMutation.ts` | 104 | 5.4 | unchanged | Data | |
-| `organizations/OrganizationRecordFormPage.tsx` | 282 | 5.4 | adopt | | |
-| `organizations/OrganizationFormFields.tsx` | 113 | 5.4 | rebuild | Local `TextField` — 3 of 4 | |
+| `organizations/OrganizationRecordFormPage.tsx` | 282 | 5.4 | adopt | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `organizations/OrganizationFormFields.tsx` | 113 | 5.4 | rebuild | Local `TextField` — 3 of 4, **plus a `RequiredTextField`** — the count was 5, not 4 | **done, batch 3** |
 | `organizations/OrganizationQuickCreate.tsx` | 152 | 5.4 | adopt | | |
 | `organizations/OrganizationQuickCreateLayoutFields.tsx` | 232 | 5.4 | adopt | | |
 | `organizations/organizationQuickCreateDraft.ts` | 26 | 5.4 | unchanged | Data | |
 | `organizations/organizationMutation.ts` | 99 | 5.4 | unchanged | Data | |
-| `opportunities/OpportunityRecordFormPage.tsx` | 262 | 5.4 | adopt | | |
-| `opportunities/OpportunityFormFields.tsx` | 109 | 5.4 | rebuild | Local `TextField` — 4 of 4 | |
+| `opportunities/OpportunityRecordFormPage.tsx` | 262 | 5.4 | adopt | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `opportunities/OpportunityFormFields.tsx` | 109 | 5.4 | rebuild | Local `TextField` — 4 of 4 | **done, batch 3** |
 | `opportunities/OpportunityQuickCreate.tsx` | 187 | 5.4 | adopt | **A3** — wired into contacts and accounts but *not* the deals list | |
 | `opportunities/OpportunityQuickCreateLayoutFields.tsx` | 291 | 5.4 | adopt | | |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | |
 | `opportunities/opportunityStages.ts` | 32 | 5.1 | rebuild | Tone classification (R5) | **done** (B) |
-| `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | |
-| `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | |
-| `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | |
-| `finance/InsertionOrderRecordFormPage.tsx` | 416 | 5.4 | rebuild | **Two Cancel buttons** — `:265` and `:305` | |
-| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | |
-| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | |
-| `catalog/CatalogRecordFormPage.tsx` | 333 | 5.4 | rebuild | | |
-| `customModules/CustomModuleRecordCreatePage.tsx` | 286 | 5.4 | rebuild | | |
-| `customModules/CustomModuleRecordEditPage.tsx` | 300 | 5.4 | **new** | Added in batch 4 as the create page with a record behind it — archetype 3, so 5.4 owns its final shape with the other 15 form routes | |
+| `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
+| `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
+| `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
+| `finance/InsertionOrderRecordFormPage.tsx` | 416 | 5.4 | rebuild | **Two Cancel buttons** — `:265` and `:305` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the duplicate Cancel is still there and is batch 4's |
+| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched |
+| `catalog/CatalogRecordFormPage.tsx` | 333 | 5.4 | rebuild | Local `ToggleRow` — 1 of 2 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the `ToggleRow` is batch 4's |
+| `customModules/CustomModuleRecordCreatePage.tsx` | 286 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
+| `customModules/CustomModuleRecordEditPage.tsx` | 300 | 5.4 | **new** | Added in batch 4 as the create page with a record behind it — archetype 3, so 5.4 owns its final shape with the other 15 form routes | **done, batch 3** |
 | `documents/DocumentUploadFormPage.tsx` | 533 | 5.4 | rebuild | One of two footer stragglers (`:515`) | |
 | `settings/message-templates/MessageTemplateRecordFormPage.tsx` | 232 | 5.4 | rebuild | Verbatim copy of the sticky-footer classes (`:205`) | |
-| `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | |
+| `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); A7 is still open |
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 
 ### 2.3 Tables and lists (16) — owner 5.5
@@ -418,7 +418,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `calendar/CalendarSyncBridge.tsx` | 85 | — | unchanged | No UI | |
 | `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | |
 | `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | |
-| `mail/MailComposePage.tsx` | 239 | 5.7 | rebuild | | |
+| `mail/MailComposePage.tsx` | 239 | 5.7 | rebuild | On `RecordFormLayout`, so 5.4 batch 3 moved it with the other 15 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.7 still owns its final shape |
 | `mail/RecordEmailComposer.tsx` | 498 | 5.7 | rebuild | | |
 | `mail/RecordEmailAction.tsx` | 103 | 5.3 | adopt | A record-page action | **done, close-out** — returns `null` without an address instead of a disabled `Email` / `Email Opt Out` (§4.7). Opt-out is already drawn in `Details` as `Opted out` |
 
@@ -433,7 +433,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
-| `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | |
+| `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.8 still owns its final shape and the `size-6` |
 
 ### 2.7 Shared field and picker components (7)
 

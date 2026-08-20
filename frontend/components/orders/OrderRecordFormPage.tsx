@@ -27,6 +27,7 @@ import {
   Field,
   FieldDescription,
   FieldError,
+  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -300,6 +301,7 @@ function OrderRecordFormEditor({
         </div>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? form.order_number : "New order"}
         sidebar={
           <OrderSidebar
             form={form}
@@ -309,30 +311,26 @@ function OrderRecordFormEditor({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "You have unsaved changes."
+          : mode === "edit"
+          ? "No unsaved changes."
+          : "Add a customer and line items to create this order."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={backHref}>Cancel</Link>
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Add a customer and line items to create this order."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={backHref}>Cancel</Link>
-              </Button>
-              <Button onClick={() => void submit()} disabled={submitting}>
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create order"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create order"}
+            </Button>
+          </>
+        )}
       >
         <FormSection
           title="Customer and billing details"
@@ -340,7 +338,7 @@ function OrderRecordFormEditor({
         >
           <span id="order-customer-anchor" tabIndex={-1} />
           {customerError ? <FieldError>{customerError}</FieldError> : null}
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2} className="mt-3">
             <Field>
               <FieldLabel>
                 Account <RequiredMark />
@@ -463,7 +461,7 @@ function OrderRecordFormEditor({
                 quote conversion action.
               </FieldDescription>
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <TransactionLineItemsEditor
           items={items}
@@ -479,7 +477,7 @@ function OrderRecordFormEditor({
           title="Delivery and payment details"
           description="Set fulfillment expectations and customer-facing payment terms."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field>
               <FieldLabel htmlFor="order-delivery-date">
                 Delivery date
@@ -519,7 +517,7 @@ function OrderRecordFormEditor({
                 }
               />
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <FormSection
           title="Terms and notes"

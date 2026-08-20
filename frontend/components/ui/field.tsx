@@ -41,12 +41,37 @@ function FieldLegend({
   )
 }
 
-function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * The field stack, and — at `columns={2}` — the responsive field grid archetype 3 specifies
+ * (design.md 4.7).
+ *
+ * The grid is a variant rather than a second component because the class string it emits was
+ * already being written at the call site: `<FieldGroup className="grid gap-4 md:grid-cols-2">`
+ * appeared 26 times across the form routes, overriding this component's own `flex-col` to get
+ * it. That is the missing variant, spelled out by hand.
+ *
+ * `md` is the breakpoint, not `sm`: the aside spends ~320px of a 1280px viewport, so the
+ * content column is about 700px and two columns of inputs are only comfortable above it. A
+ * field that spans both writes `md:col-span-2` on its own `Field`.
+ *
+ * `columns={3}` exists for one case and is not a general option: a row of **short values of
+ * the same kind** — three dates, three amounts. Anything with a normal-length label wraps at
+ * ~215px. If a section needs three columns for prose-length fields, it needs two.
+ */
+function FieldGroup({
+  className,
+  columns = 1,
+  ...props
+}: React.ComponentProps<"div"> & { columns?: 1 | 2 | 3 }) {
   return (
     <div
       data-slot="field-group"
+      data-columns={columns}
       className={cn(
-        "group/field-group @container/field-group flex w-full flex-col gap-4 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+        "group/field-group @container/field-group w-full gap-4 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+        columns === 1 && "flex flex-col",
+        columns === 2 && "grid md:grid-cols-2",
+        columns === 3 && "grid md:grid-cols-3",
         className
       )}
       {...props}

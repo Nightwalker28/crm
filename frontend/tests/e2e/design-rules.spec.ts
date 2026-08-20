@@ -4,7 +4,8 @@
 // hold plain integers.
 //
 // Checks: no uppercase or faked small caps, Inter everywhere, radius on the token scale,
-// monospace only for secrets and raw payloads, control heights in {32, 38, 44}.
+// monospace only for secrets and raw payloads, control heights in {32, 38, 44}, and
+// archetype 3's composition - a visible title, a `FormFooter`, and no sticky save bar.
 //
 // Exemptions, all deliberate: <code>/<pre> are monospace by UA default and are the right
 // elements for a machine string; textareas are multi-line so the single-line height
@@ -116,7 +117,12 @@ test("design rule audit", async ({ page }) => {
 
   for (const l of LISTS) {
     await page.goto(l.list, { waitUntil: "domcontentloaded", timeout: 45000 });
-    await page.waitForTimeout(1500);
+    // Wait for a row rather than a fixed 1500ms. The five largest lists (contacts,
+    // organizations, opportunities, POS, leads) were reporting *unreachable* on a warm
+    // server purely because their first row had not painted yet — which silently dropped
+    // every `/[id]` and `/[id]/edit` route behind them from the audit.
+    await page.locator("tbody tr").first().waitFor({ state: "attached", timeout: 20000 }).catch(() => {});
+    await page.waitForTimeout(600);
     let href: string | null = await page.evaluate((src) => {
       const re = new RegExp(src);
       const a = Array.from(document.querySelectorAll("a")).find((x) => re.test(new URL(x.href, location.origin).pathname));
@@ -138,7 +144,7 @@ test("design rule audit", async ({ page }) => {
     for (const s of l.suffixes) routes.push(href + s);
   }
 
-  const violations: Record<string, string[]> = { uppercase: [], mono: [], radius: [], controlHeight: [], font: [], nesting: [] };
+  const violations: Record<string, string[]> = { uppercase: [], mono: [], radius: [], controlHeight: [], font: [], nesting: [], formTitle: [], formFooter: [], formSticky: [] };
   const seen = new Set<string>();
 
   for (const route of routes) {
@@ -149,7 +155,7 @@ test("design rule audit", async ({ page }) => {
 
     const r = await page.evaluate((args) => {
       const { allowedRadii, allowedH } = args;
-      const out = { uppercase: [] as string[], mono: [] as string[], radius: [] as string[], controlHeight: [] as string[], font: [] as string[], nesting: [] as string[] };
+      const out = { uppercase: [] as string[], mono: [] as string[], radius: [] as string[], controlHeight: [] as string[], font: [] as string[], nesting: [] as string[], formTitle: [] as string[], formFooter: [] as string[], formSticky: [] as string[] };
       const visible = (el: Element) => {
         const b = (el as HTMLElement).getBoundingClientRect();
         return b.width > 0 && b.height > 0;
@@ -207,6 +213,28 @@ test("design rule audit", async ({ page }) => {
         Array.from(root.children).forEach((c) => walk(c, 0, []));
       }
 
+      // Archetype 3 (design.md 4.7, R3). `RecordFormLayout` draws all three of these, so a
+      // failure here means a form route stopped going through the primitive - which is how
+      // the sticky save bar, the missing title and seventeen private footers happened the
+      // first time. `data-slot` is the only DOM signal that says "this came from the
+      // primitive" (7.6); a class selector cannot tell a rebuilt page from a regressed one.
+      document.querySelectorAll<HTMLElement>('[data-slot="record-form-layout"]').forEach((form) => {
+        const heading = form.querySelector<HTMLElement>('[data-slot="form-title"]');
+        if (!heading || !visible(heading) || !(heading.textContent || "").trim()) {
+          out.formTitle.push("no visible form title");
+        }
+        if (!form.querySelector('[data-slot="form-footer"]')) {
+          out.formFooter.push("no FormFooter");
+        }
+        form.querySelectorAll<HTMLElement>("*").forEach((el) => {
+          // The aside is `lg:sticky lg:top-6` by design - the ruling is about bottom-anchored
+          // save bars, which pin themselves to the viewport floor.
+          if (el.tagName === "ASIDE") return;
+          const cs = getComputedStyle(el);
+          if (cs.position === "sticky" && cs.bottom !== "auto") out.formSticky.push(label(el));
+        });
+      });
+
       const bodyFont = getComputedStyle(document.body).fontFamily;
       if (!/inter/i.test(bodyFont)) out.font.push(bodyFont);
       return out;
@@ -230,4 +258,7 @@ test("design rule audit", async ({ page }) => {
   expect(violations.mono, "monospace outside secrets and raw payloads (design.md 3.2)").toEqual([]);
   expect(violations.controlHeight, "control height outside 32/38/44 (design.md 4.2)").toEqual([]);
   expect(violations.nesting, "more than 2 levels of visible container (design.md 1.3)").toEqual([]);
+  expect(violations.formTitle, "a form route with no visible title (design.md 4.7, archetype 3)").toEqual([]);
+  expect(violations.formFooter, "a form route not on FormFooter (design.md 4.7, R4)").toEqual([]);
+  expect(violations.formSticky, "a bottom-anchored sticky bar inside a form (rebuild.md R3)").toEqual([]);
 });

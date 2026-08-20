@@ -28,6 +28,15 @@ cd frontend && find app/dashboard -name 'page.tsx' \
 The dummy cookies exist only to get past `proxy.ts`, which checks cookie presence, not validity.
 Without them every request 307s to the login page and nothing compiles.
 
+**A green `design-rules` run is not necessarily a complete one.** The spec discovers every
+`/[id]` and `/[id]/edit` route by finding a row link on each list page, and it prints
+`Audited N routes. Unreachable: …` before asserting. Until 2026-08-20 it waited a flat 1500ms,
+and on a loaded box the largest lists (contacts, organizations, opportunities, POS, leads) had
+not painted a row by then. Four runs on 2026-08-20 gave **82 routes / 5 unreachable**, **90 /
+2**, and **94 / 0** — same server, same warm-up. It waits for `tbody tr` now. **Read the
+`Unreachable:` line either way**: anything listed there took its record and edit routes out of
+the audit with it, and the run still passes.
+
 **Postgres is remote and it drops.** The database lives off-box. One run this session produced 14
 failures that were all `psycopg2.OperationalError: server closed the connection`, surfacing as
 `Expected login to reach the dashboard or MFA challenge`. Before believing a batch of login

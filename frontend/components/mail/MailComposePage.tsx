@@ -14,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useMailActions, useMailContext } from "@/hooks/useMail";
@@ -113,7 +114,7 @@ export default function MailComposePage() {
         actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
       >
         <Card className="p-6">
-          <h2 className="text-base font-semibold text-copy-primary">No sending mailbox available</h2>
+          <SectionHeading>No sending mailbox available</SectionHeading>
           <p className="mt-2 max-w-2xl text-p-sm text-copy-secondary">
             Connect or repair a Gmail, Microsoft, or IMAP/SMTP mailbox before composing an email.
           </p>
@@ -133,10 +134,11 @@ export default function MailComposePage() {
       actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
     >
       <RecordFormLayout
+        title="New message"
         sidebar={
           <>
             <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">Sending mailbox</h2>
+              <SectionHeading>Sending mailbox</SectionHeading>
               <Field className="mt-4">
                 <FieldLabel>Provider</FieldLabel>
                 <Select
@@ -156,7 +158,7 @@ export default function MailComposePage() {
               </Field>
             </Card>
             <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">CRM variables</h2>
+              <SectionHeading>CRM variables</SectionHeading>
               <p className="mt-2 text-p-sm text-copy-secondary">
                 Variables resolve from linked record context or a matching contact recipient when the message is sent.
               </p>
@@ -176,18 +178,16 @@ export default function MailComposePage() {
             </Card>
           </>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "Unsaved message" : "Start writing your message"}</span>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" asChild><Link href="/dashboard/mail">Cancel</Link></Button>
-              <Button type="button" onClick={() => void handleSend()} disabled={isSendingMail}>
-                <Send />
-                {isSendingMail ? "Sending..." : "Send email"}
-              </Button>
-            </div>
-          </div>
-        }
+        status={isDirty ? "Unsaved message" : "Start writing your message"}
+        actions={(
+          <>
+            <Button type="button" variant="outline" asChild><Link href="/dashboard/mail">Cancel</Link></Button>
+            <Button type="button" onClick={() => void handleSend()} disabled={isSendingMail}>
+              <Send />
+              {isSendingMail ? "Sending..." : "Send email"}
+            </Button>
+          </>
+        )}
       >
         <FormSection title="Message" description="Separate multiple recipients with commas.">
           <FieldGroup>

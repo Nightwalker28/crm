@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
@@ -271,10 +272,11 @@ function InsertionOrderFormEditor({
     >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "New insertion order"}
           sidebar={
             <>
               <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Order state</h2>
+                <SectionHeading>Order state</SectionHeading>
                 {fieldEnabled("status") ? (
                   <Field className="mt-4">
                     <FieldLabel htmlFor="io-status">Status <RequiredMark /></FieldLabel>
@@ -296,22 +298,20 @@ function InsertionOrderFormEditor({
                 {order?.updated_at ? <p className="mt-4 text-xs text-copy-muted">Last updated {formatDateTime(order.updated_at)}</p> : null}
               </Card>
               <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Customer relationship</h2>
+                <SectionHeading>Customer relationship</SectionHeading>
                 <p className="mt-2 text-p-sm text-copy-secondary">
                   Link an existing contact or account when possible. A lightweight contact can be created only when no record is linked.
                 </p>
               </Card>
             </>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "No unsaved changes"}</span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>
-                <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create order"}</Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "Unsaved changes" : "No unsaved changes"}
+          actions={(
+            <>
+              <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>
+              <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create order"}</Button>
+            </>
+          )}
         >
           <FormSection title="Customer and references" description="Choose an existing CRM relationship or enter a new customer name.">
             <FieldGroup>
@@ -378,15 +378,15 @@ function InsertionOrderFormEditor({
                   <FieldError>{errors.email}</FieldError>
                 </Field>
               ) : null}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <FieldGroup columns={2}>
                 {fieldEnabled("counterparty_reference") ? <Field><FieldLabel htmlFor="io-counterparty-reference">Counterparty reference</FieldLabel><Input id="io-counterparty-reference" value={form.counterparty_reference} onChange={(event) => update("counterparty_reference", event.target.value)} placeholder="PO-4821" /></Field> : null}
                 {fieldEnabled("external_reference") ? <Field><FieldLabel htmlFor="io-external-reference">External reference</FieldLabel><Input id="io-external-reference" value={form.external_reference} onChange={(event) => update("external_reference", event.target.value)} placeholder="Vendor reference" /></Field> : null}
-              </div>
+              </FieldGroup>
             </FieldGroup>
           </FormSection>
 
           <FormSection title="Schedule" description="Record the issue, effective, due, and delivery period dates.">
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup columns={2}>
               {fieldEnabled("issue_date") ? <Field><FieldLabel htmlFor="io-issue-date">Issue date</FieldLabel><Input id="io-issue-date" type="date" value={form.issue_date} onChange={(event) => update("issue_date", event.target.value)} /></Field> : null}
               {fieldEnabled("effective_date") ? <Field><FieldLabel htmlFor="io-effective-date">Effective date</FieldLabel><Input id="io-effective-date" type="date" value={form.effective_date} onChange={(event) => update("effective_date", event.target.value)} /></Field> : null}
               {fieldEnabled("due_date") ? <Field data-invalid={Boolean(errors.dueDate)}><FieldLabel htmlFor="io-due-date">Due date</FieldLabel><Input ref={dueDateRef} id="io-due-date" type="date" value={form.due_date} onChange={(event) => { update("due_date", event.target.value); setErrors((current) => ({ ...current, dueDate: undefined })); }} aria-invalid={Boolean(errors.dueDate)} /><FieldError>{errors.dueDate}</FieldError></Field> : null}
@@ -396,7 +396,7 @@ function InsertionOrderFormEditor({
           </FormSection>
 
           <FormSection title="Commercial summary" description="Leave amounts blank when they are not finalized.">
-            <FieldGroup className="grid gap-4 sm:grid-cols-3">
+            <FieldGroup columns={3}>
               {fieldEnabled("subtotal_amount") ? <Field data-invalid={Boolean(errors.subtotal)}><FieldLabel htmlFor="io-subtotal">Subtotal</FieldLabel><Input ref={subtotalRef} id="io-subtotal" type="number" step="0.01" value={form.subtotal_amount} onChange={(event) => { update("subtotal_amount", event.target.value); setErrors((current) => ({ ...current, subtotal: undefined })); }} aria-invalid={Boolean(errors.subtotal)} placeholder="0.00" /><FieldError>{errors.subtotal}</FieldError></Field> : null}
               {fieldEnabled("tax_amount") ? <Field data-invalid={Boolean(errors.tax)}><FieldLabel htmlFor="io-tax">Tax</FieldLabel><Input ref={taxRef} id="io-tax" type="number" step="0.01" value={form.tax_amount} onChange={(event) => { update("tax_amount", event.target.value); setErrors((current) => ({ ...current, tax: undefined })); }} aria-invalid={Boolean(errors.tax)} placeholder="0.00" /><FieldError>{errors.tax}</FieldError></Field> : null}
               {fieldEnabled("total_amount") ? <Field data-invalid={Boolean(errors.total)}><FieldLabel htmlFor="io-total">Total</FieldLabel><Input ref={totalRef} id="io-total" type="number" step="0.01" value={form.total_amount} onChange={(event) => { update("total_amount", event.target.value); setErrors((current) => ({ ...current, total: undefined })); }} aria-invalid={Boolean(errors.total)} placeholder="0.00" /><FieldError>{errors.total}</FieldError><FieldDescription>Optional until finalized.</FieldDescription></Field> : null}

@@ -140,6 +140,10 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   }
 
   const title = mode === "edit" ? "Edit lead" : "Create lead";
+  // Archetype 3's visible heading: the record's name on an edit, the noun on a create.
+  const lead = summaryQuery.data?.lead;
+  const recordName =
+    [lead?.first_name, lead?.last_name].filter(Boolean).join(" ").trim() || lead?.company || "Lead";
 
   return (
     <PageShell
@@ -160,17 +164,16 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       ) : null}
 
       <RecordFormLayout
+        title={mode === "edit" ? recordName : "New lead"}
         sidebar={<LeadFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
-        footer={(
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this lead."}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}>
-                <Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create lead"}
-              </Button>
-            </div>
-          </div>
+        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this lead."}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}>
+              <Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create lead"}
+            </Button>
+          </>
         )}
       >
         <LeadFormMainFields

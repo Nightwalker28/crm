@@ -10,7 +10,7 @@ import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
@@ -143,6 +143,7 @@ export default function LeadConversionForm({
     <>
       {error ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">{error}</div> : null}
       <RecordFormLayout
+        title={leadName}
         sidebar={(
           <FormSection title="Conversion summary" description="Review what will happen before converting.">
             <dl className="grid gap-3 text-sm">
@@ -152,14 +153,12 @@ export default function LeadConversionForm({
             </dl>
           </FormSection>
         )}
-        footer={(
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">This action marks the lead as converted.</span>
-            <div className="flex gap-2">
-              <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={!canSubmit}><ArrowRightLeft />{submitting ? "Converting…" : "Confirm conversion"}</Button>
-            </div>
-          </div>
+        status="This action marks the lead as converted."
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={!canSubmit}><ArrowRightLeft />{submitting ? "Converting…" : "Confirm conversion"}</Button>
+          </>
         )}
       >
         <FormSection title="Target account" description="Create an account from the lead or link an existing account.">
@@ -209,10 +208,10 @@ export default function LeadConversionForm({
             onCheckedChange={setCreateDeal}
           />
           {shouldCreateDeal ? (
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <FieldGroup columns={2} className="mt-4">
               <Field><FieldLabel>Opportunity name</FieldLabel><Input value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
               <Field><FieldLabel>Initial stage</FieldLabel><Select value={dealStage} onValueChange={setDealStage}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((stage) => <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>)}</SelectContent></Select></Field>
-            </div>
+            </FieldGroup>
           ) : null}
         </FormSection>
       </RecordFormLayout>

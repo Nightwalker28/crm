@@ -2404,6 +2404,218 @@ not a fix to this field. Recorded with numbers, and 5.10 gains the check that ca
 the 78 hand-written field grids and the four `TextField`s, and the Owner control's form half.
 
 
+### Status: batch 3 — `RecordFormLayout`, and it is 17 call sites, not 16
+
+**Read this first if you are picking the run up.** Batch 3 is done. Archetype 3 now draws
+itself: the visible title, the `FormFooter`, and the field grid all come from the primitive,
+and none of the three can be re-invented at a call site.
+
+**The audit's three numbers were all a little wrong, and the corrections matter.**
+
+- **"16 form routes" is 17 call sites.** `LeadConversionForm` is on `RecordFormLayout` too —
+  it is a `/convert` route rather than a `/new` or `/[id]/edit` one, so a survey of the form
+  routes did not count it. It gets the archetype with the others.
+- **"78 hand-written field grids" is 61 app-wide** with the idiom as written
+  (`grid gap-N (sm|md):grid-cols-2`), of which **26 are in 5.4's scope**. The rest are
+  settings pages, dashboard widgets and dialogs, and belong to 5.6 and 5.7. All 26 moved.
+- **"four `TextField`s" is five.** `OrganizationFormFields` defines `TextField` *and*
+  `RequiredTextField` — the same component with a `RequiredMark` and a `FieldError` bolted
+  on, which is the shared one's `required` and `error` props. All five are gone.
+
+**What landed.**
+
+- **`RecordFormLayout` takes `title`, `status` and `actions`; `footer` is gone.** Both the
+  title and the footer were slots before, and both were then written by hand at every call
+  site — the §4.4 failure again, where the rule exists and no primitive supplies it. There is
+  now no slot to put an eighteenth footer recipe in.
+- **`FormFooter` and `ActionBar` have their first consumers.** Measured at HEAD: both were
+  imported by **nothing outside `components/ui/`** — `ActionBar` only by `button.tsx`, which
+  reads its size context, and `FormFooter` by no one at all. They were built in 5.1 batch D
+  and had been sitting correct and unused since. `SectionHeading` was in better shape at 9
+  files, but not one of them was a form.
+- **The sticky bar that covered 17 routes is deleted (R3).** Ten `sticky bottom-0` save bars
+  were counted; this was one implementation standing behind seventeen of them, so the count
+  is now **eight**, all in settings, saved views and automation — 5.6's and 5.5's.
+- **`FormSection`'s heading goes through `SectionHeading`.** It was drawing
+  `text-base font-semibold text-copy-primary`, which is the *pre-R7* section heading: one ink
+  step **louder** than the values under it, and at a size R7 removed from the ramp. **66**
+  headings corrected in one edit.
+- **And 14 more that `FormSection` could not reach.** Seven form files hand-roll
+  `Card` + `<h2 class="text-base|text-sm font-semibold text-copy-primary">` instead of using
+  `FormSection` — `SupportCaseCreateFormPage` uses *no* `FormSection` at all. Fixing the
+  primitive and leaving fourteen identical twins in the same seven files would have left two
+  heading treatments side by side on one page, which is worse than the state before. The
+  `Card` structure is untouched (it is already the right panel, §1.3); only the heading role
+  moved. `SectionHeading` goes from 9 files to 17.
+- **Three `text-base font-semibold` sites deliberately left**: the grand-total rows in the
+  quote, order and POS line-item summaries. Those are *values*, not section headings, and the
+  line-item documents are batch 5's.
+- **`FieldGroup` gains `columns={1|2|3}`** — the responsive field grid as a variant rather
+  than a second component, because `<FieldGroup className="grid gap-4 md:grid-cols-2">` was
+  already being written 26 times. That class string *was* the missing variant, spelled out by
+  hand. `3` is in the union because two form sections legitimately need it — a contract's
+  effective/expiration/renewal dates, an insertion order's subtotal/tax/total — and §4.7 now
+  names the constraint: three columns are for short values of the *same kind* and nothing
+  else. Without it those two would have stayed `className` grids, which is the drift.
+- **`components/forms/TextField.tsx` is the one labelled input**, replacing five private
+  copies.
+
+**One real accessibility defect, found by making `id` required.**
+
+`LeadFormFields`' `TextField` took no `id`. It rendered a `FieldLabel` with no `htmlFor`
+beside an `Input` with no `id` — so on the lead form, *First name*, *Last name*, *Company*,
+*Job title*, *Phone* and *Source* had **no accessible name at all**, and clicking a label did
+nothing. On screen it was indistinguishable from the other four copies, which is why nobody
+saw it: the label is *there*, it is just not attached to anything. `check-design.sh` cannot
+see it (it is an absent attribute, not a written class), and the rendered guards check
+contrast and geometry rather than label association. §7.5 now says a label is *associated*,
+not merely adjacent, and the shared `TextField` takes `id` as a required prop — which is the
+only thing that stops the sixth copy being written.
+
+The same pass added `aria-required` where `RequiredMark` is used. The mark is `aria-hidden`
+by design — it is the visual half — so without the attribute the requirement reached sighted
+operators only.
+
+**And the scaffold was emitting the same defect.**
+`docs/module-template/frontend/components/__modules__/__Module__Form.tsx` — what
+`scripts/create-module.py` copies into every new module — wrote `<FieldLabel>Name</FieldLabel>`
+beside a bare `<Input>`, with no `id` and no `htmlFor`, twice. So the fix would have held
+exactly until the next module was scaffolded. It is on the shared `TextField` now, its
+`Select` is wired by `htmlFor`/`id`, and its field grid is `columns={2}`. A rule that the
+generator contradicts is not a rule.
+
+**Two decisions, and the second is the one that recurs.**
+
+- **The layout owns the title; the call site supplies the string.** `/[id]/edit` passes the
+  record's name and `/new` passes the noun, because only the page knows which field is the
+  name — `io_number` on an insertion order, `quote_number` on a quote, `first_name last_name`
+  on a contact. What the layout owns is that there *is* one, at the R7 surface-title role, in
+  the same position on all seventeen.
+- **`FieldGroup columns={2}`, not a new `FieldGrid`.** §0's *reuse before extending, extend
+  before adding*. A `FieldGrid` would have been a second container primitive for a container
+  that already exists, differing only in `flex-col` vs `grid` — and the call sites were
+  already reaching through `FieldGroup`'s `className` to get exactly that.
+
+**Rejected, with reasons:**
+
+- *Make `PageShell`'s `h1` visible on `variant="document"`.* §8 says the h1 is deliberately
+  `sr-only` and archetype 2 draws its own name for the same reason. It would also have made
+  the title visible on every document page, not the form ones.
+- *Keep `footer` and let call sites pass `<FormFooter>`.* That is exactly the state
+  `ActionBar` and `FormFooter` were already in: built, correct, imported by nobody. A slot a
+  call site *may* fill correctly is a slot seventeen call sites filled seventeen ways.
+- *Convert the two private `ToggleRow`s to `SettingsSwitchRow` here.* They are a boolean-row
+  idiom and batch 4 owns the idioms. More to the point, `SettingsSwitchRow` renders a
+  `role="group"` of two `aria-pressed` buttons and the catalog copy renders a `checkbox`, so
+  it is a semantics change with spec consequences rather than a restyle. A §7.5 rule saying
+  "a boolean field is `SettingsSwitchRow`" was **written and then removed from `design.md`
+  in the same pass**, because a rule with no code behind it is exactly what §4.4 records
+  going wrong.
+
+**The guard.** `design-rules.spec.ts` gains three checks on every route that renders
+`[data-slot="record-form-layout"]`: a visible `[data-slot="form-title"]`, a
+`[data-slot="form-footer"]`, and no bottom-anchored `position: sticky` inside the form. All
+17 routes are already on its audited route list. `data-slot` is the only DOM signal that says
+*this came from the primitive* (§7.6) — a class selector cannot tell a rebuilt page from a
+regressed one, which is the whole reason the sticky bar could be copied verbatim into
+`MessageTemplateRecordFormPage` and nothing noticed. The aside is exempt by name: it is
+`lg:sticky lg:top-6` by design, and R3 is about bars pinned to the viewport *floor*.
+
+**One trap for the next run.** `getByRole("heading", { name })` is substring matching by
+default, and a form route now has two headings — `PageShell`'s `sr-only` h1 (*Convert Browser
+Fixture*) and the archetype's visible h2. The conversion form's title was written as
+`Convert ${leadName}` first, which made both headings carry the same accessible name and
+would have failed `leads-revamp:539` on strict mode. It is `leadName` now, which is also what
+§4.7 actually says: the visible title is the record's **name**. Check the pair on any new
+form route before assuming a heading assertion is safe.
+
+**A second heading shape, recorded rather than changed.** On a document module the h1 already
+carried the record's number before this batch, so `/dashboard/sales/quotes/4/edit` now reads
+h1 *Edit SAMPLE-QT-0003*, h2 *SAMPLE-QT-0003* — the h2 is a **substring of the h1**, and a
+future spec written as `getByRole("heading", { name: "SAMPLE-QT-0003" })` will match both.
+The clean answer is to make the h1 the page (*Edit quote*) and leave the number to the h2, as
+leads and contacts already do. Not done here: it is five existing spec assertions
+(`contracts-revamp:209`, `insertion-orders-revamp:279`, `invoices-revamp:165`,
+`quotes-revamp:123`, `catalog-revamp:300`) for a redundancy that is inaudible rather than
+wrong, and none of those five currently breaks. It belongs with batch 4's copy idioms.
+
+### The browser pass — driven through Playwright, and one apparent defect that was not one
+
+The Chrome extension was connected this run, but `/auth/login` needs a password typed into a
+field, which is not something to do from the agent side. So the pass ran the same way batch 2's
+did: a throwaway spec against the real backend and real seeded data, deleted before the
+commit, reading computed style and `document.activeElement` rather than trusting a screenshot.
+Thirteen create routes plus three `/[id]/edit` routes — 16 renders — in both themes, at 1440
+and 768.
+
+| | |
+|---|---|
+| Visible title is an `h2` at the R7 surface role | ✓ `18px/600`, `rgb(244,247,251)` dark / `rgb(16,19,25)` light, on all 16 |
+| `/new` draws the noun, `/[id]/edit` the record's name | ✓ *New lead* … *New invoice*; *Sample Lead 3*, *SAMPLE-QT-0003*, *Sample Service Agreement 3* |
+| Footer is **not** sticky (R3) | ✓ `position: static` on every route, bottom at 908–2068px against a 900px viewport — it scrolls away with the document |
+| Both footer buttons at one height (R4) | ✓ 38px / 38px on all 16 |
+| Section headings are quieter than the values (R7) | ✓ `14px/600 rgb(153,164,180)` — `copy-label`, against a `copy-primary` value |
+| `FieldGroup columns={2}` resolves to two columns | ✓ `333px 333px` in the content column, `442px 442px` on the wider line-item forms |
+| 768px | ✓ still 2 columns (`md` *is* 768), `scrollWidth - clientWidth = 0` — no sideways overflow |
+| Light theme | ✓ ground `rgb(247,248,250)`, title `rgb(16,19,25)`, heading `rgb(93,101,116)` — the R7 inversion holds in both weights |
+| Every input on the lead form has an accessible name | ✓ all seven resolve by `getByRole("textbox", { name, exact: true })` — this failed before the batch |
+| Tab from the first field to the commit | ✓ 22 stops, a visible focus indicator at **every** one, ending `Cancel` → `Create lead` |
+
+**The tab-through is the check that only R3 makes possible.** The footer is now the last two
+stops of the document rather than a bar floating over it, so the keyboard order and the visual
+order are the same thing.
+
+**The apparent defect: `/dashboard/sales/contacts/new` reported no `record-form-layout` at
+all.** It looked like the one route the batch had broken. It was a **1600ms wait against a
+dev-server route that had not finished hydrating** — at 6000ms the form is there, the title is
+*New contact*, the footer is there, and the console is empty. Recorded because the first
+reading was alarming and wrong, and because the same shape cost the design guard something
+real:
+
+**The design guard can silently audit 82 routes instead of 94, and nothing says so except one
+log line.** `design-rules.spec.ts` discovers `/[id]` and `/[id]/edit` by finding a row link on
+each list, and it waited a flat 1500ms before looking. Measured across four runs today on a
+warm server: **82 routes / 5 unreachable**, then **90 / 2**, then **94 / 0** at HEAD. So it is
+load-dependent rather than a standing condition — but when it bites, every record and edit
+route behind the missed list is dropped from the audit and the run is still green. The five
+that dropped are the largest lists: contacts, organizations, opportunities, POS, leads. It
+waits for `tbody tr` now. **Read the `Audited N routes. Unreachable:` line before trusting a
+pass** — a guard that quietly stops looking at a sixth of its routes is worse than one that
+fails.
+
+### Verification — the failure sets were diffed, not argued about
+
+Lint, `npm run build`, `check-design.sh` (2 of 14 — the known baseline, unchanged), both
+rendered guards, and **18 module specs run serially twice**: once with the batch, once with it
+stashed out, same spec list, same order, same flags.
+
+| | With the batch | At HEAD |
+|---|---|---|
+| | **97 passed / 17 failed** | **95 passed / 19 failed** |
+
+Diffing the two failure sets is the whole point of running it twice:
+
+- **15 failed in both.** Inherited, and that now includes the four this run could not find on
+  any list — `invoices-revamp:140` and `:175`, `client-portal-revamp:155`,
+  `command-palette-actions:504`. The two invoice ones were the real scare: both assert
+  `getByRole("heading", { name: "INV-BROWSER-1" })` on the POS *detail* page, which is
+  archetype 2 and untouched here, and both fail without the batch.
+- **4 failed only at HEAD** — `leads-revamp:441`, `:788`, `:954`, `orders-revamp:82`. Not
+  fixed by the batch; the suite is simply noisy in a long serial run.
+- **2 failed only with the batch** — `command-palette-actions:320` and `support-revamp:189`.
+  Neither is on a surface this batch touches (`:320` visits two list pages and reads the
+  palette's recent-pages store; `:189` is a 390px list). **Re-run twice in isolation:
+  `support-revamp:189` passed both times, `:320` failed once and passed once.** In the same
+  two isolation runs `command-palette-actions:196` and `:285` also flipped — that spec
+  produced **three different failure sets across four runs**, which is what
+  `e2e-suite-status.md` already suspected of it ("passes 19/19 standalone; suspect
+  order-dependence or shared state"). **No reproducible regression.**
+
+**Run-shape mistake worth not repeating:** the first module-spec run was thrown away because
+`npm run build` was executed while it was in flight. The build writes `.next/` under the same
+container the dev server is reading, so the run was measuring a tree that was changing
+underneath it. Restart the frontend and re-warm before judging anything.
+
 ### What is left, in order
 
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
@@ -2413,8 +2625,8 @@ each — the shape 5.2 and 5.3 used.
 |---|---|---|
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
-| 3 | **`RecordFormLayout`** | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the 78 hand-written field grids, the four `TextField`s |
-| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom |
+| ~~3~~ | ~~**`RecordFormLayout`**~~ | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. **Done** — see the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
+| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom. **Add the two `ToggleRow`s** (`CatalogRecordFormPage:329`, `LeadConversionForm:223`) — batch 3 deliberately left them, and the catalog one is a `checkbox` where `SettingsSwitchRow` is a button group, so it is a semantics change |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
 | 7 | **Close-out** | The census rows, the browser pass, and whatever the rebuild exposed |

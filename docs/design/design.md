@@ -1055,6 +1055,32 @@ Contract: sections are panels (`FormSection` → `Card`), the section title is t
 section-heading role, fields sit on `md:grid-cols-2`, every input has a visible label
 (§7.5), required sets match the backend exactly.
 
+**`RecordFormLayout` draws the title and the action bar; a call site cannot supply its own.**
+Both were slots before, and both were then written by hand seventeen times — which is the
+§4.4 failure repeated: the rule existed, nothing supplied it. `title` is a required prop and
+becomes the visible `h2`; `status` and `actions` are rendered through `FormFooter`, which
+carries `ActionBar` and therefore R4's one control height. There is no `footer` slot to put a
+second recipe in.
+
+**The four form primitives, and what each replaces:**
+
+| Primitive | Draws | Replaces |
+|---|---|---|
+| `RecordFormLayout` | title, content column, aside, `FormFooter` | 17 hand-written footers on one recipe, and the `sticky bottom-0` bar behind all of them |
+| `FormSection` | the panel + `SectionHeading` | the pre-R7 `<h2 class="text-base font-semibold text-copy-primary">`, at 66 call sites |
+| `FieldGroup columns={2}` | `grid gap-4 md:grid-cols-2` | the hand-written responsive field grid |
+| `TextField` | `Field` + `FieldLabel` + `Input`, wired by `id` | five private copies, one of which wired no `id` at all |
+
+A field spanning both columns writes `md:col-span-2` on the `Field`, matching the grid's own
+breakpoint. That stays at the call site because it is a property of the field, not of the
+group.
+
+`columns={3}` exists and is **not** a general option: a row of short values of the *same
+kind* — three dates, three amounts — and nothing else. Two form sections qualify (a
+contract's effective/expiration/renewal dates, an insertion order's subtotal/tax/total). At
+the ~700px content column a third column is ~215px, which any prose-length label wraps at, so
+a section that wants three columns for ordinary fields wants two.
+
 **The form draws a visible heading, and on an edit it is the record's name.** `PageHeader`'s
 h1 is `sr-only` by §8, and archetype 2 supplies its own visible `h2` — archetype 3 supplied
 nothing, so an operator editing a contact saw a form with the record's name nowhere on
@@ -1297,6 +1323,11 @@ their way around it.
 ### 7.5 Forms
 
 - Every input has a visible `label`. Placeholder is never a label.
+- **A label is associated, not merely adjacent.** The input carries an `id` and the label
+  its `htmlFor`. A `FieldLabel` sitting beside an `Input` with no `id` looks correct on
+  screen and leaves the input with no accessible name and a label that does nothing when
+  clicked — which is what one of the five private `TextField`s did on the lead form, unseen
+  by every guard. `TextField` takes `id` as a required prop for this reason.
 - Required fields use `RequiredMark`, and the client's required set matches the
   backend's constraints exactly.
 - Errors sit under the field, in `text-state-danger`, and name the fix

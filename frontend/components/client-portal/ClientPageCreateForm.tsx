@@ -15,6 +15,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useClientPortalActions, type PricingItemPayload } from "@/hooks/useClientPortal";
@@ -177,16 +178,17 @@ export default function ClientPageCreateForm() {
     >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title="New client page"
           sidebar={
             <>
               <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Sharing boundary</h2>
+                <SectionHeading>Sharing boundary</SectionHeading>
                 <p className="mt-2 text-p-sm text-copy-secondary">
                   This draft is private to CRM users until you explicitly publish a scoped, expiring client link.
                 </p>
               </Card>
               <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Package summary</h2>
+                <SectionHeading>Package summary</SectionHeading>
                 <dl className="mt-4 grid gap-3 text-sm">
                   <div className="flex justify-between gap-4"><dt className="text-copy-muted">Customer</dt><dd className="text-right text-copy-primary">{form.linkedLabel || "Not selected"}</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-copy-muted">Pricing items</dt><dd className="text-copy-primary">1</dd></div>
@@ -195,15 +197,13 @@ export default function ClientPageCreateForm() {
               </Card>
             </>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">{isDirty ? "Unsaved client page" : "Complete the required fields"}</span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" asChild><Link href="/dashboard/client-portal">Cancel</Link></Button>
-                <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating..." : "Create page"}</Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "Unsaved client page" : "Complete the required fields"}
+          actions={(
+            <>
+              <Button type="button" variant="outline" asChild><Link href="/dashboard/client-portal">Cancel</Link></Button>
+              <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating..." : "Create page"}</Button>
+            </>
+          )}
         >
           <FormSection title="Page details" description="Choose exactly one customer for this private draft.">
             <FieldGroup>

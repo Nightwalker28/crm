@@ -11,10 +11,11 @@ import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/Li
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -168,10 +169,10 @@ export default function SupportCaseCreateFormPage() {
       ) : null}
 
       <RecordFormLayout
+        title="New support case"
         sidebar={
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-copy-primary">Ownership</h2>
-            <FieldDescription className="mt-1">Set the queue context and responsible team member.</FieldDescription>
+            <SectionHeading description="Set the queue context and responsible team member.">Ownership</SectionHeading>
             <FieldGroup className="mt-5">
               <Field>
                 <FieldLabel>Priority</FieldLabel>
@@ -198,19 +199,16 @@ export default function SupportCaseCreateFormPage() {
             </FieldGroup>
           </Card>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : "Complete the required fields to create this case."}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href="/dashboard/support/cases">Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={submitting}><Save />{submitting ? "Creating…" : "Create case"}</Button>
-            </div>
-          </div>
-        }
+        status={isDirty ? "You have unsaved changes." : "Complete the required fields to create this case."}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href="/dashboard/support/cases">Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={submitting}><Save />{submitting ? "Creating…" : "Create case"}</Button>
+          </>
+        )}
       >
         <Card className="p-5">
-          <h2 className="text-base font-semibold text-copy-primary">Customer issue</h2>
-          <FieldDescription className="mt-1">Start with the information needed to understand and reproduce the issue.</FieldDescription>
+          <SectionHeading description="Start with the information needed to understand and reproduce the issue.">Customer issue</SectionHeading>
           <FieldGroup className="mt-5">
             <Field>
               <FieldLabel htmlFor="support-case-subject">Subject <RequiredMark /></FieldLabel>
@@ -225,9 +223,8 @@ export default function SupportCaseCreateFormPage() {
         </Card>
 
         <Card className="p-5">
-          <h2 className="text-base font-semibold text-copy-primary">Requester and related records</h2>
-          <FieldDescription className="mt-1">Search by name or record number. Changing a parent record clears incompatible child links.</FieldDescription>
-          <FieldGroup className="mt-5 grid gap-4 md:grid-cols-2">
+          <SectionHeading description="Search by name or record number. Changing a parent record clears incompatible child links.">Requester and related records</SectionHeading>
+          <FieldGroup columns={2} className="mt-5">
             <Field>
               <FieldLabel>Account</FieldLabel>
               <LinkedRecordPicker recordType="organization" valueId={form.organization_id} displayValue={displays.organization} onDisplayValueChange={(value) => { updateDisplay("organization", value); setForm((current) => ({ ...current, organization_id: null })); clearChildren("organization"); }} onSelect={(option) => { clearChildren("organization"); setForm((current) => ({ ...current, organization_id: option.organization_id ?? option.id })); updateDisplay("organization", option.label); }} onClear={() => { setForm((current) => ({ ...current, organization_id: null })); updateDisplay("organization", ""); clearChildren("organization"); }} placeholder="Search accounts" queryKeyPrefix="support-case-account" />

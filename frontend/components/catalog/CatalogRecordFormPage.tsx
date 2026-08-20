@@ -17,6 +17,7 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { CatalogKind, CatalogRecord, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
@@ -221,19 +222,18 @@ function CatalogRecordFormEditor({
       ) : null}
 
       <RecordFormLayout
+        title={mode === "edit" ? (record?.name ?? titleNoun) : `New ${noun}`}
         sidebar={
           <div className="grid gap-6">
             <Card className="p-5">
-              <h2 className="text-base font-semibold text-copy-primary">Publishing</h2>
-              <FieldDescription className="mt-1">Control availability inside Lynk and the public website feed.</FieldDescription>
+              <SectionHeading description="Control availability inside Lynk and the public website feed.">Publishing</SectionHeading>
               <div className="mt-5 grid gap-3">
                 <ToggleRow label="Public website feed" checked={form.is_public} onChange={(is_public) => setForm((current) => ({ ...current, is_public }))} />
                 <ToggleRow label="Active" checked={form.is_active} onChange={(is_active) => setForm((current) => ({ ...current, is_active }))} />
               </div>
             </Card>
             <Card className="p-5">
-              <h2 className="text-base font-semibold text-copy-primary">Media</h2>
-              <FieldDescription className="mt-1">Upload a customer-facing image for this catalog record.</FieldDescription>
+              <SectionHeading description="Upload a customer-facing image for this catalog record.">Media</SectionHeading>
               <div className="mt-5 grid gap-3">
                 {record?.media_url ? (
                   <Image src={resolveMediaUrl(record.media_url)} alt="" width={320} height={240} unoptimized className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover" />
@@ -249,18 +249,16 @@ function CatalogRecordFormEditor({
             </Card>
           </div>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{dirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : `Complete the required fields to create this ${noun}.`}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={actions.isSaving || (mode === "edit" && !dirty)}><Save />{actions.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : `Create ${noun}`}</Button>
-            </div>
-          </div>
-        }
+        status={dirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : `Complete the required fields to create this ${noun}.`}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={actions.isSaving || (mode === "edit" && !dirty)}><Save />{actions.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : `Create ${noun}`}</Button>
+          </>
+        )}
       >
         <FormSection title={`${titleNoun} details`} description="Define how this record is identified and described throughout the catalog.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field className="md:col-span-2">
               <FieldLabel htmlFor="catalog-name">Name <RequiredMark /></FieldLabel>
               <Input id="catalog-name" value={form.name} maxLength={180} onChange={(event) => { setForm((current) => ({ ...current, name: event.target.value })); if (nameError) setNameError(null); }} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "catalog-name-error" : undefined} placeholder={isProduct ? "Camera kit" : "Installation service"} />
@@ -284,7 +282,7 @@ function CatalogRecordFormEditor({
         </FormSection>
 
         <FormSection title="Pricing" description="Set the public base price used before customer-group pricing rules are applied.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field>
               <FieldLabel htmlFor="catalog-currency">Currency <RequiredMark /></FieldLabel>
               <Input id="catalog-currency" value={form.currency} maxLength={3} onChange={(event) => { setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() })); if (currencyError) setCurrencyError(null); }} aria-invalid={Boolean(currencyError)} aria-describedby={currencyError ? "catalog-currency-error" : undefined} />
@@ -300,7 +298,7 @@ function CatalogRecordFormEditor({
 
         {isProduct ? (
           <FormSection title="Inventory" description="Track availability or leave quantity blank when inventory is managed elsewhere.">
-            <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <FieldGroup columns={2}>
               <Field>
                 <FieldLabel>Status</FieldLabel>
                 <Select value={form.stock_status} onValueChange={(stock_status) => setForm((current) => ({ ...current, stock_status }))}>

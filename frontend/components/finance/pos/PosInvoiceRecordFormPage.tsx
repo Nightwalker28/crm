@@ -26,6 +26,7 @@ import {
   Field,
   FieldDescription,
   FieldError,
+  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -392,6 +393,7 @@ function PosInvoiceRecordFormEditor({
         </div>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? form.invoice_number : "New invoice"}
         sidebar={
           <InvoiceSidebar
             form={form}
@@ -401,36 +403,32 @@ function PosInvoiceRecordFormEditor({
             pricingError={pricingError}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "You have unsaved changes."
+          : mode === "edit"
+          ? "No unsaved changes."
+          : "Add the customer and line items to create this invoice."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={backHref}>Cancel</Link>
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Add the customer and line items to create this invoice."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={backHref}>Cancel</Link>
-              </Button>
-              <Button onClick={() => void submit()} disabled={submitting}>
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create invoice"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create invoice"}
+            </Button>
+          </>
+        )}
       >
         <FormSection
           title="Customer and billing details"
           description="Link an existing CRM customer or enter walk-in billing information."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field
               data-invalid={Boolean(customerError)}
               className="md:col-span-2"
@@ -549,7 +547,7 @@ function PosInvoiceRecordFormEditor({
                 }
               />
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <TransactionLineItemsEditor
           items={lines}

@@ -219,6 +219,7 @@ function CustomModuleRecordEditor({
           browser blocks submit and validateRequiredFields never runs. */}
       <form id="custom-module-record-form" onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title={title.trim() || record.title || "Record"}
           sidebar={
             <FormSection title="Module context" description="This record uses your tenant-configured module schema.">
               <dl className="grid gap-4 text-sm">
@@ -243,28 +244,24 @@ function CustomModuleRecordEditor({
               </dl>
             </FormSection>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">
-                {isDirty ? "You have unsaved changes." : "No changes to save."}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline">
-                  <Link href={recordHref}>Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={isSaving}>
-                  <Save />
-                  {isSaving ? "Saving…" : "Save record"}
-                </Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "You have unsaved changes." : "No changes to save."}
+          actions={(
+            <>
+              <Button asChild variant="outline">
+                <Link href={recordHref}>Cancel</Link>
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                <Save />
+                {isSaving ? "Saving…" : "Save record"}
+              </Button>
+            </>
+          )}
         >
           <FormSection
             title="Record details"
             description="Required fields are controlled by the current module configuration."
           >
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup columns={2}>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="custom-record-title">Record title</FieldLabel>
                 <Input
