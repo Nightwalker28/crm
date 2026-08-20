@@ -134,7 +134,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | done |
 | `dashboard/not-found.tsx` | 5 | 5.1 | rebuild | | done |
 | `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | |
-| `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | |
+| `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit |
 | `sales/leads/[leadId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -142,21 +142,21 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/leads/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/leads/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/contacts/page.tsx` | 111 | 5.5 | rebuild | | |
+| `sales/contacts/page.tsx` | 111 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/contacts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/contacts/[contactId]/page.tsx` | 936 | 5.3 | rebuild | No `RecordActivityFeed` though leads have one | **done** — archetype 2; gained Timeline; WhatsApp panel became the composer's tracked mode |
 | `sales/contacts/[contactId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/contacts/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/contacts/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/contacts/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/organizations/page.tsx` | 60 | 5.5 | rebuild | | |
+| `sales/organizations/page.tsx` | 60 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/organizations/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/organizations/[orgId]/page.tsx` | 869 | 5.3 | rebuild | No activity feed | **done** — archetype 2; gained Timeline; counts became spine collections |
 | `sales/organizations/[orgId]/edit/page.tsx` | 9 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | |
+| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | done |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -168,14 +168,14 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `sales/quotes/page.tsx` | 87 | 5.5 | rebuild | | |
+| `sales/quotes/page.tsx` | 87 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/quotes/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/quotes/[quoteId]/page.tsx` | **1335** | 5.3 | rebuild | Largest file in `app/`. A detail page that is a form. **A12** at the convert action | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `sales/quotes/[quoteId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/quotes/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `sales/quotes/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `sales/quotes/not-found.tsx` | 11 | 5.1 | rebuild | | done |
-| `sales/orders/page.tsx` | 68 | 5.5 | rebuild | | |
+| `sales/orders/page.tsx` | 68 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/orders/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/orders/[orderId]/page.tsx` | 381 | 5.3 | rebuild | A detail page that is a form | done · **5.5 batch 1** took its line-item table to the shared `TransactionLineItemsTable` |
 | `sales/orders/[orderId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -199,7 +199,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/payments/record/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `finance/payments/error.tsx` | 18 | 5.1 | rebuild | | done |
 | `finance/payments/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `finance/insertion-orders/page.tsx` | 241 | 5.5 | rebuild | | |
+| `finance/insertion-orders/page.tsx` | 241 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `finance/insertion-orders/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `finance/insertion-orders/[ioId]/page.tsx` | 222 | 5.3 | rebuild | Runtime title-caser at `:186` | done |
 | `finance/insertion-orders/[ioId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -209,11 +209,11 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `catalog/products/page.tsx` | 5 | 5.5 | unchanged | Shim to `CatalogRecordsPage` | |
+| `catalog/products/page.tsx` | 5 | 5.5 | unchanged | Shim to `CatalogRecordsPage` | **done — unchanged, as specified.** A five-line shim; `CatalogRecordsPage` carries the work |
 | `catalog/products/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `catalog/products/[productId]/page.tsx` | 10 | 5.3 | unchanged | Shim to `CatalogRecordDetailPage` | done |
 | `catalog/products/[productId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `catalog/services/page.tsx` | 5 | 5.5 | unchanged | Shim | |
+| `catalog/services/page.tsx` | 5 | 5.5 | unchanged | Shim | **done — unchanged, as specified.** A five-line shim |
 | `catalog/services/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `catalog/services/[serviceId]/page.tsx` | 10 | 5.3 | unchanged | Shim | done |
 | `catalog/services/[serviceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -227,7 +227,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | |
 | `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | **done, batch 5** — the toolbar, real pagination on a new `page`/`page_size` backend param, `variant="list"`, and both draft fields written to the address |
 | `documents/upload/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `custom/[moduleKey]/page.tsx` | 263 | 5.5 | rebuild | **B.2** — filters collected and silently discarded. Filed, not fixed here | |
+| `custom/[moduleKey]/page.tsx` | 263 | 5.5 | rebuild | **B.2** — filters collected and silently discarded. Filed, not fixed here | **done, batch 3** — the hand-placed `ColumnPicker` moved into the toolbar slot. **B.2 is still open and still filed**: `useCustomModuleRecords` sends search and sort only, so the filter group stays undrawn (§7.9) |
 | `custom/[moduleKey]/new/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `custom/[moduleKey]/[recordId]/page.tsx` | 320 | 5.3 | rebuild | Archetype 5 — inline-edit form | done |
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
@@ -356,22 +356,22 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `leads/LeadsTable.tsx` | 193 | 5.5 | adopt | On `RecordTable`. Loses its `Pill` (R5) | |
-| `contacts/contactList.tsx` | 209 | 5.5 | adopt | Keeps its hand-authored LinkedIn mark (§5) | |
-| `organizations/OrganizationsTable.tsx` | 191 | 5.5 | adopt | | |
-| `opportunities/OpportunitiesTable.tsx` | 223 | 5.5 | adopt | 5.4 batch 6 routed the empty-state action through Quick Create; 5.5 still owns the table | |
-| `quotes/QuotesTable.tsx` | 169 | 5.5 | adopt | | |
-| `orders/OrdersTable.tsx` | 142 | 5.5 | adopt | | |
+| `leads/LeadsTable.tsx` | 193 | 5.5 | adopt | On `RecordTable`. Loses its `Pill` (R5) | **done — unchanged.** `Pill` went in 5.1; nothing left for 5.5 |
+| `contacts/contactList.tsx` | 209 | 5.5 | adopt | Keeps its hand-authored LinkedIn mark (§5) | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
+| `organizations/OrganizationsTable.tsx` | 191 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
+| `opportunities/OpportunitiesTable.tsx` | 223 | 5.5 | adopt | 5.4 batch 6 routed the empty-state action through Quick Create; 5.5 still owns the table | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
+| `quotes/QuotesTable.tsx` | 169 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
+| `orders/OrdersTable.tsx` | 142 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `contracts/ContractsTable.tsx` | 146 | 5.5 | adopt | 7 of 8 statuses coloured today → 3 (R5) | **out of scope** (scoping decision 8) — the module may be removed|
 | `support/SupportCasesTable.tsx` | 145 | 5.5 | adopt | | **out of scope** (scoping decision 8) — the module may be removed|
-| `tasks/TasksTable.tsx` | 171 | 5.5 | adopt | Priority becomes a category — no tone (R5) | |
-| `catalog/CatalogRecordsTable.tsx` | 289 | 5.5 | adopt | | |
-| `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | |
+| `tasks/TasksTable.tsx` | 171 | 5.5 | adopt | Priority becomes a category — no tone (R5) | **done — unchanged.** Priority is already a category with no tone (`cat()` in `statusStyles.ts`); 5.1's sweep settled it |
+| `catalog/CatalogRecordsTable.tsx` | 289 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
+| `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | **done, batch 5 — unchanged, deliberately.** It was already on `RecordTable`; the toolbar and pager were the page's to supply |
-| `finance/insertionOrderList.tsx` | 265 | 5.5 | adopt | | |
+| `finance/insertionOrderList.tsx` | 265 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | **done, batch 4** — selection props removed (**A6**) |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | **batch 4** — selection props removed (**A6**); the row action was always the verb. The overdue tone is still open |
-| `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | |
+| `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
 | `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice |
@@ -449,7 +449,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `customFields/CustomFieldInputs.tsx` | 131 | 5.4 | adopt | | **done, close-out** — supplies the shared layout-driven renderer |
 | `customModules/CustomModuleFieldInput.tsx` | 172 | 5.4 | adopt | | **done, close-out** — audited; separate custom-module form renderer |
 | `documents/DocumentReferenceActions.tsx` | 71 | 5.3 | adopt | | **done, close-out** — audited against §4.7's render-only-when-it-works rule and it is the exception: a broken provider link is a state to see and fix, not an absent action. It stays disabled and its reason stopped being `title`-only (§8) |
-| `finance/payments/RecordPaymentDialog.tsx` | 95 | 5.5 | adopt | The faster of A7's two paths | |
+| `finance/payments/RecordPaymentDialog.tsx` | 95 | 5.5 | adopt | The faster of A7's two paths | **done — unchanged.** Confirmed as A7's fast path in batch 4; the row action opens it |
 
 ### 2.8 Test harnesses (3)
 
@@ -508,16 +508,16 @@ taken. Counted here so the denominator stays honest.
 | `Card.tsx` | 73 | 5.2 | adopt | The panel role in R8's taxonomy; gained `asChild` for the sweep's `<section>` panels, and `data-slot="card"` so 5.10's nesting guard can see a panel (§7.6) | done |
 | `RecordTable.tsx` | 457 | 5.5 | rebuild | Gains `lineItems` and `readOnly` (R10) | **done** — batch 1. Both variants, the enforced variant contract, the `emptyState` union, and the empty state moved out of the table's scroll width |
 | `Table.tsx` | 204 | 5.5 | unchanged | The cell primitive. **After 5.7**, not 5.5, only 3 files may import it — the twelve settings / automation / integration / reports / dashboard tables move with their own pages. See 5.5 "What the measurement says now" | **done** — unchanged, as specified |
-| `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | |
-| `ModuleTableLoading.tsx` | 49 | 5.5 | adopt | | |
+| `ModuleTableShell.tsx` | 70 | 5.5 | adopt | Never gets a max-height back (§11.1) | **done — unchanged.** No max-height, and the `nested` variant now covers the two client-portal tables that were drawing a second edge |
+| `ModuleTableLoading.tsx` | 49 | 5.5 | adopt | | **done — unchanged.** Skeleton rows stay inside the table; only the three centred states moved out (batch 1) |
 | `ModuleListToolbar.tsx` | 69 | 5.5 | adopt | | **done, batch 3** — draws the `[columns]` control archetype 1 has always shown in it |
-| `TableDensityToggle.tsx` | 16 | 5.5 | adopt | | |
-| `Pagination.tsx` | 194 | 5.5 | adopt | | |
+| `TableDensityToggle.tsx` | 16 | 5.5 | adopt | | **done — unchanged.** Density is an app-wide preference and stays one level below `RecordTable` (batch 1) |
+| `Pagination.tsx` | 194 | 5.5 | adopt | | **done — unchanged.** Driven by `usePagedList`, whose page state is in the address now (batch 2) |
 | `SearchBar.tsx` | 37 | 5.5 | rebuild | **A5** — debounce. No debounce anywhere today | **done, batch 2 — unchanged, deliberately.** The debounce belongs in `usePagedList`: the input must stay instant and only the query waits |
 | `ColumnPicker.tsx` | 143 | 5.5 | adopt | **A2** — wired into 1 of 16 pages | **done, batch 3** — unchanged itself; `ModuleListToolbar` owns its placement now, so it is on every list |
-| `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | |
-| `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | |
-| `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | |
+| `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | **done — unchanged.** Still the correct hand-rolled tablist reference; it writes `?view=` through the hook now (batch 2) |
+| `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | **done — unchanged.** Its conditions serialise into `filters_all` / `filters_any` in the address (batch 2); the editor itself needed no change |
+| `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | **done — unchanged.** Same as above |
 | `SectionTabs.tsx` (was `RecordTabs.tsx`) | 94 | 5.3 | rebuild | Radix, correct. Was marked **do not re-fix** | **done, batch 5** — renamed, and the note above was wrong on two counts. Its `Tabs.Content` carried `focus-visible:outline-none` with nothing behind it (§2.3), and its trigger class list was a byte-identical duplicate of the archetype's. It had one call site left, none of them a record, and the name is why two more pages hand-rolled a strip. It is the card-scoped strip now, on all three such pages |
 | `QuickCreateSurface.tsx` | 315 | 5.4 | adopt | **A3** — both create paths on all 15 modules | **done, batch 6** — one surface for the four current adopters; the nine-module rollout is owned by crm-evolution |
 | `EmptyState.tsx` | 29 | 5.9 | adopt | Copy: an invitation to act | |
@@ -539,7 +539,7 @@ taken. Counted here so the denominator stays honest.
 | `RequiredMark.tsx` | 3 | — | unchanged | | |
 | `separator.tsx` | 28 | — | unchanged | | |
 | `popover.tsx` | 48 | — | unchanged | | |
-| `CustomFieldValue.tsx` | 20 | 5.5 | adopt | Content-only since Phase 3 | |
+| `CustomFieldValue.tsx` | 20 | 5.5 | adopt | Content-only since Phase 3 | **done — unchanged.** Content-only since Phase 3 |
 | `ImageAssetField.tsx` | 115 | 5.4 | adopt | | **done, close-out** — audited |
 | `TimezonePicker.tsx` | 93 → 59 | 5.4 | adopt | Collapsed into `SearchableSelect` — the file now holds only what is about timezones, and its `slice(0, 100)` over ~400 zones (a live §7.9 defect) went with the hand-rolled list | **done** (5.4 batch 1) |
 | `UserTeamPicker.tsx` | 214 | 5.6 | adopt | | |
@@ -579,7 +579,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | `lib/datetime.ts` | — | unchanged | Already the single source for time | |
 | `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |
 | `lib/routes.ts` | 5.6 | rebuild | **A9** — the notification href fallback at `:86` points at an admin-only route | |
-| `lib/moduleViewConfigs.ts` | 5.5 | adopt | | |
+| `lib/moduleViewConfigs.ts` | 5.5 | adopt | | **done — unchanged.** It already supplies the column options the toolbar's picker needed (batch 3) |
 | `lib/savedViewQuery.ts` | 5.5 | rebuild | The request codec | **done, batch 2** — gains the address-bar codec: one `SavedViewConfig`, two destinations |
 | `hooks/useListAddress.ts` | 5.5 | new | The single writer of a list's query string | **done, batch 2** — so two hooks sharing one address cannot drop each other's params |
 | `lib/module-registry.ts` | 5.7 | adopt | **A11** — reports is a single-item collapsible group | |
@@ -597,7 +597,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | 5.2 — panel language | 1 owned (`Card`); it *sweeps* almost every row above without owning them |
 | 5.3 — record detail | **35** — was 34. Batch 4 added `custom/[moduleKey]/[recordId]/edit/page.tsx`: R2 sends a record's content fields to `/[id]/edit`, and the custom module was the one module with no such route, because its detail page *was* the form |
 | 5.4 — forms | **74** — was 55. Close-out counted the route shims and data helpers already assigned to 5.4; batch 6 added `OwnerSelect` |
-| 5.5 — one table, list workflow | 43 |
+| 5.5 — one table, list workflow | **55** — was 43. The twelve settings / automation / integration / reports / dashboard tables were never 5.5's (their pages own them, 5.6 and 5.7); five new shared files were added: `TransactionLineItemsTable`, `ClientPagesTable`, `ClientAccountsTable`, `useListAddress`, and `lib/savedViewQuery.ts`'s row |
 | 5.6 — settings | 52 |
 | 5.7 — dashboard, reports, boards, calendars, mail | 32 |
 | 5.8 — client portal, public, auth | 28 |
