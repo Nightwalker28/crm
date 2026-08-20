@@ -213,17 +213,22 @@ export function writeSavedViewFiltersToAddress(
 ) {
   const search = typeof filters?.search === "string" ? filters.search.trim() : "";
   const baselineSearch = typeof baseline?.search === "string" ? baseline.search.trim() : "";
-  if (search && search !== baselineSearch) params.set(LIST_ADDRESS_KEYS.search, search);
+  // The test is *differs from the view*, not *is non-empty*. A saved view may carry its own
+  // `search`, and clearing it is a divergence like any other — writing an empty `?search=`
+  // is how the address says "cleared", which `readSavedViewFiltersFromAddress` reads back
+  // through `params.has`. Guarding on truthiness instead would delete the param and let the
+  // view's own term come back on the next load, so the operator could not clear it at all.
+  if (search !== baselineSearch) params.set(LIST_ADDRESS_KEYS.search, search);
   else params.delete(LIST_ADDRESS_KEYS.search);
 
   for (const [group, key] of [
     ["all", LIST_ADDRESS_KEYS.filtersAll],
     ["any", LIST_ADDRESS_KEYS.filtersAny],
   ] as const) {
-    const conditions = conditionsFor(filters, group);
-    const baselineConditions = conditionsFor(baseline, group);
-    const encoded = encodeConditions(conditions);
-    if (conditions.length && encoded !== encodeConditions(baselineConditions)) params.set(key, encoded);
+    const encoded = encodeConditions(conditionsFor(filters, group));
+    // Same rule as `search`: `[]` against a view that carries conditions is a divergence,
+    // and `?filters_all=[]` is how it is spelled.
+    if (encoded !== encodeConditions(conditionsFor(baseline, group))) params.set(key, encoded);
     else params.delete(key);
   }
 }
@@ -292,9 +297,12 @@ export function writeSavedViewConfigToAddress(
 
   const sort = encodeListAddressSort((config.sort ?? null) as ListAddressSort);
   const baselineSort = encodeListAddressSort((baseline.sort ?? null) as ListAddressSort);
-  if (sort && sort !== baselineSort) params.set(LIST_ADDRESS_KEYS.sort, sort);
+  // An empty `?sort=` means "sorted by nothing", which is a real answer when the view sorts.
+  if (sort !== baselineSort) params.set(LIST_ADDRESS_KEYS.sort, sort);
   else params.delete(LIST_ADDRESS_KEYS.sort);
 
+  // Columns are the one field with no empty state — `ColumnPicker` refuses to hide the last
+  // column — so the truthiness guard here is a statement about the data, not an oversight.
   const columns = (config.visible_columns ?? []).join(",");
   const baselineColumns = (baseline.visible_columns ?? []).join(",");
   if (columns && columns !== baselineColumns) params.set(LIST_ADDRESS_KEYS.columns, columns);
