@@ -2404,10 +2404,10 @@ not a fix to this field. Recorded with numbers, and 5.10 gains the check that ca
 the 78 hand-written field grids and the four `TextField`s, and the Owner control's form half.
 
 
-### Status: batch 3 — `RecordFormLayout`, and it is 17 call sites, not 16
+### Status: batch 3 — verified end to end, committed as `b1a51dd`
 
-**Read this first if you are picking the run up.** Batch 3 is done. Archetype 3 now draws
-itself: the visible title, the `FormFooter`, and the field grid all come from the primitive,
+**Read this first if you are picking the run up.** Batch 3 is done and committed as
+`b1a51dd`. Archetype 3 now draws itself: the visible title, the `FormFooter`, and the field grid all come from the primitive,
 and none of the three can be re-invented at a call site.
 
 **The audit's three numbers were all a little wrong, and the corrections matter.**
@@ -2625,7 +2625,7 @@ each — the shape 5.2 and 5.3 used.
 |---|---|---|
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
-| ~~3~~ | ~~**`RecordFormLayout`**~~ | The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. **Done** — see the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
+| ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
 | 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom. **Add the two `ToggleRow`s** (`CatalogRecordFormPage:329`, `LeadConversionForm:223`) — batch 3 deliberately left them, and the catalog one is a `checkbox` where `SettingsSwitchRow` is a button group, so it is a semantics change |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
