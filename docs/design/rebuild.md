@@ -70,15 +70,35 @@ Confirmed with the owner. Items 2 and 5 override `consistency-pass.md` decision 
    (§7.3), never a second table. Anything that genuinely cannot be a variant is listed
    with its reason in 5.5 and nowhere else.
 7. **Testing is scoped, not skipped.** See the policy below.
-8. **Contracts and support cases are out of scope, from 5.4 batch 4 onward.** Decided by
-   the owner 2026-08-20: the modules may be removed entirely, so effort spent making them
-   consistent is effort spent on something that may not ship. **Do not read, edit, verify or
-   reason about `components/contracts/**`, `components/support/**`,
-   `app/dashboard/contracts/**` or `app/dashboard/support/**`** — not even to keep an
-   app-wide sweep tidy. An idiom sweep that would otherwise touch all N modules touches
-   N minus these two, and says so. Their census rows stay as they are; nothing marks them
-   done, because nothing will do them. What landed before this decision (5.3's record
-   archetype, 5.4 batches 1–3) stays — it is already paid for.
+8. **Contracts and support cases are out of scope for the rest of the programme** — every
+   remaining sub-phase, 5.4 through 5.10, not just the one this was decided in. Decided by
+   the owner 2026-08-20 and restated 2026-08-20 after the first wording scoped it too
+   narrowly: the modules may be removed entirely, so effort spent making them consistent is
+   effort spent on something that may not ship.
+
+   **Do not read, edit, verify or reason about** `components/contracts/**`,
+   `components/support/**`, `app/dashboard/contracts/**` or `app/dashboard/support/**` — not
+   even to keep an app-wide sweep tidy, and not when a later sub-phase's own table lists one
+   of them. An idiom sweep that would otherwise touch all N modules touches N minus these
+   two, and says so in its commit and its status block.
+
+   **This overrides scoping decision 5 for these thirteen files.** Total coverage was the
+   rule and the census was its mechanism; these rows are now the documented exception rather
+   than a gap. **The denominator drops from 327 to 314.** Their census rows are marked
+   *out of scope*, not *done* — nothing will do them. The thirteen are the four
+   `contracts/**` routes, the three `support/**` routes, `ContractRecordFormPage`,
+   `SupportCaseCreateFormPage`, `ContractsTable`, `SupportCasesTable`, and the client
+   portal's two support surfaces (`client/support/page.tsx`,
+   `client/support/[caseId]/page.tsx`) — the customer-facing half goes with the module.
+
+   **Not covered by this:** `e2e/contract-transport/page.tsx` and
+   `ContractTransportHarness.tsx`. Those are the generated **API contract** transport
+   harness and have nothing to do with the contracts module. Do not delete them by name
+   match.
+
+   What landed before the decision stays: 5.3 gave both record pages the archetype and 5.4
+   batches 1–3 swept them with the other fifteen forms. That is already paid for; nothing
+   gets reverted.
 9. **Verification is per sub-phase, not per batch.** Decided by the owner 2026-08-20.
    Per-batch gating was turning a phase into a loop of per-batch perfection. See the policy
    below for the new cadence.
@@ -2711,8 +2731,8 @@ underneath it. Restart the frontend and re-warm before judging anything.
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
 each — the shape 5.2 and 5.3 used.
 
-**Scope from here: contracts and support cases are out** (scoping decision 8), and
-**verification is once at the end of 5.4, not per batch** (decision 9). Batches 4–6 run lint +
+**Scope from here: contracts and support cases are out of the whole programme** (scoping
+decision 8), and **verification is once at the end of 5.4, not per batch** (decision 9). Batches 4–6 run lint +
 build and commit; batch 7 is the single verification-and-correction pass that closes the
 sub-phase.
 
@@ -2732,7 +2752,10 @@ sub-phase.
 
 ### Every table, and where it goes
 
-24 files are on `RecordTable`. **18 are still on raw `Table`.** All 18 move. The variant
+24 files are on `RecordTable`. **18 are still on raw `Table`.** All 18 move — **except
+`ContractsTable.tsx` and `SupportCasesTable.tsx`, which are out of scope for the whole
+programme** (scoping decision 8), so **16 move**. `contracts/page.tsx` and
+`support/cases/page.tsx` drop out of 5.5's list-workflow sweep for the same reason. The variant
 set is decided in 5.0, so this is execution rather than discovery.
 
 **Move to `RecordTable` as-is — lists wearing a different coat (11):**
@@ -2880,6 +2903,13 @@ blocks. Its 7 detail pages are archetype 7 from 5.3 and land on that archetype.
 ---
 
 ## 5.9 — Copy and voice
+
+**Scope note.** Contracts and support cases are out of the whole programme (scoping
+decision 8), so three items listed below are **not** done: the title-casers at
+`SupportCaseCreateFormPage.tsx:260` and `support/cases/[caseId]:269`, and the raw foreign
+keys at `contracts/[contractId]:244,264,265`. `"New Contract"` in the Title Case list is the
+*button* on a surface that stays, so it is still in scope — check which side of the line a
+string is on before sweeping it.
 
 Was consistency-pass Phase 6. Best done once the structure is settled, because copy is
 what the newly standardised states render.

@@ -105,8 +105,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `client/orders/[orderId]/page.tsx` | 88 | 5.8 | rebuild | `RecordTable variant="readOnly"` (R10) | |
 | `client/quotes/page.tsx` | 81 | 5.8 | rebuild | | |
 | `client/quotes/[quoteId]/page.tsx` | 154 | 5.8 | rebuild | Archetype 2 | |
-| `client/support/page.tsx` | 155 | 5.8 | rebuild | | |
-| `client/support/[caseId]/page.tsx` | 126 | 5.8 | rebuild | Archetype 2 | |
+| `client/support/page.tsx` | 155 | 5.8 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed |
+| `client/support/[caseId]/page.tsx` | 126 | 5.8 | rebuild | Archetype 2 | **out of scope** (scoping decision 8) — the module may be removed |
 | `client/pages/[token]/page.tsx` | 209 | 5.8 | rebuild | `variant="readOnly"`. Unwalked by the guard today | |
 
 ### 1.4 `app/public/**` and `app/book/**` (2)
@@ -217,13 +217,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `catalog/services/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
 | `catalog/services/[serviceId]/page.tsx` | 10 | 5.3 | unchanged | Shim | done |
 | `catalog/services/[serviceId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `contracts/page.tsx` | 75 | 5.5 | rebuild | | |
-| `contracts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `contracts/[contractId]/page.tsx` | 479 | 5.3 | rebuild | **No activity, notes, tasks or documents.** Renders raw FKs at `:244,264,265` | done |
-| `contracts/[contractId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | |
-| `support/cases/page.tsx` | 117 | 5.5 | rebuild | | |
-| `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | |
-| `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | done |
+| `contracts/page.tsx` | 75 | 5.5 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed|
+| `contracts/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **out of scope** (scoping decision 8) — the module may be removed|
+| `contracts/[contractId]/page.tsx` | 479 | 5.3 | rebuild | **No activity, notes, tasks or documents.** Renders raw FKs at `:244,264,265` | done; **out of scope** (scoping decision 8) — the module may be removed |
+| `contracts/[contractId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **out of scope** (scoping decision 8) — the module may be removed|
+| `support/cases/page.tsx` | 117 | 5.5 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed|
+| `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **out of scope** (scoping decision 8) — the module may be removed|
+| `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | done; **out of scope** (scoping decision 8) — the module may be removed |
 | `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | |
 | `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | |
 | `documents/upload/page.tsx` | 5 | 5.4 | unchanged | Shim | |
@@ -341,8 +341,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
 | `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
 | `finance/InsertionOrderRecordFormPage.tsx` | 416 | 5.4 | rebuild | **Two Cancel buttons** — `:265` and `:305` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the duplicate Cancel is still there and is batch 4's |
-| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField`; **out of scope from 5.4 batch 4** (scoping decision 8) |
-| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched; **out of scope from 5.4 batch 4** (scoping decision 8) |
+| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField`; **out of scope from 5.4 batch 4** (scoping decision 8); **out of scope** (scoping decision 8) — the module may be removed |
+| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched; **out of scope from 5.4 batch 4** (scoping decision 8); **out of scope** (scoping decision 8) — the module may be removed |
 | `catalog/CatalogRecordFormPage.tsx` | 333 | 5.4 | rebuild | Local `ToggleRow` — 1 of 2 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the `ToggleRow` is batch 4's |
 | `customModules/CustomModuleRecordCreatePage.tsx` | 286 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
 | `customModules/CustomModuleRecordEditPage.tsx` | 300 | 5.4 | **new** | Added in batch 4 as the create page with a record behind it — archetype 3, so 5.4 owns its final shape with the other 15 form routes | **done, batch 3** |
@@ -361,8 +361,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunitiesTable.tsx` | 223 | 5.5 | adopt | | |
 | `quotes/QuotesTable.tsx` | 169 | 5.5 | adopt | | |
 | `orders/OrdersTable.tsx` | 142 | 5.5 | adopt | | |
-| `contracts/ContractsTable.tsx` | 146 | 5.5 | adopt | 7 of 8 statuses coloured today → 3 (R5) | |
-| `support/SupportCasesTable.tsx` | 145 | 5.5 | adopt | | |
+| `contracts/ContractsTable.tsx` | 146 | 5.5 | adopt | 7 of 8 statuses coloured today → 3 (R5) | **out of scope** (scoping decision 8) — the module may be removed|
+| `support/SupportCasesTable.tsx` | 145 | 5.5 | adopt | | **out of scope** (scoping decision 8) — the module may be removed|
 | `tasks/TasksTable.tsx` | 171 | 5.5 | adopt | Priority becomes a category — no tone (R5) | |
 | `catalog/CatalogRecordsTable.tsx` | 289 | 5.5 | adopt | | |
 | `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | |
