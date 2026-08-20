@@ -341,13 +341,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
 | `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the line-item table is batch 5's |
 | `finance/InsertionOrderRecordFormPage.tsx` | 416 | 5.4 | rebuild | **Two Cancel buttons** — `:265` and `:305` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the duplicate Cancel is still there and is batch 4's |
-| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
-| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched |
+| `contracts/ContractRecordFormPage.tsx` | 461 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField`; **out of scope from 5.4 batch 4** (scoping decision 8) |
+| `support/SupportCaseCreateFormPage.tsx` | 260 | 5.4 | rebuild | Runtime title-caser at `:260` | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the title-caser is untouched; **out of scope from 5.4 batch 4** (scoping decision 8) |
 | `catalog/CatalogRecordFormPage.tsx` | 333 | 5.4 | rebuild | Local `ToggleRow` — 1 of 2 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); the `ToggleRow` is batch 4's |
 | `customModules/CustomModuleRecordCreatePage.tsx` | 286 | 5.4 | rebuild | | **done, batch 3** — archetype 3: the visible title, `FormFooter`, the sticky bar deleted, `FieldGroup columns={2}`, the shared `TextField` |
 | `customModules/CustomModuleRecordEditPage.tsx` | 300 | 5.4 | **new** | Added in batch 4 as the create page with a record behind it — archetype 3, so 5.4 owns its final shape with the other 15 form routes | **done, batch 3** |
-| `documents/DocumentUploadFormPage.tsx` | 533 | 5.4 | rebuild | One of two footer stragglers (`:515`) | |
-| `settings/message-templates/MessageTemplateRecordFormPage.tsx` | 232 | 5.4 | rebuild | Verbatim copy of the sticky-footer classes (`:205`) | |
+| `documents/DocumentUploadFormPage.tsx` | 533 | 5.4 | rebuild | One of two footer stragglers (`:515`) | **done, batch 4** — on `FormFooter` without becoming a `RecordFormLayout` (it is a batch queue, not a record); 3 headings onto `SectionHeading`; `aria-live` narrowed to the summary |
+| `settings/message-templates/MessageTemplateRecordFormPage.tsx` | 232 | 5.4 | rebuild | Verbatim copy of the sticky-footer classes (`:205`) | **done, batch 4** — sticky deleted, on `FormFooter`, and its coloured dirty line dropped (R5) |
 | `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); A7 is still open |
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 

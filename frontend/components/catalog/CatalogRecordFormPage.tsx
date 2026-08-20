@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -215,10 +216,7 @@ function CatalogRecordFormEditor({
       actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" ? detailHref : listHref}><ArrowLeft />Back to {mode === "edit" ? noun : kind}</Link></Button>}
     >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not {mode === "edit" ? "update" : "create"} this {noun}.</div>
-          <div className="mt-1 text-copy-secondary">Check the entered information and try again.</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this ${noun}.`}>Check the entered information and try again.</FormErrorBanner>
       ) : null}
 
       <RecordFormLayout
@@ -249,7 +247,7 @@ function CatalogRecordFormEditor({
             </Card>
           </div>
         }
-        status={dirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : `Complete the required fields to create this ${noun}.`}
+        status={dirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : `Complete the required fields to create this ${noun}.`}
         actions={(
           <>
             <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>

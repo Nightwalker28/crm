@@ -10,6 +10,7 @@ import {
   CustomModuleFieldInput,
   getInitialCustomModuleValues,
 } from "@/components/customModules/CustomModuleFieldInput";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -171,10 +172,7 @@ function CustomModuleRecordCreateEditor({
       }
     >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not create this record.</div>
-          <div className="mt-1 text-copy-secondary">Review the fields and try again.</div>
-        </div>
+        <FormErrorBanner title="We could not create this record.">Review the fields and try again.</FormErrorBanner>
       ) : null}
 
       {/* The field inputs carry the native required attribute, so without noValidate the
@@ -207,7 +205,7 @@ function CustomModuleRecordCreateEditor({
               </dl>
             </FormSection>
           }
-          status={isDirty ? "You have unsaved changes." : "Complete the configured fields to create this record."}
+          status={isDirty ? "Unsaved changes" : "Complete the configured fields to create this record."}
           actions={(
             <>
               <Button asChild variant="outline">

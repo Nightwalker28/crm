@@ -10,6 +10,7 @@ import {
   CustomModuleFieldInput,
   getInitialCustomModuleValues,
 } from "@/components/customModules/CustomModuleFieldInput";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -209,10 +210,7 @@ function CustomModuleRecordEditor({
       }
     >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not save this record.</div>
-          <div className="mt-1 text-copy-secondary">Review the fields and try again.</div>
-        </div>
+        <FormErrorBanner title="We could not save this record.">Review the fields and try again.</FormErrorBanner>
       ) : null}
 
       {/* The field inputs carry the native required attribute, so without noValidate the
@@ -244,7 +242,7 @@ function CustomModuleRecordEditor({
               </dl>
             </FormSection>
           }
-          status={isDirty ? "You have unsaved changes." : "No changes to save."}
+          status={isDirty ? "Unsaved changes" : "No unsaved changes"}
           actions={(
             <>
               <Button asChild variant="outline">

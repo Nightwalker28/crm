@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
   RecordFormLayout,
@@ -366,15 +367,7 @@ function QuoteRecordFormEditor({
       }
     >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">
-            We could not {mode === "edit" ? "update" : "create"} this quote.
-          </div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this quote.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
         title={mode === "edit" ? form.quote_number : "New quote"}
@@ -389,9 +382,9 @@ function QuoteRecordFormEditor({
           />
         }
         status={dirty
-          ? "You have unsaved changes."
+          ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes."
+          ? "No unsaved changes"
           : "Add the customer and line items to create this quote."}
         actions={(
           <>

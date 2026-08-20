@@ -2616,6 +2616,63 @@ waits for `tbody tr` now. **Read the `Audited N routes. Unreachable:` line befor
 pass** — a guard that quietly stops looking at a sixth of its routes is worse than one that
 fails.
 
+### Status: batch 4 — the stragglers and the idioms
+
+**Read this first if you are picking the run up.** Batch 4 is done. It is the **first batch
+under the revised cadence** (scoping decision 9): lint + build only, no guards, no specs, no
+browser pass. Those run once, in batch 7, over everything batches 1–6 touched.
+
+**What landed.**
+
+- **`components/forms/FormErrorBanner.tsx`** — the `role="alert"` save-failure banner, which
+  **12 form routes had hand-written identically** and two more did not have at all. `mail` and
+  `insertion-orders` showed only a toast; both now set a persistent banner *and* keep the
+  toast, and both clear it when the next attempt starts. A toast is the wrong instrument on
+  its own — transient, not in the tab order, and usually gone before the operator has finished
+  reading the field it was about.
+- **One dirty string, 27 replacements.** `Unsaved changes` / `No unsaved changes`, no closing
+  period, because it is a status label rather than a sentence. It replaced six spellings of
+  the same fact: `You have unsaved changes.`, `No unsaved changes.`, `All changes saved`,
+  `No changes to save.`, `Unsaved client page`, `Unsaved message`.
+- **One ellipsis.** Five pending labels used three ASCII periods and twelve used `…`. The verb
+  still varies by action — `Saving…`, `Creating…`, `Sending…`, `Recording…`, `Uploading…` —
+  because the verb is information and the ellipsis is not.
+- **`MessageTemplateRecordFormPage`'s sticky footer is gone.** It was a *verbatim copy* of
+  `RecordFormLayout`'s class string, which is what a layout detail with no primitive behind it
+  costs. It also coloured its dirty line `text-state-warning` / `text-state-success` — colour
+  carrying state, which R5 retires. Unsaved work is the normal condition of an open form, not
+  an exception.
+- **`DocumentUploadFormPage` is on `FormFooter`** without becoming a `RecordFormLayout`: it is
+  a batch upload queue, not a record, so it has no spine and no single title. It gets R4's one
+  control height and nothing else. Its `aria-live` moved from the whole footer row onto the
+  summary — otherwise every button appearing or disappearing was announced.
+- **`insertion-orders` renders one Cancel.** The header's became `Back to insertion order`,
+  matching the other fifteen.
+
+**Deferred, with the reason, because it is not a copy idiom.** The two private `ToggleRow`s
+were on this batch's row and are **moved to 5.6**. Measured: one boolean field is drawn three
+ways — `LeadConversionForm` uses a Radix `Switch` (`role="switch"`), `CatalogRecordFormPage`
+uses a `Checkbox` (`role="checkbox"`), and `SettingsSwitchRow` — the primitive that supposedly
+owns the shape — is a `role="group"` of two `aria-pressed` buttons. `leads-revamp:651–655`
+asserts `getByRole("switch", { name: "Create account" })` with `toBeChecked()`, which the
+primitive's shape cannot satisfy. **Which role a boolean field carries is a design decision,
+not a sweep**, and 5.6 owns `SettingsSwitchRow`'s own surface.
+
+**Out of scope and staying that way:** the idiom sweep skipped
+`ContractRecordFormPage` and `SupportCaseCreateFormPage` (scoping decision 8). They still
+carry `You have unsaved changes.` and the hand-written banner, deliberately.
+
+**Also left, and it is not the same idiom:** `RecordPaymentPage:146` is a `role="alert"` row
+with a *Try again* button for a failed **load**, not a failed save. `FormErrorBanner` takes no
+action slot, and a load failure inside a panel is `PanelStates`' job.
+
+**Verification: lint and `npm run build`, both green — and that is the whole gate now.** The
+sweep's one real defect was caught by lint rather than by a spec: the banner regex turned four
+interpolated titles into `title={We could not {mode === "edit" ? …} this order.}`, which is
+mixed text and JSX where a template literal was needed. Three of those files then needed the
+import the other ten got automatically. Both classes of error are exactly what lint and the
+compiler are for, which is the argument for the revised cadence.
+
 ### Verification — the failure sets were diffed, not argued about
 
 Lint, `npm run build`, `check-design.sh` (2 of 14 — the known baseline, unchanged), both
@@ -2664,7 +2721,7 @@ sub-phase.
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
-| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom. **Add the two `ToggleRow`s** (`CatalogRecordFormPage:329`, `LeadConversionForm:223`) — batch 3 deliberately left them, and the catalog one is a `checkbox` where `SettingsSwitchRow` is a button group, so it is a semantics change. **The idiom sweep skips `ContractRecordFormPage` and `SupportCaseCreateFormPage`** (decision 8) |
+| ~~4~~ | ~~**The stragglers and the idioms**~~ | **Done** — see the status above. `FormErrorBanner` (12 hand-written copies + 2 toast-only forms), one dirty string (27 replacements), one ellipsis (5 ASCII), both stragglers, one Cancel on insertion-orders. The two `ToggleRow`s moved to **5.6** — three ARIA roles for one boolean field is a design decision, not a sweep |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
 | 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |

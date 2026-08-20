@@ -25,7 +25,9 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { FormFooter } from "@/components/ui/ActionBar";
 import { PageShell } from "@/components/ui/PageShell";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type DocumentItem, useDocumentActions, useDocumentStorageConnections, useDocumentUploadLimits } from "@/hooks/useDocuments";
@@ -379,8 +381,7 @@ export default function DocumentUploadFormPage() {
       <Card className="mx-auto w-full max-w-6xl">
         <section>
           <div className="border-b border-line-subtle px-4 py-4 md:px-5">
-            <h2 className="font-semibold text-copy-primary">Choose files</h2>
-            <p className="mt-1 text-sm text-copy-muted">Add one document or a batch. You can review every file before uploading.</p>
+            <SectionHeading description="Add one document or a batch. You can review every file before uploading.">Choose files</SectionHeading>
           </div>
           <div className="p-4 md:p-5">
             {dropZone}
@@ -454,8 +455,7 @@ export default function DocumentUploadFormPage() {
         <section className="border-t border-line-subtle">
           <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-start md:p-5">
             <div>
-              <h2 className="font-semibold text-copy-primary">Upload destination</h2>
-              <p className="mt-1 text-sm text-copy-muted">Files stay private and require authenticated document access.</p>
+              <SectionHeading description="Files stay private and require authenticated document access.">Upload destination</SectionHeading>
               <div className="mt-3 flex items-start gap-3 text-sm">
                 <ProviderIcon provider={storageProvider} />
                 <div className="min-w-0">
@@ -490,8 +490,7 @@ export default function DocumentUploadFormPage() {
           <details className="group">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:px-5">
               <div>
-                <h2 className="font-semibold text-copy-primary">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></h2>
-                <p className="mt-1 text-sm text-copy-muted">Apply the same category, tags, description, and related records to every pending file.</p>
+                <SectionHeading description="Apply the same category, tags, description, and related records to every pending file.">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></SectionHeading>
               </div>
               <ChevronDown className="h-5 w-5 shrink-0 text-copy-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
             </summary>
@@ -506,17 +505,20 @@ export default function DocumentUploadFormPage() {
           </details>
         </section>
 
-        <div className="border-t border-line-subtle p-4 md:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-live="polite">
-            <span className="text-sm text-copy-muted">{footerSummary}</span>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        {/* The one form footer that is not `RecordFormLayout`'s: this is a batch upload
+            queue, not a record, so it has no spine and no single title. It still wears
+            `FormFooter`, so R4's one control height holds here too. `aria-live` sits on the
+            summary rather than the whole row — otherwise every button appearing or
+            disappearing is announced. */}
+        <FormFooter
+          className="border-line-subtle p-4 md:p-5"
+          status={<span aria-live="polite">{footerSummary}</span>}
+        >
               {complete.length ? <Button variant="ghost" onClick={() => setQueue((current) => current.filter((item) => item.status !== "complete"))} disabled={isBusy}>Clear completed</Button> : null}
               <Button asChild variant="outline"><Link href="/dashboard/documents">{queue.some((item) => item.status !== "complete") ? "Cancel" : "Back to documents"}</Link></Button>
               {failed.length ? <Button variant="outline" onClick={() => void uploadItems(["failed"])} disabled={isBusy}><RotateCcw />Retry failed</Button> : null}
               {pending.length ? <Button onClick={() => void uploadItems(["queued"])} disabled={isBusy}><Upload />{isBusy ? "Uploading…" : "Upload files"}</Button> : null}
-            </div>
-          </div>
-        </div>
+        </FormFooter>
       </Card>
     </PageShell>
   );

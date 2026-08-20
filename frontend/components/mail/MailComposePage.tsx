@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -48,6 +49,7 @@ export default function MailComposePage() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [sendComplete, setSendComplete] = useState(false);
 
   const sendConnections = useMemo(
@@ -91,6 +93,7 @@ export default function MailComposePage() {
       return;
     }
 
+    setSendError(null);
     try {
       const message = await sendMail({
         provider,
@@ -102,7 +105,8 @@ export default function MailComposePage() {
       toast.success("Mail sent.");
       router.push(`/dashboard/mail?messageId=${message.id}`);
     } catch {
-      toast.error("We could not send this email. Check the mailbox connection and try again.");
+      setSendError("Check the mailbox connection and try again.");
+      toast.error("We could not send this email.");
     }
   }
 
@@ -133,6 +137,7 @@ export default function MailComposePage() {
       description="Send an email through a connected mailbox and use CRM variables where record context is available."
       actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
     >
+      {sendError ? <FormErrorBanner title="We could not send this email.">{sendError}</FormErrorBanner> : null}
       <RecordFormLayout
         title="New message"
         sidebar={
@@ -178,13 +183,13 @@ export default function MailComposePage() {
             </Card>
           </>
         }
-        status={isDirty ? "Unsaved message" : "Start writing your message"}
+        status={isDirty ? "Unsaved changes" : "Start writing your message"}
         actions={(
           <>
             <Button type="button" variant="outline" asChild><Link href="/dashboard/mail">Cancel</Link></Button>
             <Button type="button" onClick={() => void handleSend()} disabled={isSendingMail}>
               <Send />
-              {isSendingMail ? "Sending..." : "Send email"}
+              {isSendingMail ? "Sending…" : "Send email"}
             </Button>
           </>
         )}

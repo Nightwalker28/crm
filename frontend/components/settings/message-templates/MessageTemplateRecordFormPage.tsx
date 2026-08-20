@@ -7,6 +7,7 @@ import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
+import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -206,17 +207,15 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
         </section>
       </Card>
 
-      <div className="sticky bottom-0 z-20 -mx-4 border-t border-line-default bg-app/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
-            <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
-              <Save />{isSaving ? "Saving..." : isEdit ? "Save template" : "Create template"}
-            </Button>
-          </div>
-        </div>
-      </div>
+      {/* R3: this was a verbatim copy of `RecordFormLayout`'s sticky bar, which is exactly
+          what a layout detail with no primitive behind it costs. R5: the dirty line is not
+          coloured — unsaved work is the normal state of an open form, not an exception. */}
+      <FormFooter status={isDirty ? "Unsaved changes" : "No unsaved changes"}>
+        <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
+        <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
+          <Save />{isSaving ? "Saving…" : isEdit ? "Save template" : "Create template"}
+        </Button>
+      </FormFooter>
     </PageShell>
   );
 }

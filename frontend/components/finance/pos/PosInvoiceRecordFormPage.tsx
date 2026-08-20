@@ -8,6 +8,7 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
   RecordFormLayout,
@@ -382,15 +383,7 @@ function PosInvoiceRecordFormEditor({
       }
     >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">
-            We could not {mode === "edit" ? "update" : "create"} this invoice.
-          </div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this invoice.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
         title={mode === "edit" ? form.invoice_number : "New invoice"}
@@ -404,9 +397,9 @@ function PosInvoiceRecordFormEditor({
           />
         }
         status={dirty
-          ? "You have unsaved changes."
+          ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes."
+          ? "No unsaved changes"
           : "Add the customer and line items to create this invoice."}
         actions={(
           <>

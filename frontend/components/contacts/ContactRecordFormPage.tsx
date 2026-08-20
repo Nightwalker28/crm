@@ -13,6 +13,7 @@ import {
   consumeContactQuickCreateDraft,
   isContactQuickCreateHandoff,
 } from "@/components/contacts/contactQuickCreateDraft";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -147,11 +148,11 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
       actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
     >
-      {submitError ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"><div className="font-medium">We could not save this contact.</div><div className="mt-1 text-copy-secondary">{submitError}</div></div> : null}
+      {submitError ? <FormErrorBanner title="We could not save this contact.">{submitError}</FormErrorBanner> : null}
       <RecordFormLayout
         title={mode === "edit" ? recordName : "New contact"}
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
-        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contact."}
+        status={isDirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : "Complete the required fields to create this contact."}
         actions={<><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contact"}</Button></>}
       >
         <ContactFormMainFields

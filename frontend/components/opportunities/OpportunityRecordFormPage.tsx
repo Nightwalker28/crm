@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
@@ -195,13 +196,7 @@ export default function OpportunityRecordFormPage({
       }
     >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">We could not save this deal.</div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title="We could not save this deal.">{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
         title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "New deal"}
@@ -214,9 +209,9 @@ export default function OpportunityRecordFormPage({
           />
         }
         status={dirty
-          ? "You have unsaved changes."
+          ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes."
+          ? "No unsaved changes"
           : "Complete the required fields to create this deal."}
         actions={(
           <>

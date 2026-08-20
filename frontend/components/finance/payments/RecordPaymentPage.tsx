@@ -129,7 +129,7 @@ export default function RecordPaymentPage() {
             <Button asChild variant="outline"><Link href="/dashboard/finance/payments">Cancel</Link></Button>
             <Button type="button" onClick={() => void submitPayment()} disabled={!invoice || payments.isRecordingPayment}>
               <CreditCard />
-              {payments.isRecordingPayment ? "Recording..." : "Record payment"}
+              {payments.isRecordingPayment ? "Recording…" : "Record payment"}
             </Button>
           </>
         )}

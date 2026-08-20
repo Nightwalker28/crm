@@ -7,6 +7,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue } from "@/components/leads/LeadFormFields";
@@ -157,16 +158,13 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       )}
     >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not save this lead.</div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title="We could not save this lead.">{submitError}</FormErrorBanner>
       ) : null}
 
       <RecordFormLayout
         title={mode === "edit" ? recordName : "New lead"}
         sidebar={<LeadFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
-        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this lead."}
+        status={isDirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : "Complete the required fields to create this lead."}
         actions={(
           <>
             <Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button>

@@ -197,11 +197,11 @@ export default function ClientPageCreateForm() {
               </Card>
             </>
           }
-          status={isDirty ? "Unsaved client page" : "Complete the required fields"}
+          status={isDirty ? "Unsaved changes" : "Complete the required fields"}
           actions={(
             <>
               <Button type="button" variant="outline" asChild><Link href="/dashboard/client-portal">Cancel</Link></Button>
-              <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating..." : "Create page"}</Button>
+              <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating…" : "Create page"}</Button>
             </>
           )}
         >

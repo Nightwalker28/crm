@@ -23,6 +23,7 @@ import {
   consumeOrganizationQuickCreateDraft,
   isOrganizationQuickCreateHandoff,
 } from "@/components/organizations/organizationQuickCreateDraft";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -212,13 +213,7 @@ export default function OrganizationRecordFormPage({
       }
     >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">We could not save this account.</div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title="We could not save this account.">{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
         title={mode === "edit" ? (form.org_name.trim() || "Account") : "New account"}
@@ -231,9 +226,9 @@ export default function OrganizationRecordFormPage({
           />
         }
         status={isDirty
-          ? "You have unsaved changes."
+          ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes."
+          ? "No unsaved changes"
           : "Complete the required fields to create this account."}
         actions={(
           <>

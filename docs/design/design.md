@@ -1336,6 +1336,23 @@ their way around it.
   a red border with no message is invisible to a colourblind operator.
 - Destructive confirmations name the record and the consequence, and the confirm
   button uses the `danger` variant.
+- **A form that fails to save says so on the form, through `FormErrorBanner`.** A toast is
+  not enough on its own: it is transient, it is not in the tab order, and it is gone by the
+  time the operator finishes reading the field it is about. Twelve forms had already
+  hand-written the identical `role="alert"` banner and two showed only a toast — the banner
+  is the primitive now, and both idioms are it.
+- **One pending label and one dirty string.**
+  - The pending label is the action's own verb plus a **`…` character**, never three
+    periods: `Saving…`, `Creating…`, `Sending…`, `Recording…`, `Uploading…`.
+  - The dirty line is exactly `Unsaved changes` / `No unsaved changes` — a status label, so
+    no closing period. `You have unsaved changes.`, `All changes saved`, `Unsaved message`
+    and `No changes to save.` are the same fact in four voices.
+  - **The dirty line is never coloured.** `text-state-warning` for unsaved and
+    `text-state-success` for saved is colour carrying state, which R5 retires; unsaved work
+    is the normal condition of an open form, not an exception.
+  - A create form has no dirty state worth naming, so its status line is guidance instead
+    (`Complete the required fields to create this lead.`). That is a different sentence
+    doing a different job, and it stays.
 
 ### 7.6 A primitive that draws a container names itself with `data-slot`
 

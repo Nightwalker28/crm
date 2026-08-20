@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -173,6 +174,7 @@ function InsertionOrderFormEditor({
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>(order?.custom_fields ?? {});
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [saveComplete, setSaveComplete] = useState(false);
   const customerRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -246,6 +248,7 @@ function InsertionOrderFormEditor({
 
     try {
       setIsSaving(true);
+      setSubmitError(null);
       const saved = mode === "edit"
         ? await updateInsertionOrder(Number(ioId), payload)
         : await createInsertionOrder(payload);
@@ -258,7 +261,8 @@ function InsertionOrderFormEditor({
       toast.success(mode === "edit" ? "Insertion order updated." : "Insertion order created.");
       router.push(mode === "edit" ? recordHref : `${listHref}/${saved.id}`);
     } catch {
-      toast.error(`We could not ${mode === "edit" ? "update" : "create"} this insertion order. Review the fields and try again.`);
+      setSubmitError("Review the fields and try again.");
+      toast.error(`We could not ${mode === "edit" ? "update" : "create"} this insertion order.`);
     } finally {
       setIsSaving(false);
     }
@@ -268,8 +272,11 @@ function InsertionOrderFormEditor({
     <PageShell
       title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
       description="Capture customer, schedule, references, and commercial values in one workflow."
-      actions={<Button variant="outline" asChild><Link href={recordHref}><ArrowLeft />Cancel</Link></Button>}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={recordHref}><ArrowLeft />Back to {mode === "edit" ? "insertion order" : "insertion orders"}</Link></Button>}
     >
+      {submitError ? (
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this insertion order.`}>{submitError}</FormErrorBanner>
+      ) : null}
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
           title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "New insertion order"}
@@ -309,7 +316,7 @@ function InsertionOrderFormEditor({
           actions={(
             <>
               <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>
-              <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create order"}</Button>
+              <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving…" : mode === "edit" ? "Save changes" : "Create order"}</Button>
             </>
           )}
         >

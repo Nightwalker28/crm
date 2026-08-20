@@ -7,6 +7,7 @@ import { ArrowRightLeft } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -120,7 +121,7 @@ export default function LeadConversionForm({
       ]);
       toast.success("Lead converted.");
     } catch {
-      setError("The lead could not be converted. Review the selected records and try again.");
+      setError("Review the selected records and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -141,7 +142,7 @@ export default function LeadConversionForm({
 
   return (
     <>
-      {error ? <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">{error}</div> : null}
+      {error ? <FormErrorBanner title="We could not convert this lead.">{error}</FormErrorBanner> : null}
       <RecordFormLayout
         title={leadName}
         sidebar={(
