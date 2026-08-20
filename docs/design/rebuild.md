@@ -4,7 +4,8 @@
 the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B, C, D and E
 (cross-cutting primitives, the status sweep that deletes `Pill`, the route-boundary sweep, the
 Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2, 5.3 and
-5.4 are done.**
+5.4 are done.** **5.5 is done bar its browser pass** — seven batches, `7cb268e` through
+`3463874`; the one outstanding item is written at the end of that sub-phase.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -3212,7 +3213,7 @@ programme's two full-suite runs**.
 | ~~4~~ | ~~**A6 and A7 — the selections with no verb**~~ | **Done** — `8f6fa20`. POS's selection deleted, payments' selection deleted and its apologetic sentence with it, the header button demoted out of the primary slot |
 | ~~5~~ | ~~**The documents straggler**~~ | **Done** — `f36283d`. The toolbar, real pagination, and the backend param it needed |
 | ~~6~~ | ~~**The client-portal straggler**~~ | **Done** — `f77a968`. Two page-local tables extracted, both `shellVariant="nested"`, the page 456 → 330 lines |
-| 7 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
+| 7 | **Close-out** | **Verification done — `3463874`; the browser pass is the one item outstanding.** Source guard at the known 2 of 14, both rendered guards green at 94/94 routes, the full suite (236/64) with a pre-5.5 baseline proving **zero regressions on every touched surface**, the documents module tests, and all 55 census rows marked. See the status block below |
 
 ### Status: batch 1 — the two variants, and the empty state that was never centred
 
@@ -3539,6 +3540,109 @@ rule instead of moving it is a behaviour change wearing a refactor's clothes.
 **Next.** Batch 7 — close-out: `check-design.sh`, both rendered guards, **the full suite —
 the first of the programme's two**, the module specs for everything 5.5 touched, the browser
 pass in both themes at 1280 and 768, and every 5.5 census row marked.
+
+### Status: batch 7 — close-out, and a suite run that proved a negative
+
+**Read this first if you are picking the run up.** The verification pass is done and 5.5's
+correction commits have landed. **The browser pass is the one item still outstanding** — see
+the end of this block.
+
+**What ran.**
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **2 of 14**, the known baseline — `LynkSplash` (5.9) and `ClientPageCreateForm` (5.8). No 5.5 file adds a source-rule failure |
+| `design-rules.spec.ts` | Green. **`Audited 94 routes. Unreachable: none`** |
+| `scroll-containers.spec.ts` | Green — including the tables that gained variants and the shell that gained a sticky state sibling |
+| **The full suite** — first of the programme's two | **236 passed / 64 failed** in 47.4 minutes, `--workers=1`, routes warmed |
+| Documents module tests | 46 passed, one new (`test_list_documents_offset_pages_through_the_sorted_result`) |
+| `compileall`, `verify_openapi`, contract drift | Green — 357 paths, 469 schemas; no drift |
+
+**The full-suite number needs its denominator.** `docs/e2e-suite-status.md` snapshots
+**201 passed / 43 failed** on 2026-08-11 — but that was 244 tests and the suite is 300 now.
+64 failures against a 43-failure snapshot from nine days and three sub-phases ago is not a
+comparison anyone should make, so it was not made.
+
+**What was done instead: a targeted pre-5.5 baseline.** Every spec covering a surface 5.5
+touched — payments, invoices, documents, catalog, leads, contacts, accounts, client portal,
+insertion orders, tasks, quick create — was run against a **stashed pre-5.5 frontend**
+(`git checkout ac5b16c -- frontend/`), warm, serial, same box.
+
+**The two failure sets are identical. Not similar — identical.**
+
+```
+in POST but not PRE (would be 5.5 regressions):  (none)
+in PRE but not POST (fixed by 5.5):              (none)
+```
+
+Sixteen failures on those surfaces before, the same sixteen after. **5.5 is behaviour-neutral
+against the existing suite on every surface it touched**, which is the claim the sub-phase
+needed to make and the only way to make it honestly. It cost ~9 minutes, not the 28 a full
+HEAD baseline would have — because the probe was scoped to the surfaces in question rather
+than to the whole suite.
+
+**Two failures were cleared, and neither was 5.5's.** Both are specs asserting a contract an
+*earlier* sub-phase moved, which the testing policy says to update rather than leave red.
+Written up in `docs/e2e-suite-status.md`.
+
+- **`foundation-revamp.spec.ts:26` — table density.** It was in **no group** in that document,
+  and it wore the Group 5 signature (a click timing out with the locator matching nothing) —
+  which is exactly the shape of a false attribution, since density is what batch 1 threaded a
+  `variant` through. It reproduced on the pre-5.5 tree, and the real cause is neither: it asks
+  for `role="button"`, and `TableDensityToggle` is a `SegmentedControl` — a Radix ToggleGroup
+  with `type="single"` — so its segments are **radios**. The spec has matched nothing since
+  the primitive landed. Asserting `role="radio"` passes, and it is the better assertion: the
+  ARIA role is the contract a screen-reader user actually gets. **Generalise it** — any spec
+  reaching for `role="button"` on a segmented control is in the same position.
+- **`catalog-revamp.spec.ts:397` — the record Files tab.** It asserted `"No documents are
+  linked to this record yet."`, which **5.3 batch 7 renamed** and did not update here.
+
+**That second one paid for itself.** The Files tab on a record is the exact surface where the
+empty-state defect was measured (`clientWidth 580 / scrollWidth 920`), and the repaired spec
+now renders that tab and finds the empty state — which is the first independent evidence that
+batch 1's relocation works where it was supposed to.
+
+**One real bug found by reading my own diff, not by any check.** The address codec's write
+guard asked *is this non-empty* when it should have asked *does this differ from the view*. A
+saved view may carry its own `search` or `sort`; clearing one **deleted** the param instead of
+writing it, so the view's value came back on the next load and the operator could not clear it
+at all. An empty `?search=` is how the address says *cleared*, and the reader already handled
+it through `params.has`. Fixed in `61e539f`. Columns keep the truthiness guard deliberately —
+`ColumnPicker` refuses to hide the last column, so there is no empty state to represent.
+
+**A process note worth keeping.** The first full-suite run was **discarded**: it was started
+before the codec fix, and editing `savedViewQuery.ts` mid-run made the dev server recompile
+every list route underneath the tests. Nineteen tests in, failures had already started arriving
+as 30s timeouts. A suite run is only evidence about the tree it ran against — finish the edits,
+then start the clock.
+
+**Still outstanding: the browser pass.** Both themes, 1280 and 768, over 5.5's surfaces. It
+has not run, because it needs a signed-in session and this agent does not enter passwords into
+forms. The `/auth` honeycomb was checked from the login screen and renders as a honeycomb
+(§9). What the pass still owes:
+
+1. **The empty-state fix, looked at.** Open a `RecordTable` narrower than its own columns with
+   no rows — the contact record's Files tab is the measured case — and confirm the box is
+   centred in the *visible* region and stays there when the columns are scrolled sideways.
+   The repaired catalog spec covers rendering; it does not cover *placement*.
+2. **`documents` at `variant="list"`.** It is the only list with fixed content above the
+   toolbar — three storage cards and a storage-unavailable banner. Confirm they are not
+   squeezed and the table still takes the remaining height.
+3. **The `lineItems` grid's derived width.** The two hardcoded `min-w-[Npx]` values became a
+   derived ~1032px against a hand-tuned 900px, so the editable grid scrolls sideways a little
+   sooner inside the form. Check it reads as intended at 1280 rather than merely working.
+4. **The two client-portal tables**, now `shellVariant="nested"` — one panel edge, not two.
+
+### What 5.5 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| The twelve settings / automation / integration / reports / dashboard raw-`Table` files | 5.6 and 5.7, with their pages. R10's three-importer rule is true at the end of **5.7** |
+| `settings/automation`'s `?view=runs\|rules` — the word means "saved view id" on every other list | 5.6 |
+| `settings/users` keeps its own filter-value shape in `userFilters.tsx`, so no column picker | 5.6 |
+| **B.2** — custom modules collect conditions the request layer discards; the filter group stays undrawn (§7.9) | Filed, after 5.9 |
+| The narrow-list overlay defect: a row that cannot be clicked open, still unidentified, still hidden behind the guard's keyboard-activation retry | Inherited from 5.4, still nobody's |
+| 62 suite failures, all pre-existing, grouped in `docs/e2e-suite-status.md` | Not this programme's |
 
 ---
 
