@@ -69,7 +69,12 @@ export function FormSection({
   className?: string;
 }) {
   return (
-    <Card className={cn("p-5 md:p-6", className)}>
+    // `min-w-0`: a section is a grid item, and a grid item's automatic minimum size is its
+    // *content's* min-content — so one wide child stretches the whole form column instead of
+    // scrolling inside it. `RecordTable variant="lineItems"` is the first content wide enough
+    // to show it: its derived min-width pushed the column to 1082px inside a 692px track and
+    // painted the grid under the record rail. A section must never resize the form (§4.5).
+    <Card className={cn("min-w-0 p-5 md:p-6", className)}>
       {/* R7: `text-base font-semibold text-copy-primary` was the pre-ruling heading, one
           step *louder* than the values under it. `SectionHeading` is the role. */}
       <SectionHeading description={description} className="mb-5">

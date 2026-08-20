@@ -48,7 +48,10 @@ export function TransactionLineItemsTable({
   title?: string;
 }) {
   return (
-    <Card className="px-5 py-5">
+    // `min-w-0` for the same reason `FormSection` carries it: this card is a grid item on
+    // the record page, and without it the table's derived min-width stretches the content
+    // column instead of scrolling inside it.
+    <Card className="min-w-0 px-5 py-5">
       <SectionHeading>{title}</SectionHeading>
       <div className="mt-4">
         <RecordTable
