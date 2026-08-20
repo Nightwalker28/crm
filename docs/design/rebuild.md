@@ -3206,9 +3206,9 @@ programme's two full-suite runs**.
 
 | # | Batch | Notes |
 |---|---|---|
-| 1 | **`RecordTable`'s two variants, and the empty-state defect** | `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
-| 2 | **The codec, and A1 + A5 in the hook** | The address-bar codec beside `appendSavedViewFilterParams`; `useSavedViews` backed by the URL; the debounce in one place. Proven on two lists, not sixteen |
-| 3 | **The roll — A1, A5 and A2 across the sixteen lists** | Every list on the URL-backed hook; `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it. Minus `contracts` and `support/cases` (decision 8) |
+| ~~1~~ | ~~**`RecordTable`'s two variants, and the empty-state defect**~~ | **Done** — `7cb268e`. `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
+| ~~2~~ | ~~**The codec, and A1 + A5 in the hook**~~ | **Done** — the address-bar codec beside `appendSavedViewFilterParams`, `useListAddress` as the single writer, `useSavedViews` and `usePagedList` backed by the URL, the debounce in one place. It landed on all sixteen lists with no page edited: A1 was never at the call site |
+| 3 | **A2, and the search-pending state** | `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | 4 | **A6, A7, and the two stragglers** | POS's selection with no verb and payments' 3-row answer; the payments header button that is the slower path; `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component |
 | 5 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
@@ -3290,6 +3290,87 @@ record's Files tab is the measured case — and confirm the empty state is centr
 
 **Next.** Batch 2 — the address-bar codec, and A1 + A5 inside `useSavedViews`, proven on
 two lists.
+
+### Status: batch 2 — the address bar, and the two hooks that never needed sixteen call sites
+
+**Read this first if you are picking the run up.** Batch 2 is done. Lint and build green;
+cadence unchanged (decision 9).
+
+**The plan said "proven on two lists". It is on all sixteen, and that is not scope creep —
+it is where the code turned out to live.** Every list page reads its state from
+`useSavedViews` and its paging from a module hook that re-exports `usePagedList`'s
+controls. Nothing about A1 is at the call site. So backing those two hooks with the URL
+gives every list addressable state with **no page edited at all**, and the batch that was
+going to be "the roll" has almost nothing left to roll.
+
+**The three params each hook owns.** `useSavedViews` writes `view`, `search`,
+`filters_all`, `filters_any`, `sort` and `cols`; `usePagedList` writes `page` and
+`page_size`. The filter three are spelled exactly as `appendSavedViewFilterParams` spells
+them for the API, because two names for one thing is the drift this sub-phase exists to
+delete — the address and the request speak one vocabulary, which is the whole point of
+serializing `SavedViewConfig` rather than inventing query params.
+
+**Two hooks, one query string, and the race that would have followed.** If each hook held
+its own copy of the params, the later `router.replace` in a tick would drop the earlier
+one's write. `hooks/useListAddress.ts` is the single owner: neither hook touches the
+router, both call `updateAddress`, and it reads `window.location.search` **at call time**
+rather than from a captured render before applying the mutation. Concurrent writers
+commute. It is `replace`, never `push`, so typing does not fill the back stack, and
+`scroll: false` so the row being read does not jump.
+
+**The mount problem, and the shape of the answer.** A list must not rewrite its own URL on
+mount: the state was just read *from* the address, and a write in the same pass replaces a
+shared link's state with the defaults. Both hooks solve it the same way — the first pass
+**adopts** the signature it computed instead of writing it. There is no `isReady` flag and
+no mount effect; the first comparison is simply against `null` and returns early. The
+earlier draft used a `useState` + effect for this and tripped
+`react-hooks/set-state-in-effect`, correctly: it was a lifecycle flag pretending to be
+state.
+
+**Only divergence is written.** A list on its default view at page 1 has a clean URL. A
+param appears when, and only when, the operator moved away from what the selected view
+says — which is what makes **"Save view" visibly the promotion of the address**, and what
+keeps a shared link readable.
+
+**Reading is layered, not replacing.** An absent param means "whatever the view says", not
+"empty", so `?search=acme` on a list narrows the current view instead of blanking its
+columns and sort. The address is applied to the **first** view that resolves and never
+again: switching views afterwards must show that view, not re-apply a URL the operator has
+moved on from.
+
+**A5 went into `usePagedList`, not `SearchBar`, and only the search string waits.** The
+census predicted `SearchBar` would be rebuilt for the debounce. That would have been the
+wrong place: the input must stay instant, and a control that debounced its own value makes
+the *field* feel behind the typing. What waits is the query. So `usePagedList` holds a
+debounced copy of `filters.search` — 300ms — and passes everything else through as it
+arrives, because a filter chip is a deliberate single action and delaying it reads as lag
+rather than as batching. `SearchBar` is unchanged.
+
+`isSearchPending` is exposed and **not yet consumed** — during the debounce window
+`isFetching` is false, so a list looks idle while the operator types. Wiring it into the
+toolbar's refreshing state is batch 3's, and it is the one loose end this batch leaves.
+
+**One opt-out, and it is the right one.** `useSavedViews(…, address)` and
+`usePagedList({ address })` default on. `app/dashboard/views/[moduleKey]` passes `false`:
+it is the saved-view **editor**, not a list, it already has its own deep link (`?viewId=`),
+and an in-progress column edit there is a draft of the view being written rather than the
+state of a list anyone would share. All sixteen real lists are the route's subject and
+need no flag.
+
+**Two vocabulary clashes found, neither of them live.** `settings/automation` uses
+`?view=runs|rules` for a workspace switch — it does not call `useSavedViews`, so nothing
+collides today, but the word means "saved view id" everywhere else and that page is 5.6's
+to reconcile. `documents` already reads `?search=`, which is the key this codec chose, so
+the straggler in batch 4 converges rather than conflicts.
+
+**Contracts and support inherited this without being opened** (decision 8). Both call
+`useSavedViews`, so both get addressable state from the hook. That is not a sweep touching
+them — no file under either path was read or edited — and it is the correct outcome either
+way, since the change cannot be withheld from one caller of a shared hook.
+
+**Next.** Batch 3 — A2 (`ColumnPicker` into the toolbar, wired on 1 of 16 today) and the
+`isSearchPending` wiring. Much smaller than planned, for the reason at the top of this
+block.
 
 ---
 

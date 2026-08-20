@@ -51,7 +51,10 @@ export default function ManageModuleViewPage() {
   const safeDefinition = definition ?? { key: moduleKey, label: "Module", route: "/dashboard", columns: [], filterFields: [], defaultConfig: EMPTY_CONFIG };
   const definitionLoading = moduleFieldsQuery.isLoading || (CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey) && customFieldsQuery.isLoading) || (shouldLoadCustomModule && customModuleSchema.isLoading);
   const requestedViewId = searchParams.get("viewId") ?? "system-default";
-  const saved = useSavedViews(moduleKey, safeDefinition.defaultConfig, Boolean(definition) && !definitionLoading);
+  // `address = false`: this is the saved-view *editor*, not a list. It has its own deep
+  // link (`?viewId=`), and an in-progress column edit here is a draft of the view being
+  // written, not the state of a list someone might share (rebuild.md 5.5).
+  const saved = useSavedViews(moduleKey, safeDefinition.defaultConfig, Boolean(definition) && !definitionLoading, false);
   const [mode, setMode] = useState<EditorMode>("view");
   const [name, setName] = useState("");
   const [availableSearch, setAvailableSearch] = useState("");

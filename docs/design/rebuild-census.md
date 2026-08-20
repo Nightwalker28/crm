@@ -511,7 +511,7 @@ taken. Counted here so the denominator stays honest.
 | `ModuleListToolbar.tsx` | 69 | 5.5 | adopt | | |
 | `TableDensityToggle.tsx` | 16 | 5.5 | adopt | | |
 | `Pagination.tsx` | 194 | 5.5 | adopt | | |
-| `SearchBar.tsx` | 37 | 5.5 | rebuild | **A5** — debounce. No debounce anywhere today | |
+| `SearchBar.tsx` | 37 | 5.5 | rebuild | **A5** — debounce. No debounce anywhere today | **done, batch 2 — unchanged, deliberately.** The debounce belongs in `usePagedList`: the input must stay instant and only the query waits |
 | `ColumnPicker.tsx` | 143 | 5.5 | adopt | **A2** — wired into 1 of 16 pages | |
 | `SavedViewSelector.tsx` | 79 | 5.5 | adopt | The correct hand-rolled tablist reference | |
 | `SavedViewConditionEditor.tsx` | 357 | 5.5 | rebuild | | |
@@ -578,9 +578,11 @@ in `lib/` or `hooks/` is touched by this programme.
 | `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |
 | `lib/routes.ts` | 5.6 | rebuild | **A9** — the notification href fallback at `:86` points at an admin-only route | |
 | `lib/moduleViewConfigs.ts` | 5.5 | adopt | | |
+| `lib/savedViewQuery.ts` | 5.5 | rebuild | The request codec | **done, batch 2** — gains the address-bar codec: one `SavedViewConfig`, two destinations |
+| `hooks/useListAddress.ts` | 5.5 | new | The single writer of a list's query string | **done, batch 2** — so two hooks sharing one address cannot drop each other's params |
 | `lib/module-registry.ts` | 5.7 | adopt | **A11** — reports is a single-item collapsible group | |
-| `hooks/usePagedList.ts` | 5.5 | rebuild | **A1** — list state is not addressable; **A5** — no debounce | |
-| `hooks/useSavedViews.ts` | 5.5 | rebuild | **A1, A5** | |
+| `hooks/usePagedList.ts` | 5.5 | rebuild | **A1** — list state is not addressable; **A5** — no debounce | **done, batch 2** — `page` and `page_size` in the address; the 300ms search debounce lives here, not in `SearchBar` |
+| `hooks/useSavedViews.ts` | 5.5 | rebuild | **A1, A5** | **done, batch 2** — the draft view is the address: `view`, `search`, `filters_all`, `filters_any`, `sort`, `cols` |
 | `hooks/useModuleBuilder.ts` | — | unchanged | **B.2** lives at `:298` and is filed, not fixed — it needs a backend query-param contract | |
 
 ---
