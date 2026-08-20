@@ -70,6 +70,18 @@ Confirmed with the owner. Items 2 and 5 override `consistency-pass.md` decision 
    (§7.3), never a second table. Anything that genuinely cannot be a variant is listed
    with its reason in 5.5 and nowhere else.
 7. **Testing is scoped, not skipped.** See the policy below.
+8. **Contracts and support cases are out of scope, from 5.4 batch 4 onward.** Decided by
+   the owner 2026-08-20: the modules may be removed entirely, so effort spent making them
+   consistent is effort spent on something that may not ship. **Do not read, edit, verify or
+   reason about `components/contracts/**`, `components/support/**`,
+   `app/dashboard/contracts/**` or `app/dashboard/support/**`** — not even to keep an
+   app-wide sweep tidy. An idiom sweep that would otherwise touch all N modules touches
+   N minus these two, and says so. Their census rows stay as they are; nothing marks them
+   done, because nothing will do them. What landed before this decision (5.3's record
+   archetype, 5.4 batches 1–3) stays — it is already paid for.
+9. **Verification is per sub-phase, not per batch.** Decided by the owner 2026-08-20.
+   Per-batch gating was turning a phase into a loop of per-batch perfection. See the policy
+   below for the new cadence.
 
 ---
 
@@ -416,6 +428,27 @@ Three groups are marked `unchanged` up front, with reasons, and they are the onl
 
 The 58-spec suite at `--workers=1` is what has been costing the time. **It stops running
 per sub-phase.**
+
+### The cadence, revised 2026-08-20 — per sub-phase, not per batch
+
+Batches 1–3 of 5.4 each ran lint + build + `check-design.sh` + both rendered guards + a module
+spec sweep + a browser pass, and batch 3 additionally ran an 18-spec HEAD baseline to attribute
+its failures. That is roughly 90 minutes of verification per batch to protect a change the
+compiler and two greps had already checked. **The owner's call: stop doing that.**
+
+| When | What runs |
+|---|---|
+| **Per batch** | `npm run lint` and `npm run build`. Nothing else. Commit on green. |
+| **End of the sub-phase** | `check-design.sh`, both rendered guards, the module specs for every surface the *whole* sub-phase touched, and one browser pass covering the sub-phase's surfaces |
+| **One correction run per sub-phase** | Fix whatever that pass found, in a single commit, then close the sub-phase |
+
+**A batch is still one commit and still writes its `Status` block** — that part is the handover
+and does not get cheaper. What goes away is re-proving the suite between batches.
+
+**The HEAD baseline is not free and is not routine.** Run it only when the end-of-phase pass
+produces a failure that is (a) not on a documented list and (b) on a surface the sub-phase
+actually touched. Batch 3 ran one and every single unexplained failure turned out to be
+inherited — the priors were right and the measurement cost 28 minutes.
 
 **Every sub-phase, always** — cheap, and they are the actual contract:
 
@@ -2621,15 +2654,20 @@ underneath it. Restart the frontend and re-warm before judging anything.
 Each row is one batch, gated by lint + build + `check-design.sh` between them, one commit
 each — the shape 5.2 and 5.3 used.
 
+**Scope from here: contracts and support cases are out** (scoping decision 8), and
+**verification is once at the end of 5.4, not per batch** (decision 9). Batches 4–6 run lint +
+build and commit; batch 7 is the single verification-and-correction pass that closes the
+sub-phase.
+
 | # | Batch | Notes |
 |---|---|---|
 | ~~1~~ | ~~**`SearchableSelect`**~~ | **Done** — `0761061`, see the status above. The §7.8 primitive, `InlineFieldEdit` onto it, `TimezonePicker` collapsed into it |
 | ~~2~~ | ~~**`Owner` → State, on all 8 record types**~~ | Editable inline, behind batch 1's primitive. Measured: the eight are contract, lead, contact, insertion order, order, account, deal, quote, and the column is `assigned_to` on five, `owner_id` on two, `user_id` on one. **It needs a backend line**: `/linked-record-options/users` requires `query` at `min_length=1` and caps `limit` at 20, so it can search users but cannot *list* them, and `SearchableSelect` holds its options in memory (§7.8). Relaxing that query is the slice's first commit. **Done** — `e62474e` + `853bc33`, see the status above. It was **nine**, not eight: support cases draw the same field as `Assignee`. The insertion order's update contract had no owner field at all and gained one |
 | ~~3~~ | ~~**`RecordFormLayout`**~~ | **Done** — `b1a51dd`. The visible title, `ActionBar`/`FormFooter` adopted, the sticky footer deleted (R3), the hand-written field grids, the local `TextField`s. See the status above. It was **17** call sites (the convert form is on the archetype too), **26** in-scope field grids of 61 app-wide, and **five** private `TextField`s. `FormSection` also moved to `SectionHeading`, which was still pre-R7, and 14 hand-rolled twins moved with it. One real a11y defect found: six lead-form inputs had no accessible name |
-| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom. **Add the two `ToggleRow`s** (`CatalogRecordFormPage:329`, `LeadConversionForm:223`) — batch 3 deliberately left them, and the catalog one is a `checkbox` where `SettingsSwitchRow` is a button group, so it is a semantics change |
+| 4 | **The stragglers and the idioms** | `MessageTemplateRecordFormPage:205` and `DocumentUploadFormPage:515`; `insertion-orders`' two Cancel buttons; one pending label, one dirty string, one error idiom. **Add the two `ToggleRow`s** (`CatalogRecordFormPage:329`, `LeadConversionForm:223`) — batch 3 deliberately left them, and the catalog one is a `checkbox` where `SettingsSwitchRow` is a button group, so it is a semantics change. **The idiom sweep skips `ContractRecordFormPage` and `SupportCaseCreateFormPage`** (decision 8) |
 | 5 | **The line-item documents** | Quote (820), order (693), POS invoice (867). Manual save stays (R1); `variant="lineItems"` is 5.5's table, so what lands here is the surrounding form |
 | 6 | **A3 — both create paths, all 15 modules** | `QuickCreateSurface` for the fast create, `/new` for the detailed one, and `OpportunityQuickCreate` finally wired into the deals list |
-| 7 | **Close-out** | The census rows, the browser pass, and whatever the rebuild exposed |
+| 7 | **Close-out, and 5.4's only verification pass** | `check-design.sh`, both rendered guards, the module specs for every surface batches 1–6 touched, one browser pass, then a single correction commit. Plus the census rows and whatever the rebuild exposed |
 
 ---
 
