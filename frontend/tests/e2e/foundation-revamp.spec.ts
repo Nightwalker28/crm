@@ -29,13 +29,17 @@ test("table density preference persists and updates shared tables", async ({ pag
   const table = page.locator("[data-table-density]").first();
   await expect(table).toHaveAttribute("data-table-density", "comfortable");
 
-  await page.getByRole("button", { name: "Compact table density" }).click();
+  // `radio`, not `button`. `TableDensityToggle` is a `SegmentedControl`, which is a Radix
+  // ToggleGroup with `type="single"` — so the group is a `radiogroup` and each segment is a
+  // `radio`. The spec was written against whatever preceded the primitive and has been
+  // matching nothing ever since; it is a real accessibility contract, so assert the real one.
+  await page.getByRole("radio", { name: "Compact table density" }).click();
   await expect(table).toHaveAttribute("data-table-density", "compact");
   await expect.poll(() => page.evaluate(() => window.localStorage.getItem("lynk:table-density"))).toBe("compact");
 
   await page.reload();
   await expect(page.locator("[data-table-density]").first()).toHaveAttribute("data-table-density", "compact");
 
-  await page.getByRole("button", { name: "Comfortable table density" }).click();
+  await page.getByRole("radio", { name: "Comfortable table density" }).click();
   await expect(page.locator("[data-table-density]").first()).toHaveAttribute("data-table-density", "comfortable");
 });

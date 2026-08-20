@@ -475,7 +475,10 @@ test("The record archetype's Timeline, Tasks and Files tabs replace the nested a
   await expect(page.getByText("Confirm the replenishment date.")).toBeVisible();
 
   await page.getByRole("tab", { name: "Files" }).click();
-  await expect(page.getByText("No documents are linked to this record yet.")).toBeVisible();
+  // The copy moved in 5.3 batch 7 — `RecordDocumentsPanel`'s empty text is deliberately
+  // short, because `RecordTable` used to lay its empty state out across the table's scroll
+  // width. 5.5 batch 1 fixed that, but the string is still the one the panel renders.
+  await expect(page.getByText("Files uploaded here stay linked to this record.")).toBeVisible();
 
   await page.getByRole("tab", { name: "Tasks" }).click();
   await expect(page.getByText("No linked tasks yet")).toBeVisible();

@@ -166,6 +166,33 @@ stashing an unrelated working tree and reproducing. Worth checking against the R
 rebuild in `docs/design/design.md` 7.2 before assuming it is test debt — the spec exists precisely
 because that keyboard pattern was broken once already.
 
+## Cleared 2026-08-20 during rebuild 5.5's close-out — two specs asserting a moved contract
+
+Both were found by a full serial run on the post-5.5 tree, both reproduced on a stashed
+pre-5.5 frontend, and both were **specs asserting something an earlier sub-phase moved** —
+which the rebuild testing policy says to update rather than leave red.
+
+**`foundation-revamp.spec.ts:26` — "table density preference persists and updates shared
+tables". Was in no group in this document.** It timed out on
+`getByRole("button", { name: "Compact table density" })` with the locator matching nothing —
+the Group 5 signature, but not on Group 5's list. The cause is not a missing element:
+`TableDensityToggle` is a `SegmentedControl`, which is a Radix ToggleGroup with
+`type="single"`, so the group is a `radiogroup` and each segment is a **`radio`**. The spec
+was written against whatever preceded that primitive and has matched nothing since. Asserting
+`role="radio"` passes, and it is the more useful assertion — the ARIA role is the contract a
+screen-reader user actually gets.
+
+**Worth generalising:** any spec reaching for `role="button"` on a `SegmentedControl` segment
+is in the same position. That is the view switcher on deals, `SegmentedBoolean`, and the
+density toggle wherever it appears.
+
+**`catalog-revamp.spec.ts:397` — the record archetype's Files tab.** Asserted
+`"No documents are linked to this record yet."`, which **5.3 batch 7 renamed** to `"Files
+uploaded here stay linked to this record."` and did not update here. Deliberate copy change
+(the panel's empty text was shortened while `RecordTable` still laid its empty state out
+across the table's scroll width), so the spec was updated to the string the panel renders.
+5.5 batch 1 has since fixed the underlying layout defect.
+
 ## Group 5 — interaction timeouts, likely one shared cause
 
 **16 failures. Cause NOT yet confirmed — this is the group worth investigating first.**
