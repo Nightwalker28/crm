@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldLabel } from "@/components/ui/field";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
@@ -108,6 +109,7 @@ export default function AutomationSettingsPage() {
         title="Automation"
         description="Rules that run when records change."
         isLoading={isResolving}
+        isPermissionDenied={isForbiddenError(rulesQuery.error ?? triggersQuery.error)}
         hasError={failedToLoad}
         errorDescription="Your rules are unchanged. Try loading the workspace again."
         onRetry={() => { void rulesQuery.refetch(); void triggersQuery.refetch(); }}

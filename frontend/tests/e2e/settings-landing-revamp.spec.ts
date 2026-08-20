@@ -36,8 +36,12 @@ test("shows every registered settings destination on mobile", async ({ page }) =
     await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
   }
 
+  // Scoped to the hub. rebuild.md 5.6 added a settings nav rail in the layout, so a bare
+  // link-by-name matches twice on any viewport wide enough to draw it. Coverage *of* the
+  // rail is 5.10's, per the programme's no-new-e2e rule.
+  const hub = page.locator('[data-slot="settings-hub"]');
   for (const destination of SETTINGS_DESTINATIONS) {
-    await expect(page.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(
+    await expect(hub.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(
       "href",
       destination.href,
     );
@@ -47,8 +51,9 @@ test("shows every registered settings destination on mobile", async ({ page }) =
 test("settings rows use one scan column and support keyboard navigation", async ({ page }) => {
   await page.goto("/dashboard/settings");
 
-  const generalLink = page.getByRole("link", { name: /^General/ });
-  const usersLink = page.getByRole("link", { name: /^Users/ });
+  const hub = page.locator('[data-slot="settings-hub"]');
+  const generalLink = hub.getByRole("link", { name: /^General/ });
+  const usersLink = hub.getByRole("link", { name: /^Users/ });
   const generalBox = await generalLink.boundingBox();
   const usersBox = await usersLink.boundingBox();
 

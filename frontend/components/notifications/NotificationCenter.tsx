@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bell, BellRing, CheckCheck, Loader2, RefreshCw } from "lucide-react";
 
 import { useNotifications } from "@/hooks/useNotifications";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { formatDateTime } from "@/lib/datetime";
@@ -22,6 +23,9 @@ export default function NotificationCenter() {
     markAllRead,
     isMarkingAllRead,
   } = useNotifications();
+  // A9: `View all activity` points at an admin-only settings route. Offering it to a
+  // non-admin is offering a permission wall.
+  const { isAdmin } = useSidebarUser();
   const [actionError, setActionError] = useState<string | null>(null);
   const [browserPermission, setBrowserPermission] = useState<NotificationPermission | "unsupported">(() => {
     if (typeof window === "undefined" || !("Notification" in window)) {
@@ -206,11 +210,13 @@ export default function NotificationCenter() {
             Refreshing…
           </div>
         ) : null}
-        <div className="border-t border-line-default px-4 py-3">
-          <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-copy-secondary hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
-            View all activity
-          </Link>
-        </div>
+        {isAdmin ? (
+          <div className="border-t border-line-default px-4 py-3">
+            <Link href={SETTINGS_ROUTES.activityLog} className="text-xs font-medium text-copy-secondary hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
+              View all activity
+            </Link>
+          </div>
+        ) : null}
       </PopoverContent>
     </Popover>
   );

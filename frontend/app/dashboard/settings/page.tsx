@@ -19,7 +19,7 @@ import { SETTINGS_NAV_GROUPS } from "@/lib/module-registry";
 export default function SettingsPage() {
   return (
     <PageShell variant="settings" title="Settings" description="Configure the workspace, its users, and the modules they can reach.">
-      <div className="grid gap-6">
+      <div data-slot="settings-hub" className="grid gap-6">
         {SETTINGS_NAV_GROUPS.map((group) => (
           <section key={group.key} aria-labelledby={`${group.key}-heading`}>
             <Card>

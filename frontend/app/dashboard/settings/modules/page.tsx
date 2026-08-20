@@ -11,6 +11,7 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -160,6 +161,7 @@ export default function ModulesPage() {
       variant="settings"
       title="Module Settings"
       description="Enable modules and assign department or team access."
+      isPermissionDenied={isForbiddenError(error)}
       hasError={Boolean(error)}
       errorDescription="Check your connection and try again. No module settings were changed."
       onRetry={() => void refetch()}

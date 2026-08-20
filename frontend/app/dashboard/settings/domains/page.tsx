@@ -11,7 +11,9 @@ import { Dialog, DialogBackdrop, DialogDescription, DialogFooter, DialogHeader, 
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
 import { useDomainSettings } from "@/hooks/admin/useIdentitySettings";
+import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export default function DomainsSettingsPage() {
   const settings = useDomainSettings();
@@ -35,6 +37,9 @@ export default function DomainsSettingsPage() {
       variant="settings"
       title="Domains"
       description="Verify a custom hostname before using tenant SSO."
+      isPermissionDenied={isForbiddenError(settings.loadError)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
     >
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">

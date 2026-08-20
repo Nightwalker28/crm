@@ -132,3 +132,40 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
 
   return res;
 }
+
+/**
+ * A failed response, with the status kept.
+ *
+ * Every read path in `hooks/admin/` threw a bare `new Error("Failed to fetch …")`, which
+ * discarded the one fact the page needed: **403 is not a broken page.** Settings is
+ * admin-gated at the layout, so the wall a non-admin hits is already right — what was
+ * missing is the finer case, an admin who lacks `configure` on the module they opened, or
+ * a role whose permissions changed while the tab was open. Those arrived as "could not be
+ * loaded", which sends the operator to look for a fault that does not exist (rebuild.md
+ * 5.6 batch 3).
+ */
+export class ApiError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+  }
+}
+
+/** Pass to `PageShell`'s `isPermissionDenied`, so a 403 renders the wall and not the error. */
+export function isForbiddenError(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 403 || error.status === 401);
+}
+
+/**
+ * The shared GET-and-parse for admin reads. `message` is the fallback for everything that
+ * is not a 403 — the page's own error state names the fix, so this only has to carry the
+ * status honestly.
+ */
+export async function readJson<T>(path: string, message: string): Promise<T> {
+  const response = await apiFetch(path);
+  if (!response.ok) throw new ApiError(response.status, message);
+  return response.json() as Promise<T>;
+}

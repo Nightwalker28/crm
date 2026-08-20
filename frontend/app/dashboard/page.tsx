@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useNotifications } from "@/hooks/useNotifications";
+import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -133,6 +134,7 @@ export default function DashboardHomePage() {
   const widgets = isEditing ? draftWidgets : persistedWidgets;
   const isLayoutDirty = isEditing && JSON.stringify(draftWidgets) !== JSON.stringify(persistedWidgets);
 
+  const { isAdmin } = useSidebarUser();
   const accessibleRoutes = useMemo(
     () => new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean)),
     [modules],
@@ -402,12 +404,16 @@ export default function DashboardHomePage() {
               <Pencil />
               Edit dashboard
             </Button>
-            <Button asChild variant="outline">
-              <Link href={SETTINGS_ROUTES.activityLog}>
-                <ClipboardList />
-                Activity log
-              </Link>
-            </Button>
+            {/* A9: an admin-only settings route, offered to everyone from the one page
+                every role lands on. */}
+            {isAdmin ? (
+              <Button asChild variant="outline">
+                <Link href={SETTINGS_ROUTES.activityLog}>
+                  <ClipboardList />
+                  Activity log
+                </Link>
+              </Button>
+            ) : null}
             {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
               <Button asChild>
                 <Link href={DASHBOARD_ROUTES.tasks}>

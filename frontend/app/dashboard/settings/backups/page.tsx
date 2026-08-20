@@ -30,7 +30,7 @@ import { RecordTable } from "@/components/ui/RecordTable";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { getFilenameFromDisposition } from "@/components/ui/importExportUtils";
 import { formatDateTime } from "@/lib/datetime";
@@ -156,7 +156,7 @@ async function readJson(res: Response) {
 async function fetchBackupSettings(): Promise<TenantBackupSettings> {
   const res = await apiFetch("/admin/tenant-backup-settings");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Backup settings could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Backup settings could not be loaded.");
   return body as TenantBackupSettings;
 }
 
@@ -174,14 +174,14 @@ async function saveBackupSettings(payload: BackupSettingsDraft): Promise<TenantB
 async function fetchBackupRuns(): Promise<TenantBackupRun[]> {
   const res = await apiFetch("/admin/tenant-backup-runs?page=1&page_size=10");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Recent backup runs could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Recent backup runs could not be loaded.");
   return ((body as TenantBackupRunList).results ?? []) as TenantBackupRun[];
 }
 
 async function fetchDestinationConnections(): Promise<TenantBackupDestinationConnection[]> {
   const res = await apiFetch("/admin/tenant-backup-settings/destinations/connections");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Storage connections could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Storage connections could not be loaded.");
   return body as TenantBackupDestinationConnection[];
 }
 
@@ -507,6 +507,7 @@ export default function BackupSettingsPage() {
         title="Backups"
         description="Schedule tenant backups and restore a module from one."
         isLoading={settingsQuery.isLoading}
+        isPermissionDenied={isForbiddenError(settingsQuery.error)}
         hasError={settingsQuery.isError}
         errorDescription="Backup settings are unavailable right now. No backup or restore action has been started."
         onRetry={() => void settingsQuery.refetch()}

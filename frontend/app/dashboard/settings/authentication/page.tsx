@@ -17,7 +17,9 @@ import { useSsoDraft } from "@/hooks/admin/useSsoDraft";
 import type { MfaPolicy } from "@/hooks/admin/useUserManagement";
 import { useAutosave } from "@/hooks/useAutosave";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 /**
  * The page archetype 4's commit rule was written against.
@@ -64,7 +66,14 @@ export default function AuthenticationSettingsPage() {
   }
 
   return (
-    <PageShell variant="settings" title="Authentication" description="Set the MFA policy and connect an external identity provider.">
+    <PageShell
+      variant="settings"
+      title="Authentication"
+      description="Set the MFA policy and connect an external identity provider."
+      isPermissionDenied={isForbiddenError(settings.loadError)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
+    >
       <FormSection title="Multi-factor" description="Applies to manual CRM sign-in.">
         <SettingsRow
           label="MFA policy"

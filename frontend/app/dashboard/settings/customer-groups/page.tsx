@@ -6,6 +6,8 @@ import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PageShell } from "@/components/ui/PageShell";
+import { isForbiddenError } from "@/lib/api";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -269,6 +271,9 @@ export default function CustomerGroupsSettingsPage() {
       title="Customer Groups"
       description="Segments used by contacts, accounts, and the client portal."
       actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
+      isPermissionDenied={isForbiddenError(groups.error)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
     >
       <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
         <SheetPortal>

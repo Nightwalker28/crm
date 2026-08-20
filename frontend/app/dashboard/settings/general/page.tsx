@@ -15,7 +15,7 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 
 type CompanyResponse = {
   id: number;
@@ -101,17 +101,17 @@ export default function CompanyPage() {
   const [saving, setSaving] = useState(false);
   const [logoBusyAction, setLogoBusyAction] = useState<"uploading" | "removing" | null>(null);
   const [logoError, setLogoError] = useState<string | null>(null);
-  const [loadFailed, setLoadFailed] = useState(false);
+  const [loadError, setLoadError] = useState<unknown>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const isDirty = useMemo(() => JSON.stringify(form) !== JSON.stringify(initialForm), [form, initialForm]);
 
   const loadCompany = useCallback(async (signal?: AbortSignal) => {
     try {
       setLoading(true);
-      setLoadFailed(false);
+      setLoadError(null);
       const response = await apiFetch("/users/company", { signal });
       const body = await readJson(response);
-      if (!response.ok) throw new Error("Company profile could not be loaded.");
+      if (!response.ok) throw new ApiError(response.status, "Company profile could not be loaded.");
 
       const nextForm = companyToForm(body as CompanyResponse);
       setForm(nextForm);
@@ -119,7 +119,7 @@ export default function CompanyPage() {
       setLogoUrl((body as CompanyResponse).logo_url ?? "");
     } catch (error) {
       if (signal?.aborted || (error instanceof DOMException && error.name === "AbortError")) return;
-      setLoadFailed(true);
+      setLoadError(error);
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -226,8 +226,9 @@ export default function CompanyPage() {
       variant="settings"
       title="General"
       description="Company profile and tenant setup."
-      isLoading={loading && !loadFailed}
-      hasError={loadFailed}
+      isLoading={loading && !loadError}
+      isPermissionDenied={isForbiddenError(loadError)}
+      hasError={Boolean(loadError)}
       errorDescription="Your saved company settings are unchanged. Check your connection and try again."
       onRetry={() => void loadCompany()}
       backHref="/dashboard/settings"

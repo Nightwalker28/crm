@@ -24,6 +24,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionTabs } from "@/components/ui/SectionTabs";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
@@ -782,6 +783,7 @@ export default function ModuleBuilderPage() {
       title="Module Builder"
       description="Create custom modules and shape the fields their records carry."
       isLoading={isLoading}
+      isPermissionDenied={isForbiddenError(queryError)}
       hasError={Boolean(queryError)}
       errorDescription="Your module configuration is unchanged. Try loading it again."
       onRetry={() => void refresh()}

@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { RequiredMark } from "@/components/ui/RequiredMark";
@@ -326,6 +327,7 @@ export default function RolesPermissionsPage() {
       description="Control role actions across enabled modules."
       actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button>}
       isLoading={isOverviewLoading}
+      isPermissionDenied={isForbiddenError(overviewError)}
       hasError={Boolean(overviewError)}
       errorDescription="Try the request again. No permissions have been changed."
       onRetry={() => void retryOverview()}

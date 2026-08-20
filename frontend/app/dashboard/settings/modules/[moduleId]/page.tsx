@@ -12,6 +12,7 @@ import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { SectionTabs } from "@/components/ui/SectionTabs";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -302,6 +303,7 @@ export default function ModuleAccessPage() {
         variant="settings"
         title="Access Settings"
         isLoading={isLoading}
+        isPermissionDenied={isForbiddenError(error)}
         hasError={Boolean(error) || moduleId === null || !access}
         errorState={
           moduleId === null || (!error && !access) ? (

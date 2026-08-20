@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { PageShell } from "@/components/ui/PageShell";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
+import { isForbiddenError } from "@/lib/api";
 import { useUserManagement } from "@/hooks/admin/useUserManagement";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
@@ -72,6 +73,9 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
       variant="settings"
       title="Users"
       description="Invite users, manage accounts, and keep access current."
+      isPermissionDenied={isForbiddenError(admin.loadError)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
       actions={(
         <>
         <SavedViewSelector moduleKey="admin_users" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />

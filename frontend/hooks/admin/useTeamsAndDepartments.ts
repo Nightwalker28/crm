@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useConfirm } from "@/hooks/useConfirm";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type Department = {
   id: number;
@@ -46,13 +46,13 @@ const emptyTeams: Team[] = [];
 
 async function fetchDepartments(): Promise<Department[]> {
   const res = await apiFetch("/admin/users/departments");
-  if (!res.ok) throw new Error("request-failed");
+  if (!res.ok) throw new ApiError(res.status, "request-failed");
   return res.json();
 }
 
 async function fetchTeams(): Promise<Team[]> {
   const res = await apiFetch("/admin/users/teams");
-  if (!res.ok) throw new Error("request-failed");
+  if (!res.ok) throw new ApiError(res.status, "request-failed");
   return res.json();
 }
 

@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { PageShell } from "@/components/ui/PageShell";
@@ -57,7 +57,7 @@ async function fetchRecycleItems(moduleKey: string, page: number, pageSize: numb
     page_size: String(pageSize),
   });
   const res = await apiFetch(`/recycle?${params.toString()}`);
-  if (!res.ok) throw new Error("Recycled records could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Recycled records could not be loaded.");
   return res.json();
 }
 
@@ -221,6 +221,7 @@ export default function RecycleBinPage() {
           rowKey={(item) => `${item.module_key}-${item.record_id}`}
           isLoading={query.isLoading}
           isRefreshing={query.isFetching && !query.isLoading}
+          isPermissionDenied={isForbiddenError(query.error)}
           hasError={Boolean(query.error)}
           onRetry={() => void query.refetch()}
           emptyState={{

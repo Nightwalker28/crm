@@ -29,7 +29,7 @@ import {
 import { useCalendarContext } from "@/hooks/useCalendar";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 type Availability = {
@@ -103,7 +103,7 @@ async function readJson(res: Response) {
 async function fetchBookingTypes() {
   const res = await apiFetch("/calendar/booking-types");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Booking links could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Booking links could not be loaded.");
   return (body?.results ?? []) as BookingType[];
 }
 
@@ -575,6 +575,7 @@ export default function CalendarBookingSettingsPage() {
             rowLabel={(item) => `Edit booking link ${item.name}`}
             isLoading={bookingTypesQuery.isLoading}
             isRefreshing={bookingTypesQuery.isFetching && !bookingTypesQuery.isLoading}
+            isPermissionDenied={isForbiddenError(bookingTypesQuery.error)}
             hasError={Boolean(bookingTypesQuery.error)}
             onRetry={() => void bookingTypesQuery.refetch()}
             emptyState={{

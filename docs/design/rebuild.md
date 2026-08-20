@@ -3949,6 +3949,67 @@ code.
 **Batch 3 starts here.** The permission walls and A9's three admin-only links, none of
 which is touched yet.
 
+### Status: batch 3 — a 403 is not a broken page, and four links into a wall
+
+**Landed.** `lint` and `build` green.
+
+**`PermissionDeniedState` reaches all 21 settings page files, up from 1.** `grep -L
+isPermissionDenied app/dashboard/settings/**/page.tsx` returns nothing.
+
+**But the interesting half is that the original measurement was measuring the wrong
+thing**, and the fix is not the one the plan implied. `app/dashboard/layout.tsx` already
+gates the entire `/dashboard/settings` prefix on `isAdmin` and renders
+`PermissionDeniedState` in place of `children`, so a non-admin has always hit a wall on all
+23 pages. Adding an `isAdmin` check to 22 page files would have been 22 redundant checks
+behind a working one.
+
+**What was actually missing is the finer case**: an admin who lacks `configure` on the
+module they opened, or a role edited in another tab. Those arrive as a **403 on the page's
+own fetch**, and every read path in the app threw a bare `new Error("… could not be
+loaded")` — so the status, the one fact that decides wall-or-fault, was discarded at the
+throw site. The operator was told the page was broken and sent to look for a fault that
+does not exist.
+
+**`ApiError` and `isForbiddenError`, in `lib/api.ts`.** The failing response keeps its
+status; `isForbiddenError` answers 401/403; `readJson` is the shared GET-and-parse the
+admin hooks were each re-declaring. Converted: every **read** path in `hooks/admin/*`,
+`useAutomationRules`, `useClientPortal`'s `crmJson`, and the six settings pages that fetch
+inline. Write paths are untouched and keep reporting through their toasts — a failed save
+is a fault the operator can retry, not a wall.
+
+**Three hooks now expose the read error** (`useAuthenticationSettings`,
+`useProvisioningSettings`, `useDomainSettings`, `useUserManagement`), which they did not,
+so their pages had no way to distinguish anything at all.
+
+**`settings/fields` lost its hand-rolled error card**, one of settings' three competing
+error idioms — a `Card` with `role="alert"` inside the content, where `PageShell` has
+supplied the §7.4 states since 5.1. It is now `hasError` + `errorDescription` + `onRetry`
+on the shell, like everything else.
+
+**A9 is four sites, not three.**
+
+| Site | Was | Now |
+|---|---|---|
+| `routes.ts` — `resolveNotificationHref` fallback | `SETTINGS_ROUTES.activityLog`, admin-only | `DASHBOARD_ROUTES.home` |
+| `NotificationCenter.tsx` — "View all activity" | Shown to everyone | `isAdmin` only |
+| `app/dashboard/page.tsx` — the "Activity log" header button | Shown to everyone | `isAdmin` only |
+| **`DashboardOperationalWidgets.tsx:172`** — **not on the list** | Passed the activity log as an explicit fallback, on a widget every role sees | Uses the new default |
+
+The fourth is the one worth noting: it was *explicitly* passing the admin-only route as its
+fallback, so changing the default alone would not have fixed it. A9 was found by grepping
+for the route, and the grep that found three found four when it was run again over
+`resolveNotificationHref`'s call sites rather than over the literal.
+
+**One spec updated, and no new one written.** `settings-landing-revamp.spec.ts` asserted
+`getByRole("link", { name: /^General/ })` against the whole page. With batch 1's rail in the
+layout that matches twice on any viewport wide enough to draw it — a strict-mode failure,
+caused by this sub-phase and therefore ours to fix. Both tests are now scoped to
+`[data-slot="settings-hub"]`. **A test of the rail itself was written and then deleted**:
+the testing policy says new coverage lands in 5.10, and the rail's assertions are filed
+there rather than smuggled in as an "update".
+
+**Batch 4 starts here** — the ten raw-`Table` files, 3,885 lines, none touched yet.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail
@@ -4046,6 +4107,13 @@ what the newly standardised states render.
 Was consistency-pass Phase 8. Extend `tests/e2e/design-rules.spec.ts` — do not add a
 spec; it already walks every route and logging in is the expensive part. **This is where
 the programme's new test coverage lands, all of it, once.**
+
+Filed here by later sub-phases:
+
+- **The settings rail (A8)** — every `SETTINGS_NAV_GROUPS` destination reachable from the
+  rail without a trip through the hub, and the current page marked `aria-current="page"`.
+  Written in 5.6 batch 3 and deleted the same hour: it is new coverage, and the testing
+  policy says new coverage lands here.
 
 Checks carried from the original Phase 8:
 

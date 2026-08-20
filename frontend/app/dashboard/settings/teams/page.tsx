@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import {
   Sheet,
@@ -322,6 +323,7 @@ export default function TeamsAndDepartmentsPage() {
       variant="settings"
       title="Teams"
       description="Departments contain teams. Manage the hierarchy from one workspace."
+      isPermissionDenied={isForbiddenError(loadError)}
       hasError={Boolean(loadError) && !loading}
       errorDescription="The organization structure could not be loaded. Try again or return to Settings."
       onRetry={() => void retryLoad()}

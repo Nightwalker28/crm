@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList, RefreshCw } from "lucide-react";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
@@ -75,7 +75,7 @@ async function fetchActivityLog(page: number, pageSize: number, action: string):
   });
   if (action !== "all") params.set("action", action);
   const res = await apiFetch(`/activity?${params.toString()}`);
-  if (!res.ok) throw new Error("Activity could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Activity could not be loaded.");
   return res.json();
 }
 
@@ -145,6 +145,7 @@ export default function ActivityLogPage() {
         rowKey={(item) => item.id}
         isLoading={query.isLoading}
         isRefreshing={query.isFetching && !query.isLoading}
+        isPermissionDenied={isForbiddenError(query.error)}
         hasError={Boolean(query.error)}
         onRetry={() => void query.refetch()}
         hasActiveFilters={actionFilter !== "all"}

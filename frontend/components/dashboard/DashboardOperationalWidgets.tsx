@@ -7,7 +7,7 @@ import type { UserNotification } from "@/hooks/useNotifications";
 import { formatDateTime } from "@/lib/datetime";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
-import { SETTINGS_ROUTES, resolveNotificationHref } from "@/lib/routes";
+import { resolveNotificationHref } from "@/lib/routes";
 
 export type DashboardActivityItem = {
   id: number;
@@ -169,7 +169,9 @@ export function DashboardNotifications({
       {notifications.slice(0, 6).map((notification) => (
         <Link
           key={notification.id}
-          href={resolveNotificationHref(notification.link_url, SETTINGS_ROUTES.activityLog)}
+          // A9: the fallback was the admin-only activity log, on a widget every role
+          // sees. The default lands on the dashboard instead.
+          href={resolveNotificationHref(notification.link_url)}
           onClick={() => onRead(notification.id)}
           className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
         >

@@ -81,9 +81,15 @@ export function canonicalizeDashboardHref(href: string): string {
   return href;
 }
 
+/**
+ * A9: the fallback was `SETTINGS_ROUTES.activityLog`, which is admin-only — so a
+ * notification with a missing or malformed link sent a non-admin straight into a
+ * permission wall. The default is the dashboard, which every role can reach. A caller that
+ * knows its audience is admin still passes the activity log explicitly.
+ */
 export function resolveNotificationHref(
   href: string | null | undefined,
-  fallback: string = SETTINGS_ROUTES.activityLog,
+  fallback: string = DASHBOARD_ROUTES.home,
 ): string {
   const candidate = href?.trim();
   const isDashboardPath = candidate === "/dashboard" ||

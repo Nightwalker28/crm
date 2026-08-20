@@ -5,7 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import type { User } from "@/components/users/userManagementTable";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type UserOption = { id: number; name: string };
 type AuthMode = "manual_only" | "manual_or_google";
@@ -99,7 +99,7 @@ export function useUserManagement() {
     queryKey: ["user-options"],
     queryFn: async () => {
       const response = await apiFetch("/admin/users/options");
-      if (!response.ok) throw new Error("Failed to fetch user options");
+      if (!response.ok) throw new ApiError(response.status, "Failed to fetch user options");
       return response.json();
     },
     staleTime: 600_000,
@@ -150,6 +150,8 @@ export function useUserManagement() {
     isEditOpen,
     isCreateOpen,
     optionsData: optionsQuery.data ?? EMPTY_OPTIONS,
+    // A 403 here is an admin without `configure` on user management, not a fault.
+    loadError: optionsQuery.error,
     roles: optionsQuery.data?.roles ?? EMPTY_OPTIONS.roles,
     teams: optionsQuery.data?.teams ?? EMPTY_OPTIONS.teams,
     openEditModal: (user: User) => { setEditUserData(user); setIsEditOpen(true); },

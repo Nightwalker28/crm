@@ -10,11 +10,11 @@ import type {
   AutomationRun,
   AutomationTriggerGroup,
 } from "@/components/automation/types";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 async function readResults<T>(url: string): Promise<T[]> {
   const response = await apiFetch(url);
-  if (!response.ok) throw new Error("request_failed");
+  if (!response.ok) throw new ApiError(response.status, "request_failed");
   const body = await response.json();
   return body.results ?? [];
 }

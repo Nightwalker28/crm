@@ -9,13 +9,14 @@ import { IntegrationProviderRegistry, type IntegrationRegistryHealth } from "@/c
 import { IntegrationWebhookWorkspace } from "@/components/integrations/IntegrationWebhookWorkspace";
 import { IntegrationWebsiteWorkspace } from "@/components/integrations/IntegrationWebsiteWorkspace";
 import { PageShell } from "@/components/ui/PageShell";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 
 async function fetchRegistryHealth() {
   const res = await apiFetch("/admin/integrations-registry/health");
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error("integration-health-unavailable");
+  if (!res.ok) throw new ApiError(res.status, "integration-health-unavailable");
   return Array.isArray(body?.results) ? body.results as IntegrationRegistryHealth[] : [];
 }
 
@@ -46,6 +47,9 @@ export default function IntegrationsPage() {
       variant="settings"
       title="Integrations"
       description="Connect storage, mail, and messaging providers."
+      isPermissionDenied={isForbiddenError(registryQuery.error)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
     >
       <IntegrationProviderRegistry
         items={registryHealth}

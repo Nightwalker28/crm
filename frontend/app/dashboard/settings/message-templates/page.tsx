@@ -15,7 +15,7 @@ import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, isForbiddenError } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { CHANNEL_OPTIONS, fetchMessageTemplates, MODULE_OPTIONS, type MessageTemplate, variablesToText } from "@/lib/message-templates";
 
@@ -146,6 +146,7 @@ export default function MessageTemplatesPage() {
         onSortChange={(next) => setSort((current) => nextTemplateSort(current, next.column as typeof sort.key))}
         isLoading={query.isLoading}
         isRefreshing={query.isFetching && !query.isLoading}
+        isPermissionDenied={isForbiddenError(query.error)}
         hasError={Boolean(query.error)}
         onRetry={() => void query.refetch()}
         hasActiveFilters={Boolean(search.trim()) || channelFilter !== "all" || moduleFilter !== "all"}

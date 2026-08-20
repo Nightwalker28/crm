@@ -35,7 +35,8 @@ import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
   CUSTOM_FIELD_SUPPORTED_MODULES,
@@ -131,7 +132,7 @@ function inspectorSignature(value: InspectorDraft) {
 
 async function fetchAdminCustomFields(moduleKey: string): Promise<CustomFieldDefinition[]> {
   const res = await apiFetch(`/admin/custom-fields/${moduleKey}`);
-  if (!res.ok) throw new Error("Custom fields could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Custom fields could not be loaded.");
   return res.json();
 }
 
@@ -337,7 +338,8 @@ export default function FieldsPage() {
   }, [catalog, filter, search]);
 
   const isLoading = isLoadingCustomModules || isLoadingModuleFields || (supportsCustomFields && customFieldsQuery.isLoading);
-  const hasLoadError = Boolean(customModulesError || moduleFieldsError || customFieldsQuery.error);
+  const loadError = customModulesError || moduleFieldsError || customFieldsQuery.error;
+  const hasLoadError = Boolean(loadError);
   const isSaving = isSavingModuleFields || updateCustomFieldMutation.isPending || isSavingCustomModule;
 
   async function confirmDiscard(description: string) {
@@ -546,14 +548,17 @@ export default function FieldsPage() {
         </div>
         </>
       )}
+      // One of settings' three competing error idioms — a hand-rolled card inside the
+      // content, where `PageShell` has supplied the §7.4 states all along. A 403 here means
+      // an admin without `configure` on the module, which is a wall and not a fault.
+      isPermissionDenied={isForbiddenError(loadError)}
+      hasError={hasLoadError}
+      errorDescription="Try the request again. Existing field settings have not been changed."
+      onRetry={() => void retryAll()}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
     >
-      {hasLoadError ? (
-        <Card className="p-6" role="alert">
-          <h2 className="font-semibold text-copy-primary">Fields could not be loaded</h2>
-          <p className="mt-1 text-sm text-copy-secondary">Try the request again. Existing field settings have not been changed.</p>
-          <Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button>
-        </Card>
-      ) : (
+      {hasLoadError ? null : (
         <>
           <Card>
             <div className="border-b border-line-subtle p-4">

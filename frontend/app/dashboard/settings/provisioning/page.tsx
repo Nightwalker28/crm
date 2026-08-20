@@ -12,6 +12,8 @@ import { SettingsRow } from "@/components/ui/SettingsRow";
 import { useProvisioningSettings } from "@/hooks/admin/useIdentitySettings";
 import { useSsoDraft } from "@/hooks/admin/useSsoDraft";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { isForbiddenError } from "@/lib/api";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
 /**
  * A configuration record (archetype 4): the claim names and the provisioning defaults are
@@ -34,7 +36,14 @@ export default function ProvisioningSettingsPage() {
   }
 
   return (
-    <PageShell variant="settings" title="Provisioning" description="Choose how verified identities map to users, roles, and teams.">
+    <PageShell
+      variant="settings"
+      title="Provisioning"
+      description="Choose how verified identities map to users, roles, and teams."
+      isPermissionDenied={isForbiddenError(settings.loadError)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to Settings"
+    >
       {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <FormSection title="User provisioning" description="These apply together on the next verified sign-in, so they save as a set.">
         <div className="flex flex-col gap-5">

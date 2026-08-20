@@ -256,7 +256,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/page.tsx` | 180 | 5.6 | rebuild | The hub's `SETTINGS_SECTIONS` is the second, disagreeing IA | **done, batch 1** — 180 → 58 lines, rendering `SETTINGS_NAV_GROUPS`. The second IA is gone |
 | `settings/general/page.tsx` | 357 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, `ActionBar`, R5 on the dirty line. The page body is batch 7's |
 | `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | **done, batch 2** — three `FormSection`s; MFA on `SettingsRow` + `useAutosave`, SSO on a non-sticky `FormFooter` |
-| `settings/users/page.tsx` | 110 | 5.6 | rebuild | | |
+| `settings/users/page.tsx` | 110 | 5.6 | rebuild | | **denied state, batch 3.** The table is batch 4's |
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | |
@@ -266,20 +266,20 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | **strip only, batch 5** — the third card-scoped tab strip; moved to `SectionTabs` so all three share one dialect. The raw `Table` stays 5.6's |
 | `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5**; **booleans done, 5.6 batch 1** — five `SettingsSwitchRow`s → `SettingsRow` + `SegmentedBoolean`. The page rebuild is 5.6 batch 6 |
-| `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | |
+| `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **error idiom done, batch 3** — the hand-rolled error card moved onto `PageShell`. A10 is batch 5's; the page rebuild is batch 6's |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **leak closed, batch 1** — it is in the one IA now, so ⌘K finds it and its header stops using the Title Case fallback. The page itself stays 5.6's |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | |
-| `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | |
-| `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | |
-| `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | |
+| `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **denied state, batch 3.** `?view=` → `?tab=` is batch 5's |
+| `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **denied state, batch 3** |
+| `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | **done, batch 2** — `FormSection` + `SettingsRow`, non-sticky footer, checkbox → `SegmentedBoolean` |
 | `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | |
 | `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | |
 | `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
-| `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | |
-| `settings/message-templates/page.tsx` | 168 | 5.6 | rebuild | | |
+| `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | **denied state, batch 3** |
+| `settings/message-templates/page.tsx` | 168 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/message-templates/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `settings/message-templates/[templateId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim. Unwalked by the guard today | **done, close-out** — module spec covers it |
 
@@ -435,7 +435,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sidebar/SidebarNav.tsx` | 220 | 5.7 | rebuild | `text-[13px]` at `:166`. **A11** — reports as a collapsible group of one | |
 | `header/ProfileMenu.tsx` | 64 | 5.7 | adopt | | |
 | `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | |
-| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | |
+| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3** |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
 | `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.8 still owns its final shape and the `size-6` |
@@ -580,7 +580,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | `lib/chartColors.ts` | 5.7 | adopt | Already correct; the only legal source of chart colour | |
 | `lib/datetime.ts` | — | unchanged | Already the single source for time | |
 | `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |
-| `lib/routes.ts` | 5.6 | rebuild | **A9** — the notification href fallback at `:86` points at an admin-only route | |
+| `lib/routes.ts` | 5.6 | rebuild | **A9** — the notification href fallback at `:86` points at an admin-only route | **done, batch 3** — the fallback is the dashboard. A fourth A9 site turned up in `DashboardOperationalWidgets`, which passed the admin route explicitly |
 | `lib/moduleViewConfigs.ts` | 5.5 | adopt | | **done — unchanged.** It already supplies the column options the toolbar's picker needed (batch 3) |
 | `lib/savedViewQuery.ts` | 5.5 | rebuild | The request codec | **done, batch 2** — gains the address-bar codec: one `SavedViewConfig`, two destinations |
 | `hooks/useListAddress.ts` | 5.5 | new | The single writer of a list's query string | **done, batch 2** — so two hooks sharing one address cannot drop each other's params |
