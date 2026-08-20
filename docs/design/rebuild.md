@@ -3208,7 +3208,7 @@ programme's two full-suite runs**.
 |---|---|---|
 | ~~1~~ | ~~**`RecordTable`'s two variants, and the empty-state defect**~~ | **Done** — `7cb268e`. `lineItems` and `readOnly` as `cva` variants; the 5.3 close-out finding that the empty state is laid out across `scrollWidth`; `TransactionLineItemsEditor` and the three record line-item tables adopt them. Four raw-`Table` files leave, which is all of 5.5's four |
 | ~~2~~ | ~~**The codec, and A1 + A5 in the hook**~~ | **Done** — `ed41566`. The address-bar codec beside `appendSavedViewFilterParams`, `useListAddress` as the single writer, `useSavedViews` and `usePagedList` backed by the URL, the debounce in one place. It landed on all sixteen lists with no page edited: A1 was never at the call site |
-| ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
+| ~~3~~ | ~~**A2, and the search-pending state**~~ | **Done** — `a63091e`. `ColumnPicker` into the toolbar archetype 1 already draws it in and one page already wires it; `isSearchPending` into the toolbar's refreshing state. Minus `contracts` and `support/cases` (decision 8) |
 | 4 | **A6, A7, and the two stragglers** | POS's selection with no verb and payments' 3-row answer; the payments header button that is the slower path; `documents` gains `ModuleListToolbar` and pagination; `client-portal/page.tsx` gets a module table component |
 | 5 | **Close-out** | `check-design.sh`, both rendered guards, **the full suite — the first of two**, the module specs, the browser pass in both themes at 1280 and 768, and every 5.5 census row marked |
 
