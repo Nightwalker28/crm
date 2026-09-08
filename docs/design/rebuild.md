@@ -3701,7 +3701,7 @@ above.
 
 | Item | Owner |
 |---|---|
-| The twelve settings / automation / integration / reports / dashboard raw-`Table` files | 5.6 and 5.7, with their pages. R10's three-importer rule is true at the end of **5.7** |
+| The twelve settings / automation / integration / reports / dashboard raw-`Table` files | 5.6 and 5.7, with their pages. R10's importer rule is true at the end of **5.7**, and 5.6 batch 4b amended it to **four** primitives — `MatrixTable` joined them |
 | `settings/automation`'s `?view=runs\|rules` — the word means "saved view id" on every other list | 5.6 |
 | `settings/users` keeps its own filter-value shape in `userFilters.tsx`, so no column picker | 5.6 |
 | **B.2** — custom modules collect conditions the request layer discards; the filter group stays undrawn (§7.9) | Filed, after 5.9 |
@@ -3826,7 +3826,7 @@ use the same vocabulary: `?module=` on `fields` and `module-builder`.
 | 1 | The archetype — one IA source, the rail, the hub, `SettingsRow` | The mitigation rule: the shared shape is hoisted before page two |
 | 2 | The seven sticky footers, R1/R3 applied | The commit model has to be settled before the pages that use it are rebuilt |
 | 3 | Permission walls that read as denied, and A9's three admin-only links | Cheap, and it is what a non-admin actually experiences |
-| 4 | The ten raw `Table` files → `RecordTable` (R10) | Mechanical, and it unblocks R10's three-importer count at the end of 5.7 |
+| 4 | The ten raw `Table` files → `RecordTable` (R10) | Mechanical, and it unblocks R10's importer count at the end of 5.7. Split 4a / 4b; **closed** |
 | 5 | A10 deep links + `?tab=` on automation | Address vocabulary, one commit |
 | 6 | The four large pages rebuilt — `backups`, `module-builder`, `fields`, `calendar-booking` | 44% of the surface; they need batches 1–5 in place first |
 | 7 | The stragglers — `profile`, `teams`, record layouts, activity log, templates, integrations, domains, automation components | |
@@ -4070,6 +4070,95 @@ lists — rows × action checkboxes — and the open question is whether `Record
 `users/userManagementTable` (792) is the largest raw-`Table` consumer in the app and has
 its own selection, sort and filter state. `IntegrationWebhookWorkspace` (304) and
 `IntegrationWebsiteWorkspace` (647) carry several small tables each.
+
+### Status: batch 4b — the matrix is a primitive, and four files that were never matrices
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back
+at the known 2 of 14 and no new rule failed. **Batch 4 is closed** — all ten raw-`Table`
+files are converted.
+
+**The batch's own framing was wrong, and re-measuring it is what made it tractable.** 4b
+was written as "five matrices and workspaces". Measured, it is **eight tables across five
+files**, and exactly **one** of them is a matrix:
+
+| File | Tables | What it actually is |
+|---|---|---|
+| `settings/permissions` | 1 | **The only matrix** — modules × 7 actions |
+| `settings/modules/[moduleId]` | 2 | Lists. Name, description, status, one trailing checkbox |
+| `IntegrationWebsiteWorkspace` | 3 | Lists |
+| `IntegrationWebhookWorkspace` | 1 | List |
+| `users/userManagementTable` | 1 | List, with selection and sort — the canonical `default` |
+
+The open question 4b was left holding — "`RecordTable` with `interactive` columns, or does
+R10 need a `matrix` variant?" — was therefore a question about one file, not five.
+
+#### The ruling: `MatrixTable`, a sibling primitive, not a fourth variant
+
+Taken to the owner per R10's escalation clause, which is explicit that a shape
+`RecordTable` cannot carry is written down and decided rather than quietly exempted.
+Written into `design.md` §7.10 **before** the primitive existed, per §12.
+
+**The distinction is not size or density — it is whether a cell can be read on its own.**
+In a list every cell describes itself, so losing the identity column to a sideways scroll
+costs context but not meaning. In a matrix every cell is an anonymous checkbox: scroll the
+module name away and thirty rows say nothing at all. So the identity column *must* pin —
+and pinning is precisely the mechanism `RecordTable` **removed** after two measured
+defects (the body checkbox painting over the sticky header through `thead`'s stacking
+context; the `pr-0` column collapsing at narrow widths).
+
+**Rejected: a `matrix` variant on `RecordTable`.** It puts a conditional sticky column
+back inside the primitive that paid to delete it, for one call site whose shape shares
+nothing with the other three — ~150 lines of conditionals in a 529-line primitive.
+
+**Rejected: leaving it a raw `Table` with an exemption.** 5.10's source check would need a
+path allowlist for a *page*, and the 920px pinned-column geometry would stay hand-rolled
+in it. That is the quiet exemption R10 refuses.
+
+**R10 is amended, and the variant set does not change.** It is still three variants on
+`RecordTable`. What changed is the importer rule: **four primitives may import `Table` —
+`RecordTable`, `MatrixTable`, `ModuleTableLoading`, `ModuleListToolbar` — and zero pages.**
+5.10's check counts four, not three.
+
+#### Two defects the page had, which the primitive does not
+
+- **The pinned cell drew the wrong stripe.** It hardcoded `bg-surface`, which is the *odd*
+  row's ground. Every even row's pinned cell painted the odd stripe, and the hover tint
+  stopped dead at the pinned column's edge. `MatrixTable` uses `bg-inherit`, so the cell
+  takes the row's own computed ground — stripe and hover both, live.
+- **The group band's sticky offset was hand-tuned to `top-[58px]`** to dodge a z-index
+  collision with the header (`TableGroupRow` defaults to `top-8 z-20`, and `thead` is also
+  `z-20` — equal z-index resolves by DOM order, which the body wins). The primitive fixes
+  the cause: a strict ladder, every rung below the header's 20 —
+  **thead (20) > group band (10) > pinned cell (0) > ordinary cells (auto)** — and the
+  column header puts its checkbox *beside* its label rather than above it, so the header
+  is one line tall and the default offset is simply correct.
+
+#### `RecordTable` gained two additive props, for the user list
+
+`userManagementTable` is a list, but it needed two things the primitive did not have.
+Both are additive — no existing call site changes, and neither touches the default path:
+
+- **`groupBy`** — bands the rows, opening a band where the label changes. It does not
+  reorder; the caller supplies rows in band order, so grouping stays a presentation of the
+  sort rather than a second one. (`MatrixTable` has the same feature for product areas.)
+- **`selection.isRowSelectable`** — the signed-in user cannot be bulk-edited. The checkbox
+  is drawn *disabled* rather than omitted, so the column keeps its rhythm, and "select all"
+  skips it instead of selecting a row the caller has to filter back out.
+
+#### What else went
+
+Ten prose states across the four list files — `Loading website API keys...`,
+`No notification channels configured.`, and eight more — are `RecordTable`'s §7.4 states
+now. Five hardcoded min-widths (`900`, `940`, `940`, `980`, `760`) are derived. Four
+`colSpan` empty states, which are the boxes that mis-lay-out on any table wide enough to
+scroll, are gone. `userManagementTable` lost its hand-rolled `stopPropagation` on the
+selection cell, its own `columnCount`, and `allPageSelected`.
+
+**Still open, unchanged:** the browser pass. The pinned column is the one thing in this
+batch that no assertion can see — it is the same class of defect as consistency-pass
+Phase 3's non-occluding sticky column, which passed lint, typecheck, build, both rendered
+guards and 99 specs. It needs a sideways scroll on `settings/permissions` in both themes,
+and it is on 5.6's close-out list, not deferrable past it.
 
 ---
 

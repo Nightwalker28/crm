@@ -1331,7 +1331,8 @@ exists. The list-and-record language in particular is not optional:
 
 | Need | Use |
 |---|---|
-| Any table at all | `RecordTable` — see §7.10. `Table` is a cell primitive and is not importable outside it |
+| A table of records | `RecordTable` — see §7.10. `Table` is a cell primitive and is not importable outside it |
+| A grid of controls: records down, actions across | `MatrixTable` — see §7.10. Not a `RecordTable` variant |
 | Toolbar above a list | `ModuleListToolbar` |
 | Search | `SearchBar` |
 | Saved views / filters | `SavedViewSelector`, `InlineSavedViewFilters` |
@@ -1594,7 +1595,7 @@ control, not the honesty.
 
 ---
 
-### 7.10 Every table is `RecordTable`, and its differences are variants
+### 7.10 A list is `RecordTable`, a matrix is `MatrixTable`, and there is no third
 
 There is one table in Lynk. `Table` is the **cell** primitive — padding, stripes, the
 sticky header, the sort affordance, the density context — and everything above the cell
@@ -1602,10 +1603,10 @@ is `RecordTable`: the derived min-width, the selection column, the one row-open 
 and all four §7.4 states. Thirteen modules hand-assembled that upper layer once and
 drifted nine ways; that is the drift this rule closes.
 
-**Only three files may import `components/ui/Table`:** `RecordTable`,
+**Only four files may import `components/ui/Table`:** `RecordTable`, `MatrixTable`,
 `ModuleTableLoading` and `ModuleListToolbar` — the primitives that implement it. Every
-other table, in `app/**` or `components/**`, goes through `RecordTable`. This is checked
-at source level.
+other table, in `app/**` or `components/**`, goes through one of the two above the cell.
+No page assembles a table. This is checked at source level.
 
 A table that is genuinely a different *shape* is a variant, never a second table (§7.3).
 There are three, and the set is closed:
@@ -1623,7 +1624,42 @@ feeds a context that `Table` reads to pick the cell padding — so it is already
 one level below and must not be lifted.
 
 A fourth variant is a design change and takes §12: the rule first, with the reason, and
-a second table stays forbidden either way.
+a second *list* table stays forbidden either way.
+
+#### The matrix is not a list, and that is why it is not a variant
+
+`MatrixTable` is the sibling primitive for the one shape `RecordTable` cannot carry
+without contorting: **records down, actions across, a control in every cell.** Its only
+consumer today is the role permission grid — 30-odd modules × 7 actions — and one
+consumer is enough, because the alternative is not "no primitive", it is the same
+behaviour hand-rolled in a page.
+
+The distinction is not size or density. It is **whether a cell can be read on its own**:
+
+- In a list, every cell describes itself. A name, a date, an amount still mean something
+  when the identity column has scrolled off to the left.
+- In a matrix, every cell is an anonymous checkbox. Scroll the module name away and the
+  grid says nothing at all.
+
+That single difference is what forces the three things `RecordTable` does not have, and
+deliberately does not want:
+
+| `MatrixTable` owns | Why `RecordTable` refuses it |
+|---|---|
+| A **horizontally sticky identity column** | `RecordTable` removed sticky columns after two measured defects — a body checkbox painting *over* the sticky header because `thead`'s z-index was scoped inside its own stacking context, and a `pr-0` column collapsing onto the checkbox at narrow widths. A list survives losing them; a matrix does not. They are solved once, here. |
+| A **header cell that carries a control** | A `RecordTable` head is a label and optionally a sort button. A matrix header sets an entire column, so it holds a tri-state checkbox over its label. |
+| **Group rows** spanning the full width | A list groups by sorting. A matrix groups by product area, and the group row is structure, not a record. |
+
+And the three it drops: no row-open gesture (there is nothing behind a row), no selection
+column (the row's checkbox sets *the row's actions*, which is not selection), and no
+sort (the row order is the grouping).
+
+**A matrix commits manually.** Every cell is a control, so the page is a form in a
+table's clothing — archetype 4's configuration-record half (R1), with one Save for the
+whole grid. It is the one table in the app that is allowed a footer button.
+
+Anything that is neither a list nor a matrix is neither primitive's, and takes §12 before
+a line of it is written.
 
 ## 8. Accessibility floors
 

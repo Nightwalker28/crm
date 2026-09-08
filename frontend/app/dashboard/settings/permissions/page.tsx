@@ -1,20 +1,18 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Plus, ShieldCheck, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { MatrixTable, type MatrixColumn, type MatrixGroup } from "@/components/ui/MatrixTable";
 import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -28,17 +26,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableGroupCell,
-  TableGroupRow,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
 import { useRolePermissions, type ModulePermission } from "@/hooks/admin/useRolePermissions";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -104,12 +91,6 @@ function presetActions(preset: PermissionPreset): ModulePermission["actions"] {
     can_export: canManage,
     can_configure: preset === "full",
   };
-}
-
-function selectionState(values: boolean[]): boolean | "indeterminate" {
-  if (values.length === 0 || values.every((value) => !value)) return false;
-  if (values.every(Boolean)) return true;
-  return "indeterminate";
 }
 
 function productAreaLabel(area: string) {
@@ -205,6 +186,29 @@ export default function RolesPermissionsPage() {
     () => new Set(filteredPermissions.map((permission) => permission.module_id)),
     [filteredPermissions],
   );
+
+  // Built each render rather than memoized: every `onToggle` closes over
+  // `updateDraftPermissions`, which closes over the selected role and the server
+  // baseline. A memo keyed on anything less than both would toggle into a stale draft.
+  const matrixColumns: MatrixColumn<ModulePermission>[] = ACTION_COLUMNS.map((column) => ({
+    key: column.key,
+    label: column.label,
+    title: column.title,
+    value: (permission) => permission.actions[column.key],
+    onToggle: (permission, checked) => {
+      setSaveError(null);
+      updateDraftPermissions((current) => current.map((item) => (
+        item.module_id === permission.module_id
+          ? { ...item, actions: { ...item.actions, [column.key]: checked } }
+          : item
+      )));
+    },
+  }));
+  const matrixGroups: MatrixGroup<ModulePermission>[] = groupedPermissions.map(([area, modulePermissions]) => ({
+    key: area,
+    label: productAreaLabel(area),
+    rows: modulePermissions,
+  }));
 
   function updateVisiblePermissions(
     update: (permission: ModulePermission) => ModulePermission,
@@ -389,127 +393,61 @@ export default function RolesPermissionsPage() {
               ) : null}
             </div>
 
-            {isPermissionsLoading || isAwaitingHydration ? (
-              <div className="p-5"><RouteLoadingState label="role permissions" /></div>
-            ) : permissionsError ? (
-              <div className="p-6" role="alert">
-                <h3 className="font-semibold text-copy-primary">Permissions could not be loaded</h3>
-                <p className="mt-1 text-sm text-copy-secondary">Try again before editing this role.</p>
-                <Button className="mt-4" variant="outline" onClick={() => void retryPermissions()}>Try again</Button>
-              </div>
-            ) : selectedRole && baselineLoaded ? (
+            {selectedRole ? (
               <>
                 <div className="flex min-h-0 flex-1 flex-col p-4">
-                  <ModuleTableShell isRefreshing={isSaving || isPermissionsFetching}>
-                    <Table className="min-w-[920px]">
-                      <TableHeader>
-                        <TableHeaderRow>
-                          <TableHead className="sticky left-0 z-40 min-w-64 border-r border-line-subtle bg-surface-raised">
-                            Module
-                          </TableHead>
-                          {ACTION_COLUMNS.map((column) => {
-                            const state = selectionState(filteredPermissions.map((permission) => permission.actions[column.key]));
-                            return (
-                              <TableHead key={column.key} title={column.title} className="min-w-24 text-center">
-                                <div className="flex flex-col items-center gap-1.5">
-                                  <span>{column.label}</span>
-                                  <Checkbox
-                                    aria-label={`Set ${column.label.toLocaleLowerCase()} for all visible modules`}
-                                    checked={state}
-                                    disabled={!filteredPermissions.length || isSaving}
-                                    onCheckedChange={(checked) =>
-                                      updateVisiblePermissions((permission) => ({
-                                        ...permission,
-                                        actions: { ...permission.actions, [column.key]: checked === true },
-                                      }))
-                                    }
-                                  />
-                                </div>
-                              </TableHead>
-                            );
-                          })}
-                        </TableHeaderRow>
-                      </TableHeader>
-                      <TableBody>
-                        {groupedPermissions.length ? groupedPermissions.map(([area, modulePermissions]) => (
-                          <Fragment key={area}>
-                            <TableGroupRow className="top-[58px]">
-                              <TableGroupCell colSpan={ACTION_COLUMNS.length + 1}>
-                                {productAreaLabel(area)}
-                              </TableGroupCell>
-                            </TableGroupRow>
-                            {modulePermissions.map((permission) => {
-                              const rowState = selectionState(ACTION_COLUMNS.map((column) => permission.actions[column.key]));
-                              return (
-                                <TableRow key={permission.module_id}>
-                                  <TableCell className="sticky left-0 z-10 border-r border-line-subtle bg-surface">
-                                    <div className="flex items-start gap-3">
-                                      <Checkbox
-                                        className="mt-0.5 shrink-0"
-                                        aria-label={`Set all permissions for ${permission.module_name}`}
-                                        checked={rowState}
-                                        disabled={isSaving}
-                                        onCheckedChange={(checked) =>
-                                          updateDraftPermissions((current) => current.map((item) =>
-                                            item.module_id === permission.module_id
-                                              ? { ...item, actions: Object.fromEntries(ACTION_COLUMNS.map((column) => [column.key, checked === true])) as ModulePermission["actions"] }
-                                              : item,
-                                          ))
-                                        }
-                                      />
-                                      <div>
-                                        <div className="font-medium text-copy-primary">{permission.module_name}</div>
-                                        {permission.module_description ? <div className="mt-1 text-xs text-copy-muted">{permission.module_description}</div> : null}
-                                      </div>
-                                    </div>
-                                  </TableCell>
-                                  {ACTION_COLUMNS.map((column) => (
-                                    <TableCell key={column.key} className="text-center">
-                                      <Checkbox
-                                        checked={permission.actions[column.key]}
-                                        aria-label={`${column.label} ${permission.module_name}`}
-                                        disabled={isSaving}
-                                        onCheckedChange={(checked) => {
-                                          setSaveError(null);
-                                          updateDraftPermissions((current) => current.map((item) =>
-                                            item.module_id === permission.module_id
-                                              ? { ...item, actions: { ...item.actions, [column.key]: checked === true } }
-                                              : item,
-                                          ));
-                                        }}
-                                        className="mx-auto"
-                                      />
-                                    </TableCell>
-                                  ))}
-                                </TableRow>
-                              );
-                            })}
-                          </Fragment>
-                        )) : localPermissions.length === 0 ? (
-                          <TableRow>
-                            <TableCell colSpan={ACTION_COLUMNS.length + 1} className="py-14">
-                              <EmptyState
-                                icon={ShieldCheck}
-                                title="No modules available for this role"
-                                description="No workspace modules are currently available to configure for this role."
-                              />
-                            </TableCell>
-                          </TableRow>
-                        ) : search.trim() ? (
-                          <TableRow>
-                            <TableCell colSpan={ACTION_COLUMNS.length + 1} className="py-14">
-                              <EmptyState
-                                icon={ShieldCheck}
-                                title="No modules match this search"
-                                description="Clear the search to return to the complete permission matrix."
-                                action={<Button variant="outline" onClick={() => setSearch("")}>Clear search</Button>}
-                              />
-                            </TableCell>
-                          </TableRow>
+                  <MatrixTable<ModulePermission>
+                    label="Role permissions"
+                    identityLabel="Module"
+                    columns={matrixColumns}
+                    groups={matrixGroups}
+                    rowKey={(permission) => permission.module_id}
+                    renderIdentity={(permission) => (
+                      <>
+                        <div className="font-medium text-copy-primary">{permission.module_name}</div>
+                        {permission.module_description ? (
+                          <div className="mt-1 text-xs text-copy-muted">{permission.module_description}</div>
                         ) : null}
-                      </TableBody>
-                    </Table>
-                  </ModuleTableShell>
+                      </>
+                    )}
+                    onToggleRow={(permission, checked) =>
+                      updateDraftPermissions((current) => current.map((item) => (
+                        item.module_id === permission.module_id
+                          ? { ...item, actions: Object.fromEntries(ACTION_COLUMNS.map((column) => [column.key, checked])) as ModulePermission["actions"] }
+                          : item
+                      )))
+                    }
+                    onToggleColumn={(column, checked) =>
+                      updateVisiblePermissions((permission) => ({
+                        ...permission,
+                        actions: { ...permission.actions, [column.key]: checked },
+                      }))
+                    }
+                    rowToggleLabel={(permission) => `Set all permissions for ${permission.module_name}`}
+                    cellLabel={(permission, column) => `${column.label} ${permission.module_name}`}
+                    columnToggleLabel={(column) => `Set ${column.label.toLocaleLowerCase()} for all visible modules`}
+                    disabled={isSaving}
+                    isLoading={isPermissionsLoading || isAwaitingHydration}
+                    isRefreshing={isSaving || isPermissionsFetching}
+                    hasError={Boolean(permissionsError)}
+                    onRetry={() => void retryPermissions()}
+                    errorState={{
+                      title: "Permissions could not be loaded",
+                      description: "Try again before editing this role.",
+                    }}
+                    emptyState={{
+                      icon: ShieldCheck,
+                      title: "No modules available for this role",
+                      description: "No workspace modules are currently available to configure for this role.",
+                    }}
+                    hasActiveFilters={Boolean(search.trim())}
+                    onClearFilters={() => setSearch("")}
+                    filteredEmptyState={{
+                      icon: ShieldCheck,
+                      title: "No modules match this search",
+                      description: "Clear the search to return to the complete permission matrix.",
+                    }}
+                  />
                 </div>
 
                 {/* The matrix is a configuration record: every checkbox in it commits in one

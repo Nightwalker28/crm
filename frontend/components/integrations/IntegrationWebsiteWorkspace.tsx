@@ -14,7 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
@@ -27,7 +27,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -418,104 +417,112 @@ export function IntegrationWebsiteWorkspace() {
         </SheetPortal>
       </Sheet>
 
-      <ModuleTableShell>
-          <Table className="min-w-[940px]">
-            <TableHeader>
-              <TableHeaderRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Prefix</TableHead>
-                <TableHead>Scopes</TableHead>
-                <TableHead>Origins</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Last Used</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableHeaderRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-copy-muted">Loading website API keys...</TableCell>
-                </TableRow>
-              ) : apiKeys.length ? (
-                apiKeys.map((key) => (
-                  <TableRow key={key.id}>
-                    <TableCell className="font-medium text-copy-primary">{key.name}</TableCell>
-                    <TableCell className="font-mono text-xs text-copy-muted">{key.key_prefix}...</TableCell>
-                    <TableCell className="text-copy-secondary">{key.scopes.join(", ")}</TableCell>
-                    <TableCell className="max-w-[220px] truncate text-copy-muted">{key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}</TableCell>
-                    <TableCell>
-                      <StatusValue status={{ tone: key.status === "active" ? "success" : "critical", label: formatSnakeCaseLabel(key.status) }} />
-                    </TableCell>
-                    <TableCell className="whitespace-nowrap text-copy-muted">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        <Button type="button" variant="outline" size="sm" disabled={saving || key.status !== "active"} onClick={() => rotateApiKey(key)}>
-                          <RefreshCw size={14} />
-                          Rotate
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" disabled={saving || key.status !== "active"} onClick={() => revokeApiKey(key)}>
-                          <Trash2 size={14} />
-                          Revoke
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-copy-muted">No website API keys yet.</TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-      </ModuleTableShell>
+      <RecordTable
+        label="Website API keys"
+        rows={apiKeys}
+        rowKey={(key) => key.id}
+        isLoading={loading}
+        emptyState={{
+          title: "No website API keys yet",
+          description: "Create a key to let your website read the catalog or write orders back.",
+        }}
+        columns={[
+          { key: "name", label: "Name", render: (key) => <span className="font-medium text-copy-primary">{key.name}</span> },
+          { key: "prefix", label: "Prefix", size: "sm", render: (key) => <span className="font-mono text-xs text-copy-muted">{key.key_prefix}...</span> },
+          { key: "scopes", label: "Scopes", size: "lg", render: (key) => <span className="text-copy-secondary">{key.scopes.join(", ")}</span> },
+          {
+            key: "origins",
+            label: "Origins",
+            size: "lg",
+            render: (key) => (
+              <span className="block max-w-[220px] truncate text-copy-muted">
+                {key.allowed_origins.length ? key.allowed_origins.join(", ") : "Any origin"}
+              </span>
+            ),
+          },
+          {
+            key: "status",
+            label: "Status",
+            render: (key) => (
+              <StatusValue status={{ tone: key.status === "active" ? "success" : "critical", label: formatSnakeCaseLabel(key.status) }} />
+            ),
+          },
+          {
+            key: "last_used",
+            label: "Last Used",
+            render: (key) => <span className="whitespace-nowrap text-copy-muted">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</span>,
+          },
+        ]}
+        rowActions={(key) => (
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={saving || key.status !== "active"} onClick={() => rotateApiKey(key)}>
+              <RefreshCw size={14} />
+              Rotate
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={saving || key.status !== "active"} onClick={() => revokeApiKey(key)}>
+              <Trash2 size={14} />
+              Revoke
+            </Button>
+          </div>
+        )}
+      />
 
       <div>
         <h3 className="text-base font-semibold text-copy-primary">Published Catalog</h3>
         <p className="mt-1 text-sm text-copy-muted">Only active public products and services with slugs are exposed to integration API consumers.</p>
       </div>
 
-      <ModuleTableShell>
-        <Table className="min-w-[940px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Item</TableHead>
-              <TableHead>Mapping</TableHead>
-              <TableHead>Price</TableHead>
-              <TableHead>Stock</TableHead>
-              <TableHead>Updated</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">Loading published catalog...</TableCell>
-              </TableRow>
-            ) : publishedCatalog.length ? (
-              publishedCatalog.map((item) => (
-                <TableRow key={`${item.item_type}-${item.id}`}>
-                  <TableCell>
-                    <div className="font-medium text-copy-primary">{item.name}</div>
-                    <div className="text-xs text-copy-muted">/{item.slug}{item.sku ? ` · ${item.sku}` : ""}</div>
-                  </TableCell>
-                  <TableCell className="text-copy-secondary">
-                    {item.catalog_product_id ? `Product #${item.catalog_product_id}` : item.catalog_service_id ? `Service #${item.catalog_service_id}` : item.item_type}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-secondary">{money(item.public_unit_price, item.currency)}</TableCell>
-                  <TableCell className="text-copy-muted">
-                    {item.item_type === "product" ? `${formatStatus(item.stock_status)}${item.stock_quantity != null ? ` · ${item.stock_quantity}` : ""}` : "Service"}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-muted">{formatDateTime(item.updated_at)}</TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">No published catalog items are exposed yet.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      <RecordTable
+        label="Published catalog"
+        rows={publishedCatalog}
+        rowKey={(item) => `${item.item_type}-${item.id}`}
+        isLoading={loading}
+        emptyState={{
+          title: "No published catalog items are exposed yet",
+          description: "A product or service needs an active public status and a slug before it reaches the API.",
+        }}
+        columns={[
+          {
+            key: "item",
+            label: "Item",
+            size: "lg",
+            render: (item) => (
+              <>
+                <div className="font-medium text-copy-primary">{item.name}</div>
+                <div className="text-xs text-copy-muted">/{item.slug}{item.sku ? ` · ${item.sku}` : ""}</div>
+              </>
+            ),
+          },
+          {
+            key: "mapping",
+            label: "Mapping",
+            render: (item) => (
+              <span className="text-copy-secondary">
+                {item.catalog_product_id ? `Product #${item.catalog_product_id}` : item.catalog_service_id ? `Service #${item.catalog_service_id}` : item.item_type}
+              </span>
+            ),
+          },
+          {
+            key: "price",
+            label: "Price",
+            render: (item) => <span className="whitespace-nowrap text-copy-secondary">{money(item.public_unit_price, item.currency)}</span>,
+          },
+          {
+            key: "stock",
+            label: "Stock",
+            render: (item) => (
+              <span className="text-copy-muted">
+                {item.item_type === "product" ? `${formatStatus(item.stock_status)}${item.stock_quantity != null ? ` · ${item.stock_quantity}` : ""}` : "Service"}
+              </span>
+            ),
+          },
+          {
+            key: "updated",
+            label: "Updated",
+            render: (item) => <span className="whitespace-nowrap text-copy-muted">{formatDateTime(item.updated_at)}</span>,
+          },
+        ]}
+      />
       <div className="text-xs text-copy-muted">{publishedCatalogTotal} published item{publishedCatalogTotal === 1 ? "" : "s"} available through the public catalog API.</div>
 
       <div className="grid gap-5 md:grid-cols-2">
@@ -553,95 +560,110 @@ export function IntegrationWebsiteWorkspace() {
         <p className="mt-1 text-sm text-copy-muted">Incoming website orders stay separate from internal POS invoices until reviewed or converted.</p>
       </div>
 
-      <ModuleTableShell>
-        <Table className="min-w-[980px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Order</TableHead>
-              <TableHead>Customer</TableHead>
-              <TableHead>Items</TableHead>
-              <TableHead>Total</TableHead>
-              <TableHead>Invoice</TableHead>
-              <TableHead>Created</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-copy-muted">Loading website orders...</TableCell>
-              </TableRow>
-            ) : websiteOrders.length ? (
-              websiteOrders.map((order) => (
-                <TableRow key={order.id}>
-                  <TableCell>
-                    <div className="flex items-center gap-2 font-medium text-copy-primary">
-                      <ShoppingCart size={14} className="text-copy-muted" />
-                      {order.external_reference}
-                    </div>
-                    <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
-                    <div className="mt-2 max-w-[180px]">
-                      <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving}>
-                        <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {orderStatusOptions.map((option) => (
-                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-copy-secondary">{order.customer_name || "-"}</div>
-                    <div className="text-xs text-copy-muted">{order.customer_email || "-"}</div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="max-w-[320px] truncate text-copy-secondary">
-                      {order.line_items.map((line) => `${line.name} x ${line.quantity}`).join(", ")}
-                    </div>
-                    <div className="text-xs text-copy-muted">
-                      {order.line_items.length} line{order.line_items.length === 1 ? "" : "s"}
-                    </div>
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-secondary">{money(order.subtotal_amount, order.currency)}</TableCell>
-                  <TableCell>
-                    {order.pos_invoice_id ? (
-                      <Button asChild variant="outline" size="sm">
-                        <Link href={`/dashboard/finance/pos/${order.pos_invoice_id}/print`}>
-                          <ExternalLink size={14} />
-                          POS #{order.pos_invoice_id}
-                        </Link>
-                      </Button>
-                    ) : (
-                      <span className="text-sm text-copy-muted">Not created</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="whitespace-nowrap text-copy-muted">{formatDateTime(order.created_at)}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={saving || Boolean(order.pos_invoice_id)}
-                        onClick={() => createPosInvoice(order)}
-                      >
-                        Create POS Invoice
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={7} className="py-10 text-center text-copy-muted">No website orders captured yet.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      <RecordTable
+        label="Website and client orders"
+        rows={websiteOrders}
+        rowKey={(order) => order.id}
+        isLoading={loading}
+        emptyState={{
+          title: "No website orders captured yet",
+          description: "Orders posted by your website through the integration API arrive here.",
+        }}
+        columns={[
+          {
+            key: "order",
+            label: "Order",
+            size: "lg",
+            interactive: true,
+            render: (order) => (
+              <>
+                <div className="flex items-center gap-2 font-medium text-copy-primary">
+                  <ShoppingCart size={14} className="text-copy-muted" />
+                  {order.external_reference}
+                </div>
+                <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
+                <div className="mt-2 max-w-[180px]">
+                  <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving}>
+                    <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {orderStatusOptions.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </>
+            ),
+          },
+          {
+            key: "customer",
+            label: "Customer",
+            render: (order) => (
+              <>
+                <div className="text-copy-secondary">{order.customer_name || "-"}</div>
+                <div className="text-xs text-copy-muted">{order.customer_email || "-"}</div>
+              </>
+            ),
+          },
+          {
+            key: "items",
+            label: "Items",
+            size: "lg",
+            render: (order) => (
+              <>
+                <div className="max-w-[320px] truncate text-copy-secondary">
+                  {order.line_items.map((line) => `${line.name} x ${line.quantity}`).join(", ")}
+                </div>
+                <div className="text-xs text-copy-muted">
+                  {order.line_items.length} line{order.line_items.length === 1 ? "" : "s"}
+                </div>
+              </>
+            ),
+          },
+          {
+            key: "total",
+            label: "Total",
+            render: (order) => <span className="whitespace-nowrap text-copy-secondary">{money(order.subtotal_amount, order.currency)}</span>,
+          },
+          {
+            key: "invoice",
+            label: "Invoice",
+            interactive: true,
+            render: (order) => (
+              order.pos_invoice_id ? (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/dashboard/finance/pos/${order.pos_invoice_id}/print`}>
+                    <ExternalLink size={14} />
+                    POS #{order.pos_invoice_id}
+                  </Link>
+                </Button>
+              ) : (
+                <span className="text-sm text-copy-muted">Not created</span>
+              )
+            ),
+          },
+          {
+            key: "created",
+            label: "Created",
+            render: (order) => <span className="whitespace-nowrap text-copy-muted">{formatDateTime(order.created_at)}</span>,
+          },
+        ]}
+        rowActions={(order) => (
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={saving || Boolean(order.pos_invoice_id)}
+              onClick={() => createPosInvoice(order)}
+            >
+              Create POS Invoice
+            </Button>
+          </div>
+        )}
+      />
     </section>
   );
 }

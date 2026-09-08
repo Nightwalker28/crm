@@ -7,11 +7,10 @@ import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
-import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Sheet,
@@ -23,7 +22,6 @@ import {
   SheetPortal,
   SheetTitle,
 } from "@/components/ui/sheet";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
@@ -244,61 +242,66 @@ export function IntegrationWebhookWorkspace() {
         </SheetPortal>
       </Sheet>
 
-      <ModuleTableShell>
-        <Table className="min-w-[760px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Provider</TableHead>
-              <TableHead>Channel</TableHead>
-              <TableHead>Webhook</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {channelsQuery.isError ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-6">
-                  <PanelError message="Notification channels could not be loaded. Existing webhooks are unchanged." onRetry={() => void channelsQuery.refetch()} />
-                </TableCell>
-              </TableRow>
-            ) : loading ? (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">Loading notification channels...</TableCell>
-              </TableRow>
-            ) : channels.length ? (
-              channels.map((channel) => (
-                <TableRow key={channel.id}>
-                  <TableCell className="capitalize text-copy-primary">{channel.provider}</TableCell>
-                  <TableCell className="text-copy-muted">{channel.channel_name || "-"}</TableCell>
-                  <TableCell className="font-mono text-xs text-copy-muted">{channel.webhook_url_masked}</TableCell>
-                  <TableCell>
-                    <StatusValue status={{ tone: channel.is_active ? "success" : "critical", label: channel.is_active ? "Active" : "Inactive" }} />
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => sendTest(channel)}>
-                        <Send size={14} />
-                        Test
-                      </Button>
-                      <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => updateChannel(channel, { is_active: !channel.is_active })}>
-                        {channel.is_active ? "Disable" : "Enable"}
-                      </Button>
-                      <Button type="button" variant="outline" size="icon-sm" disabled={saving} aria-label={`Delete ${channel.channel_name || channel.provider}`} onClick={() => deleteChannel(channel)}>
-                        <Trash2 size={14} />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            ) : (
-              <TableRow>
-                <TableCell colSpan={5} className="py-10 text-center text-copy-muted">No notification channels configured.</TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      <RecordTable
+        label="Notification channels"
+        rows={channels}
+        rowKey={(channel) => channel.id}
+        isLoading={loading}
+        hasError={channelsQuery.isError}
+        onRetry={() => void channelsQuery.refetch()}
+        errorState={{
+          title: "Notification channels could not be loaded",
+          description: "Existing webhooks are unchanged.",
+        }}
+        emptyState={{
+          title: "No notification channels configured",
+          description: "Add a webhook to receive CRM event notifications.",
+        }}
+        columns={[
+          {
+            key: "provider",
+            label: "Provider",
+            render: (channel) => <span className="capitalize text-copy-primary">{channel.provider}</span>,
+          },
+          {
+            key: "channel_name",
+            label: "Channel",
+            render: (channel) => <span className="text-copy-muted">{channel.channel_name || "-"}</span>,
+          },
+          {
+            key: "webhook_url",
+            label: "Webhook",
+            size: "lg",
+            render: (channel) => <span className="font-mono text-xs text-copy-muted">{channel.webhook_url_masked}</span>,
+          },
+          {
+            key: "status",
+            label: "Status",
+            render: (channel) => (
+              <StatusValue
+                status={{
+                  tone: channel.is_active ? "success" : "critical",
+                  label: channel.is_active ? "Active" : "Inactive",
+                }}
+              />
+            ),
+          },
+        ]}
+        rowActions={(channel) => (
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => sendTest(channel)}>
+              <Send size={14} />
+              Test
+            </Button>
+            <Button type="button" variant="outline" size="sm" disabled={saving} onClick={() => updateChannel(channel, { is_active: !channel.is_active })}>
+              {channel.is_active ? "Disable" : "Enable"}
+            </Button>
+            <Button type="button" variant="outline" size="icon-sm" disabled={saving} aria-label={`Delete ${channel.channel_name || channel.provider}`} onClick={() => deleteChannel(channel)}>
+              <Trash2 size={14} />
+            </Button>
+          </div>
+        )}
+      />
     </section>
   );
 }

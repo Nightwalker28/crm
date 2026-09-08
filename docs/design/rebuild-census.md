@@ -260,11 +260,11 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | |
-| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `RecordTable` (R10) | **footer done, batch 2** — `FormFooter`, un-stickied. The table is batch 4's |
+| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `MatrixTable` (R10) | **done, batch 4b** — the matrix is not a list; `MatrixTable` is the new sibling primitive (§7.10). Footer landed in batch 2 |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **table, batch 4a** — `RecordTable`; the hand-rolled row gesture and `stopRowNavigation` deleted |
-| `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` | **strip only, batch 5** — the third card-scoped tab strip; moved to `SectionTabs` so all three share one dialect. The raw `Table` stays 5.6's |
+| `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — both panels are lists, not matrices; two `colSpan` empty states retired |
 | `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5**; **booleans done, 5.6 batch 1** — five `SettingsSwitchRow`s → `SettingsRow` + `SegmentedBoolean`. The page rebuild is 5.6 batch 6 |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **error idiom done, batch 3** — the hand-rolled error card moved onto `PageShell`. A10 is batch 5's; the page rebuild is batch 6's |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
@@ -382,7 +382,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `users/userManagementTable.tsx` | **873** | 5.6 | rebuild | Largest raw-`Table` consumer | |
+| `users/userManagementTable.tsx` | **873** | 5.6 | rebuild | Largest raw-`Table` consumer | **done, batch 4b** — needed `groupBy` and `isRowSelectable` on `RecordTable`; both additive |
 | `users/createUserDialog.tsx` | 285 | 5.6 | rebuild | | |
 | `users/editUserDialog.tsx` | 331 | 5.6 | rebuild | | |
 | `users/userFilters.tsx` | 200 | 5.6 | rebuild | | |
@@ -395,8 +395,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `automation/types.ts` | 118 | — | unchanged | Data | |
 | `automation/utils.ts` | 116 | — | unchanged | Data | |
 | `integrations/IntegrationEventHistory.tsx` | 211 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — three prose states replaced by `RecordTable`'s |
-| `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` | |
-| `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` | |
+| `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** |
+| `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — three tables, six prose states retired |
 | `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | **error state, batch 4a** — on `PanelError` |
 | `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | **done, 5.6 batch 4a** — a verbatim duplicate of `PanelError`; all 4 call sites moved |
 | `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | 6 raw HTML5 DnD implementations start here | |

@@ -16,6 +16,8 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableGroupCell,
+  TableGroupRow,
   TableHead,
   TableHeader,
   TableHeaderRow,
@@ -84,6 +86,13 @@ export type RecordTableSelection<T> = {
   rowLabel?: (row: T) => string;
   /** Accessible name for the header checkbox. */
   allLabel?: string;
+  /**
+   * A row the bulk action cannot legally apply to — the signed-in user in the user
+   * list, say. Its checkbox is drawn disabled rather than omitted, so the column keeps
+   * its rhythm, and "select all" skips it instead of selecting something the caller
+   * would have to filter back out.
+   */
+  isRowSelectable?: (row: T) => boolean;
 };
 
 type StateSlot = {
@@ -177,6 +186,12 @@ type RecordTableBaseProps<T> = {
   rowActionsLabel?: string;
   /** An expanded panel under the row. Return null when the row is collapsed. */
   rowDetail?: (row: T) => ReactNode | null;
+  /**
+   * Bands the rows. Returns the band's label; a band opens wherever the label changes,
+   * so the caller supplies the rows already in group order — the table does not reorder
+   * them. Grouping is a presentation of the sort, not a second one.
+   */
+  groupBy?: (row: T) => string;
   /** Marks the row a deep link landed on. */
   isRowHighlighted?: (row: T) => boolean;
 
@@ -232,6 +247,7 @@ export function RecordTable<T>({
   rowActions,
   rowActionsLabel = "Actions",
   rowDetail,
+  groupBy,
   isRowHighlighted,
   sort = null,
   onSortChange,
@@ -267,7 +283,8 @@ export function RecordTable<T>({
     (hasRowActions ? ACTIONS_COLUMN_WIDTH : 0);
 
   const selectedIds = selection?.selectedIds ?? [];
-  const pageIds = rows.map(rowKey);
+  const selectableRows = selection?.isRowSelectable ? rows.filter(selection.isRowSelectable) : rows;
+  const pageIds = selectableRows.map(rowKey);
   const selectedOnPage = pageIds.filter((id) => selectedIds.includes(id)).length;
   const headerSelectionState: boolean | "indeterminate" =
     !selectedOnPage ? false : selectedOnPage === pageIds.length ? true : "indeterminate";
@@ -382,12 +399,25 @@ export function RecordTable<T>({
 
     if (state) return null;
 
+    let openBand: string | null = null;
+
     return rows.map((row) => {
       const id = rowKey(row);
       const detail = rowDetail?.(row) ?? null;
       const href = rowHref?.(row);
+      // A band opens where the label changes. Tracking the previous label beats grouping
+      // into a nested array, because the row rendering below stays one code path — the
+      // grouped list and the flat one cannot drift apart if there is only one of them.
+      const band = groupBy?.(row) ?? null;
+      const opensBand = band !== null && band !== openBand;
+      if (opensBand) openBand = band;
       return (
         <Fragment key={id}>
+          {opensBand ? (
+            <TableGroupRow>
+              <TableGroupCell colSpan={columnCount}>{band}</TableGroupCell>
+            </TableGroupRow>
+          ) : null}
           <TableRow
             className={recordTableRowVariants({
               quiet: !canOpenRow,
@@ -417,6 +447,7 @@ export function RecordTable<T>({
             {selection ? (
               <TableCell className={recordTableCellVariants({ selection: true, variant })}>
                 <Checkbox
+                  disabled={selection.isRowSelectable ? !selection.isRowSelectable(row) : false}
                   checked={selectedIds.includes(id)}
                   onCheckedChange={(checked) => selection.onToggleRow(id, checked === true)}
                   aria-label={selection.rowLabel?.(row) ?? `Select ${label.toLocaleLowerCase()} row`}

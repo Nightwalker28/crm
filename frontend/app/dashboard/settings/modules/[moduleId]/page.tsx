@@ -10,13 +10,11 @@ import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card, CardFooter } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
 import { SectionTabs } from "@/components/ui/SectionTabs";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { ModuleAccessConflictError, type ModuleAccess, useModuleAccessAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -97,59 +95,66 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         Department access opens the parent gate. Select the individual teams that should receive access from the Teams tab.
       </p>
-      <ModuleTableShell variant="nested">
-        <Table className="min-w-[760px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Department</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Allow Module</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {access.departments.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4}>
-                  <EmptyState icon={Building2} title="No departments found" description="Create a department before assigning department-level module access." />
-                </TableCell>
-              </TableRow>
-            ) : access.departments.map((department) => {
-              const checked = selectedDepartmentIds.has(department.id);
-              return (
-                <TableRow key={department.id}>
-                  <TableCell><div className="font-medium text-copy-primary">{department.name}</div></TableCell>
-                  <TableCell className="text-copy-secondary">{department.description || "-"}</TableCell>
-                  <TableCell>
-                    {checked ? (
-                      <StatusValue status={{ tone: "success", label: "Allowed" }} className="w-24" />
-                    ) : <Chip className="w-24">Blocked</Chip>}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Checkbox
-                      aria-label={`Allow ${department.name} department`}
-                      checked={checked}
-                      onCheckedChange={(nextChecked) => {
-                        const allowDepartment = nextChecked === true;
-                        setDepartmentIds((current) => toggleId(current, department.id, allowDepartment));
-                        if (!allowDepartment) {
-                          const childTeamIds = new Set(
-                            access.teams
-                              .filter((team) => team.department_id === department.id)
-                              .map((team) => team.id),
-                          );
-                          setTeamIds((current) => current.filter((teamId) => !childTeamIds.has(teamId)));
-                        }
-                      }}
-                      className="ml-auto"
-                    />
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+      <RecordTable
+        label="Departments"
+        shellVariant="nested"
+        rows={access.departments}
+        rowKey={(department) => department.id}
+        emptyState={{
+          icon: Building2,
+          title: "No departments found",
+          description: "Create a department before assigning department-level module access.",
+        }}
+        columns={[
+          {
+            key: "name",
+            label: "Department",
+            size: "lg",
+            render: (department) => <div className="font-medium text-copy-primary">{department.name}</div>,
+          },
+          {
+            key: "description",
+            label: "Description",
+            size: "lg",
+            render: (department) => <span className="text-copy-secondary">{department.description || "-"}</span>,
+          },
+          {
+            key: "status",
+            label: "Status",
+            render: (department) => (
+              selectedDepartmentIds.has(department.id)
+                ? <StatusValue status={{ tone: "success", label: "Allowed" }} className="w-24" />
+                : <Chip className="w-24">Blocked</Chip>
+            ),
+          },
+          {
+            key: "allow",
+            label: "Allow Module",
+            align: "right",
+            interactive: true,
+            render: (department) => (
+              <Checkbox
+                aria-label={`Allow ${department.name} department`}
+                checked={selectedDepartmentIds.has(department.id)}
+                disabled={isSaving}
+                onCheckedChange={(nextChecked) => {
+                  const allowDepartment = nextChecked === true;
+                  setDepartmentIds((current) => toggleId(current, department.id, allowDepartment));
+                  if (!allowDepartment) {
+                    const childTeamIds = new Set(
+                      access.teams
+                        .filter((team) => team.department_id === department.id)
+                        .map((team) => team.id),
+                    );
+                    setTeamIds((current) => current.filter((teamId) => !childTeamIds.has(teamId)));
+                  }
+                }}
+                className="ml-auto"
+              />
+            ),
+          },
+        ]}
+      />
     </div>
   );
 
@@ -158,68 +163,77 @@ function ModuleAccessEditor({
       <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
         A team can be selected only when its parent department is allowed. Unassigned teams use a direct team grant.
       </p>
-      <ModuleTableShell variant="nested">
-        <Table className="min-w-[860px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Team</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Allow Team</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {access.teams.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={5}>
-                  <EmptyState icon={Users} title="No teams found" description="Create a team before assigning team-level module access." />
-                </TableCell>
-              </TableRow>
-            ) : access.teams.map((team) => {
-              const directAccess = selectedTeamIds.has(team.id);
+      <RecordTable
+        label="Teams"
+        shellVariant="nested"
+        rows={access.teams}
+        rowKey={(team) => team.id}
+        emptyState={{
+          icon: Users,
+          title: "No teams found",
+          description: "Create a team before assigning team-level module access.",
+        }}
+        columns={[
+          {
+            key: "name",
+            label: "Team",
+            render: (team) => <div className="font-medium text-copy-primary">{team.name}</div>,
+          },
+          {
+            key: "department",
+            label: "Department",
+            render: (team) => <span className="text-copy-secondary">{team.department_name || "Unassigned"}</span>,
+          },
+          {
+            key: "description",
+            label: "Description",
+            size: "lg",
+            render: (team) => <span className="text-copy-secondary">{team.description || "-"}</span>,
+          },
+          {
+            key: "status",
+            label: "Status",
+            size: "lg",
+            render: (team) => {
               const hasDepartment = team.department_id != null;
               const departmentAccess = hasDepartment && selectedDepartmentIds.has(team.department_id as number);
-              const teamAllowed = directAccess && (!hasDepartment || departmentAccess);
+              if (hasDepartment && !departmentAccess) return <Chip className="w-44">Blocked by department.</Chip>;
+              if (selectedTeamIds.has(team.id)) return <StatusValue status={{ tone: "success", label: "Team access" }} className="w-28" />;
+              return hasDepartment ? <Chip className="w-32">Team blocked</Chip> : <Chip className="w-24">Blocked</Chip>;
+            },
+          },
+          {
+            key: "allow",
+            label: "Allow Team",
+            align: "right",
+            size: "lg",
+            interactive: true,
+            render: (team) => {
+              const hasDepartment = team.department_id != null;
+              const departmentAccess = hasDepartment && selectedDepartmentIds.has(team.department_id as number);
               const checkboxDescriptionId = `team-access-help-${team.id}`;
               return (
-                <TableRow key={team.id}>
-                  <TableCell><div className="font-medium text-copy-primary">{team.name}</div></TableCell>
-                  <TableCell className="text-copy-secondary">{team.department_name || "Unassigned"}</TableCell>
-                  <TableCell className="text-copy-secondary">{team.description || "-"}</TableCell>
-                  <TableCell>
-                    {hasDepartment && !departmentAccess ? (
-                      <Chip className="w-44">Blocked by department.</Chip>
-                    ) : teamAllowed ? (
-                      <StatusValue status={{ tone: "success", label: "Team access" }} className="w-28" />
-                    ) : hasDepartment ? (
-                      <Chip className="w-32">Team blocked</Chip>
-                    ) : <Chip className="w-24">Blocked</Chip>}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex flex-col items-end gap-1.5">
-                      <Checkbox
-                        aria-label={`Allow ${team.name} team`}
-                        aria-describedby={hasDepartment ? checkboxDescriptionId : undefined}
-                        checked={directAccess}
-                        disabled={(hasDepartment && !departmentAccess) || isSaving}
-                        onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
-                      />
-                      {hasDepartment ? (
-                        <span id={checkboxDescriptionId} className="max-w-44 text-xs text-copy-muted">
-                          {departmentAccess
-                            ? `${team.department_name || "Parent department"} is allowed; choose this team separately.`
-                            : `Allow ${team.department_name || "the parent department"} first.`}
-                        </span>
-                      ) : null}
-                    </div>
-                  </TableCell>
-                </TableRow>
+                <div className="flex flex-col items-end gap-1.5">
+                  <Checkbox
+                    aria-label={`Allow ${team.name} team`}
+                    aria-describedby={hasDepartment ? checkboxDescriptionId : undefined}
+                    checked={selectedTeamIds.has(team.id)}
+                    disabled={(hasDepartment && !departmentAccess) || isSaving}
+                    onCheckedChange={(nextChecked) => setTeamIds((current) => toggleId(current, team.id, nextChecked === true))}
+                  />
+                  {hasDepartment ? (
+                    <span id={checkboxDescriptionId} className="max-w-44 text-xs text-copy-muted">
+                      {departmentAccess
+                        ? `${team.department_name || "Parent department"} is allowed; choose this team separately.`
+                        : `Allow ${team.department_name || "the parent department"} first.`}
+                    </span>
+                  ) : null}
+                </div>
               );
-            })}
-          </TableBody>
-        </Table>
-      </ModuleTableShell>
+            },
+          },
+        ]}
+      />
     </div>
   );
 
