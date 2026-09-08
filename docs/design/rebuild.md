@@ -4154,11 +4154,48 @@ now. Five hardcoded min-widths (`900`, `940`, `940`, `980`, `760`) are derived. 
 scroll, are gone. `userManagementTable` lost its hand-rolled `stopPropagation` on the
 selection cell, its own `columnCount`, and `allPageSelected`.
 
-**Still open, unchanged:** the browser pass. The pinned column is the one thing in this
-batch that no assertion can see — it is the same class of defect as consistency-pass
-Phase 3's non-occluding sticky column, which passed lint, typecheck, build, both rendered
-guards and 99 specs. It needs a sideways scroll on `settings/permissions` in both themes,
-and it is on 5.6's close-out list, not deferrable past it.
+#### The browser pass — done here, not deferred, because pinning is unassertable by grep
+
+The pinned column is the same defect class as consistency-pass Phase 3's sticky column
+that failed to occlude: it passed lint, typecheck, build, both rendered guards and 99
+specs, and needed a sideways scroll and someone looking. So it was measured rather than
+eyeballed — a throwaway spec drove the real page, scrolled the region hard right, and
+used `elementFromPoint` at the pinned cell's centre. Both themes, switched by the class
+`next-themes` actually stamps (`emulateMedia` alone does **not** switch this app, and a
+first run "verified light" against numbers identical to dark — worth knowing):
+
+| Measured, at `scrollLeft: 332` | dark | light |
+|---|---|---|
+| Pin holds the region's left edge | 1px (the region border) | 1px |
+| `elementFromPoint` returns the pin, not a cell scrolled under it | ✅ all rows | ✅ all rows |
+| Pinned ground opaque, and equal to **its own row's** stripe | ✅, alternating `0.2065` / `0.1988` | ✅, alternating `0.9890` / `1.0000` |
+| Sticky header still paints over the pin | ✅ | ✅ |
+
+The alternating pair is the point: it is the same defect the old page had — one hardcoded
+ground for every row — proven fixed by measurement rather than assertion.
+
+`design-rules.spec.ts` and `scroll-containers.spec.ts` pass across 82 routes.
+
+#### One defect the browser pass found: the loading state had no accessible name
+
+`permissions-revamp.spec.ts` asserted `getByLabel("Loading role permissions")`, which was
+`RouteLoadingState`'s. Moving the loading state into the primitive removed it — and the
+honest finding is that **no list in the app ever had one**: `ModuleTableShell` tied
+`aria-busy` to `isRefreshing` only, so a table reported `aria-busy="false"` for the whole
+of its first load, the one moment it is unambiguously busy.
+
+Weakening the spec was the wrong fix. `ModuleTableShell` takes `isLoading` — `aria-busy`,
+no badge, since the badge is for a refresh happening over content that is still readable —
+and both table primitives pass it. The spec now asserts the region reports itself busy,
+which is a better contract than a bespoke label string, and it is fixed for all 24+ lists
+at once.
+
+**Two `permissions-revamp` failures are pre-existing and not this batch's.**
+`filters grouped modules` fails on `getByText("Sales", { exact: true })`, which
+`e2e-suite-status.md` already lists by line with the cause (two matches — the sidebar nav
+group and the table's own group band); a probe confirmed the band renders visible at the
+right geometry with the right text. `shows distinct real-empty…` passes standalone and
+fails in sequence, which is the order-dependence that document also records.
 
 ---
 

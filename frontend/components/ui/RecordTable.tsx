@@ -503,7 +503,7 @@ export function RecordTable<T>({
   }
 
   return (
-    <ModuleTableShell isRefreshing={isRefreshing} label={label} variant={shellVariant} className={className}>
+    <ModuleTableShell isRefreshing={isRefreshing} isLoading={isLoading} label={label} variant={shellVariant} className={className}>
       <Table data-variant={variant} style={{ minWidth: `${minWidth}px` }}>
         <TableHeader>
           <TableHeaderRow>

@@ -9,6 +9,14 @@ type Props = VariantProps<typeof moduleTableShellVariants> & {
   children: ReactNode;
   className?: string;
   isRefreshing?: boolean;
+  /**
+   * The first load, when there are no rows yet. It marks the region `aria-busy` but
+   * draws no badge: the skeleton rows already say "loading" to anyone who can see them,
+   * and the badge is for a refresh happening *over* content that is still readable.
+   * Without this the region reported `aria-busy="false"` for the whole of its initial
+   * load, which is the one moment it is unambiguously busy.
+   */
+  isLoading?: boolean;
   /** Names the scroll region. Defaults to the generic name for the hand-rolled callers. */
   label?: string;
 };
@@ -48,7 +56,7 @@ const moduleTableShellVariants = cva(
   },
 );
 
-export function ModuleTableShell({ children, className, isRefreshing = false, label = "Data table", variant }: Props) {
+export function ModuleTableShell({ children, className, isRefreshing = false, isLoading = false, label = "Data table", variant }: Props) {
   return (
     <div
       data-slot="module-table-shell"
@@ -56,7 +64,7 @@ export function ModuleTableShell({ children, className, isRefreshing = false, la
       className={cn(moduleTableShellVariants({ variant }), className)}
       role="region"
       aria-label={label}
-      aria-busy={isRefreshing}
+      aria-busy={isRefreshing || isLoading}
     >
       {isRefreshing ? (
         <div className="pointer-events-none absolute right-3 top-3 z-40 inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-raised/90 px-3 py-1 text-2xs font-medium text-copy-label backdrop-blur-sm">

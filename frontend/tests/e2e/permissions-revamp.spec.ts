@@ -123,7 +123,10 @@ test("hydrates the default role only after its permission query succeeds", async
 
   await page.goto("/dashboard/settings/permissions");
 
-  await expect(page.getByLabel("Loading role permissions")).toBeVisible();
+  // 5.6 batch 4b moved the loading state into the table primitive: the matrix owns its
+  // own §7.4 states, so the region reports itself busy instead of the page swapping in
+  // a route-level spinner. The assertion this replaces named that removed spinner.
+  await expect(page.getByRole("region", { name: "Role permissions" })).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("No modules match this search")).toHaveCount(0);
   await expect(page.getByText("No modules available for this role")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sales Rep Permissions" })).toBeVisible();

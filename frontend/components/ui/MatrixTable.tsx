@@ -312,7 +312,7 @@ export function MatrixTable<T>({
   }
 
   return (
-    <ModuleTableShell isRefreshing={isRefreshing} label={label} variant={shellVariant} className={className}>
+    <ModuleTableShell isRefreshing={isRefreshing} isLoading={isLoading} label={label} variant={shellVariant} className={className}>
       <Table style={{ minWidth: `${minWidth}px` }}>
         <TableHeader>
           <TableHeaderRow>
