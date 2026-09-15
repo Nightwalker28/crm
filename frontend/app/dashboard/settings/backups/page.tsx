@@ -322,6 +322,11 @@ export default function BackupSettingsPage() {
     onSuccess: async (settings) => {
       toast.success("Backup settings saved.");
       setDraftOverride(toDraft(settings));
+      // The response *is* the new record, so it is written into the cache rather than waiting
+      // on the invalidation's refetch. Without this the footer reports the page dirty for the
+      // length of that round trip — the draft has moved and the query's copy has not — which
+      // is a save that says it did not happen.
+      queryClient.setQueryData(["tenant-backup-settings"], settings);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-settings"] }),
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),

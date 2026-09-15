@@ -4518,6 +4518,54 @@ for.
 
 **Next.** Batch 7 — the stragglers, and the eight drawers that now have a primitive to adopt.
 
+### Batch 6's verification — the failure sets were diffed, and one new failure was found and fixed
+
+**The diff, not the count.** Four specs cover the surfaces batch 6 touched:
+`backups-revamp`, `fields-revamp`, `module-builder-revamp`, `booking-links-revamp` — twelve
+tests. The pre-slice tree (`ab6d546`) was served from a **git worktree on a second frontend at
+`:3100`** rather than checked out over `frontend/`, so the working tree never moved and both
+runs hit the same backend.
+
+| Run | Result |
+|---|---|
+| Pre-slice (`ab6d546`) | **9 failed / 3 passed** |
+| Post-slice, first attempt | 10 failed / 2 passed |
+| Post-slice, after the fix | **9 failed / 3 passed — the same nine** |
+
+**The one new failure was real, and it was in the page rather than the test.** `backups`
+reported *Unsaved changes* after a successful save. `saveMutation.onSuccess` set the draft to
+the saved record and then `invalidateQueries`d — so for the length of that refetch the draft
+had moved and the query's copy had not, which the footer reads as dirty. `setQueryData` with
+the response the mutation already has closes it; the invalidation stays for the activity log.
+The old drawer never showed this because it closed itself on save and took the dirty line
+off-screen with it. The spec's mock was stateless in the same shape — its GET kept returning
+the original record after a PUT, so the page it was testing could never settle — and it
+remembers the write now.
+
+**Two environment traps, both new and both worth writing down.**
+
+- **`FRONTEND_CORS_ORIGINS` is an allowlist, and a baseline frontend on a second port is not
+  on it.** The first two baseline runs came back **12 failed / 0 passed**, every one of them
+  `Expected login to reach the dashboard or MFA challenge` — which reads exactly like the
+  documented cold-server and Postgres-drop failures and is neither. The login POST is
+  cross-origin from `:3100`, so without the origin in the allowlist the browser discards the
+  auth cookie and every test dies at the door. A second-port baseline needs the origin added.
+- **Port 8000 belongs to another stack on this box**, and 8010 to a third. The backend was
+  published on **8042** through a scratchpad compose override with `ports: !override` —
+  without the tag Compose *merges* port lists and keeps trying to bind 8000.
+
+**A pre-existing group was closed as a side effect, and deliberately not fixed.** Five of the
+nine standing failures share the signature `getByLabel('Name'/'Label', { exact: true })`, which
+`e2e-suite-status.md` Group 5 listed as an unverified hypothesis pointing at the command
+palette's `aria-labelledby` defect. A probe disproved it: the input has neither `aria-label`
+nor `aria-labelledby`, and the label's **text** is `"Label *"` because `RequiredMark` renders an
+`aria-hidden` asterisk — hidden from the accessibility tree, which is correct, and *not* hidden
+from Playwright's label matching, which is what `exact: true` reads. The accessible name is
+fine; the assertion is unusable on every required field in the app. The finding and the three
+shapes of fix are written into `e2e-suite-status.md`; **the seven tests were left red**,
+because they were red before batch 6 and clearing them is that document's triage rather than a
+design batch's.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

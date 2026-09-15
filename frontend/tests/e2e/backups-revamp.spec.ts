@@ -68,17 +68,17 @@ async function mockBackupPage(page: Page, runs = [completedRun, failedRun]) {
   await page.route("**/admin/tenant-backup-settings/destinations/connections", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
   );
+  // The GET used to keep returning the original record after a PUT, so the page it was
+  // testing could never settle: the draft held the saved values and the query held the old
+  // ones, which reads as permanently dirty. It remembers the write now.
+  let saved = backupSettings;
   await page.route("**/admin/tenant-backup-settings", async (route) => {
     if (route.request().method() === "PUT") {
-      const payload = route.request().postDataJSON();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...backupSettings, ...payload, updated_at: "2026-07-25T09:00:00Z" }),
-      });
+      saved = { ...saved, ...route.request().postDataJSON(), updated_at: "2026-07-25T09:00:00Z" };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(backupSettings) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   });
   await page.route("**/admin/tenant-backup-runs?page=1&page_size=10", (route) =>
     route.fulfill({

@@ -216,9 +216,9 @@ uploaded here stay linked to this record."` and did not update here. Deliberate 
 across the table's scroll width), so the spec was updated to the string the panel renders.
 5.5 batch 1 has since fixed the underlying layout defect.
 
-## Group 5 — interaction timeouts, likely one shared cause
+## Group 5 — interaction timeouts, and seven of them are `RequiredMark`
 
-**16 failures. Cause NOT yet confirmed — this is the group worth investigating first.**
+**16 failures. Seven now have a confirmed cause (below); the other nine are still open.**
 
 Every one is a `locator.fill`/`locator.click` that times out with the element never resolving
 (`element is not visible` was false in all 16 — the locator matched nothing at all).
@@ -227,29 +227,43 @@ Seven of them share a striking signature — `getByLabel('Name'/'Label', { exact
 
 - `automation-builder-revamp.spec.ts:75`, `:93` — `getByLabel('Name', { exact: true })`
 - `booking-links-revamp.spec.ts:98` — `getByLabel('Name', { exact: true })`
-- `fields-revamp.spec.ts:161` — `getByLabel('Label', { exact: true })`
+- `fields-revamp.spec.ts:163` — `getByLabel('Label', { exact: true })` (was `:161` before rebuild 5.6 batch 6b)
 - `module-builder-revamp.spec.ts:132`, `:163`, `:182` — `getByLabel('Label', { exact: true })`
 
-**Hypothesis, unverified:** this is the same defect already fixed in the command palette
-(`9ad2553`) — an input whose `aria-label` is overridden by an `aria-labelledby` pointing at an
-element with no text, leaving the control with an empty accessible name. `aria-labelledby` wins
-over `aria-label`, so the label in the source is ignored and `getByLabel` finds nothing. That bug
-was invisible until a test looked for it, and it made the control unnamed for screen readers.
+**Cause CONFIRMED 2026-09-15, during rebuild 5.6 batch 6's close-out. It is `RequiredMark`,
+and the earlier command-palette hypothesis is wrong.** The probe that settled it, run against
+the `fields` create panel:
 
-**Verify before assuming.** These fields may simply live inside an inspector panel that never
-opened — `module-builder-revamp.spec.ts:163` clicks `button "Edit Priority"` first, and if that
-button was renamed the panel never appears. Probe the real DOM:
-
-```ts
-console.log(await page.getByPlaceholder("…").evaluate((el) => {
-  const lb = el.getAttribute("aria-labelledby");
-  return { ariaLabel: el.getAttribute("aria-label"), lb,
-           lbText: lb ? document.getElementById(lb)?.textContent : null };
-}));
+```
+{"ariaLabel":null,"ariaLabelledby":null,"labelText":"Label *"}
+getByLabel("Label", { exact: true })   → 0
+getByLabel("Label")                    → 1
+getByLabel("Label *", { exact: true }) → 1
 ```
 
-If `lbText` is empty while `ariaLabel` is set, it is the same bug and it is a real accessibility
-fix, not a test fix.
+No `aria-label`, no `aria-labelledby` — so it is not `9ad2553`'s defect and there is nothing
+wrong with the accessible name. `<FieldLabel>Label <RequiredMark /></FieldLabel>` renders
+`<span aria-hidden="true">*</span>`, and `aria-hidden` removes the asterisk from the
+**accessibility tree** but not from the label element's **text**. Playwright's `getByLabel`
+matches on that text, so the label reads `"Label *"` and `exact: true` can never match it.
+
+**This is a test-side fix, not an accessibility one.** Every required field in the app carries
+a `RequiredMark`, so `getByLabel(<name>, { exact: true })` is unusable on all of them — which
+is why the seven failures share one signature and why they are all on required fields. Three
+shapes of fix, in order of preference:
+
+```ts
+await page.getByLabel(/^Label/).fill("…");          // anchored, still rejects "Display label"
+await page.locator("#create-field-label").fill("…"); // the field already has an id
+await page.getByLabel("Label *", { exact: true });    // works, but asserts a decoration
+```
+
+Do **not** "fix" this by removing `RequiredMark` or its `aria-hidden` — the markup is correct
+(design.md §7.5), and the asterisk must stay out of the accessibility tree.
+
+**Not applied.** Batch 6 confirmed the cause during its own attribution run and deliberately
+left the seven tests red: they were red before it and fixing them is this document's triage
+work, not a design batch's. The remaining nine timeouts below are untouched by this finding.
 
 The other nine timeouts, cause unknown:
 
