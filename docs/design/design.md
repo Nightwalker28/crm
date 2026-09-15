@@ -1360,6 +1360,7 @@ exists. The list-and-record language in particular is not optional:
 | Paging | `Pagination` |
 | Page root, title, actions and route states | `PageShell` (which renders `PageHeader`) |
 | Fast create | `QuickCreateSurface` |
+| An editing drawer over a page | `EditorPanel` — see §7.11. `sheet.tsx` is the Radix wrapper and is never composed at a call site |
 | A record detail page | The §4.7 archetype — spine + its own tab strip. Not a hand-rolled root |
 | A record's state field | `InlineFieldEdit`, in the spine only (R6) |
 | An action row | `ActionBar` — it owns its children's control height (R4) |
@@ -1680,6 +1681,61 @@ whole grid. It is the one table in the app that is allowed a footer button.
 
 Anything that is neither a list nor a matrix is neither primitive's, and takes §12 before
 a line of it is written.
+
+### 7.11 An editing drawer is `EditorPanel`, and `sheet.tsx` is never composed at a call site
+
+`dialog.tsx` got a styled panel with a closed size set in rebuild 5.1; `sheet.tsx` did
+not, and it is the same component one axis over. So every one of the **twelve** right-side
+drawers in the app re-typed the whole recipe by hand:
+
+```
+<SheetPortal>
+  <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
+  <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col
+                                        border-l border-line-default bg-surface-raised outline-none">
+    <form className="flex min-h-0 flex-1 flex-col">
+      <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
+      …a title, a description, and a hand-wired ghost X…
+      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
+      <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 …">
+```
+
+Thirty lines of chrome, twelve times, and it had already drifted on every axis that was
+left to a call site: **three widths** (32 / 34 / 38rem) chosen by nobody for no stated
+reason, the description at `text-copy-muted` on some and `text-copy-secondary` on others,
+and the footer's dirty line painted `text-state-warning` / `text-state-success` — colour
+carrying *unsaved*, which §1.2 reserves for status and destructive intent. Meanwhile the
+two drawers that *are* primitives — `RecordSpine` and `QuickCreateSurface` — had
+independently converged on a better shape than any of the ten pages: `h-dvh`, full-bleed
+below `sm`, and the border only once there is room for it.
+
+`EditorPanel` is that shape, drawn once. A call site passes the title, the description, the
+body, the footer actions and the status line; it does not see a portal, an overlay, a
+class string or a close button.
+
+**The size set is closed, and it is picked by content shape rather than by taste:**
+
+| Size | Width | For |
+|---|---|---|
+| `default` | 36rem | A single-column form — the common case, and the width `RecordSpine` and `QuickCreateSurface` already agreed on |
+| `wide` | 42rem | A panel whose body holds a grid or a repeating multi-column row |
+
+A third width is §12, like a fourth `RecordTable` variant.
+
+**One dismissal path, three triggers.** Escape, the overlay, and the X all go through
+`onOpenChange(false)`, so a panel holding a draft gets its discard confirmation from one
+place. The pages that wired the X straight to a local `close()` were one refactor away
+from a drawer whose Escape guarded an unsaved draft and whose X did not.
+
+**The footer is `FormFooter`.** It is the same row at the end of the same kind of document,
+so it takes the same primitive and inherits R4's control height — and its status slot is
+prose in `text-copy-muted`, because "Unsaved changes" is a fact about a form, not a status
+on a record.
+
+`sheet.tsx` keeps exactly two other consumers: `RecordSpine` and `QuickCreateSurface`,
+which are primitives themselves, and the mobile navigation drawer in
+`app/dashboard/layout.tsx`, which is `side="left"` and is not an editor. Nothing in
+`app/**` composes a sheet.
 
 ## 8. Accessibility floors
 

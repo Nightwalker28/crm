@@ -3828,7 +3828,7 @@ use the same vocabulary: `?module=` on `fields` and `module-builder`.
 | 3 | Permission walls that read as denied, and A9's three admin-only links | Cheap, and it is what a non-admin actually experiences |
 | 4 | The ten raw `Table` files → `RecordTable` (R10) | Mechanical, and it unblocks R10's importer count at the end of 5.7. Split 4a / 4b; **closed** |
 | 5 | A10 deep links + `?tab=` on automation | Address vocabulary, one commit; **closed** |
-| 6 | The four large pages rebuilt — `backups`, `module-builder`, `fields`, `calendar-booking` | 44% of the surface; they need batches 1–5 in place first |
+| 6 | The four large pages rebuilt — `calendar-booking`, `fields`, `module-builder`, `backups` | 44% of the surface; they need batches 1–5 in place first. Split 6a–6d, smallest first, so `EditorPanel` is proved before the 900-line pages consume it |
 | 7 | The stragglers — `profile`, `teams`, record layouts, activity log, templates, integrations, domains, automation components | |
 | 8 | Close-out — the end-of-sub-phase pass and one correction commit | |
 
@@ -4263,6 +4263,85 @@ addressed.
 `calendar-booking`), 44% of the surface. Two of them are the pages this batch just deep-linked;
 the address work survives the rebuild, and `module-builder`'s two `window.confirm` calls
 (`:410`, `:873`) are batch 6's to remove, not this one's.
+
+### Status: batch 6a — the twelfth hand-rolled drawer, and the first of the four large pages
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14. Rendered guards and specs stay for the sub-phase close-out, per the cadence.
+
+**Batch 6 is split four ways, and the order is by size rather than by the plan's listing.**
+`calendar-booking` (602) is first because it is the smallest of the four and it carries the
+shape all four share, so the primitive is proved on the simplest case before `fields` (796),
+`module-builder` (892) and `backups` (906) consume it. The plan's order — backups first — was
+a line in a table, not a dependency.
+
+**`sheet.tsx` was the component 5.1 forgot.** Batch D gave `dialog.tsx` a styled
+`DialogPanel` with a closed size set and left the sheet as a bare Radix wrapper, so all
+**twelve** right-side drawers re-typed thirty lines of portal, overlay, header, scroll body
+and footer by hand. It had drifted on every axis a call site was left to decide:
+
+- **Three widths** — `32rem` ×3, `34rem` ×4, `38rem` ×2 — and no file says why any of them.
+- **Two inks for the description**, `text-copy-muted` and `text-copy-secondary`.
+- **The dirty line painted `text-state-warning` / `text-state-success`**, which is colour
+  carrying *unsaved* — §1.2 reserves it for status and destructive intent. "All changes
+  saved" was rendering green on a panel that had saved nothing.
+- **The close X wired straight to a local `close()`**, beside an Escape and an overlay click
+  that went through `onOpenChange`. Identical today at every call site, and one refactor away
+  from a drawer whose Escape guards an unsaved draft and whose X does not.
+
+**The two drawers that *were* primitives had already found the better answer.** `RecordSpine`
+and `QuickCreateSurface` independently agreed on `h-dvh`, `max-w-none` with the width and the
+border arriving only at `sm` — full-bleed on a narrow viewport instead of a 320px-wide panel
+with a left border on it. The ten pages had none of that. `EditorPanel` takes the primitives'
+shape, not the pages'.
+
+**Rejected: style `SheetContent` / `SheetHeader` / `SheetFooter` in `sheet.tsx`.** The
+shadcn-shaped answer, and it kills the class strings — but it leaves the *structure* at every
+call site, which is the half that actually drifts: the portal, the overlay, the close button,
+and `min-h-0` on the flex child, whose omission silently stops the body scrolling. It also
+needs side-aware defaults so the mobile nav drawer does not inherit `border-l`. §4.4's lesson
+is that a rule with no default behind it does not survive page two, and a composition is not a
+default. `EditorPanel` draws the whole thing and takes one slot.
+
+**Two sizes, picked by content shape.** `default` 36rem — the width the two primitives already
+agreed on, and where 32 and 34 round to; `wide` 42rem for a body holding a grid or a repeating
+multi-column row. A third is §12, like a fourth `RecordTable` variant. The footer is
+`FormFooter`, so the panel's two rules are one ink and the actions inherit R4's height.
+
+**Written into `design.md` first** (§7.11, plus the §7.1 registry row): the recipe that was
+copied twelve times, the closed size set, one dismissal path with three triggers, and the
+three files still allowed to touch `sheet.tsx` — `RecordSpine`, `QuickCreateSurface`, and the
+mobile nav drawer, which is `side="left"` and is not an editor.
+
+**What `calendar-booking` lost besides the chrome.**
+
+- **A second answer to one failure.** A hand-rolled `role="alert"` banner sat above a
+  `RecordTable` already wired to `hasError` + `onRetry` on the *same query*, so a failed load
+  drew the error twice. The banner is gone and the page-level 403 wall moved onto `PageShell`
+  — a denial on booking-types denies the handle too, because they are one feature.
+- **A third New button.** Four entry points to one action under three labels: the page header
+  (`New booking link`), the card (`New link`), the empty state (`Create booking link`), and a
+  `New` *inside the editor* that discarded the draft you were standing in. The card's and the
+  editor's are gone; the header's and the empty state's are the archetype's two.
+- **A border it was drawing twice.** The `RecordTable` sat inside a `Card` without
+  `shellVariant="nested"`, so the shell drew its own outline inside the card's.
+- **`text-state-success` as a status column.** `<span className={item.enabled ? … }>` is
+  `StatusValue`, which is what every other list in the app uses.
+- **The Integrations button in the page header.** It was an A8 workaround — the rail lists
+  Integrations now, so a lateral link competing with the page's primary action is a leftover.
+- **Three `<h3 className="text-sm font-semibold text-copy-primary">`** → `SectionHeading` at
+  `text-copy-label` (R7), and the two `Card` + hand-rolled-header pairs → `FormSection`.
+- **A validity expression spelled inline on the submit button** — seven clauses, one of which
+  (`duration_minutes`) also had a `FieldError` written separately. `isDraftValid` names the
+  set once, so the field-level error and the disabled commit cannot disagree.
+
+**The booking handle is a configuration record (R1), and it is one field.** Autosaving it
+would move every canonical link the workspace has handed out on the keystroke that takes the
+handle to three characters. It keeps a manual save, and it now says so through `FormFooter`
+rather than a bare button floating at the end of a flex row.
+
+**Next.** Batch 6b — `fields` (796) onto `EditorPanel`, which is the page whose panel has two
+modes in one sheet.
 
 ---
 

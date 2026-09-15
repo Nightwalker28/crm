@@ -275,7 +275,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | **done, batch 2** — `FormSection` + `SettingsRow`, non-sticky footer, checkbox → `SegmentedBoolean` |
-| `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | |
+| `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | **done, batch 6a** — first consumer of `EditorPanel`; `Card` + hand-rolled headings → `FormSection`, the duplicate error banner and the third New button deleted, and the table stopped drawing a second border |
 | `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | |
 | `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
 | `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | **denied state, batch 3** |
@@ -470,7 +470,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `button.tsx` | 63 | rebuild | 9 variants → 6 (§2.2) | **done** (A) |
 | `Pill.tsx` | 40 | **delete** | R5. 52 files and 107 call sites move to `StatusValue` | **done** (B) — deleted; 104 sites in 52 files moved |
 | `dialog.tsx` | 247 | rebuild | **`@headlessui/react` → radix.** The last non-trivial guard failure. 9 dialog + 13 sheet call sites; do not half-land it | **done** (D);`aria-describedby` opt-out + dead `2xl` removed 18 Aug |
-| `sheet.tsx` | 236 | rebuild | Same migration | **done** (D) — already on radix; no change needed |
+| `sheet.tsx` | 236 | rebuild | Same migration | **done** (D) — already on radix; no change needed. **5.6 batch 6a**: `EditorPanel` now owns its chrome (§7.11); nothing in `app/**` composes it |
 | `dialog-layer.tsx` | 33 | adopt | | **done** (D) — no change needed |
 | `DialogIconClose.tsx` | 20 | adopt | | **done** (D) — no change needed |
 | `ExportControls.tsx` | 362 | rebuild | Headless UI `Menu` → radix | **done** (D) |
