@@ -101,25 +101,25 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   await mockBackupPage(page, []);
   await page.goto("/dashboard/settings/backups");
 
+  // The schedule was behind a `Configure` drawer and is on the page now (rebuild 5.6 batch
+  // 6d), so every step below lost its drawer scope. What is being checked is unchanged: the
+  // record still commits as a set, through one footer.
   await expect(page.getByRole("heading", { name: "Backups" })).toBeVisible();
-  await page.getByRole("button", { name: "Configure" }).click();
-  const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
-  await expect(settingsDrawer).toBeVisible();
-  await expect(settingsDrawer.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
-  await settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true }).click();
-  await expect(settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true })).toHaveAttribute("aria-checked", "true");
-  await expect(settingsDrawer.getByRole("radio", { name: "Include", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("dialog", { name: "Configure backups" })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Scheduled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Include", exact: true })).toHaveAttribute("aria-checked", "true");
 
-  const scopeField = settingsDrawer.getByText("Scope", { exact: true }).locator("..");
-  await scopeField.getByRole("combobox").click();
+  await page.getByRole("combobox", { name: "Scope" }).click();
   await page.getByRole("option", { name: "Selected modules" }).click();
-  await settingsDrawer.getByRole("checkbox", { name: "Leads" }).click();
-  await expect(settingsDrawer.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Leads" }).click();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/admin/tenant-backup-settings"),
   );
-  await settingsDrawer.getByRole("button", { name: "Save Settings" }).click();
+  await page.getByRole("button", { name: "Save schedule" }).click();
   const payload = (await saveRequest).postDataJSON() as {
     enabled: boolean;
     scope: string;
@@ -129,21 +129,32 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   expect(payload.enabled).toBeTruthy();
   expect(payload.scope).toBe("selected_modules");
   expect(payload.selected_modules).toEqual(["sales_leads"]);
-  await expect(settingsDrawer).toHaveCount(0);
+  await expect(page.getByText("All changes saved")).toBeVisible();
 });
 
-test("guards dirty backup configuration dismissal", async ({ page }) => {
+test("discards a dirty backup configuration without writing", async ({ page }) => {
   await mockBackupPage(page, []);
   await page.goto("/dashboard/settings/backups");
 
-  await page.getByRole("button", { name: "Configure" }).click();
-  const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
-  await settingsDrawer.getByRole("radio", { name: "Scheduled", exact: true }).click();
-  await settingsDrawer.getByRole("button", { name: "Cancel" }).click();
+  // There is no drawer to dismiss any more, so the discard confirmation that guarded closing
+  // it went with it. The unsaved draft is still recoverable — through the footer's Discard,
+  // which is where the rest of the app puts it (5.4).
+  let writes = 0;
+  await page.route("**/admin/tenant-backup-settings", async (route) => {
+    if (route.request().method() === "PUT") writes += 1;
+    await route.fallback();
+  });
 
-  await expect(page.getByRole("heading", { name: "Discard backup setting changes?" })).toBeVisible();
-  await page.getByRole("button", { name: "Discard changes" }).click();
-  await expect(settingsDrawer).toHaveCount(0);
+  const discard = page.getByRole("button", { name: "Discard changes" });
+  await expect(discard).toBeDisabled();
+
+  await page.getByRole("radio", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await discard.click();
+
+  await expect(page.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("All changes saved")).toBeVisible();
+  expect(writes).toBe(0);
 });
 
 test("redacts backup failures and confirms artifact deletion", async ({ page }) => {

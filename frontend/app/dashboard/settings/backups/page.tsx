@@ -1,30 +1,24 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CalendarClock, Download, Play, RotateCcw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Archive, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { ActionBar, FormFooter } from "@/components/ui/ActionBar";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SettingsRow } from "@/components/ui/SettingsRow";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
@@ -33,6 +27,7 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { getFilenameFromDisposition } from "@/components/ui/importExportUtils";
+import { formatBytes } from "@/lib/format";
 import { formatDateTime } from "@/lib/datetime";
 import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 
@@ -236,13 +231,6 @@ async function deleteBackupRun(runId: number): Promise<{ run: TenantBackupRun; m
   return body as { run: TenantBackupRun; message: string };
 }
 
-function formatBytes(value: number | null) {
-  if (!value) return "-";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function toDraft(settings?: TenantBackupSettings): BackupSettingsDraft {
   if (!settings) return DEFAULT_DRAFT;
   return {
@@ -267,7 +255,6 @@ export default function BackupSettingsPage() {
   const runsQuery = useQuery({ queryKey: ["tenant-backup-runs"], queryFn: fetchBackupRuns });
   const storageConnectionsQuery = useQuery({ queryKey: ["tenant-backup-destination-connections"], queryFn: fetchDestinationConnections });
   const { modules, isLoading: modulesLoading } = useModulesAdmin();
-  const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
   const [draftOverride, setDraftOverride] = useState<BackupSettingsDraft | null>(null);
   const [restoreRunId, setRestoreRunId] = useState<string>("");
   const [restoreModule, setRestoreModule] = useState<string>("");
@@ -335,7 +322,6 @@ export default function BackupSettingsPage() {
     onSuccess: async (settings) => {
       toast.success("Backup settings saved.");
       setDraftOverride(toDraft(settings));
-      setSettingsEditorOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-settings"] }),
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
@@ -343,7 +329,7 @@ export default function BackupSettingsPage() {
     },
     onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save backup settings."),
   });
-  useUnsavedChangesGuard(settingsEditorOpen && isSettingsDirty, saveMutation.isPending);
+  useUnsavedChangesGuard(isSettingsDirty, saveMutation.isPending);
 
   const manualRunMutation = useMutation({
     mutationFn: async () => {
@@ -478,28 +464,6 @@ export default function BackupSettingsPage() {
     if (confirmed) deleteRunMutation.mutate(run.id);
   }
 
-  async function closeSettingsEditor() {
-    if (isSettingsDirty) {
-      const confirmed = await confirm({
-        title: "Discard backup setting changes?",
-        description: "Your unsaved schedule, scope, retention, and destination changes will be lost.",
-        confirmLabel: "Discard changes",
-        variant: "destructive",
-      });
-      if (!confirmed) return;
-    }
-    setDraftOverride(null);
-    setSettingsEditorOpen(false);
-  }
-
-  function handleSettingsEditorOpenChange(open: boolean) {
-    if (open) {
-      setSettingsEditorOpen(true);
-      return;
-    }
-    void closeSettingsEditor();
-  }
-
   if (settingsQuery.isLoading || settingsQuery.isError) {
     return (
       <PageShell
@@ -524,217 +488,187 @@ export default function BackupSettingsPage() {
       variant="settings"
       title="Backups"
       description="Schedule tenant backups and restore a module from one."
+      context={isSettingsDirty ? "Unsaved schedule changes" : undefined}
       actions={(
-        <>
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
-          <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
-            <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
-          </Button>
-        </div>
-        </>
+        <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending}>
+          <Play />{manualRunMutation.isPending ? "Running…" : "Run backup"}
+        </Button>
       )}
     >
-      <Sheet open={settingsEditorOpen} onOpenChange={handleSettingsEditorOpenChange}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-            <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate(); }}>
-              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                <div>
-                  <SheetTitle className="text-lg font-semibold text-copy-primary">Configure backups</SheetTitle>
-                  <SheetDescription className="mt-1 text-sm text-copy-muted">Set the tenant schedule, retention, scope, and storage destination.</SheetDescription>
-                </div>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close backup settings" onClick={() => void closeSettingsEditor()}><X /></Button>
-              </SheetHeader>
-
-              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
-                <Field>
-                  <FieldLabel>Backup schedule</FieldLabel>
-                  <SegmentedBoolean
-                    aria-label="Backup schedule"
-                    value={draft.enabled}
-                    onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
-                    trueLabel="Scheduled"
-                    falseLabel="Manual only"
-                  />
-                  <FieldDescription>Scheduled backups run automatically using the frequency and retention settings below.</FieldDescription>
-                </Field>
-
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel>Frequency</FieldLabel>
-                    <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Retention</FieldLabel>
-                    <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Scope</FieldLabel>
-                    <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full_tenant">Full tenant</SelectItem>
-                        <SelectItem value="selected_modules">Selected modules</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Destination</FieldLabel>
-                    <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="local_download">Local download</SelectItem>
-                        <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
-                        <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>Cloud options require a connected storage account for this admin.</FieldDescription>
-                  </Field>
-                </FieldGroup>
-
-                <Field>
-                  <FieldLabel>Document files</FieldLabel>
-                  <SegmentedBoolean
-                    aria-label="Document files"
-                    value={draft.include_documents}
-                    onValueChange={(include_documents) => setDraft((current) => ({ ...current, include_documents }))}
-                    trueLabel="Include"
-                    falseLabel="Exclude"
-                  />
-                  <FieldDescription>Choose whether tenant documents are included in backup artifacts.</FieldDescription>
-                </Field>
-
-                <div className="border-t border-line-subtle pt-5">
-                  <div className="mb-4 flex items-start gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><Archive className="h-4 w-4" /></span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-copy-primary">Module selection</h3>
-                      <p className="mt-1 text-sm text-copy-muted">Used only when scope is set to selected modules.</p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {modulesLoading ? (
-                      Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 rounded-[var(--radius-control)]" />)
-                    ) : moduleOptions.length ? (
-                      moduleOptions.map((module) => {
-                        const checked = draft.selected_modules.includes(module.value);
-                        const disabled = draft.scope !== "selected_modules";
-                        return (
-                          <label key={module.value} className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${checked ? "border-action-primary bg-action-primary-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-                            <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => toggleModule(module.value)} className="shrink-0" />
-                            {module.label}
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <EmptyState icon={Archive} title="No enabled modules available" description="Enable a supported module before using selected-module backups." className="sm:col-span-2" />
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <span className={`text-sm ${isSettingsDirty ? "text-state-warning" : "text-state-success"}`}>{isSettingsDirty ? "Unsaved changes" : "All changes saved"}</span>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => void closeSettingsEditor()} disabled={saveMutation.isPending}>Cancel</Button>
-                  <Button type="submit" disabled={saveMutation.isPending || !isSettingsDirty}><Save />{saveMutation.isPending ? "Saving..." : "Save Settings"}</Button>
-                </div>
-              </SheetFooter>
-            </form>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
-
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><CalendarClock className="h-4 w-4" /></span>
-          <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Backup status</h2>
-            <p className="mt-1 text-sm text-copy-muted">Current saved schedule and recent execution state.</p>
-          </div>
-        </div>
+      <FormSection title="Status" description="The saved schedule and its most recent run.">
         <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3">
-            <dt className="text-copy-muted">Schedule</dt>
-            <dd className="mt-2"><StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" /></dd>
-          </div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Last run</dt><dd className="mt-2 text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd></div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Next run</dt><dd className="mt-2 text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd></div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Updated</dt><dd className="mt-2 text-copy-secondary">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd></div>
+          <Fact label="Schedule">
+            <StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" />
+          </Fact>
+          <Fact label="Last run">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</Fact>
+          <Fact label="Next run">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</Fact>
+          <Fact label="Updated">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</Fact>
         </dl>
-      </Card>
+      </FormSection>
 
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
-            <RotateCcw className="h-4 w-4" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Module Restore</h2>
-            <p className="mt-1 text-sm text-copy-muted">Preview and restore one module from a tenant backup artifact.</p>
+      {/* The schedule was behind a `Configure` drawer — half the page's subject hidden from
+          the page, with its own dirty banner and its own Cancel. Archetype 4 puts settings on
+          the settings page. It stays a **configuration record** (R1): the frequency, the
+          scope, the retention and the destination validate together — a selected-module
+          scope with no modules is refused, and a cloud destination needs a connected
+          account — so it commits through one footer rather than field by field. */}
+      <FormSection
+        title="Schedule"
+        description="Frequency, retention, scope and destination are validated together, so they save as a set."
+      >
+        <div className="flex flex-col gap-5">
+          <SettingsRow label="Backups" description="Scheduled backups run automatically on the frequency and retention below.">
+            <SegmentedBoolean
+              aria-label="Backup schedule"
+              value={draft.enabled}
+              onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+              trueLabel="Scheduled"
+              falseLabel="Manual only"
+            />
+          </SettingsRow>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <FieldLabel>Frequency</FieldLabel>
+              <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
+                <SelectTrigger aria-label="Frequency"><SelectValue /></SelectTrigger>
+                <SelectContent>{frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Retention</FieldLabel>
+              <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
+                <SelectTrigger aria-label="Retention"><SelectValue /></SelectTrigger>
+                <SelectContent>{retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Scope</FieldLabel>
+              <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}>
+                <SelectTrigger aria-label="Scope"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_tenant">Full tenant</SelectItem>
+                  <SelectItem value="selected_modules">Selected modules</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Destination</FieldLabel>
+              <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
+                <SelectTrigger aria-label="Destination"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local_download">Local download</SelectItem>
+                  <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
+                  <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>Cloud options require a connected storage account for this admin.</FieldDescription>
+            </Field>
           </div>
+
+          <SettingsRow label="Document files" description="Whether tenant documents are included in the backup artifact.">
+            <SegmentedBoolean
+              aria-label="Document files"
+              value={draft.include_documents}
+              onValueChange={(include_documents) => setDraft((current) => ({ ...current, include_documents }))}
+              trueLabel="Include"
+              falseLabel="Exclude"
+            />
+          </SettingsRow>
+
+          {draft.scope === "selected_modules" ? (
+            <div>
+              <SectionHeading as="h3" className="mb-3" description="At least one module is required while the scope is set to selected modules.">
+                Modules
+              </SectionHeading>
+              {/* Ruling 4 keeps `Checkbox` for *many from a set*, which is exactly this. What
+                  went is the disabled-but-drawn grid: the whole block used to render greyed
+                  out whenever the scope was Full tenant, which is a control the backend will
+                  ignore (§7.9). */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {modulesLoading ? (
+                  Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-10 rounded-[var(--radius-control)]" />)
+                ) : moduleOptions.length ? (
+                  moduleOptions.map((module) => (
+                    <label key={module.value} className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary transition-colors hover:border-line-strong">
+                      <Checkbox checked={draft.selected_modules.includes(module.value)} onCheckedChange={() => toggleModule(module.value)} className="shrink-0" />
+                      {module.label}
+                    </label>
+                  ))
+                ) : (
+                  <EmptyState icon={Archive} title="No enabled modules available" description="Enable a supported module before using selected-module backups." className="sm:col-span-2" />
+                )}
+              </div>
+            </div>
+          ) : null}
+
+          <FormFooter status={isSettingsDirty ? "Unsaved changes" : "All changes saved"}>
+            <Button type="button" variant="ghost" onClick={() => setDraftOverride(null)} disabled={!isSettingsDirty || saveMutation.isPending}>Discard changes</Button>
+            <Button type="button" onClick={() => saveMutation.mutate()} disabled={!isSettingsDirty || saveMutation.isPending}>
+              <Save />{saveMutation.isPending ? "Saving…" : "Save schedule"}
+            </Button>
+          </FormFooter>
         </div>
+      </FormSection>
 
-        <FieldGroup className="grid max-w-4xl gap-4 md:grid-cols-2">
-          <Field>
-            <FieldLabel>Backup Run</FieldLabel>
-            <Select
-              value={restoreRunId}
-              onValueChange={(value) => {
-                setRestoreRunId(value);
-                setRestoreModule("");
-                setRestorePreview(null);
-                setWholeRestorePreview(null);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Select a run" /></SelectTrigger>
-              <SelectContent>
-                {completedRuns.map((run) => (
-                  <SelectItem key={run.id} value={String(run.id)}>#{run.id} · {run.completed_at ? formatDateTime(run.completed_at) : "Completed"}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>Module</FieldLabel>
-            <Select
-              value={restoreModule}
-              onValueChange={(value) => {
-                setRestoreModule(value);
-                setRestorePreview(null);
-              }}
-              disabled={!selectedRestoreRun}
-            >
-              <SelectTrigger><SelectValue placeholder="Select a module" /></SelectTrigger>
-              <SelectContent>
-                {restoreModuleOptions.map((module) => <SelectItem key={module.value} value={module.value}>{module.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>Strategy</FieldLabel>
-            <Select value={restoreMode} onValueChange={(value) => setRestoreMode(value as typeof restoreMode)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {restoreModes.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
+      <FormSection
+        title="Restore"
+        description="Preview a backup artifact before it is applied. Every restore writes to live tenant data."
+      >
+        <div className="flex flex-col gap-5">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Field>
+              <FieldLabel>Backup run</FieldLabel>
+              <Select
+                value={restoreRunId}
+                onValueChange={(value) => {
+                  setRestoreRunId(value);
+                  setRestoreModule("");
+                  setRestorePreview(null);
+                  setWholeRestorePreview(null);
+                }}
+              >
+                <SelectTrigger aria-label="Backup run"><SelectValue placeholder="Select a run" /></SelectTrigger>
+                <SelectContent>
+                  {completedRuns.map((run) => (
+                    <SelectItem key={run.id} value={String(run.id)}>#{run.id} · {run.completed_at ? formatDateTime(run.completed_at) : "Completed"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Module</FieldLabel>
+              <Select
+                value={restoreModule}
+                onValueChange={(value) => {
+                  setRestoreModule(value);
+                  setRestorePreview(null);
+                }}
+                disabled={!selectedRestoreRun}
+              >
+                <SelectTrigger aria-label="Module"><SelectValue placeholder="Select a module" /></SelectTrigger>
+                <SelectContent>
+                  {restoreModuleOptions.map((module) => <SelectItem key={module.value} value={module.value}>{module.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Strategy</FieldLabel>
+              <Select value={restoreMode} onValueChange={(value) => setRestoreMode(value as typeof restoreMode)}>
+                <SelectTrigger aria-label="Strategy"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {restoreModes.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
 
           {restoreMode === "replace_module_data" ? (
-            <Field className="md:col-span-3">
-              <FieldLabel>Confirmation</FieldLabel>
+            <Field>
+              <FieldLabel htmlFor="restore-confirmation">Confirmation</FieldLabel>
               <Input
+                id="restore-confirmation"
+                className="max-w-md"
                 value={restoreConfirmation}
                 onChange={(event) => setRestoreConfirmation(event.target.value)}
                 placeholder={restoreModule ? `REPLACE ${restoreModule}` : "REPLACE module_key"}
@@ -742,97 +676,72 @@ export default function BackupSettingsPage() {
               <FieldDescription>Replace mode updates backup rows and soft-deletes current rows that are not in the backup.</FieldDescription>
             </Field>
           ) : null}
-        </FieldGroup>
 
-        {restorePreview ? (
-          <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-4">
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Rows</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.total_rows ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Existing</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.existing_matches ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Missing</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.missing_rows ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Invalid</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.invalid_rows ?? 0}</dd>
-            </div>
-          </dl>
-        ) : null}
-
-        <div className="mt-5 flex flex-wrap justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => previewRestoreMutation.mutate()} disabled={previewRestoreMutation.isPending || !restoreRunId || !restoreModule}>
-            {previewRestoreMutation.isPending ? "Previewing..." : "Preview"}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => executeRestoreMutation.mutate()}
-            disabled={executeRestoreMutation.isPending || !restoreRunId || !restoreModule || (restoreMode === "replace_module_data" && restoreConfirmation !== `REPLACE ${restoreModule}`)}
-          >
-            <RotateCcw />{executeRestoreMutation.isPending ? "Restoring..." : "Restore Module"}
-          </Button>
-        </div>
-
-        <div className="mt-6 border-t border-line-subtle pt-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-copy-primary">Whole-Tenant Restore</h3>
-            <p className="mt-1 text-sm text-copy-muted">Creates a safety backup first, then replaces supported modules from a full-tenant backup.</p>
-          </div>
-
-          {wholeRestorePreview ? (
-            <dl className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Modules</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_modules ?? 0}</dd>
-              </div>
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Rows</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_rows ?? 0}</dd>
-              </div>
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Backup Type</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "-"}</dd>
-              </div>
+          {restorePreview ? (
+            <dl className="grid gap-3 text-sm sm:grid-cols-4">
+              <Fact label="Rows">{restorePreview.summary.total_rows ?? 0}</Fact>
+              <Fact label="Existing">{restorePreview.summary.existing_matches ?? 0}</Fact>
+              <Fact label="Missing">{restorePreview.summary.missing_rows ?? 0}</Fact>
+              <Fact label="Invalid">{restorePreview.summary.invalid_rows ?? 0}</Fact>
             </dl>
           ) : null}
 
-          <Field className="mb-4">
-            <FieldLabel>Whole-tenant confirmation</FieldLabel>
-            <Input
-              value={wholeRestoreConfirmation}
-              onChange={(event) => setWholeRestoreConfirmation(event.target.value)}
-              placeholder={wholeRestoreConfirmationText || "RESTORE TENANT tenant_id"}
-            />
-            <FieldDescription>Whole-tenant restore is destructive and creates a safety backup before changes.</FieldDescription>
-          </Field>
-
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => previewWholeRestoreMutation.mutate()} disabled={previewWholeRestoreMutation.isPending || !restoreRunId}>
-              {previewWholeRestoreMutation.isPending ? "Previewing..." : "Preview Whole Tenant"}
+          <ActionBar>
+            <Button type="button" variant="outline" onClick={() => previewRestoreMutation.mutate()} disabled={previewRestoreMutation.isPending || !restoreRunId || !restoreModule}>
+              {previewRestoreMutation.isPending ? "Previewing…" : "Preview module"}
             </Button>
             <Button
               type="button"
               variant="destructive"
-              onClick={() => executeWholeRestoreMutation.mutate()}
-              disabled={executeWholeRestoreMutation.isPending || !restoreRunId || !wholeRestoreConfirmationText || wholeRestoreConfirmation !== wholeRestoreConfirmationText}
+              onClick={() => executeRestoreMutation.mutate()}
+              disabled={executeRestoreMutation.isPending || !restoreRunId || !restoreModule || (restoreMode === "replace_module_data" && restoreConfirmation !== `REPLACE ${restoreModule}`)}
             >
-              <RotateCcw />{executeWholeRestoreMutation.isPending ? "Restoring..." : "Restore Whole Tenant"}
+              <RotateCcw />{executeRestoreMutation.isPending ? "Restoring…" : "Restore module"}
             </Button>
+          </ActionBar>
+
+          <div className="border-t border-line-subtle pt-5">
+            <SectionHeading as="h3" className="mb-3" description="Creates a safety backup first, then replaces every supported module from a full-tenant backup.">
+              Whole tenant
+            </SectionHeading>
+
+            {wholeRestorePreview ? (
+              <dl className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
+                <Fact label="Modules">{wholeRestorePreview.summary.total_modules ?? 0}</Fact>
+                <Fact label="Rows">{wholeRestorePreview.summary.total_rows ?? 0}</Fact>
+                <Fact label="Backup type">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "—"}</Fact>
+              </dl>
+            ) : null}
+
+            <Field className="mb-4 max-w-md">
+              <FieldLabel htmlFor="whole-restore-confirmation">Confirmation</FieldLabel>
+              <Input
+                id="whole-restore-confirmation"
+                value={wholeRestoreConfirmation}
+                onChange={(event) => setWholeRestoreConfirmation(event.target.value)}
+                placeholder={wholeRestoreConfirmationText || "RESTORE TENANT tenant_id"}
+              />
+              <FieldDescription>A whole-tenant restore is destructive. A safety backup is taken before anything changes.</FieldDescription>
+            </Field>
+
+            <ActionBar>
+              <Button type="button" variant="outline" onClick={() => previewWholeRestoreMutation.mutate()} disabled={previewWholeRestoreMutation.isPending || !restoreRunId}>
+                {previewWholeRestoreMutation.isPending ? "Previewing…" : "Preview whole tenant"}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => executeWholeRestoreMutation.mutate()}
+                disabled={executeWholeRestoreMutation.isPending || !restoreRunId || !wholeRestoreConfirmationText || wholeRestoreConfirmation !== wholeRestoreConfirmationText}
+              >
+                <RotateCcw />{executeWholeRestoreMutation.isPending ? "Restoring…" : "Restore whole tenant"}
+              </Button>
+            </ActionBar>
           </div>
         </div>
-      </Card>
+      </FormSection>
 
-      <Card className="px-5 py-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-copy-primary">Recent Backup Runs</h2>
-          <p className="mt-1 text-sm text-copy-muted">Tenant backup artifacts are separate from platform backups.</p>
-        </div>
+      <FormSection title="Recent runs" description="Tenant backup artifacts, which are separate from platform backups.">
         <RecordTable
           label="Backup runs"
           columns={[
@@ -847,7 +756,7 @@ export default function BackupSettingsPage() {
             },
             { key: "scope", label: "Scope", size: "sm", render: (run) => <span className="text-copy-secondary">{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</span> },
             { key: "modules", label: "Modules", size: "sm", render: (run) => <span className="tabular-nums text-copy-secondary">{run.modules_included.length}</span> },
-            { key: "size", label: "Size", size: "sm", render: (run) => <span className="text-copy-secondary">{formatBytes(run.size_bytes)}</span> },
+            { key: "size", label: "Size", size: "sm", render: (run) => <span className="text-copy-secondary">{formatBytes(run.size_bytes) ?? <EmptyValue context="cell" />}</span> },
             {
               key: "upload",
               label: "Upload",
@@ -872,11 +781,10 @@ export default function BackupSettingsPage() {
           }}
           rowActions={(run) => (
             run.status === "completed" && run.storage_ref ? (
-              <div className="flex flex-wrap justify-end gap-2">
+              <ActionBar size="sm">
                 <Button
                   type="button"
                   variant="outline"
-                  size="sm"
                   onClick={() => {
                     void downloadRun(run).catch((error) => toast.error(error instanceof Error ? error.message : "Download failed."));
                   }}
@@ -886,13 +794,12 @@ export default function BackupSettingsPage() {
                 <Button
                   type="button"
                   variant="destructiveGhost"
-                  size="sm"
                   onClick={() => void confirmDeleteRun(run)}
                   disabled={deleteRunMutation.isPending}
                 >
                   <Trash2 />Delete
                 </Button>
-              </div>
+              </ActionBar>
             ) : run.error_message ? (
               <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
             ) : (
@@ -900,7 +807,22 @@ export default function BackupSettingsPage() {
             )
           )}
         />
-      </Card>
+      </FormSection>
     </PageShell>
+  );
+}
+
+/**
+ * A label over its value. Four of these were `dl` cells with the label, the ink and the
+ * gutter written out longhand at each one — three grids on this page alone, and the
+ * authentication page has a local twin of it. It stays page-local until a third page needs
+ * it; 5.7 owns the metric tile this is deliberately *not* (§4.7 archetype 5).
+ */
+function Fact({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
+      <dt className="text-xs font-medium text-copy-label">{label}</dt>
+      <dd className="mt-1 text-copy-secondary">{children}</dd>
+    </div>
   );
 }

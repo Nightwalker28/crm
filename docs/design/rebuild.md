@@ -4453,6 +4453,71 @@ its heading are fixed here; its reordering mechanism is filed where the primitiv
 **Next.** Batch 6d — `backups` (906), the last of the four and the one that **deletes** its
 drawer rather than adopting it.
 
+### Status: batch 6d — the page that deletes its drawer, and the fourth `formatBytes`
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14. Batch 6 is complete: 3,196 lines across four files, 44% of the settings
+surface.
+
+**`backups` is the page that proves `EditorPanel` is not always the answer.** Its schedule —
+frequency, retention, scope, destination, document inclusion — sat behind a `Configure`
+button that opened a 38rem drawer with its own dirty banner, its own Cancel, and its own
+discard confirmation. Archetype 4 says a settings page is a stack of `FormSection` panels
+whose rows are `SettingsRow`; hiding half the page's subject behind a button is the opposite
+of that, and it is why the page needed 200 lines of drawer machinery to say what two panels
+say now.
+
+**It stays a configuration record (R1), and that is the point.** The fields validate together
+— a `selected_modules` scope with nothing selected is refused by the mutation, and a cloud
+destination is only selectable with a connected account — so it keeps one manual save. What
+R3 removes is not the button, it is the *drawer*: the commit is a `FormFooter` at the end of
+the panel, and Discard is where 5.4 put it on every other form in the app.
+
+**The module grid stopped being drawn disabled.** It rendered greyed out with
+`cursor-not-allowed opacity-50` whenever the scope was Full tenant — a control the backend
+ignores, which §7.9 says is not drawn at all. It appears with the scope that uses it.
+Ruling 4 keeps the `Checkbox` here: this is *many from a set*, which is the job the ruling
+explicitly leaves it.
+
+**Three hand-rolled panel headers and three `dl` grids.** The headers were the icon-chip
+recipe — a `h-9 w-9` bordered square holding a lucide glyph, then `text-lg font-semibold` —
+three times, one step louder than the values beneath them (R7). They are `FormSection`. The
+grids were label-over-value cells with the ink and the gutter written longhand at each of
+eleven cells; they are a page-local `Fact`. **It is deliberately not hoisted yet**: the
+authentication page has a local twin, and two is not a primitive — and the thing it looks
+most like, a metric tile, is archetype 5's and belongs to 5.7 (§4.7).
+
+**`formatBytes` had four implementations that disagreed about the answer.**
+
+| Where | Absent or zero | Largest unit |
+|---|---|---|
+| `settings/backups` | `-` | MB |
+| `dashboard/documents` | `0 B` | TB |
+| `client/documents` | *unguarded* | MB |
+| `client/pages/[token]` | `Unknown size` | MB |
+
+A 3 GB backup read as `3072.0 MB` on this page and `3.0 GB` on the documents page — the
+`lib/currency.ts` story from 5.1, one unit down. `lib/format.ts` owns it now, scaling through
+TB, and it **returns `null` for an absent value** rather than choosing a placeholder: §3.6
+makes that `EmptyValue`, and a formatter that picks for its caller is how four different
+placeholders happened. The two client-portal call sites are 5.8's files and were pointed at
+the helper rather than left as a fifth copy.
+
+**Two specs rewritten, and neither behaviour dropped.** `backups-revamp.spec.ts` lost every
+drawer scope — what it checks, that the record commits as a set through one footer, is
+unchanged and now asserts the dirty line returns to saved. The drawer-dismissal guard became
+a discard test: `Discard changes` starts disabled, restores the saved value, and **writes
+nothing**, which the old test never checked at all.
+
+**What batch 6 did not touch, deliberately.** `module-builder`'s drag-and-drop field list is
+one of 5.7's six raw HTML5 implementations and waits for `SortableList`. The `Fact` pair waits
+for a third call site. And the remaining eight `sheet.tsx` call sites — `teams` ×2,
+`permissions`, `modules`, `customer-groups`, the two automation components and the two
+integrations workspaces — are batch 7's stragglers, which is exactly the set §7.11 was written
+for.
+
+**Next.** Batch 7 — the stragglers, and the eight drawers that now have a primitive to adopt.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

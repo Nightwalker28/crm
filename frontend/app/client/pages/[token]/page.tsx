@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, Ta
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_TOKEN_STORAGE_KEY, downloadPublicClientPageDocument, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
 import { resolveMediaUrl } from "@/lib/media";
+import { formatBytes } from "@/lib/format";
 
 function money(value: string | number, currency: string) {
   const amount = Number(value);
@@ -21,13 +22,6 @@ function money(value: string | number, currency: string) {
 
 function getError() {
   return "The response could not be submitted. Try again.";
-}
-
-function formatBytes(value: number) {
-  if (!Number.isFinite(value) || value <= 0) return "Unknown size";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function brandAccent(value?: string | null) {
@@ -162,7 +156,7 @@ export default function PublicClientPage() {
                             <span className="truncate">{document.title || document.original_filename}</span>
                           </div>
                           <div className="mt-1 text-xs text-copy-muted">
-                            {document.original_filename} · {document.extension.toUpperCase()} · {formatBytes(document.file_size_bytes)}
+                            {document.original_filename} · {document.extension.toUpperCase()} · {formatBytes(document.file_size_bytes) ?? "Unknown size"}
                           </div>
                         </div>
                         <Button type="button" variant="outline" size="sm" onClick={() => void openDocument(document)} disabled={openingDocumentId === document.id}>

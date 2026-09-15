@@ -18,16 +18,10 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { usePageAddress } from "@/hooks/usePageAddress";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { LIST_ADDRESS_KEYS } from "@/lib/savedViewQuery";
+import { formatBytes } from "@/lib/format";
 import type { DocumentItem } from "@/hooks/useDocuments";
 
 const DOCUMENT_TYPE_KEY = "type";
-
-function formatBytes(bytes: number) {
-  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
-  return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
-}
 
 export default function DocumentsPage() {
   const searchParams = useSearchParams();
@@ -103,16 +97,16 @@ export default function DocumentsPage() {
       <div className="grid gap-3 md:grid-cols-3">
         <Card variant="status" className="px-4 py-3">
           <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Used</div>
-          <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.used_bytes) : "Loading"}</div>
+          <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.used_bytes) ?? "0 B" : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
           <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Remaining</div>
-          <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.remaining_bytes) : "Loading"}</div>
+          <div className="mt-1 text-lg font-semibold text-copy-primary">{storageUsageQuery.error ? "Unavailable" : storageUsage ? formatBytes(storageUsage.remaining_bytes) ?? "0 B" : "Loading"}</div>
         </Card>
         <Card variant="status" className="px-4 py-3">
           <div className="flex items-center gap-2 text-xs font-medium text-copy-label"><HardDrive className="size-3.5" />Quota</div>
           <div className="mt-1 text-lg font-semibold text-copy-primary">
-            {storageUsageQuery.error ? "Unavailable" : storageUsage ? `${storageUsage.usage_percent.toFixed(1)}% of ${formatBytes(storageUsage.tenant_storage_limit_bytes)}` : "Loading"}
+            {storageUsageQuery.error ? "Unavailable" : storageUsage ? `${storageUsage.usage_percent.toFixed(1)}% of ${formatBytes(storageUsage.tenant_storage_limit_bytes) ?? "0 B"}` : "Loading"}
           </div>
         </Card>
       </div>

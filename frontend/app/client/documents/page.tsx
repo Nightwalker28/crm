@@ -7,12 +7,7 @@ import { DocumentReferenceActions } from "@/components/documents/DocumentReferen
 import { Button } from "@/components/ui/button";
 import { resolveClientDocumentView, useClientDocuments } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatBytes } from "@/lib/format";
 
 export default function ClientDocumentsPage() {
   const documentsQuery = useClientDocuments();
@@ -53,7 +48,7 @@ export default function ClientDocumentsPage() {
                     <div className="text-xs font-medium text-copy-label">{document.extension}</div>
                     <h2 className="mt-1 truncate font-semibold text-copy-primary">{document.title}</h2>
                     <p className="mt-1 text-xs text-copy-muted">
-                      {document.original_filename} / {formatBytes(document.file_size_bytes)} / Updated {formatDateTime(document.updated_at)}
+                      {document.original_filename} / {formatBytes(document.file_size_bytes) ?? "Unknown size"} / Updated {formatDateTime(document.updated_at)}
                     </p>
                     {document.description ? <p className="mt-2 line-clamp-2 text-sm text-copy-secondary">{document.description}</p> : null}
                     {document.expires_at ? <p className="mt-2 text-xs text-state-warning">Access expires {formatDateTime(document.expires_at)}</p> : null}

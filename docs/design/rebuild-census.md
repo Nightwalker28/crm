@@ -276,7 +276,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | **done, batch 2** — `FormSection` + `SettingsRow`, non-sticky footer, checkbox → `SegmentedBoolean` |
 | `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | **done, batch 6a** — first consumer of `EditorPanel`; `Card` + hand-rolled headings → `FormSection`, the duplicate error banner and the third New button deleted, and the table stopped drawing a second border |
-| `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | |
+| `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | **done, batch 6d** — the `Configure` drawer deleted and the schedule brought onto the page as archetype 4, three icon-chip headers → `FormSection`, the disabled module grid → conditional (§7.9), `formatBytes` hoisted to `lib/format.ts` |
 | `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
 | `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/message-templates/page.tsx` | 168 | 5.6 | rebuild | | **denied state, batch 3** |
