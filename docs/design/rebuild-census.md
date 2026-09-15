@@ -259,7 +259,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | **done, batches 3 + 4 + 7d** — denied state, then the table; **audited clean in 7d**, nothing further to change |
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | **done, batches 7a + 7b** — two `EditorPanel`s and their create-panel dirty lines; then the body: two icon-chip headers and a third container level deleted, actions to `PageShell`. Not a `RecordTable` — `groupBy` takes a label, and a department carries a description, a count and three actions |
+| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | **done, batches 7a + 7b + 8** — two `EditorPanel`s and their create-panel dirty lines; then the body: two icon-chip headers and a third container level deleted, actions to `PageShell`. Not a `RecordTable` — `groupBy` takes a label, and a department carries a description, a count and three actions. **Batch 8's browser pass** demoted the twenty `variant="destructive"` row deletes to `outline`: the only file in the app drawing a row action as a filled danger control, and R5's argument applies to a button as much as to a capsule |
 | `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `MatrixTable` (R10) | **done, batch 4b** — the matrix is not a list; `MatrixTable` is the new sibling primitive (§7.10). Footer landed in batch 2, the create-role drawer in 7a |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -435,7 +435,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sidebar/SidebarNav.tsx` | 220 | 5.7 | rebuild | `text-[13px]` at `:166`. **A11** — reports as a collapsible group of one | |
 | `header/ProfileMenu.tsx` | 64 | 5.7 | adopt | | |
 | `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | |
-| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3** |
+| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
 | `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.8 still owns its final shape and the `size-6` |

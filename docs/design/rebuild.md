@@ -4839,6 +4839,135 @@ keeps its `Card` shell because it is a record editor, not a settings panel.
 **Next.** Batch 8 — the sub-phase close-out: the rendered guards, the specs, the browser pass
 over the batch 7 surface in both themes, and one correction commit.
 
+### Status: batch 8 — close-out, and eight specs that had been measuring a moved contract
+
+**5.6 is complete.** Every census row it owns is marked, both rendered guards are green, the
+browser pass is done in both themes, and the two correction commits have landed.
+
+**What ran.**
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **2 of 14**, the known baseline — `LynkSplash` (5.9), `ClientPageCreateForm` (5.8). No 5.6 file adds a source-rule failure |
+| `lint`, `tsc --noEmit` | Green |
+| `design-rules.spec.ts` | Green. **`Audited 94 routes. Unreachable: none`** |
+| `scroll-containers.spec.ts` | Green |
+| **The scoped attribution probe** — 155 specs over every surface 5.6 touched | 106 passed / 49 failed at HEAD; the 49 re-run against pre-5.6 gave **41 pre-existing, 8 regressions** |
+| The browser pass — 13 routes × 2 themes, plus 768 and a 120-stop tab-through | One finding, fixed |
+
+#### The attribution, and why it was worth the second run
+
+5.5's probe came back with two *identical* failure sets, which is the cheapest possible
+result to write up. 5.6's did not, and the difference is the point: **eight specs passed
+before this sub-phase and failed after it.** Every one was read against the diff before
+being touched, and **none was an app defect** — each was a spec still measuring a contract
+5.6 deliberately moved. They are listed in `docs/e2e-suite-status.md`; the shapes worth
+carrying forward are these three.
+
+- **A8's rail makes a whole class of assertion unsayable.** `users-revamp:170` asserted that
+  the Users page has no link named `Authentication`. The rail now links every settings
+  destination from every settings page, and it renders inside `main`, so the count is 1 by
+  design. The repaired assertion says the thing that is still true — *the only such link is
+  the rail's* — and any other spec of the form "this settings page does not link to X" is in
+  the same position.
+- **The segmented-control role, again.** `record-layouts-admin:112` reached for
+  `role="button"` on what batch 7c had made a `SegmentedBoolean`. A Radix `ToggleGroup
+  type="single"` renders **radios**. This is precisely the generalisation 5.5's close-out
+  wrote down after `foundation-revamp:26` — arriving on schedule, in a file nobody connected
+  to it. The rule holds: after a boolean moves onto the segmented primitive, grep the specs
+  for `role="button"` on its label.
+- **A fallback is a contract.** `notifications-revamp:39` is titled *rejects external
+  destinations*, and it still does. What moved is where a rejected link lands: A9 took the
+  default off the admin-only activity log and onto `/dashboard`, which every role can reach.
+  The test was asserting the old destination, not the behaviour in its own name.
+
+**The other five** were batch 7b's copy and structure landing without their specs: the
+house `"… yet."` empty-state idiom, the deleted `Organization structure` wrapper heading,
+two sentence-case panel titles (`Create Team` → `Create team`, and `Create Department`
+again), `RecordTable`'s period-less `errorState` titles, and an `aria-label` that had sat on
+a plain `Card` — never an exposed landmark, only a test hook — replaced by three real
+`FormSection` headings.
+
+#### The browser pass — and the one thing it found
+
+**Run 2026-09-16, both themes, 1280–1400 and 768, 13 routes across the whole batch 7
+surface.** Themes were proved distinct by measurement, not by assumption: body ground
+`rgb(11, 13, 16)` dark against `rgb(247, 248, 250)` light. **`emulateMedia` is a no-op in
+this app** — `:root` carries the dark set and `.light` overrides it, stamped by next-themes
+from `localStorage` before paint — so a pass that asks for "both themes" the media-query way
+measures dark twice and reports success.
+
+**`settings/teams` was drawing twenty solid red buttons.** Every department row and every
+team row carried its delete as `variant="destructive"` — a filled danger control — and on a
+tenant with eight departments that is twenty red squares stacked down the page. It is the
+**only** file in the app that draws a row action that way; every other settings list uses
+`ghost` or `outline`. The destructive weight belongs in the confirmation, which already
+names the record and the consequence (*"Users assigned to it will become unassigned"*,
+§7.5), not on twenty idle rows. This is R5's argument — a coloured decoration repeated once
+per row communicates nothing the ink does not — applied to buttons rather than capsules, and
+the source guard cannot see it because `destructive` is a legal variant. Measured before:
+20 non-neutral grounds in the content region, in both themes. After: **0**.
+
+**It was not 5.6's regression** — the same two call sites are there at `c9dd8d3`. It is
+5.6's to fix because 5.6 rebuilt the page, and because nothing else would have looked.
+
+**What the pass cleared rather than found**, each checked instead of assumed:
+
+- **No page scrolls sideways**, on any of the 13 routes, in either theme, or at 768.
+- **`position: sticky` is `thead` and nothing else** — R3's allowlist — except
+  `MatrixTable`'s pinned identity column on `permissions`, which is deliberate, reasoned in
+  §7.10, and explicitly not the list-table pinning §4.4 took back out.
+- **Focus is visible at every stop.** 120 stops across `teams`, `general`, `permissions` and
+  `domains`, walked from inside the rail so the content is actually reached — the naive
+  walk spends all 18 of its stops in the app sidebar and proves nothing about the rebuild.
+  One stop had no ring: Next's own `nextjs-portal` dev element.
+- **The type ramp is closed** — every rendered size in {11, 12, 14, 16, 18}.
+- `Administratio` and `Finanace Department` are **seed-data typos, not clipping**, and the
+  two "clipped" strings a naive probe reports are `PageHeader`'s `sr-only` h1 and
+  description, which are supposed to be 1px boxes (§8).
+
+#### Filed, not taken
+
+- **The settings rail's labels are Title Case** — `Booking Links`, `Customer Groups`,
+  `Module Settings`, `Module Builder`, `Field Config`, `Record Layouts`, `Activity Log`,
+  `Recycle Bin` — against `All settings` beside them. §3.5's guard greps for `uppercase` and
+  cannot see Title Case, which is why this has survived. **Owner: 5.9**, with the rest of the
+  sweep, and batch 1 made that job cheaper than it looks: the labels are now authored once in
+  `SETTINGS_NAV_GROUPS`, so it is a one-file change that moves the rail, the hub, ⌘K and the
+  shell header's page name together. It will move spec expectations with it —
+  `e2e-suite-status.md` Group 3 is already holding the `Booking Links` / `Booking links`
+  disagreement open.
+- **Specs are typechecked by nothing.** `frontend/tsconfig.json` excludes `tests/e2e/**/*`,
+  and typescript-eslint disables `no-undef` because it assumes `tsc` covers the file. So a
+  spec can reference an undefined variable and **neither `npm run lint` nor `tsc --noEmit`
+  reports it** — one of this batch's own edits did exactly that and was caught only by
+  re-running. **Owner: 5.10**, where the new coverage lands.
+
+#### Two environment facts that cost time, for whoever runs this next
+
+- **Do not run a second Next dev server to hold the baseline tree.** Turbopack takes ~7 GiB
+  after a long session, and a second one on a 15 GiB box gets OOM-killed mid-run — silently,
+  exit code 0, which then reads as 152 spec failures rather than as a dead server. The
+  baseline belongs on the *same* server: `git checkout <sha> -- frontend/app frontend/components
+  frontend/hooks frontend/lib`, keeping `frontend/tests` at HEAD so current specs run against
+  the old app. Restore with `git reset --hard`.
+- **`NAV-FAILED` from `scroll-containers` is a memory report, not a scroll defect.** The same
+  spec ran 3.2m green early in this session and 18m red late, with every route
+  `NAV-FAILED`, because the dev server had grown to 7.1 GiB. Restarting `frontend` took it
+  to 1.86 GiB and the run came back green. Judge a suspicious guard failure against
+  `docker stats` before believing it.
+
+### What 5.6 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| `module-builder`'s and `views/[moduleKey]`'s raw drag-and-drop | 5.7 (`SortableList`) |
+| `NotificationCenter`'s row — its unread `bg-action-primary-muted` is the action's tint carrying *unread*, the fourth instance of the pattern batch 7d retired three times. A9 is done; the row itself is one of 5.7's eleven | 5.7 (`ListRow`) |
+| The settings rail's Title Case labels, now authored in one place | 5.9 |
+| Specs excluded from `tsc` and from `no-undef` | 5.10 |
+| The settings rail's own coverage — every destination reachable without a trip through the hub, `aria-current="page"` on the current one | 5.10 |
+| 41 pre-existing suite failures on the settings surface, grouped in `docs/e2e-suite-status.md` | Not this programme's |
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

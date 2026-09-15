@@ -352,7 +352,13 @@ export default function TeamsAndDepartmentsPage() {
                     <ActionBar size="sm">
                       <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}><Plus />Add team</Button>
                       <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil /></Button>
-                      <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 /></Button>
+                      {/* R5: `destructive` is a solid red fill, and one per row put twenty
+                          of them on this page — the only file in the app that draws a row
+                          action that way; every other settings list uses `ghost` or
+                          `outline`. The destructive weight belongs in the confirmation,
+                          which names the record and the consequence (§7.5), not on twenty
+                          idle rows. */}
+                      <Button size="icon-sm" variant="outline" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 /></Button>
                     </ActionBar>
                   ) : undefined}
                 >
@@ -374,7 +380,7 @@ export default function TeamsAndDepartmentsPage() {
                         </div>
                         <ActionBar size="sm" className="self-end sm:self-auto">
                           <Button size="icon-sm" variant="outline" onClick={() => openEditTeam(team)} aria-label={`Edit ${team.name}`}><Pencil /></Button>
-                          <Button size="icon-sm" variant="destructive" onClick={() => removeTeam(team)} aria-label={`Delete ${team.name}`}><Trash2 /></Button>
+                          <Button size="icon-sm" variant="outline" onClick={() => removeTeam(team)} aria-label={`Delete ${team.name}`}><Trash2 /></Button>
                         </ActionBar>
                       </div>
                     ))}
