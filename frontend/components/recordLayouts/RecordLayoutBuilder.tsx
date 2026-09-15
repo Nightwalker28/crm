@@ -36,7 +36,10 @@ import {
 import { Chip } from "@/components/ui/Chip";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Card } from "@/components/ui/Card";
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
@@ -258,19 +261,18 @@ function SectionCard({
             <SelectItem value="sidebar">Sidebar</SelectItem>
           </SelectContent>
         </Select>
-        <Button
-          type="button"
-          size="sm"
-          variant={section.collapsed_by_default ? "outline" : "ghost"}
-          aria-pressed={section.collapsed_by_default}
-          onClick={() =>
-            onChange((definition) =>
-              updateSection(definition, section.id, { collapsed_by_default: !section.collapsed_by_default }),
-            )
+        {/* Ruling 4: one boolean is `SegmentedBoolean`. A `variant`-switching button with
+            `aria-pressed` was a fifth idiom for the same field, and the quietest of them —
+            ghost-vs-outline is the weakest signal in the set for a state you have to read. */}
+        <SegmentedBoolean
+          aria-label={`Collapsed by default for ${section.label}`}
+          value={section.collapsed_by_default}
+          onValueChange={(collapsed_by_default) =>
+            onChange((definition) => updateSection(definition, section.id, { collapsed_by_default }))
           }
-        >
-          Collapsed
-        </Button>
+          trueLabel="Collapsed"
+          falseLabel="Expanded"
+        />
 
         <div className="ml-auto flex items-center gap-1">
           <Button
@@ -422,7 +424,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
   return (
     <PageShell
       variant="settings"
-      title="Record Layouts"
+      title="Record layouts"
       description="Arrange the fields on the Lead Quick Create surface."
       context={
         <span>
@@ -432,7 +434,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
         </span>
       }
       actions={(
-        <>
+        <ActionBar>
         <Button type="button" variant="ghost" disabled={!isDirty || isBusy} onClick={() => setDraft(baseline)}>
           <Undo2 />Discard changes
         </Button>
@@ -448,7 +450,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
         <Button type="button" disabled={!isDirty || !validation?.valid || isBusy} onClick={() => void handlePublish()}>
           Publish
         </Button>
-        </>
+        </ActionBar>
       )}
     >
 
@@ -473,9 +475,8 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
             />
           ))}
 
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold text-copy-primary">Add a section</h2>
-            <div className="mt-3 flex flex-wrap gap-2">
+          <FormSection title="Add a section">
+            <div className="flex flex-wrap gap-2">
               <Input
                 value={newSectionLabel}
                 maxLength={150}
@@ -496,22 +497,15 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
                 <Plus />Add section
               </Button>
             </div>
-          </Card>
+          </FormSection>
         </div>
 
         <div className="grid gap-4">
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold text-copy-primary">Validation</h2>
-            <div className="mt-3">
-              <RecordLayoutValidationPanel validation={validation} isChecking={isPreviewStale} />
-            </div>
-          </Card>
+          <FormSection title="Validation">
+            <RecordLayoutValidationPanel validation={validation} isChecking={isPreviewStale} />
+          </FormSection>
 
-          <Card className="p-4">
-            <h2 className="text-sm font-semibold text-copy-primary">Available fields</h2>
-            <p className="mt-1 text-p-xs text-copy-muted">
-              Fields not on the layout yet. Labels and types come from Field Config.
-            </p>
+          <FormSection title="Available fields" description="Fields not on the layout yet. Labels and types come from field configuration.">
             {sections.length > 1 ? (
               <div className="mt-3">
                 <Select value={targetSectionId} onValueChange={setPreferredSectionId}>
@@ -560,16 +554,13 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
                 <EmptyState title="Every field is on the layout" description="Remove one to make it available again." />
               )}
             </div>
-          </Card>
+          </FormSection>
         </div>
       </div>
 
-      <Card className="p-4">
-        <h2 className="text-sm font-semibold text-copy-primary">Preview</h2>
-        <div className="mt-3">
-          <RecordLayoutPreview layout={previewQuery.data?.resolved ?? null} isStale={isPreviewStale} />
-        </div>
-      </Card>
+      <FormSection title="Preview">
+        <RecordLayoutPreview layout={previewQuery.data?.resolved ?? null} isStale={isPreviewStale} />
+      </FormSection>
     </PageShell>
   );
 }

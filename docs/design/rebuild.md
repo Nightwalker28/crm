@@ -4731,6 +4731,54 @@ Team`, `Add Team` ×2; `"No description"` is `EmptyValue` (§3.6).
 
 ---
 
+### Status: batch 7c — record layouts, and a fifth idiom for one boolean
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14.
+
+**Five `Card className="p-4"` + `<h2 className="text-sm font-semibold text-copy-primary">`
+pairs → `FormSection`.** The heading ink is the R7 inversion these predate: `text-copy-primary`
+is one step *louder* than the values beneath it, and a section heading is the one thing on a
+panel that should be quieter. `RecordLayoutBuilder` had the pattern five times in one file.
+
+**Ruling 4 has a fifth idiom, and it is the quietest of them.** The section's *Collapsed by
+default* toggle was a `Button` whose `variant` flipped between `ghost` and `outline` with
+`aria-pressed` carrying the state. Ghost-vs-outline is the weakest signal in the set for a
+value the operator has to *read* — and the ruling has named one answer for one boolean since
+batch 1. It is a `SegmentedBoolean` with `Collapsed` / `Expanded`, which also gives the field
+a name it did not have.
+
+**R4 on the page actions.** Discard, Reset and Publish sat in a bare `<>` fragment, so three
+sibling controls in one action row set no shared height. `ActionBar` owns that (R4).
+
+**R5 on the validation panel, and the reason is in the block's own copy.** Errors and
+suggestions were drawn as the same treatment in two shades — a tinted box with a coloured
+semibold heading, `state-danger` for one and `state-warning` for the other. But the suggestion
+block says, in its own second line, *"These do not block publishing."* Advice is not an
+exception, so it does not take the exception's tint; it is an ordinary muted panel now, and
+the two blocks differ **by kind** rather than by two shades of one thing. The error keeps
+`state-danger`, because a blocked publish genuinely is an exception.
+
+The `CheckCircle2` beside *"This layout can be published"* lost its independent green (§5: an
+icon does not take a colour its label does not have). It is the most frequent state of the
+panel, so painting it was colour spent on the *absence* of an exception.
+
+**`RecordLayoutPreview` needed nothing**, and it is worth saying why: it already carries the
+§1.3 argument as a comment and follows it — no frame of its own, because the runtime renderer
+already draws a card per section and a wrapper would be the third level. It uses
+`SegmentedControl` and `EmptyState`. It is what a file looks like when the rules were
+available while it was being written.
+
+**Two Title Case page titles.** `Record Layouts` appears in both the page and the builder —
+they have to agree, and §3.5 says which way.
+
+**Next.** Batch 7d — the remaining small pages (`activity-log`, `message-templates`,
+`domains`, `integrations`, `recycle-bin`, `users`, `automation`), the automation components,
+`IntegrationProviderRegistry`, the two user dialogs and `userFilters`, and the three shared
+`components/ui` stragglers.
+
+---
+
 ## 5.7 — Dashboard, reports, boards, calendars, mail
 
 The surfaces no phase has touched.
@@ -4740,7 +4788,11 @@ The surfaces no phase has touched.
   stat-tile layout.
 - `ListRow` / `TimelineItem` — **11 unshared** activity / comment / notification / event
   row implementations.
-- `DropZone` + `SortableList` — **6 raw HTML5 drag-and-drop** implementations.
+- `DropZone` + `SortableList` — **5 raw HTML5 drag-and-drop** implementations, not 6, and
+  `RecordLayoutBuilder` is not one of them — corrected in 5.6 batch 7c, where the census note
+  marking it was found to point at a file that reorders with arrow buttons. The set is
+  `settings/module-builder`, `views/[moduleKey]`, `DashboardLayoutEditor`,
+  `OpportunitiesPipelineBoard`, `TasksBoard`.
 - A shared `Board` for the 2 kanbans, and one calendar grid for the 3 (tasks calendar,
   dashboard calendar with 5 raw `<button>`s, public booking).
 - `mail/page.tsx` (760) and `calendar/page.tsx` (631) rebuilt onto the archetypes.

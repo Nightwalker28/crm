@@ -269,7 +269,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **done, batch 6b** — error idiom batch 3, A10 batch 5, and the rebuild here: the catalogue onto `RecordTable`, two copies of the sheet recipe onto one `EditorPanel`, the fake menu retired, two lone `Checkbox` booleans onto `SegmentedBoolean` |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **leak closed, batch 1** — it is in the one IA now, so ⌘K finds it and its header stops using the Title Case fallback. The page itself stays 5.6's |
+| `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **done, batches 1 + 7c** — the IA leak closed in 1; the page's own Title Case title fixed in 7c |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **table + denied state, batch 4a** — `RecordTable` with sortable columns; three page-local states deleted. **Drawer, batch 7a** |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **denied state, batch 3.** `?view=` → `?tab=` is batch 5's |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **denied state, batch 3** |
@@ -399,9 +399,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **table batch 4b, drawer batch 7a** — three tables, six prose states retired; then `EditorPanel`, and the Save became a submit |
 | `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | **error state, batch 4a** — on `PanelError` |
 | `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | **done, 5.6 batch 4a** — a verbatim duplicate of `PanelError`; all 4 call sites moved |
-| `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | 6 raw HTML5 DnD implementations start here | |
-| `recordLayouts/RecordLayoutPreview.tsx` | 95 | 5.6 | rebuild | | |
-| `recordLayouts/RecordLayoutValidationPanel.tsx` | 69 | 5.6 | rebuild | | |
+| `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | ~~6 raw HTML5 DnD implementations start here~~ — **stale, corrected 7c**: this file has no drag-and-drop at all. It reorders with arrow buttons. The real set is five files, listed in 5.7 | **done, batch 7c** — five `Card` + hand-rolled `h2` → `FormSection` (R7), page actions → `ActionBar` (R4), the `aria-pressed` collapse toggle → `SegmentedBoolean` (ruling 4, a fifth idiom) |
+| `recordLayouts/RecordLayoutPreview.tsx` | 95 | 5.6 | **unchanged** | | **done, batch 7c** — audited, nothing to change: it already carries the §1.3 no-third-frame argument and follows it, on `SegmentedControl` + `EmptyState` |
+| `recordLayouts/RecordLayoutValidationPanel.tsx` | 69 | 5.6 | rebuild | | **done, batch 7c** — R5: the suggestion block says in its own copy that it blocks nothing, so it lost the exception tint; the error keeps it. The success tick lost its independent green (§5) |
 | `recordLayouts/recordLayoutDraft.ts` | 227 | — | unchanged | Data | |
 
 ### 2.5 Dashboard, boards, calendars, mail, tasks (17) — owner 5.7

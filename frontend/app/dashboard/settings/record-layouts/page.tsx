@@ -33,7 +33,7 @@ export default function RecordLayoutsSettingsPage() {
     return (
       <PageShell
         variant="settings"
-        title="Record Layouts"
+        title="Record layouts"
         description="Arrange the fields on the Lead Quick Create surface."
         isPermissionDenied={isForbidden}
         isLoading={isPending}
