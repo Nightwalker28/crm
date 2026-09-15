@@ -4779,6 +4779,68 @@ they have to agree, and §3.5 says which way.
 
 ---
 
+### Status: batch 7d — `Pill` under another name, and a state standing beside its table
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14. **Batch 7 is complete** — every file 5.6 owns is now marked in the census.
+
+**`settings/domains` had re-created `Pill`.** R5 deleted the *identifier*; this page kept the
+*shape* — a nested ternary producing `rounded bg-state-success-muted px-2 py-0.5 text-xs
+text-state-success`, or the danger pair, or the warning pair, once per domain. That is a
+coloured capsule carrying a status, which is the thing R5 removed, and the source guard cannot
+see it because it greps for the component name. It is `StatusValue` now, `Primary` is a `Chip`,
+and the `charAt(0).toUpperCase()` beside it — one of 5.9's seventeen — is
+`formatSnakeCaseLabel`. **This is what 5.10's colour-budget check is for**: the guard has to
+count *rendered* colour in a table body, because the identifier returning is only half of it.
+
+**`settings/automation` drew two states beside a table that has owned them since 4a.** A
+`RouteLoadingState` and a `Card` wrapping an `EmptyState` sat outside `AutomationRunsTable` —
+the same page-local pair batch 4 deleted from ten other files, surviving here because 4a
+converted the *table* and left the page's own branch alone. The error one is the worse half:
+it rendered *above* the table, leaving an empty table body underneath it, which is the exact
+defect 4a recorded for `IntegrationEventHistory`. Both moved onto the table's props.
+
+**`AutomationStepList` had four visible container levels.** `Card` → a tinted `CardBody` →
+`section rounded border bg-surface-raised` → `StepRow rounded border bg-surface`. §1.3 stops at
+the third. The two group boxes are ink groups now — a heading and its rows — which is also R8's
+row-over-card, and the canvas tint on `CardBody` does the separating it was already there to do.
+
+**The `bg-action-primary-muted` selection tint, for the third and fourth time.** 6b found it on
+`fields`' catalogue rows and 6c on `module-builder`'s field rows; it is on `AutomationStepList`'s
+step rows and its validation row too. The primary *action's* tint meaning "the inspector is open
+over this" is a claim the row is not making. `border-line-strong bg-surface-muted` is separation.
+Its icon chip was `text-primary` — an icon coloured independently of its label (§5), the same fix
+6c made twice.
+
+**Nine more R7 headings** — `text-lg` / `text-base` / `text-sm font-semibold text-copy-primary`
+where `SectionHeading` is the role: three in `userFilters`, two in `IntegrationProviderRegistry`,
+one each in `recycle-bin` and `domains`, and the provider card's name stepped down from
+`text-base`.
+
+**Two more §7.4 prose states.** `Loading provider health...` was a `Card` with a sentence in it
+and `No integration providers registered.` was another; they are `PanelLoading` and `EmptyState`.
+`Loading custom domains…` was a bare `<p aria-live>`.
+
+**Three more of the colour redundancy 7b named.** `createUserDialog`'s success banner painted
+`text-state-success` inside `bg-state-success-muted`; `AutomationStepList`'s "Builder fields look
+complete" tick was green for the ordinary case; `UserTeamPicker`'s selected-row `Check` was
+`text-primary`, the action's ink marking membership.
+
+**What was audited and deliberately left alone.** `settings/activity-log`, `settings/users`,
+`settings/integrations`, `settings/message-templates` and `editUserDialog` measured clean — no
+`Card`-plus-hand-rolled-heading, no page-local state, no colour misuse. They are marked
+**audited** in the census rather than rebuilt, which is the honest verdict and the same one 7c
+gave `RecordLayoutPreview`.
+
+**Still open, and filed rather than taken:** `module-builder`'s and `views/[moduleKey]`'s raw
+drag-and-drop are 5.7's (`SortableList`), and `settings/automation`'s `AutomationRuleEditor`
+keeps its `Card` shell because it is a record editor, not a settings panel.
+
+**Next.** Batch 8 — the sub-phase close-out: the rendered guards, the specs, the browser pass
+over the batch 7 surface in both themes, and one correction commit.
+
+---
+
 ## 5.7 — Dashboard, reports, boards, calendars, mail
 
 The surfaces no phase has touched.

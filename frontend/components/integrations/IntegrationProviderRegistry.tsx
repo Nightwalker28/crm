@@ -3,7 +3,9 @@ import Link from "next/link";
 import { PlugZap, RefreshCw } from "lucide-react";
 
 import { StatusValue } from "@/components/ui/StatusValue";
-import { PanelError } from "@/components/ui/PanelStates";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { formatDateTime } from "@/lib/datetime";
@@ -102,20 +104,22 @@ export function IntegrationProviderRegistry({
 }) {
   return (
     <section id="provider-registry" className="flex scroll-mt-5 flex-col gap-4" aria-labelledby="provider-registry-heading">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <h2 id="provider-registry-heading" className="text-lg font-semibold text-copy-primary">Provider Registry</h2>
-          <p className="text-sm text-copy-muted">Connection state from mail, calendar, documents, website APIs, and webhook providers for this tenant.</p>
-        </div>
-        <Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={onRetry}>
-          <RefreshCw />
-          Refresh
-        </Button>
-      </div>
+      <SectionHeading
+        id="provider-registry-heading"
+        description="Connection state from mail, calendar, documents, website APIs, and webhook providers for this tenant."
+        action={(
+          <Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={onRetry}>
+            <RefreshCw />
+            Refresh
+          </Button>
+        )}
+      >
+        Provider registry
+      </SectionHeading>
       {isError ? <PanelError message="Provider health is temporarily unavailable. Your existing connections have not been changed." onRetry={onRetry} /> : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {isLoading ? (
-          <Card className="px-5 py-5 text-sm text-copy-muted md:col-span-2 xl:col-span-3">Loading provider health...</Card>
+          <div className="md:col-span-2 xl:col-span-3"><PanelLoading label="Loading provider health\u2026" /></div>
         ) : items.length ? (
           items.map((item) => {
             const { provider, connection } = item;
@@ -129,7 +133,7 @@ export function IntegrationProviderRegistry({
                     </div>
                     <div className="min-w-0">
                       <div className="text-xs font-medium text-copy-label">{provider.category}</div>
-                      <h3 className="mt-1 text-base font-semibold text-copy-primary">{provider.name}</h3>
+                      <h3 className="mt-1 text-sm font-semibold text-copy-primary">{provider.name}</h3>
                     </div>
                   </div>
                   <StatusValue status={{ tone, label: formatStatus(connection.status) }} context="record" />
@@ -159,7 +163,12 @@ export function IntegrationProviderRegistry({
             );
           })
         ) : (
-          <Card className="px-5 py-5 text-sm text-copy-muted md:col-span-2 xl:col-span-3">No integration providers registered.</Card>
+          <EmptyState
+            className="md:col-span-2 xl:col-span-3"
+            icon={PlugZap}
+            title="No integration providers registered"
+            description="Providers appear here once the workspace enables an integration."
+          />
         )}
       </div>
     </section>

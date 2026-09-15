@@ -149,7 +149,7 @@ export function UserTeamPicker({
                               {user.email || "No email"}
                             </div>
                           </div>
-                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-primary" /> : null}
+                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-copy-primary" /> : null}
                         </button>
                       );
                     })}
@@ -176,7 +176,7 @@ export function UserTeamPicker({
                             <div className="truncate font-medium text-copy-primary">{team.name}</div>
                             <div className="truncate text-xs text-copy-muted">{teamDescription}</div>
                           </div>
-                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-primary" /> : null}
+                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-copy-primary" /> : null}
                         </button>
                       );
                     })}

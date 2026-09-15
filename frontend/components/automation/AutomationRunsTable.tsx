@@ -24,9 +24,12 @@ function sourceLabel(run: AutomationRun) {
  * min-width from the visible columns and scrolls inside its own region instead, so the run
  * count and the start time are still reachable at any viewport.
  */
-export function AutomationRunsTable({ runs, isRefreshing, hasFilters, onClearFilters, onInspect }: {
+export function AutomationRunsTable({ runs, isLoading, isRefreshing, hasError, onRetry, hasFilters, onClearFilters, onInspect }: {
   runs: AutomationRun[];
+  isLoading?: boolean;
   isRefreshing?: boolean;
+  hasError?: boolean;
+  onRetry?: () => void;
   hasFilters: boolean;
   onClearFilters: () => void;
   onInspect: (run: AutomationRun) => void;
@@ -60,7 +63,15 @@ export function AutomationRunsTable({ runs, isRefreshing, hasFilters, onClearFil
       columns={columns}
       rows={runs}
       rowKey={(run) => run.id}
+      isLoading={isLoading}
       isRefreshing={isRefreshing}
+      hasError={hasError}
+      errorState={{
+        icon: History,
+        title: "Run history could not be loaded",
+        description: "The rules are unaffected. Try loading recent runs again.",
+      }}
+      onRetry={onRetry}
       shellVariant="nested"
       rowActions={(run) => (
         <Button type="button" variant="ghost" size="sm" onClick={() => onInspect(run)}><Eye />Inspect</Button>

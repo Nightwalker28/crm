@@ -137,7 +137,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
 
           {setupLink ? (
             <div className="mt-4 space-y-4">
-              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-state-success">
+              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-primary">
                 Manual sign-in is enabled for this user. Share the setup link below so they can create their password.
               </div>
 

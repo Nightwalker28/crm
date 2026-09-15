@@ -8,6 +8,7 @@ import { RefreshCw, RotateCcw, Trash2 } from "lucide-react";
 import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -185,7 +186,7 @@ export default function RecycleBinPage() {
 
       <Card>
         <div className="border-b border-line-subtle px-5 py-4">
-          <h2 className="text-lg font-semibold text-copy-primary">{label}</h2>
+          <SectionHeading>{label}</SectionHeading>
           <p className="mt-1 text-sm text-copy-muted">Restore records without removing their audit history.</p>
         </div>
 

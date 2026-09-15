@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from "motion/react";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Card } from "../ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Spinner } from "../ui/spinner";
 
 type FilterChipProps = {
@@ -108,7 +109,7 @@ export default function UserFilters({
             <Card>
               <div className="divide-y divide-line-subtle">
                 <section className="px-4 py-4" aria-labelledby="user-filter-teams">
-                  <h3 id="user-filter-teams" className="text-sm font-semibold text-copy-primary">Teams</h3>
+                  <SectionHeading as="h3" id="user-filter-teams">Teams</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
@@ -132,7 +133,7 @@ export default function UserFilters({
                 </section>
 
                 <section className="px-4 py-4" aria-labelledby="user-filter-roles">
-                  <h3 id="user-filter-roles" className="text-sm font-semibold text-copy-primary">Roles</h3>
+                  <SectionHeading as="h3" id="user-filter-roles">Roles</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
@@ -156,7 +157,7 @@ export default function UserFilters({
                 </section>
 
                 <section className="px-4 py-4" aria-labelledby="user-filter-status">
-                  <h3 id="user-filter-status" className="text-sm font-semibold text-copy-primary">Status</h3>
+                  <SectionHeading as="h3" id="user-filter-status">Status</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"

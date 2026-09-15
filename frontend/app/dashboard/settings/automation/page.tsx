@@ -13,12 +13,9 @@ import type { AutomationRule, AutomationRun } from "@/components/automation/type
 import { formatModuleLabel, ruleToDraft, serializeDraft } from "@/components/automation/utils";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteAutomationRule, persistAutomationRule, previewAutomationRule, useAutomationRules, useAutomationRuns, useAutomationTriggers } from "@/hooks/useAutomationRules";
@@ -185,7 +182,11 @@ export default function AutomationSettingsPage() {
         <Field className="sm:w-64"><FieldLabel className="sr-only">Filter runs by rule</FieldLabel><Select value={runRuleFilter} onValueChange={filterRunsByRule}><SelectTrigger aria-label="Filter runs by rule"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All rules</SelectItem>{(rulesQuery.data ?? []).map((rule) => <SelectItem key={rule.id} value={String(rule.id)}>{rule.name}</SelectItem>)}</SelectContent></Select></Field>
         <Field className="sm:w-48"><FieldLabel className="sr-only">Filter runs by status</FieldLabel><Select value={runStatusFilter} onValueChange={setRunStatusFilter}><SelectTrigger aria-label="Filter runs by status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="succeeded">Succeeded</SelectItem><SelectItem value="failed">Failed</SelectItem><SelectItem value="skipped">Skipped</SelectItem></SelectContent></Select></Field>
       </div>
-      {runsQuery.isLoading ? <RouteLoadingState label="automation runs" /> : runsQuery.isError ? <Card><EmptyState icon={History} title="Run history could not be loaded" description="The rules are unaffected. Try loading recent runs again." action={<Button type="button" variant="outline" onClick={() => void runsQuery.refetch()}>Try again</Button>} /></Card> : <AutomationRunsTable runs={filteredRuns} isRefreshing={runsQuery.isFetching} hasFilters={runRuleFilter !== "all" || runStatusFilter !== "all"} onClearFilters={() => { filterRunsByRule("all"); setRunStatusFilter("all"); }} onInspect={(run) => setSelectedRun(run)} />}
+      {/* The page drew a `RouteLoadingState` and a `Card`+`EmptyState` error *outside* a
+          `RecordTable` that has owned both states since 4a — the same page-local pair batch 4
+          deleted from ten other files. A state that sits beside the table cannot know the
+          table is empty, and the error one left an empty table body rendering underneath it. */}
+      <AutomationRunsTable runs={filteredRuns} isLoading={runsQuery.isLoading} isRefreshing={runsQuery.isFetching} hasError={runsQuery.isError} onRetry={() => void runsQuery.refetch()} hasFilters={runRuleFilter !== "all" || runStatusFilter !== "all"} onClearFilters={() => { filterRunsByRule("all"); setRunStatusFilter("all"); }} onInspect={(run) => setSelectedRun(run)} />
       <AutomationRunDetails run={selectedRun} open={Boolean(selectedRun)} onOpenChange={(open) => { if (!open) setSelectedRun(null); }} />
     </>}
   </PageShell>;
