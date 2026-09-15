@@ -148,7 +148,7 @@ test("shows a retryable fixed error when customer groups cannot load", async ({ 
 
   await page.goto("/dashboard/settings/customer-groups");
 
-  await expect(page.getByText("Customer groups could not be loaded.")).toBeVisible();
+  await expect(page.getByText("Customer groups could not be loaded")).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/SELECT customer_groups|private-db/)).toHaveCount(0);
 });

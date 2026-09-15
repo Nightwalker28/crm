@@ -338,6 +338,30 @@ await expect.poll(async () => page.evaluate(() => sessionStorage.getItem("lynk_u
   locator is resolving. Fixing the debounce would probably retire this failure; changing
   the spec would only hide it.
 
+## Cleared in rebuild 5.6's close-out (batch 8)
+
+**Eight specs, all asserting a contract 5.6 deliberately moved. None was an app defect.**
+Attributed the way the header of this document prescribes: the 49 specs failing at HEAD were
+re-run against the pre-5.6 tree (`c9dd8d3`), and **41 also failed there**. The eight below
+passed before 5.6 and failed after, so each one was read against the diff before being touched.
+
+| Spec | The contract that moved |
+| --- | --- |
+| `teams-revamp:41` | Empty-state copy joined the house "… yet." idiom (batch 7b) |
+| `teams-revamp:142` | `Organization structure` — a wrapper heading repeating the page name — was deleted (batch 7b); the departments are the headings now |
+| `teams-revamp:166` | Panel titles are sentence case: `Create Team` → `Create team`, and the same again for `Create Department` |
+| `customer-groups-revamp:140` | Batch 4a moved the state onto `RecordTable`'s `errorState`, whose titles carry no full stop — all six in the app agree |
+| `general-settings-revamp:37` | `aria-label="Company settings workspace"` sat on a plain `Card`, so it was never an exposed landmark — only a test hook. Batch 7b replaced it with three real `FormSection` headings |
+| `notifications-revamp:39` | **A9.** The fallback for a rejected external link moved from the admin-only activity log to `/dashboard`, which every role can reach. The test's subject — rejecting the external destination — is unchanged |
+| `record-layouts-admin:112` | Batch 7c moved the collapse toggle onto `SegmentedBoolean` — a Radix `ToggleGroup type="single"`, whose segments are **radios**. This is the generalisation Group 5 asked for, arriving on schedule |
+| `users-revamp:170` | **A8.** The settings rail links every destination from every settings page, and it renders inside `main`, so "no Authentication link on this page" is no longer sayable as a bare count. It now asserts the only such link is the rail's |
+
+**A gap this exposed.** `frontend/tsconfig.json` excludes `tests/e2e/**/*`, and
+typescript-eslint turns `no-undef` off because it assumes `tsc` covers it. So a spec can
+reference an undefined variable and **neither `tsc --noEmit` nor `npm run lint` will say so** —
+only a run will. One of the edits above hit exactly that and was caught by re-running, not by
+either gate. Worth a cheap guard; filed to 5.10.
+
 ## Already fixed this session
 
 For reference when reading the diff. Three were real product bugs, not test debt.

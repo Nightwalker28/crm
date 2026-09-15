@@ -176,7 +176,15 @@ test("Users does not fetch identity or domain settings", async ({ page }) => {
   await page.goto("/dashboard/settings/users");
   await expect(page.getByPlaceholder("Search users...")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Authentication", exact: true })).toHaveCount(0);
+  // A8's settings rail links every destination from every settings page by design, and it
+  // renders inside `main`, so "no Authentication link on the page" is no longer sayable as
+  // a bare count. The claim that still holds: the only such link is the rail's, so the
+  // Users page's own content has none.
+  const authLinks = page.getByRole("link", { name: "Authentication", exact: true });
+  await expect(authLinks).toHaveCount(1);
+  await expect(
+    page.getByRole("navigation", { name: "Settings" }).getByRole("link", { name: "Authentication", exact: true }),
+  ).toHaveCount(1);
   expect(identityRequests).toBe(0);
 });
 

@@ -130,7 +130,7 @@ test("Publishing sends the draft with the loaded version and reports a stale lay
 
   // Collapsing a section is a change that can never be invalid, so this test exercises the
   // publish transport rather than validation.
-  await page.getByRole("button", { name: "Collapsed" }).first().click();
+  await page.getByRole("radio", { name: "Collapsed" }).first().click();
   const publish = page.getByRole("button", { name: "Publish" });
   await expect(publish).toBeEnabled({ timeout: VALIDATION_TIMEOUT });
   await publish.click();
