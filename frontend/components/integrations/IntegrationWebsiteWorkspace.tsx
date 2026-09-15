@@ -4,7 +4,7 @@ import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2, X } from "lucide-react";
+import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
@@ -17,16 +17,7 @@ import { Input } from "@/components/ui/input";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -362,60 +353,53 @@ export function IntegrationWebsiteWorkspace() {
         <Button type="button" size="sm" onClick={openApiKeyEditor}><Plus />New API key</Button>
       </div>
 
-      <Sheet open={apiKeyEditorOpen} onOpenChange={handleApiKeyEditorOpenChange}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-            <div className="flex min-h-0 flex-1 flex-col">
-              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                <div>
-                  <SheetTitle className="text-lg font-semibold text-copy-primary">Create API key</SheetTitle>
-                  <SheetDescription className="mt-1 text-sm text-copy-muted">Create scoped website credentials. The secret is shown only once.</SheetDescription>
-                </div>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close API key editor" onClick={() => void closeApiKeyEditor()}><X /></Button>
-              </SheetHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="api-key-name">Key Name <RequiredMark /></FieldLabel>
-                    <Input id="api-key-name" value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
-                  </Field>
-                  <div className="grid gap-2">
-                    <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
-                      Catalog read
-                      <Checkbox aria-label="Allow catalog read access" checked={apiKeyDraft.allowCatalogRead} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: checked === true }))} />
-                    </label>
-                    <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
-                      Order writeback
-                      <Checkbox aria-label="Allow order writeback access" checked={apiKeyDraft.allowOrdersWrite} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: checked === true }))} />
-                    </label>
-                  </div>
-                  <Field>
-                    <FieldLabel htmlFor="api-key-origins">Allowed Origins</FieldLabel>
-                    <Textarea id="api-key-origins" value={apiKeyDraft.allowedOrigins} onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))} placeholder="https://example.com, https://www.example.com" className="min-h-20" />
-                    <p className="text-p-xs text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
-                  </Field>
-                </FieldGroup>
+      <EditorPanel
+        open={apiKeyEditorOpen}
+        onOpenChange={handleApiKeyEditorOpenChange}
+        title="Create API key"
+        description="Create scoped website credentials. The secret is shown only once."
+        closeLabel="Close API key editor"
+        onSubmit={() => void createApiKey()}
+        footer={(
+          <>
+            <Button type="button" variant="outline" disabled={saving} onClick={() => void closeApiKeyEditor()}>Cancel</Button>
+            <Button type="submit" disabled={saving || Boolean(latestApiKey)}><KeyRound size={14} />{saving ? "Creating\u2026" : "Create API key"}</Button>
+          </>
+        )}
+      >
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="api-key-name">Key name <RequiredMark /></FieldLabel>
+            <Input id="api-key-name" value={apiKeyDraft.name} onChange={(event) => setApiKeyDraft((current) => ({ ...current, name: event.target.value }))} placeholder="WordPress production" />
+          </Field>
+          <div className="grid gap-2">
+            <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
+              Catalog read
+              <Checkbox aria-label="Allow catalog read access" checked={apiKeyDraft.allowCatalogRead} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowCatalogRead: checked === true }))} />
+            </label>
+            <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary">
+              Order writeback
+              <Checkbox aria-label="Allow order writeback access" checked={apiKeyDraft.allowOrdersWrite} onCheckedChange={(checked) => setApiKeyDraft((current) => ({ ...current, allowOrdersWrite: checked === true }))} />
+            </label>
+          </div>
+          <Field>
+            <FieldLabel htmlFor="api-key-origins">Allowed origins</FieldLabel>
+            <Textarea id="api-key-origins" value={apiKeyDraft.allowedOrigins} onChange={(event) => setApiKeyDraft((current) => ({ ...current, allowedOrigins: event.target.value }))} placeholder="https://example.com, https://www.example.com" className="min-h-20" />
+            <p className="text-p-xs text-copy-muted">Comma-separated browser origins. Leave empty only for server-to-server clients that do not send an Origin header.</p>
+          </Field>
+        </FieldGroup>
 
-                {latestApiKey ? (
-                  <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
-                    <div className="mb-2 text-xs font-medium text-copy-muted">Copy this key now</div>
-                    <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}><Copy size={14} />Copy</Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => { setLatestApiKey(null); setApiKeyEditorOpen(false); }}>Dismiss</Button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-              <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
-                <Button type="button" variant="outline" disabled={saving} onClick={() => void closeApiKeyEditor()}>Cancel</Button>
-                <Button type="button" disabled={saving || Boolean(latestApiKey)} onClick={createApiKey}><KeyRound size={14} />{saving ? "Creating..." : "Create API Key"}</Button>
-              </SheetFooter>
+        {latestApiKey ? (
+          <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
+            <div className="mb-2 text-xs font-medium text-copy-muted">Copy this key now</div>
+            <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button type="button" variant="outline" size="sm" onClick={() => void copyApiKey()}><Copy size={14} />Copy</Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => { setLatestApiKey(null); setApiKeyEditorOpen(false); }}>Dismiss</Button>
             </div>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
+          </div>
+        ) : null}
+      </EditorPanel>
 
       <RecordTable
         label="Website API keys"

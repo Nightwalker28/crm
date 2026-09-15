@@ -4600,6 +4600,67 @@ adopted and the ten page-level drawers never had.
 
 ---
 
+### Status: batch 7a — the last nine drawers, and three panels where Enter did nothing
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14.
+
+**§7.11's importer rule is now true, and it is measurable.** `grep -rn "components/ui/sheet"
+app components` returns exactly four files — `EditorPanel`, `RecordSpine`,
+`QuickCreateSurface`, and `app/dashboard/layout.tsx`'s mobile nav drawer — which is the set
+§7.11 named when the primitive was written and 6a could not yet enforce. **Zero pages and zero
+non-primitive components import `sheet.tsx`.** The nine that moved here:
+
+| File | Was | Now |
+|---|---|---|
+| `settings/teams` ×2 | 32rem, `text-copy-secondary` description | `EditorPanel` default |
+| `settings/permissions` | 32rem | `EditorPanel` default |
+| `settings/modules` | 34rem, **a `div` with an `onClick` Save** | `EditorPanel` + `onSubmit` |
+| `settings/customer-groups` | 34rem | `EditorPanel` default |
+| `IntegrationWebhookWorkspace` | 34rem, **a `div` with an `onClick` Save** | `EditorPanel` + `onSubmit` |
+| `IntegrationWebsiteWorkspace` | 34rem, **a `div` with an `onClick` Save** | `EditorPanel` + `onSubmit` |
+| `AutomationInspector` | 34rem | `EditorPanel` default |
+| `AutomationRunDetails` | 38rem, read-only | `EditorPanel wide`, no footer |
+
+**Three of the nine could not be committed from the keyboard**, which is batch 6b's `fields`
+finding turning up three more times. A drawer whose body is a `<form>` submits on Enter; a
+drawer whose body is a `<div>` with an `onClick` Save does not, and nothing distinguishes the
+two on screen. `modules`, `IntegrationWebhookWorkspace` and `IntegrationWebsiteWorkspace` were
+all the second kind. `EditorPanel`'s `onSubmit` makes the body a form, so the shape a call site
+used to choose by accident is the primitive's now — and all nine submit.
+
+**The create panels stopped claiming to be saved.** Five of the nine open empty, and four of
+them rendered *All changes saved* on a draft that had never been written — the defect batch 6's
+browser pass found on booking links, carried in the same copied recipe. The status slot follows
+the phrasing 5.4 settled: an edit panel says *All changes saved*, a create panel says what is
+still needed (*Name the group and give it a key to create it.*).
+
+**Six page-local error blocks moved into the status slot.** Each was a `role="alert"` div at the
+*top of the scroll body*, so on a long form the message scrolled out of view behind the footer
+that caused it. They are `status` now, beside the commit — 6b's answer, applied to the rest.
+
+**A status vocabulary defect the conversion surfaced.** `AutomationRunDetails` painted its step
+column with a hand-rolled ternary while the same file used `statusToneFor` for the run's status
+two elements above. The reason is in the backend: `automation_rules.py` writes `succeeded` for a
+**run** and `success` for a **step** — two words for one outcome — and `statusToneFor` knew only
+the first, so routing steps through it would have quietly repainted every successful step
+neutral. The mapper knows both words now, with the why on the line, and the step column is
+`StatusValue` like every other status in the app.
+
+**Eleven Title Case control labels went**, because §3.5 is a design rule and these lines were
+being rewritten anyway (6c's precedent): `Create Department`, `Save Team`, `Create Role`,
+`Role Name`, `Save Group`, `Discount Type`, `Discount Value`, `Channel Name`, `Key Name`,
+`Allowed Origins`, `Add Webhook`, `Create API Key`. Four `Saving...` became `Saving…`.
+
+**Two stale names renamed.** `DepartmentEditorSheet` / `TeamEditorSheet` are `…EditorPanel` —
+the `useListAddress` → `usePageAddress` lesson from batch 5, applied while it still costs
+nothing.
+
+**Next.** Batch 7b — `profile` (516) and `general` (363) onto archetype 4, plus the `teams` page
+body, whose editors landed here and whose `Card` + hand-rolled headings did not.
+
+---
+
 ## 5.7 — Dashboard, reports, boards, calendars, mail
 
 The surfaces no phase has touched.

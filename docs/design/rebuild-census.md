@@ -259,18 +259,18 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | **denied state, batch 3.** The table is batch 4's |
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | |
-| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `MatrixTable` (R10) | **done, batch 4b** — the matrix is not a list; `MatrixTable` is the new sibling primitive (§7.10). Footer landed in batch 2 |
+| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | **both editors, batch 7a** — two `EditorPanel`s; create panels stopped saying "All changes saved". The page body is 7b's |
+| `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `MatrixTable` (R10) | **done, batch 4b** — the matrix is not a list; `MatrixTable` is the new sibling primitive (§7.10). Footer landed in batch 2, the create-role drawer in 7a |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **table, batch 4a** — `RecordTable`; the hand-rolled row gesture and `stopRowNavigation` deleted |
+| `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **table, batch 4a** — `RecordTable`; the hand-rolled row gesture and `stopRowNavigation` deleted. **Drawer, batch 7a** — `EditorPanel`, and the Save became a submit |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — both panels are lists, not matrices; two `colSpan` empty states retired |
 | `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **done, batch 6c** — strip batch 5, booleans batch 1, and the rebuild here: `FieldInspector` stopped emitting its own sheet chrome, both `window.confirm` calls → `useConfirm`, the save row onto `ActionBar`, two A8 header links retired. **The drag-and-drop field list is 5.7's** (`SortableList`) |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **done, batch 6b** — error idiom batch 3, A10 batch 5, and the rebuild here: the catalogue onto `RecordTable`, two copies of the sheet recipe onto one `EditorPanel`, the fake menu retired, two lone `Checkbox` booleans onto `SegmentedBoolean` |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **leak closed, batch 1** — it is in the one IA now, so ⌘K finds it and its header stops using the Title Case fallback. The page itself stays 5.6's |
-| `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **table + denied state, batch 4a** — `RecordTable` with sortable columns; three page-local states deleted |
+| `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **table + denied state, batch 4a** — `RecordTable` with sortable columns; three page-local states deleted. **Drawer, batch 7a** |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **denied state, batch 3.** `?view=` → `?tab=` is batch 5's |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
@@ -390,13 +390,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** |
 | `automation/AutomationRuleEditor.tsx` | 137 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, R5 on the dirty line |
 | `automation/AutomationStepList.tsx` | 58 | 5.6 | rebuild | | |
-| `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | **boolean only, batch 1** — on `SettingsRow` + `SegmentedBoolean`. The rest of the file stays 5.6's |
-| `automation/AutomationRunDetails.tsx` | 45 | 5.6 | rebuild | | |
+| `automation/AutomationInspector.tsx` | 49 | 5.6 | rebuild | | **boolean batch 1, drawer batch 7a** — on `SettingsRow` + `SegmentedBoolean`, then `EditorPanel` |
+| `automation/AutomationRunDetails.tsx` | 45 | 5.6 | rebuild | | **done, batch 7a** — read-only `EditorPanel wide`; the hand-rolled step-status ternary became `StatusValue` once `statusToneFor` learned the step vocabulary |
 | `automation/types.ts` | 118 | — | unchanged | Data | |
 | `automation/utils.ts` | 116 | — | unchanged | Data | |
 | `integrations/IntegrationEventHistory.tsx` | 211 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — three prose states replaced by `RecordTable`'s |
-| `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** |
-| `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — three tables, six prose states retired |
+| `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **table batch 4b, drawer batch 7a** — `EditorPanel`, and the Save became a submit |
+| `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **table batch 4b, drawer batch 7a** — three tables, six prose states retired; then `EditorPanel`, and the Save became a submit |
 | `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | **error state, batch 4a** — on `PanelError` |
 | `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | **done, 5.6 batch 4a** — a verbatim duplicate of `PanelError`; all 4 call sites moved |
 | `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | 6 raw HTML5 DnD implementations start here | |

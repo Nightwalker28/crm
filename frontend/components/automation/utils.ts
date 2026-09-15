@@ -111,7 +111,10 @@ export function formatModuleLabel(moduleKey: string) {
 }
 
 export function statusToneFor(status: string): StatusTone {
-  if (status === "succeeded" || status === "enabled") return "success";
+  // A *run* is `succeeded` and a *step* inside it is `success` — two words for one outcome,
+  // both emitted by `automation_rules.py`. This mapper knew only the run's, which is why
+  // `AutomationRunDetails` hand-rolled its own ternary for the step column (5.6 batch 7a).
+  if (status === "succeeded" || status === "success" || status === "enabled") return "success";
   if (status === "failed") return "critical";
   if (status === "skipped") return "attention";
   return "neutral";

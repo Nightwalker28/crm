@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { Boxes, RefreshCw, Repeat2, Save, Settings2, ShieldCheck, X } from "lucide-react";
+import { Boxes, RefreshCw, Repeat2, Save, Settings2, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
@@ -16,23 +16,13 @@ import { Input } from "@/components/ui/input";
 import { RecordTable } from "@/components/ui/RecordTable";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModulesAdmin, useSidebarTabsAdmin } from "@/hooks/admin/useModulesAdmin";
 import type { AdminModule } from "@/hooks/admin/useModulesAdmin";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
-import { cn } from "@/lib/utils";
 
 const HIDDEN_SIDEBAR_TAB = { key: "none", label: "Not shown" };
 
@@ -246,94 +236,80 @@ export default function ModulesPage() {
         }}
       />
 
-      <Sheet open={editorOpen} onOpenChange={(open) => { if (!open) void closeEditor(); }}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-            <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-              <div>
-                <SheetTitle className="text-lg font-semibold text-copy-primary">Edit module settings</SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-copy-muted">
-                  {selectedModule ? getModuleDisplayName(selectedModule.name, selectedModule.description ?? undefined) : "Module"}
-                </SheetDescription>
-              </div>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close module settings" onClick={() => void closeEditor()}><X /></Button>
-            </SheetHeader>
-
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-              {updateError ? (
-                <div role="alert" className="mb-5 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
-                  The module setting could not be updated. Review the value and try again.
-                </div>
-              ) : null}
-              {draft ? (
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="module-sidebar-label">Sidebar label</FieldLabel>
-                    <Input
-                      id="module-sidebar-label"
-                      value={draft.display_name}
-                      onChange={(event) => setDraft((current) => current ? { ...current, display_name: event.target.value } : current)}
-                      placeholder={selectedModule ? getModuleDisplayName(selectedModule.name, selectedModule.description ?? undefined) : "Module name"}
-                      disabled={isSaving}
-                    />
-                    <FieldDescription>Leave blank to use the standard module name.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Sidebar group</FieldLabel>
-                    <Select
-                      value={draft.sidebar_tab_key}
-                      onValueChange={(value) => setDraft((current) => current ? { ...current, sidebar_tab_key: value } : current)}
-                      disabled={isSaving || Boolean(tabsError)}
-                    >
-                      <SelectTrigger className="w-full" aria-label="Sidebar group"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        {placementOptions.map((tab) => <SelectItem key={tab.key} value={tab.key}>{tab.label}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>Controls where the module appears in tenant navigation.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Import duplicate handling</FieldLabel>
-                    <Select
-                      value={draft.import_duplicate_mode}
-                      onValueChange={(value) => setDraft((current) => current ? { ...current, import_duplicate_mode: value as ModuleDraft["import_duplicate_mode"] } : current)}
-                      disabled={isSaving}
-                    >
-                      <SelectTrigger className="w-full" aria-label="Import duplicate handling"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="skip">Skip duplicate rows</SelectItem>
-                        <SelectItem value="overwrite">Overwrite existing values</SelectItem>
-                        <SelectItem value="merge">Merge non-empty values</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Module availability</FieldLabel>
-                    <SegmentedBoolean
-                      aria-label="Module availability"
-                      value={draft.is_enabled}
-                      onValueChange={(is_enabled) => setDraft((current) => (current ? { ...current, is_enabled } : current))}
-                      trueLabel="Enabled"
-                      falseLabel="Disabled"
-                      disabled={isSaving}
-                    />
-                    <FieldDescription>Disabled modules are hidden and blocked at the API level; existing records are retained.</FieldDescription>
-                  </Field>
-                </FieldGroup>
-              ) : null}
-            </div>
-
-            <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <span className={cn("text-sm", isDirty ? "text-state-warning" : "text-state-success")}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>
-                <Button type="button" onClick={() => void saveModuleSettings()} disabled={isSaving || !isDirty}><Save />{isSaving ? "Saving..." : "Save changes"}</Button>
-              </div>
-            </SheetFooter>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
+      <EditorPanel
+        open={editorOpen}
+        onOpenChange={(open) => { if (!open) void closeEditor(); }}
+        title="Edit module settings"
+        description={selectedModule ? getModuleDisplayName(selectedModule.name, selectedModule.description ?? undefined) : "Module"}
+        closeLabel="Close module settings"
+        onSubmit={() => void saveModuleSettings()}
+        status={updateError
+          ? <span role="alert" className="text-state-danger">The module setting could not be updated. Review the value and try again.</span>
+          : isDirty ? "Unsaved changes" : "All changes saved"}
+        footer={(
+          <>
+            <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>
+            <Button type="submit" disabled={isSaving || !isDirty}><Save />{isSaving ? "Saving\u2026" : "Save changes"}</Button>
+          </>
+        )}
+      >
+        {draft ? (
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="module-sidebar-label">Sidebar label</FieldLabel>
+              <Input
+                id="module-sidebar-label"
+                value={draft.display_name}
+                onChange={(event) => setDraft((current) => current ? { ...current, display_name: event.target.value } : current)}
+                placeholder={selectedModule ? getModuleDisplayName(selectedModule.name, selectedModule.description ?? undefined) : "Module name"}
+                disabled={isSaving}
+              />
+              <FieldDescription>Leave blank to use the standard module name.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Sidebar group</FieldLabel>
+              <Select
+                value={draft.sidebar_tab_key}
+                onValueChange={(value) => setDraft((current) => current ? { ...current, sidebar_tab_key: value } : current)}
+                disabled={isSaving || Boolean(tabsError)}
+              >
+                <SelectTrigger className="w-full" aria-label="Sidebar group"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {placementOptions.map((tab) => <SelectItem key={tab.key} value={tab.key}>{tab.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              <FieldDescription>Controls where the module appears in tenant navigation.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel>Import duplicate handling</FieldLabel>
+              <Select
+                value={draft.import_duplicate_mode}
+                onValueChange={(value) => setDraft((current) => current ? { ...current, import_duplicate_mode: value as ModuleDraft["import_duplicate_mode"] } : current)}
+                disabled={isSaving}
+              >
+                <SelectTrigger className="w-full" aria-label="Import duplicate handling"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="skip">Skip duplicate rows</SelectItem>
+                  <SelectItem value="overwrite">Overwrite existing values</SelectItem>
+                  <SelectItem value="merge">Merge non-empty values</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Module availability</FieldLabel>
+              <SegmentedBoolean
+                aria-label="Module availability"
+                value={draft.is_enabled}
+                onValueChange={(is_enabled) => setDraft((current) => (current ? { ...current, is_enabled } : current))}
+                trueLabel="Enabled"
+                falseLabel="Disabled"
+                disabled={isSaving}
+              />
+              <FieldDescription>Disabled modules are hidden and blocked at the API level; existing records are retained.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        ) : null}
+      </EditorPanel>
     </PageShell>
   );
 }

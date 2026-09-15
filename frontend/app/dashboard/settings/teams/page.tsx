@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, Pencil, Plus, Trash2, UsersRound, X } from "lucide-react";
+import { Building2, Pencil, Plus, Trash2, UsersRound } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
@@ -10,16 +10,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { isForbiddenError } from "@/lib/api";
 import { PageShell } from "@/components/ui/PageShell";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Field,
@@ -38,7 +29,7 @@ import {
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
-function DepartmentEditorSheet({
+function DepartmentEditorPanel({
   open,
   mode,
   form,
@@ -60,62 +51,52 @@ function DepartmentEditorSheet({
   onSubmit: () => void;
 }) {
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <SheetPortal>
-        <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-          <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-            <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-              <div>
-                <SheetTitle className="text-lg font-semibold text-copy-primary">{mode === "create" ? "Create Department" : "Edit Department"}</SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-copy-secondary">Group related teams for assignment, reporting, and module availability.</SheetDescription>
-              </div>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close department editor" onClick={onClose}><X /></Button>
-            </SheetHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-            {error ? (
-              <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-                {error}
-              </div>
-            ) : null}
-            <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="department-name">Name <RequiredMark /></FieldLabel>
-              <Input
-                id="department-name"
-                value={form.name}
-                onChange={(event) => onChange({ ...form, name: event.target.value })}
-                placeholder="Revenue Operations"
-              />
-            </Field>
+    <EditorPanel
+      open={open}
+      onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
+      title={mode === "create" ? "Create department" : "Edit department"}
+      description="Group related teams for assignment, reporting, and module availability."
+      closeLabel="Close department editor"
+      onSubmit={onSubmit}
+      status={error
+        ? <span role="alert" className="text-state-danger">{error}</span>
+        : dirty ? "Unsaved changes"
+        : mode === "edit" ? "All changes saved"
+        : "Complete the required fields to create this department."}
+      footer={(
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="submit" disabled={submitting || !form.name.trim()}>{submitting ? "Saving\u2026" : "Save department"}</Button>
+        </>
+      )}
+    >
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="department-name">Name <RequiredMark /></FieldLabel>
+          <Input
+            id="department-name"
+            value={form.name}
+            onChange={(event) => onChange({ ...form, name: event.target.value })}
+            placeholder="Revenue Operations"
+          />
+        </Field>
 
-            <Field>
-              <FieldLabel htmlFor="department-description">Description</FieldLabel>
-              <Input
-                id="department-description"
-                value={form.description}
-                onChange={(event) => onChange({ ...form, description: event.target.value })}
-                placeholder="Optional description"
-              />
-              <FieldDescription>Departments organize teams for assignment and can be selected for module access from Modules.</FieldDescription>
-            </Field>
-            </FieldGroup>
-            </div>
-            <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <span className={`text-sm ${dirty ? "text-state-warning" : "text-state-success"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-                <Button type="submit" disabled={submitting || !form.name.trim()}>{submitting ? "Saving..." : "Save Department"}</Button>
-              </div>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </SheetPortal>
-    </Sheet>
+        <Field>
+          <FieldLabel htmlFor="department-description">Description</FieldLabel>
+          <Input
+            id="department-description"
+            value={form.description}
+            onChange={(event) => onChange({ ...form, description: event.target.value })}
+            placeholder="Optional description"
+          />
+          <FieldDescription>Departments organize teams for assignment and can be selected for module access from Modules.</FieldDescription>
+        </Field>
+      </FieldGroup>
+    </EditorPanel>
   );
 }
 
-function TeamEditorSheet({
+function TeamEditorPanel({
   open,
   mode,
   form,
@@ -142,78 +123,66 @@ function TeamEditorSheet({
     (department) => String(department.id) === form.department_id,
   );
   return (
-    <Sheet open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <SheetPortal>
-        <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-        <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-          <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); onSubmit(); }}>
-            <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-              <div>
-                <SheetTitle className="text-lg font-semibold text-copy-primary">{mode === "create" ? "Create Team" : "Edit Team"}</SheetTitle>
-                <SheetDescription className="mt-1 text-sm text-copy-secondary">
-                  {selectedDepartment
-                    ? `Selected department: ${selectedDepartment.name}`
-                    : "Select where this team belongs in the organization structure."}
-                </SheetDescription>
-              </div>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label="Close team editor" onClick={onClose}><X /></Button>
-            </SheetHeader>
-            <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-            {error ? (
-              <div role="alert" className="mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-                {error}
-              </div>
-            ) : null}
-            <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="team-name">Name <RequiredMark /></FieldLabel>
-              <Input
-                id="team-name"
-                value={form.name}
-                onChange={(event) => onChange({ ...form, name: event.target.value })}
-                placeholder="Platform Admins"
-              />
-            </Field>
+    <EditorPanel
+      open={open}
+      onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}
+      title={mode === "create" ? "Create team" : "Edit team"}
+      description={selectedDepartment
+        ? `Selected department: ${selectedDepartment.name}`
+        : "Select where this team belongs in the organization structure."}
+      closeLabel="Close team editor"
+      onSubmit={onSubmit}
+      status={error
+        ? <span role="alert" className="text-state-danger">{error}</span>
+        : dirty ? "Unsaved changes"
+        : mode === "edit" ? "All changes saved"
+        : "Complete the required fields to create this team."}
+      footer={(
+        <>
+          <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
+          <Button type="submit" disabled={submitting || !dirty || !form.name.trim() || !form.department_id}>{submitting ? "Saving\u2026" : "Save team"}</Button>
+        </>
+      )}
+    >
+      <FieldGroup>
+        <Field>
+          <FieldLabel htmlFor="team-name">Name <RequiredMark /></FieldLabel>
+          <Input
+            id="team-name"
+            value={form.name}
+            onChange={(event) => onChange({ ...form, name: event.target.value })}
+            placeholder="Platform Admins"
+          />
+        </Field>
 
-            <Field>
-              <FieldLabel htmlFor="team-department">Department <RequiredMark /></FieldLabel>
-              <Select value={form.department_id} onValueChange={(value) => onChange({ ...form, department_id: value })}>
-                <SelectTrigger id="team-department">
-                  <SelectValue placeholder="Select department" />
-                </SelectTrigger>
-                <SelectContent>
-                  {departments.map((department) => (
-                    <SelectItem key={department.id} value={String(department.id)}>
-                      {department.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
+        <Field>
+          <FieldLabel htmlFor="team-department">Department <RequiredMark /></FieldLabel>
+          <Select value={form.department_id} onValueChange={(value) => onChange({ ...form, department_id: value })}>
+            <SelectTrigger id="team-department">
+              <SelectValue placeholder="Select department" />
+            </SelectTrigger>
+            <SelectContent>
+              {departments.map((department) => (
+                <SelectItem key={department.id} value={String(department.id)}>
+                  {department.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
 
-            <Field>
-              <FieldLabel htmlFor="team-description">Description</FieldLabel>
-              <Input
-                id="team-description"
-                value={form.description}
-                onChange={(event) => onChange({ ...form, description: event.target.value })}
-                placeholder="Optional description"
-              />
-              <FieldDescription>Teams place users in the org structure and can be selected for module access from Modules.</FieldDescription>
-            </Field>
-            </FieldGroup>
-            </div>
-            <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-              <span className={`text-sm ${dirty ? "text-state-warning" : "text-state-success"}`}>{dirty ? "Unsaved changes" : "All changes saved"}</span>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-                <Button type="submit" disabled={submitting || !dirty || !form.name.trim() || !form.department_id}>{submitting ? "Saving..." : "Save Team"}</Button>
-              </div>
-            </SheetFooter>
-          </form>
-        </SheetContent>
-      </SheetPortal>
-    </Sheet>
+        <Field>
+          <FieldLabel htmlFor="team-description">Description</FieldLabel>
+          <Input
+            id="team-description"
+            value={form.description}
+            onChange={(event) => onChange({ ...form, description: event.target.value })}
+            placeholder="Optional description"
+          />
+          <FieldDescription>Teams place users in the org structure and can be selected for module access from Modules.</FieldDescription>
+        </Field>
+      </FieldGroup>
+    </EditorPanel>
   );
 }
 
@@ -432,7 +401,7 @@ export default function TeamsAndDepartmentsPage() {
         </div>
       </Card>
 
-      <DepartmentEditorSheet
+      <DepartmentEditorPanel
         open={departmentEditorOpen}
         mode={departmentMode}
         form={departmentForm}
@@ -444,7 +413,7 @@ export default function TeamsAndDepartmentsPage() {
         onSubmit={() => void saveDepartmentWorkflow()}
       />
 
-      <TeamEditorSheet
+      <TeamEditorPanel
         open={teamEditorOpen}
         mode={teamMode}
         form={teamForm}

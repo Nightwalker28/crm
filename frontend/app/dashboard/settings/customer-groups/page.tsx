@@ -1,7 +1,7 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
-import { BadgePercent, Plus, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { BadgePercent, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { ActionBar } from "@/components/ui/ActionBar";
@@ -18,16 +18,7 @@ import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useCustomerGroupActions, useCustomerGroups, type CustomerGroup } from "@/hooks/useClientPortal";
@@ -188,8 +179,7 @@ export default function CustomerGroupsSettingsPage() {
     return Object.keys(errors).length === 0;
   }
 
-  async function saveGroup(event: FormEvent) {
-    event.preventDefault();
+  async function saveGroup() {
     if (!validateDraft()) return;
     const makesDefault = draft.is_default && !editingGroup?.is_default;
     const deactivatesGroup = Boolean(editingGroup?.is_active && !draft.is_active);
@@ -269,142 +259,130 @@ export default function CustomerGroupsSettingsPage() {
       backHref={SETTINGS_ROUTES.root}
       backLabel="Back to Settings"
     >
-      <Sheet open={editorOpen} onOpenChange={handleEditorOpenChange}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[34rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-            <form onSubmit={saveGroup} className="flex min-h-0 flex-1 flex-col">
-              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                <div>
-                  <SheetTitle className="text-lg font-semibold text-copy-primary">{editingGroup ? "Edit customer group" : "Create customer group"}</SheetTitle>
-                  <SheetDescription className="mt-1 text-sm text-copy-muted">
-                    Discounts apply to authenticated customer context; public catalog pricing remains unchanged.
-                  </SheetDescription>
-                </div>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close customer group editor" onClick={() => void closeEditor()}><X /></Button>
-              </SheetHeader>
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-          {saveError ? (
-            <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
-              Customer group changes could not be saved. Check the group key and discount, then try again.
-            </div>
-          ) : null}
-          <FieldGroup>
-            <Field>
-              <FieldLabel htmlFor="customer-group-name">Name <RequiredMark /></FieldLabel>
-              <Input
-                id="customer-group-name"
-                value={draft.name}
-                onChange={(event) => {
-                  setDraft((current) => ({ ...current, name: event.target.value }));
-                  setDraftErrors((current) => ({ ...current, name: undefined }));
-                }}
-                maxLength={120}
-                aria-invalid={Boolean(draftErrors.name)}
-                aria-describedby={draftErrors.name ? "customer-group-name-error" : undefined}
-                required
-              />
-              {draftErrors.name ? <FieldError id="customer-group-name-error">{draftErrors.name}</FieldError> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="customer-group-group-key">Key <RequiredMark /></FieldLabel>
-              <Input
-                id="customer-group-group-key"
-                value={draft.group_key}
-                onChange={(event) => {
-                  setDraft((current) => ({ ...current, group_key: event.target.value }));
-                  setDraftErrors((current) => ({ ...current, group_key: undefined }));
-                }}
-                maxLength={80}
-                disabled={Boolean(editingGroup)}
-                aria-invalid={Boolean(draftErrors.group_key)}
-                aria-describedby={draftErrors.group_key ? "customer-group-key-error" : "customer-group-key-description"}
-                required
-              />
-              <FieldDescription id="customer-group-key-description">Letters, numbers, spaces, and underscores; spaces are stored as underscores.</FieldDescription>
-              {draftErrors.group_key ? <FieldError id="customer-group-key-error">{draftErrors.group_key}</FieldError> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="customer-group-discount-type">Discount Type</FieldLabel>
-              <Select
-                value={draft.discount_type}
-                onValueChange={(value) => {
-                  setDraft((current) => ({ ...current, discount_type: value }));
-                  setDraftErrors((current) => ({ ...current, discount_value: undefined }));
-                }}
-              >
-                <SelectTrigger id="customer-group-discount-type" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">No discount</SelectItem>
-                  <SelectItem value="percent">Percent</SelectItem>
-                  <SelectItem value="fixed">Fixed</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="customer-group-discount-value">Discount Value {draft.discount_type !== "none" ? <RequiredMark /> : null}</FieldLabel>
-              <Input
-                id="customer-group-discount-value"
-                type="number"
-                min="0"
-                max={draft.discount_type === "percent" ? "100" : undefined}
-                step="0.01"
-                value={draft.discount_value}
-                onChange={(event) => {
-                  setDraft((current) => ({ ...current, discount_value: event.target.value }));
-                  setDraftErrors((current) => ({ ...current, discount_value: undefined }));
-                }}
-                disabled={draft.discount_type === "none"}
-                aria-invalid={Boolean(draftErrors.discount_value)}
-                aria-describedby={draftErrors.discount_value ? "customer-group-discount-value-error" : undefined}
-              />
-              {draftErrors.discount_value ? <FieldError id="customer-group-discount-value-error">{draftErrors.discount_value}</FieldError> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="customer-group-description">Description</FieldLabel>
-              <Textarea id="customer-group-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
-            </Field>
-          </FieldGroup>
-                <FieldGroup className="mt-5 border-t border-line-subtle pt-5">
-                  <Field>
-                    <FieldLabel>Default assignment</FieldLabel>
-                    <SegmentedBoolean
-                      aria-label="Default assignment"
-                      value={draft.is_default}
-                      onValueChange={(is_default) => setDraft((current) => ({ ...current, is_default }))}
-                      trueLabel="Default group"
-                      falseLabel="Not default"
-                    />
-                    <FieldDescription>Use the default group when a customer has no explicit group assignment.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Group availability</FieldLabel>
-                    <SegmentedBoolean
-                      aria-label="Group availability"
-                      value={draft.is_active}
-                      onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
-                      trueLabel="Active"
-                      falseLabel="Inactive"
-                    />
-                    <FieldDescription>Active groups can be assigned and used for customer pricing.</FieldDescription>
-                  </Field>
-                </FieldGroup>
-              </div>
-              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <span className={`text-sm ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
-                <div className="flex gap-2">
-                  <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>
-                  <Button type="submit" disabled={isSaving || !draft.name.trim() || !draft.group_key.trim()}>
-                    {isSaving ? "Saving..." : editingGroup ? "Save Group" : "Create Group"}
-                  </Button>
-                </div>
-              </SheetFooter>
-            </form>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
+      <EditorPanel
+        open={editorOpen}
+        onOpenChange={handleEditorOpenChange}
+        title={editingGroup ? "Edit customer group" : "Create customer group"}
+        description="Discounts apply to authenticated customer context; public catalog pricing remains unchanged."
+        closeLabel="Close customer group editor"
+        onSubmit={() => void saveGroup()}
+        status={saveError
+          ? <span role="alert" className="text-state-danger">Customer group changes could not be saved. Check the group key and discount, then try again.</span>
+          : isDirty ? "Unsaved changes"
+          : editingGroup ? "All changes saved"
+          : "Name the group and give it a key to create it."}
+        footer={(
+          <>
+            <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>
+            <Button type="submit" disabled={isSaving || !draft.name.trim() || !draft.group_key.trim()}>
+              {isSaving ? "Saving\u2026" : editingGroup ? "Save group" : "Create group"}
+            </Button>
+          </>
+        )}
+      >
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="customer-group-name">Name <RequiredMark /></FieldLabel>
+            <Input
+        id="customer-group-name"
+        value={draft.name}
+        onChange={(event) => {
+          setDraft((current) => ({ ...current, name: event.target.value }));
+          setDraftErrors((current) => ({ ...current, name: undefined }));
+        }}
+        maxLength={120}
+        aria-invalid={Boolean(draftErrors.name)}
+        aria-describedby={draftErrors.name ? "customer-group-name-error" : undefined}
+        required
+            />
+            {draftErrors.name ? <FieldError id="customer-group-name-error">{draftErrors.name}</FieldError> : null}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="customer-group-group-key">Key <RequiredMark /></FieldLabel>
+            <Input
+        id="customer-group-group-key"
+        value={draft.group_key}
+        onChange={(event) => {
+          setDraft((current) => ({ ...current, group_key: event.target.value }));
+          setDraftErrors((current) => ({ ...current, group_key: undefined }));
+        }}
+        maxLength={80}
+        disabled={Boolean(editingGroup)}
+        aria-invalid={Boolean(draftErrors.group_key)}
+        aria-describedby={draftErrors.group_key ? "customer-group-key-error" : "customer-group-key-description"}
+        required
+            />
+            <FieldDescription id="customer-group-key-description">Letters, numbers, spaces, and underscores; spaces are stored as underscores.</FieldDescription>
+            {draftErrors.group_key ? <FieldError id="customer-group-key-error">{draftErrors.group_key}</FieldError> : null}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="customer-group-discount-type">Discount type</FieldLabel>
+            <Select
+        value={draft.discount_type}
+        onValueChange={(value) => {
+          setDraft((current) => ({ ...current, discount_type: value }));
+          setDraftErrors((current) => ({ ...current, discount_value: undefined }));
+        }}
+            >
+        <SelectTrigger id="customer-group-discount-type" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">No discount</SelectItem>
+          <SelectItem value="percent">Percent</SelectItem>
+          <SelectItem value="fixed">Fixed</SelectItem>
+        </SelectContent>
+            </Select>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="customer-group-discount-value">Discount value {draft.discount_type !== "none" ? <RequiredMark /> : null}</FieldLabel>
+            <Input
+        id="customer-group-discount-value"
+        type="number"
+        min="0"
+        max={draft.discount_type === "percent" ? "100" : undefined}
+        step="0.01"
+        value={draft.discount_value}
+        onChange={(event) => {
+          setDraft((current) => ({ ...current, discount_value: event.target.value }));
+          setDraftErrors((current) => ({ ...current, discount_value: undefined }));
+        }}
+        disabled={draft.discount_type === "none"}
+        aria-invalid={Boolean(draftErrors.discount_value)}
+        aria-describedby={draftErrors.discount_value ? "customer-group-discount-value-error" : undefined}
+            />
+            {draftErrors.discount_value ? <FieldError id="customer-group-discount-value-error">{draftErrors.discount_value}</FieldError> : null}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="customer-group-description">Description</FieldLabel>
+            <Textarea id="customer-group-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
+          </Field>
+        </FieldGroup>
+        <FieldGroup className="mt-5 border-t border-line-subtle pt-5">
+          <Field>
+            <FieldLabel>Default assignment</FieldLabel>
+            <SegmentedBoolean
+              aria-label="Default assignment"
+              value={draft.is_default}
+              onValueChange={(is_default) => setDraft((current) => ({ ...current, is_default }))}
+              trueLabel="Default group"
+              falseLabel="Not default"
+            />
+            <FieldDescription>Use the default group when a customer has no explicit group assignment.</FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel>Group availability</FieldLabel>
+            <SegmentedBoolean
+              aria-label="Group availability"
+              value={draft.is_active}
+              onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+              trueLabel="Active"
+              falseLabel="Inactive"
+            />
+            <FieldDescription>Active groups can be assigned and used for customer pricing.</FieldDescription>
+          </Field>
+        </FieldGroup>
+      </EditorPanel>
 
       {/* R10: a hand-assembled `Table` with three page-local states — a loading row that
           said "Loading customer groups...", an error block inside a `colSpan={6}` cell, and

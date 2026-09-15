@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Plus, ShieldCheck, X } from "lucide-react";
+import { Plus, ShieldCheck } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { FormFooter } from "@/components/ui/ActionBar";
@@ -16,16 +16,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { useRolePermissions, type ModulePermission } from "@/hooks/admin/useRolePermissions";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -477,56 +468,46 @@ export default function RolesPermissionsPage() {
           </Card>
       )}
 
-      <Sheet open={createRoleOpen} onOpenChange={handleCreateRoleOpenChange}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none">
-            <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); void handleCreateRole(); }}>
-              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                <div>
-                  <SheetTitle className="text-lg font-semibold text-copy-primary">Create Role</SheetTitle>
-                  <SheetDescription className="mt-1 text-sm text-copy-muted">Start with a secure platform template, then refine module actions in the permission matrix.</SheetDescription>
-                </div>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close role editor" onClick={() => void closeCreateRoleDialog()}><X /></Button>
-              </SheetHeader>
-
-              <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                <FieldGroup className="grid gap-4">
-              <Field>
-                <FieldLabel htmlFor="new-role-name">Role Name <RequiredMark /></FieldLabel>
-                <Input id="new-role-name" value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Operations Manager" disabled={isCreating} required />
-              </Field>
-              <Field>
-                <FieldLabel>Template</FieldLabel>
-                <Select value={newRoleTemplate} onValueChange={setNewRoleTemplate} disabled={isCreating}>
-                  <SelectTrigger aria-label="Template"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>
-                  Start from a secure platform template, then customize module actions after creation.
-                </FieldDescription>
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="new-role-description">Description</FieldLabel>
-                <Input id="new-role-description" value={newRoleDescription} onChange={(event) => setNewRoleDescription(event.target.value)} placeholder="Optional internal description" disabled={isCreating} />
-              </Field>
-              {createError ? <p className="text-sm text-state-danger" role="alert">{createError}</p> : null}
-                </FieldGroup>
-              </div>
-
-              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <span className={`text-sm ${isCreateRoleDirty ? "text-state-warning" : "text-state-success"}`}>{isCreateRoleDirty ? "Unsaved role draft" : "Ready to create"}</span>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => void closeCreateRoleDialog()} disabled={isCreating}>Cancel</Button>
-                  <Button type="submit" disabled={!newRoleName.trim() || isCreating}>{isCreating ? "Creating…" : "Create Role"}</Button>
-                </div>
-              </SheetFooter>
-            </form>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
+      <EditorPanel
+        open={createRoleOpen}
+        onOpenChange={handleCreateRoleOpenChange}
+        title="Create role"
+        description="Start with a secure platform template, then refine module actions in the permission matrix."
+        closeLabel="Close role editor"
+        onSubmit={() => void handleCreateRole()}
+        status={createError
+          ? <span role="alert" className="text-state-danger">{createError}</span>
+          : isCreateRoleDirty ? "Unsaved changes" : "Name the role to create it."}
+        footer={(
+          <>
+            <Button type="button" variant="outline" onClick={() => void closeCreateRoleDialog()} disabled={isCreating}>Cancel</Button>
+            <Button type="submit" disabled={!newRoleName.trim() || isCreating}>{isCreating ? "Creating\u2026" : "Create role"}</Button>
+          </>
+        )}
+      >
+        <FieldGroup>
+          <Field>
+            <FieldLabel htmlFor="new-role-name">Role name <RequiredMark /></FieldLabel>
+            <Input id="new-role-name" value={newRoleName} onChange={(event) => setNewRoleName(event.target.value)} placeholder="Operations Manager" disabled={isCreating} required />
+          </Field>
+          <Field>
+            <FieldLabel>Template</FieldLabel>
+            <Select value={newRoleTemplate} onValueChange={setNewRoleTemplate} disabled={isCreating}>
+              <SelectTrigger aria-label="Template"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {templates.map((template) => <SelectItem key={template.key} value={template.key}>{template.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              Start from a secure platform template, then customize module actions after creation.
+            </FieldDescription>
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="new-role-description">Description</FieldLabel>
+            <Input id="new-role-description" value={newRoleDescription} onChange={(event) => setNewRoleDescription(event.target.value)} placeholder="Optional internal description" disabled={isCreating} />
+          </Field>
+        </FieldGroup>
+      </EditorPanel>
     </PageShell>
   );
 }
