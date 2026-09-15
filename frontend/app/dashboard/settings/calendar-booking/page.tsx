@@ -344,7 +344,7 @@ export default function CalendarBookingSettingsPage() {
         </Field>
         <FormFooter
           className="mt-5"
-          status={isHandleDirty ? "You have an unsaved handle change." : "No unsaved handle changes."}
+          status={isHandleDirty ? "Unsaved changes" : "No unsaved changes"}
         >
           <Button
             type="button"
@@ -433,7 +433,7 @@ export default function CalendarBookingSettingsPage() {
         closeLabel="Close booking link editor"
         size="wide"
         onSubmit={() => saveMutation.mutate(draft)}
-        status={isDirty ? "You have unsaved changes." : "No unsaved changes."}
+        status={isDirty ? "Unsaved changes" : "All changes saved"}
         footer={(
           <>
             <Button type="button" variant="outline" onClick={() => handleEditorOpenChange(false)} disabled={saveMutation.isPending}>Cancel</Button>

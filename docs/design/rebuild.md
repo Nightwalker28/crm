@@ -4395,6 +4395,64 @@ the scroll body where a long form pushes them out of view.
 **Next.** Batch 6c — `module-builder` (892), whose panel is a field inspector over a
 drag-ordered list, and whose two `window.confirm` calls batch 5 filed here.
 
+### Status: batch 6c — the two `window.confirm` calls, and a primitive that emitted its own chrome
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14.
+
+**`FieldInspector` was a component that emitted `SheetHeader` and `SheetFooter`.** It is the
+worst version of the §7.11 problem: the chrome was not merely copied into a page, it was
+copied into a *component*, so the drawer's shape was decided in two files at once and the page
+that mounted it could not see what it was mounting. The inspector now returns a `FieldGroup`
+and nothing else; `EditorPanel` in `ModuleWorkspace` supplies the title, the description, the
+close control and the footer.
+
+**Batch 5 filed the two `window.confirm` calls here and both are gone.** `:410` removing a
+field and `:873` deleting a module — the browser's own dialog, in a programme with one
+confirmation primitive: unthemed, unpositioned, untestable without a Playwright dialog
+handler, and impossible to word properly (`window.confirm` takes one string and no destructive
+affordance). Both are `useConfirm` now, and both say what survives: a removed field's stored
+values do not, a deleted module's records do.
+
+**Two more of the colour misuses `fields` had.** The selected field row was `border-primary
+bg-action-primary-muted` — the primary *action's* tint meaning "the inspector is open over
+this" — and `LockKeyhole` was `text-primary` twice, an icon coloured independently of its
+label (§5). The row is `border-line-strong bg-surface-raised`, which is separation rather
+than a claim, and the lock is a `Chip` where it names a state and `text-copy-muted` where it
+is a marker beside a name.
+
+**The save row is an `ActionBar` inside the `CardFooter`, not a second `FormFooter`.**
+`CardFooter` already draws the rule and the gutter, so nesting `FormFooter` in it would draw
+two. What the row was missing is R4 — `flex flex-wrap gap-2` with the status pushed left by
+`mr-auto` sets no size on its children, so Delete, Discard and Save were free to disagree.
+Delete also moved to the far left of the action group, away from Save.
+
+**Permissions and Automation left the page header.** Seven controls were competing there —
+a search field, a module select, New module, and three ghost links. Two of the three were A8
+workarounds and the rail carries both now. **Saved views stays**, because
+`/dashboard/views/<key>` is not a settings route and nothing else on the page reaches it.
+
+**Two specs updated, both broken by this batch and therefore ours.**
+`module-builder-revamp.spec.ts` asserted the two removed links by role at page scope; the
+assertion moved to `[data-slot="settings-nav-rail"]` rather than being deleted, because what
+it was checking — that these are destinations and not faked tabs — is still true and still
+worth checking. `fields-revamp.spec.ts` moved from `getByRole("button")` on a row to
+`getByRole("row")`, and from the deleted `Checkbox` to the `SegmentedBoolean` that replaced it.
+
+**A note on copy, so 5.9 is not pre-empted.** Four Title Case control labels were rewritten in
+passing — `New Field`, `Create Field`, `Save Field`, `Field Key` — because §3.5 is a design
+rule and those lines were being rewritten anyway. The **dirty-line wording was deliberately
+left alone**: `Unsaved changes` / `All changes saved` is what 5.4 settled across the forms, and
+an earlier pass of this batch had changed it to prose before the measurement showed the
+majority went the other way. What §7.11 removes from that line is the colour, not the words.
+
+**Deliberately not touched: the drag-and-drop field list.** 5.7 owns `DropZone` /
+`SortableList` and the six raw HTML5 implementations, and this is one of them. Its colour and
+its heading are fixed here; its reordering mechanism is filed where the primitive lands.
+
+**Next.** Batch 6d — `backups` (906), the last of the four and the one that **deletes** its
+drawer rather than adopting it.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

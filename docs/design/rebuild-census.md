@@ -265,7 +265,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **table, batch 4a** — `RecordTable`; the hand-rolled row gesture and `stopRowNavigation` deleted |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — both panels are lists, not matrices; two `colSpan` empty states retired |
-| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **strip done, batch 5**; **booleans done, 5.6 batch 1** — five `SettingsSwitchRow`s → `SettingsRow` + `SegmentedBoolean`. The page rebuild is 5.6 batch 6 |
+| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **done, batch 6c** — strip batch 5, booleans batch 1, and the rebuild here: `FieldInspector` stopped emitting its own sheet chrome, both `window.confirm` calls → `useConfirm`, the save row onto `ActionBar`, two A8 header links retired. **The drag-and-drop field list is 5.7's** (`SortableList`) |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **done, batch 6b** — error idiom batch 3, A10 batch 5, and the rebuild here: the catalogue onto `RecordTable`, two copies of the sheet recipe onto one `EditorPanel`, the fake menu retired, two lone `Checkbox` booleans onto `SegmentedBoolean` |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |

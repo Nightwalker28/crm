@@ -13,14 +13,16 @@ import {
   Save,
   Settings2,
   Trash2,
-  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { SectionTabs } from "@/components/ui/SectionTabs";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -31,17 +33,6 @@ import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { SettingsRow } from "@/components/ui/SettingsRow";
-import {
-  Sheet,
-  SheetClose,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { Textarea } from "@/components/ui/textarea";
 import {
   useModuleBuilder,
@@ -191,31 +182,16 @@ function FieldInspector({
   const supportsOptions = field.field_type === "single_select" || field.field_type === "multi_select";
 
   return (
-    <>
-      <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <SheetTitle className="text-base font-semibold text-copy-primary">Edit field</SheetTitle>
-            {field.is_protected ? <LockKeyhole className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
-            <Chip>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Chip>
-          </div>
-          <SheetDescription className="mt-1 break-all text-sm text-copy-muted">
-            {field.key ?? "Configure the new field before saving the module."}
-          </SheetDescription>
-        </div>
-        <SheetClose asChild>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor">
-            <X />
-          </Button>
-        </SheetClose>
-      </SheetHeader>
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-        {field.is_protected ? (
-          <div className="mb-4 rounded-[var(--radius-control)] border border-primary/30 bg-action-primary-muted p-3 text-sm text-copy-secondary">
-            This identifier field is protected because module records and routing depend on it. It cannot be disabled or deleted.
-          </div>
-        ) : null}
-        <FieldGroup>
+    <FieldGroup>
+      <div className="flex flex-wrap items-center gap-2">
+        <Chip>{isNew ? "Draft" : fieldTypeLabel(field.field_type)}</Chip>
+        {field.is_protected ? <Chip><LockKeyhole />Protected</Chip> : null}
+      </div>
+      {field.is_protected ? (
+        <p className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-p-sm text-copy-secondary">
+          This identifier field is protected because module records and routing depend on it. It cannot be disabled or deleted.
+        </p>
+      ) : null}
           <Field>
             <FieldLabel htmlFor="builder-field-label">Label <RequiredMark /></FieldLabel>
             <Input
@@ -281,15 +257,7 @@ function FieldInspector({
           <SettingsRow label="Enabled" description={field.is_protected ? "Protected fields must remain enabled." : "Make this field available in records, lists, and filters."}>
             <SegmentedBoolean aria-label="Field enabled" value={field.is_active} onValueChange={(checked) => onChange({ is_active: checked })} trueLabel="On" falseLabel="Off" disabled={disabled || field.is_protected} />
           </SettingsRow>
-        </FieldGroup>
-      </div>
-      <SheetFooter className="flex items-center justify-between gap-3 border-t border-line-subtle bg-surface px-5 py-4">
-        <p className="text-xs text-copy-muted">Changes are saved with the module.</p>
-        <SheetClose asChild>
-          <Button type="button">Done editing field</Button>
-        </SheetClose>
-      </SheetFooter>
-    </>
+    </FieldGroup>
   );
 }
 
@@ -320,8 +288,9 @@ function SidebarGroupManager({
 
   return (
     <div className="border-t border-line-subtle pt-5">
-      <h3 className="text-sm font-semibold text-copy-primary">Custom sidebar groups</h3>
-      <p className="mt-1 text-sm text-copy-secondary">Groups organize modules without changing their routes.</p>
+      <SectionHeading as="h3" description="Groups organize modules without changing their routes.">
+        Custom sidebar groups
+      </SectionHeading>
       <form onSubmit={create} className="mt-3 flex flex-col gap-2 sm:flex-row">
         <Input aria-label="New sidebar group" value={newLabel} onChange={(event) => setNewLabel(event.target.value)} placeholder="Group name" />
         <Button type="submit" variant="outline" disabled={disabled || !newLabel.trim()}><Plus />Add group</Button>
@@ -374,6 +343,7 @@ function ModuleWorkspace({
     .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
     .map(editableField);
   const initialSnapshot = snapshot(initialDraft, initialFields, []);
+  const { confirm } = useConfirm();
   const [tab, setTab] = useState<EditorTab>("fields");
   const [draft, setDraft] = useState(initialDraft);
   const [fields, setFields] = useState(initialFields);
@@ -405,9 +375,17 @@ function ModuleWorkspace({
     setInspectorOpen(true);
   }
 
-  function removeField(field: EditableField) {
+  async function removeField(field: EditableField) {
     if (field.is_protected) return;
-    if (!window.confirm(`Remove ${field.label || "this field"} when the module is saved?`)) return;
+    // Was `window.confirm` — the browser's own dialog, unthemed and untestable, in a
+    // programme that has one confirmation primitive (5.6 batch 5 filed both of them here).
+    const confirmed = await confirm({
+      title: "Remove this field?",
+      description: `${field.label || "This field"} is removed when the module is saved. Values stored in it are not recoverable from here.`,
+      confirmLabel: "Remove field",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
     setFields((current) => current.filter((candidate) => candidate.clientId !== field.clientId));
     if (field.serverId) setDeletedIds((current) => [...current, field.serverId as number]);
     setSelectedFieldId((current) => current === field.clientId ? null : current);
@@ -485,13 +463,14 @@ function ModuleWorkspace({
 
   const fieldsPanel = (
     <div>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div>
-          <h3 className="font-semibold text-copy-primary">Fields</h3>
-          <p className="text-sm text-copy-secondary">Drag rows or use the arrow controls to set record and list order.</p>
-        </div>
-        <Button type="button" size="sm" onClick={addField} disabled={disabled}><Plus />Add field</Button>
-      </div>
+      <SectionHeading
+        as="h3"
+        className="mb-3"
+        description="Drag rows or use the arrow controls to set record and list order."
+        action={<Button type="button" size="sm" onClick={addField} disabled={disabled}><Plus />Add field</Button>}
+      >
+        Fields
+      </SectionHeading>
       <div className="grid gap-2">
         {fields.length ? fields.map((field, index) => (
           <div
@@ -503,7 +482,10 @@ function ModuleWorkspace({
             onDrop={(event) => dropField(event.dataTransfer.getData("text/plain"), field.clientId)}
             className={cn(
               "flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2",
-              selectedFieldId === field.clientId && "border-primary bg-action-primary-muted",
+              // The row the inspector is open over. It was `border-primary
+              // bg-action-primary-muted` — the *primary action's* tint standing in for
+              // "selected", which is the same misuse `fields` carried (§1.2).
+              selectedFieldId === field.clientId && "border-line-strong bg-surface-raised",
             )}
           >
             <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
@@ -518,14 +500,14 @@ function ModuleWorkspace({
             >
               <span className="flex items-center gap-2">
                 <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
-                {field.is_protected ? <LockKeyhole className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Protected" /> : null}
+                {field.is_protected ? <LockKeyhole className="size-3.5 shrink-0 text-copy-muted" aria-label="Protected" /> : null}
                 {!field.serverId ? <Chip>Draft</Chip> : null}
               </span>
               <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
             </button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.clientId, -1)} disabled={disabled || index === 0}><ChevronUp /></Button>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.clientId, 1)} disabled={disabled || index === fields.length - 1}><ChevronDown /></Button>
-            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
+            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => void removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
           </div>
         )) : (
           <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
@@ -591,41 +573,47 @@ function ModuleWorkspace({
         {/* A module definition commits as a whole — fields, layout and flags in one write —
             so the manual save stays (archetype 4). R3 takes the stickiness; R5 takes the
             colour off the dirty line and leaves it on the save error. */}
-        <CardFooter className="flex flex-wrap items-center gap-2">
+        <CardFooter className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          {/* `CardFooter` already draws the rule and the gutter, so the row inside it is an
+              `ActionBar` rather than a second `FormFooter` — R4's height without a second
+              border. It was `flex flex-wrap gap-2` with the status pushed left by `mr-auto`. */}
           {deleted ? (
-            <Button type="button" onClick={() => void onRestore().catch(() => undefined)} disabled={disabled}><RotateCcw />Restore module</Button>
+            <ActionBar className="sm:ml-auto">
+              <Button type="button" onClick={() => void onRestore().catch(() => undefined)} disabled={disabled}><RotateCcw />Restore module</Button>
+            </ActionBar>
           ) : (
             <>
-              <div className="mr-auto">
-                <p className="text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "All changes saved"}</p>
-                {saveError ? <p role="alert" className="mt-1 text-sm text-state-danger">{saveError}</p> : null}
+              <div className="min-w-0 text-sm text-copy-muted">
+                {saveError
+                  ? <span role="alert" className="text-state-danger">{saveError}</span>
+                  : isDirty ? "Unsaved changes" : "All changes saved"}
               </div>
-              <Button type="button" variant="outline" onClick={discard} disabled={disabled || !isDirty}>Discard</Button>
-              <Button type="button" onClick={save} disabled={disabled || !isDirty}><Save />{disabled ? "Saving…" : "Save changes"}</Button>
-              <Button type="button" variant="destructiveGhost" onClick={() => void onDelete().catch(() => undefined)} disabled={disabled}><Trash2 />Delete</Button>
+              <ActionBar>
+                <Button type="button" variant="destructiveGhost" onClick={() => void onDelete().catch(() => undefined)} disabled={disabled}><Trash2 />Delete</Button>
+                <Button type="button" variant="outline" onClick={discard} disabled={disabled || !isDirty}>Discard</Button>
+                <Button type="button" onClick={save} disabled={disabled || !isDirty}><Save />{disabled ? "Saving…" : "Save changes"}</Button>
+              </ActionBar>
             </>
           )}
         </CardFooter>
       </Card>
 
-      <Sheet
+      <EditorPanel
         open={tab === "fields" && !deleted && Boolean(selectedField) && inspectorOpen}
         onOpenChange={setInspectorOpen}
+        title="Edit field"
+        description={selectedField?.key ?? "Configure the new field before saving the module."}
+        closeLabel="Close field editor"
+        onSubmit={() => setInspectorOpen(false)}
+        status="Changes are saved with the module."
+        footer={<Button type="submit">Done editing field</Button>}
       >
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent
-            side="right"
-            className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised outline-none"
-          >
-            <FieldInspector
-              field={selectedField}
-              disabled={disabled}
-              onChange={(update) => selectedFieldId && updateField(selectedFieldId, update)}
-            />
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
+        <FieldInspector
+          field={selectedField}
+          disabled={disabled}
+          onChange={(update) => selectedFieldId && updateField(selectedFieldId, update)}
+        />
+      </EditorPanel>
     </div>
   );
 }
@@ -817,12 +805,11 @@ export default function ModuleBuilderPage() {
               </Select>
             ) : null}
             <Button type="button" onClick={() => void startCreating()}><Plus />New module</Button>
+            {/* Permissions and Automation were here as A8 workarounds and the rail carries
+                both now. Saved views stays: `/dashboard/views/<key>` is not a settings route,
+                so nothing else on this page reaches it. */}
             {!creating && selectedModule && !selectedModule.deleted_at ? (
-              <>
-                <Button asChild type="button" variant="ghost"><Link href={`/dashboard/views/${selectedModule.key}`}>Saved views</Link></Button>
-                <Button asChild type="button" variant="ghost"><Link href="/dashboard/settings/permissions">Permissions</Link></Button>
-                <Button asChild type="button" variant="ghost"><Link href="/dashboard/settings/automation">Automation</Link></Button>
-              </>
+              <Button asChild type="button" variant="ghost"><Link href={`/dashboard/views/${selectedModule.key}`}>Saved views</Link></Button>
             ) : null}
           </div>
       )}
@@ -870,7 +857,13 @@ export default function ModuleBuilderPage() {
                 setWorkspaceRevision((current) => current + 1);
               }}
               onDelete={async () => {
-                if (!window.confirm(`Delete ${selectedModule.display_name || selectedModule.name}? Records remain recoverable.`)) return;
+                const confirmed = await confirm({
+                  title: "Delete this module?",
+                  description: `${selectedModule.display_name || selectedModule.name} is removed from the sidebar and its runtime. Its records stay recoverable from the recycle bin.`,
+                  confirmLabel: "Delete module",
+                  variant: "destructive",
+                });
+                if (!confirmed) return;
                 await run(() => deleteModule(selectedModule.id), "The module could not be deleted.");
                 setWorkspaceRevision((current) => current + 1);
               }}

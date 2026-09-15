@@ -661,10 +661,10 @@ export default function FieldsPage() {
         closeLabel="Close field editor"
         onSubmit={panelMode === "create" ? () => submitCreate() : () => void saveInspector()}
         status={panelMode === "create"
-          ? (createError ? <span role="alert" className="text-state-danger">{createError}</span> : "The field key cannot be changed later.")
+          ? (createError ? <span role="alert" className="text-state-danger">{createError}</span> : null)
           : (inspectorError
             ? <span role="alert" className="text-state-danger">{inspectorError}</span>
-            : inspectorDirty ? "You have unsaved changes." : "No unsaved changes.")}
+            : inspectorDirty ? "Unsaved changes" : "All changes saved")}
         footer={panelMode === "create" ? (
           <>
             <Button type="button" variant="outline" onClick={() => handlePanelOpenChange(false)} disabled={createMutation.isPending}>Cancel</Button>
