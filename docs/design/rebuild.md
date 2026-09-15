@@ -4661,6 +4661,76 @@ body, whose editors landed here and whose `Card` + hand-rolled headings did not.
 
 ---
 
+### Status: batch 7b — the fourth label-over-value, and a header that repeated the page
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14.
+
+**`Fact` is a primitive, and the third call site 6d was waiting for turned out to be the
+fourth.** 6d wrote *"the authentication page has a local twin, and two is not a primitive"*
+and left it page-local. `profile` is the third — and `RecordSpineField`, a primitive since
+5.3, is the same ink pair again. They disagreed on exactly the two axes a call site was left
+to decide:
+
+| Where | Container | Value ink |
+|---|---|---|
+| `RecordSpineField` (5.3) | none | `text-sm text-copy-primary` |
+| `profile`'s `SummaryTile` | none | `text-sm text-copy-primary` |
+| `authentication`'s `Status` | none | `text-copy-secondary` |
+| `backups`' `Fact` (6d) | **bordered box** | `text-copy-secondary` |
+
+**The bordered one is the interesting row, because the argument against it was already
+written — in the file that did not do it.** `SummaryTile` carried a comment reading *"An ink
+group, not a box… it sits inside a Card already, so a border here is the third container
+level §1.3 forbids."* 6d drew the box anyway, one sub-phase later, in a file whose author had
+not read that comment. It is §4.4's lesson in miniature: **a comment in one page is not a
+default.** Written into `design.md` §7.12 before the primitive, per §12.
+
+**`Fact` emits `dt`/`dd` and `FactList` supplies the `<dl>`**, so the pairing cannot be got
+wrong — all four originals were inside a `<dl>` and two of them rendered bare `div`s in it,
+which is invalid. **`RecordSpineField` is deliberately not folded in**, and §7.12 says why:
+its siblings are `InlineFieldEdit`s and `RecordSpineLink`s — controls and anchors, not
+description-list terms — so sharing the component would buy one fewer file at the cost of
+invalid markup on every record page. The shared thing is the ink pair, which is a token
+decision rather than a component one.
+
+**`general` and `profile` onto archetype 4.** Six `Card` + hand-rolled `<h2 class="text-lg
+font-semibold text-copy-primary">` pairs became `FormSection` — `general` was one `Card`
+holding three `CardHeader`/`CardBody` pairs with two of them wrapped in a hand-written
+`<section className="border-t">`, which is a multi-section panel rebuilt by hand. Both pages'
+commit rows became `FormFooter`; `profile`'s was a `mt-6 flex … border-t pt-5` written
+longhand, so its Save set no size on itself and could disagree with any sibling (R4).
+
+**Two colour misuses in `profile`, both the redundancy R5 names.** The authenticator-secret
+label painted `text-state-warning` *inside a box already tinted `bg-state-warning-muted`*,
+and the recovery-codes heading painted `text-state-success` inside `bg-state-success-muted`.
+The box carries the tone once; the label repeating it is colour spent twice on one signal.
+The authenticator link was `text-primary` — the primary *action's* ink on an anchor — and is
+now §2.2's one link treatment.
+
+**`FormSection` and `SectionHeading` each gained one passthrough, not a feature.**
+`SectionHeading` has carried an `action` slot since 5.2 and `FormSection` did not forward it,
+which is why `profile` drew its own header row beside the primitive's to place `MfaStatus`.
+`SectionHeading` also takes an `id` now, for a region naming itself with `aria-labelledby`.
+
+**`teams`' body, and R10's escalation clause answered in the negative.** The department list
+is a two-level hierarchy, and `RecordTable`'s `groupBy` — added in 4b for exactly this shape
+— takes a band **label**: it cannot carry a department's description, its team count, or its
+three actions. So the hierarchy stays. What went is the drift around it: **two icon-chip
+headers** (the `h-9 w-9` bordered square holding a glyph, then `text-lg font-semibold` — 6d
+deleted three of the same recipe from `backups`), **a third container level** (§1.3: a tinted
+`section` inside a tinted `div` inside the panel, now rules and ink), and a panel header
+whose description was *the page description, verbatim*. The two create buttons moved to
+`PageShell`'s `actions`, where archetype 4 puts them.
+
+**Nine more Title Case labels and one prose placeholder.** `Create Department`, `Create
+Team`, `Add Team` ×2; `"No description"` is `EmptyValue` (§3.6).
+
+**Next.** Batch 7c — record layouts: the page (57), `RecordLayoutBuilder` (575),
+`RecordLayoutPreview` and `RecordLayoutValidationPanel`.
+
+---
+
 ## 5.7 — Dashboard, reports, boards, calendars, mail
 
 The surfaces no phase has touched.

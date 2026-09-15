@@ -5,7 +5,10 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
+import { ActionBar } from "@/components/ui/ActionBar";
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { isForbiddenError } from "@/lib/api";
@@ -292,6 +295,19 @@ export default function TeamsAndDepartmentsPage() {
       variant="settings"
       title="Teams"
       description="Departments contain teams. Manage the hierarchy from one workspace."
+      actions={(
+        <ActionBar>
+          <Button type="button" variant="outline" onClick={openCreateDepartment}><Plus />Create department</Button>
+          <Button
+            type="button"
+            onClick={() => openCreateTeam()}
+            disabled={!departments.length}
+            title={!departments.length ? "Create a department before creating a team" : undefined}
+          >
+            <Plus />Create team
+          </Button>
+        </ActionBar>
+      )}
       isPermissionDenied={isForbiddenError(loadError)}
       hasError={Boolean(loadError) && !loading}
       errorDescription="The organization structure could not be loaded. Try again or return to Settings."
@@ -299,107 +315,76 @@ export default function TeamsAndDepartmentsPage() {
       backHref="/dashboard/settings"
       backLabel="Back to Settings"
     >
-      {error && !departmentDialogOpen && !teamDialogOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
+      {error && !departmentEditorOpen && !teamEditorOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           {error}
           <Button type="button" variant="outline" size="sm" onClick={clearError}>Dismiss</Button>
         </div>
       ) : null}
 
-      <Card>
-        <div className="flex flex-col gap-4 border-b border-line-default px-5 py-5 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2 text-copy-secondary">
-              <Building2 size={16} aria-hidden="true" />
-            </div>
-            <div>
-              <h2 className="text-lg font-semibold text-copy-primary">Organization structure</h2>
-              <p className="mt-1 text-p-sm text-copy-muted">Departments contain teams. Manage the hierarchy from one workspace.</p>
-            </div>
+      {/* R10's escalation clause, answered in the negative: this is a two-level hierarchy,
+          and `RecordTable`'s `groupBy` takes a band *label* — it cannot carry a department's
+          description, its team count, or its three actions. So the hierarchy stays, and what
+          goes is the drift: two icon-chip headers (6d deleted three of the same recipe from
+          `backups`), a third container level (§1.3 — a tinted `section` inside a tinted
+          `div` inside the panel), and a header that repeated the page description verbatim. */}
+      <FormSection title="Departments and teams" description="Every team belongs to a department. Deleting a department does not delete its teams.">
+        {loading ? (
+          <div className="space-y-4" aria-label="Loading organization structure" aria-busy="true">
+            {[0, 1, 2].map((item) => <Skeleton key={item} className="h-24 w-full rounded-[var(--radius-control)]" />)}
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={openCreateDepartment}><Plus />Create Department</Button>
-            <Button
-              type="button"
-              onClick={() => openCreateTeam()}
-              disabled={!departments.length}
-              title={!departments.length ? "Create a department before creating a team" : undefined}
-            >
-              <Plus />Create Team
-            </Button>
-          </div>
-        </div>
+        ) : departments.length === 0 ? (
+          <EmptyState
+            icon={Building2}
+            title="No departments yet"
+            description="Create the first department, then add teams inside it."
+            action={<Button type="button" onClick={openCreateDepartment}><Plus />Create department</Button>}
+          />
+        ) : (
+          <div className="divide-y divide-line-default">
+            {groupedTeams.map(({ department, teams: departmentTeams }) => (
+              <section key={department.id} className="py-5 first:pt-0 last:pb-0" aria-labelledby={`department-${department.id}`}>
+                <SectionHeading
+                  as="h3"
+                  id={`department-${department.id}`}
+                  description={department.description || undefined}
+                  action={department.id !== -1 ? (
+                    <ActionBar size="sm">
+                      <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}><Plus />Add team</Button>
+                      <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil /></Button>
+                      <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 /></Button>
+                    </ActionBar>
+                  ) : undefined}
+                >
+                  {department.name}
+                </SectionHeading>
 
-        <div className="px-5 py-5">
-          {loading ? (
-            <div className="space-y-4" aria-label="Loading organization structure" aria-busy="true">
-              {[0, 1, 2].map((item) => <Skeleton key={item} className="h-36 w-full rounded-[var(--radius-control)]" />)}
-            </div>
-          ) : departments.length === 0 ? (
-            <EmptyState
-              icon={Building2}
-              title="No departments yet"
-              description="Create the first department, then add teams inside it."
-              action={<Button type="button" onClick={openCreateDepartment}><Plus />Create Department</Button>}
-            />
-          ) : (
-            <div className="space-y-4">
-              {groupedTeams.map(({ department, teams: departmentTeams }) => (
-                <section key={department.id} className="overflow-hidden rounded-[var(--radius-control)] bg-surface-muted" aria-labelledby={`department-${department.id}`}>
-                  <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-3">
-                      <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-raised p-2 text-copy-secondary"><Building2 size={15} aria-hidden="true" /></div>
-                      <div className="min-w-0">
-                        <h3 id={`department-${department.id}`} className="text-sm font-semibold text-copy-primary">{department.name}</h3>
-                        <p className="mt-1 text-p-sm text-copy-secondary">{department.description || "No description"}</p>
-                        <p className="mt-1 text-xs text-copy-muted">{departmentTeams.length} {departmentTeams.length === 1 ? "team" : "teams"}</p>
-                      </div>
-                    </div>
-                    {department.id !== -1 ? (
-                      <div className="flex items-center gap-2">
-                        {departmentTeams.length > 0 ? (
-                          <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}>
-                            <Plus size={14} aria-hidden="true" />Add Team
-                          </Button>
-                        ) : null}
-                        <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil size={14} aria-hidden="true" /></Button>
-                        <Button size="icon-sm" variant="destructive" onClick={() => removeDepartment(department)} aria-label={`Delete ${department.name}`}><Trash2 size={14} aria-hidden="true" /></Button>
-                      </div>
-                    ) : null}
-                  </div>
-
-                  <div className="border-t border-line-subtle bg-surface-raised">
-                    {departmentTeams.length === 0 ? (
-                      <div className="flex flex-col gap-3 px-4 py-4 text-sm text-copy-muted sm:flex-row sm:items-center sm:justify-between">
-                        <span>No teams in this department.</span>
-                        <Button type="button" variant="ghost" size="sm" onClick={() => openCreateTeam(department.id)}><Plus />Add Team</Button>
-                      </div>
-                    ) : (
-                      <div className="divide-y divide-line-subtle">
-                        {departmentTeams.map((team) => (
-                          <div key={team.id} className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-                            <div className="flex min-w-0 items-start gap-3">
-                              <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-copy-muted" aria-hidden="true" />
-                              <div className="min-w-0">
-                                <div className="text-sm font-medium text-copy-primary">{team.name}</div>
-                                <div className="mt-0.5 text-sm text-copy-muted">{team.description || "No description"}</div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2 self-end sm:self-auto">
-                              <Button size="icon-sm" variant="outline" onClick={() => openEditTeam(team)} aria-label={`Edit ${team.name}`}><Pencil size={14} aria-hidden="true" /></Button>
-                              <Button size="icon-sm" variant="destructive" onClick={() => removeTeam(team)} aria-label={`Delete ${team.name}`}><Trash2 size={14} aria-hidden="true" /></Button>
-                            </div>
+                {departmentTeams.length === 0 ? (
+                  <p className="mt-4 text-sm text-copy-muted">No teams in this department yet.</p>
+                ) : (
+                  <div className="mt-4 divide-y divide-line-subtle">
+                    {departmentTeams.map((team) => (
+                      <div key={team.id} className="flex flex-col gap-3 py-3 first:pt-0 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 items-start gap-3">
+                          <UsersRound className="mt-0.5 h-4 w-4 shrink-0 text-copy-muted" aria-hidden="true" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium text-copy-primary">{team.name}</div>
+                            <div className="mt-0.5 text-sm text-copy-muted">{team.description || <EmptyValue />}</div>
                           </div>
-                        ))}
+                        </div>
+                        <ActionBar size="sm" className="self-end sm:self-auto">
+                          <Button size="icon-sm" variant="outline" onClick={() => openEditTeam(team)} aria-label={`Edit ${team.name}`}><Pencil /></Button>
+                          <Button size="icon-sm" variant="destructive" onClick={() => removeTeam(team)} aria-label={`Delete ${team.name}`}><Trash2 /></Button>
+                        </ActionBar>
                       </div>
-                    )}
+                    ))}
                   </div>
-                </section>
-              ))}
-            </div>
-          )}
-        </div>
-      </Card>
+                )}
+              </section>
+            ))}
+          </div>
+        )}
+      </FormSection>
 
       <DepartmentEditorPanel
         open={departmentEditorOpen}

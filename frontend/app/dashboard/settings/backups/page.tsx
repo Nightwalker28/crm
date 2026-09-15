@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { Fact, FactList } from "@/components/ui/Fact";
 import { ActionBar, FormFooter } from "@/components/ui/ActionBar";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
@@ -501,14 +502,14 @@ export default function BackupSettingsPage() {
       )}
     >
       <FormSection title="Status" description="The saved schedule and its most recent run.">
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
+        <FactList className="sm:grid-cols-2 xl:grid-cols-4">
           <Fact label="Schedule">
             <StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" />
           </Fact>
           <Fact label="Last run">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</Fact>
           <Fact label="Next run">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</Fact>
           <Fact label="Updated">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</Fact>
-        </dl>
+        </FactList>
       </FormSection>
 
       {/* The schedule was behind a `Configure` drawer — half the page's subject hidden from
@@ -683,12 +684,12 @@ export default function BackupSettingsPage() {
           ) : null}
 
           {restorePreview ? (
-            <dl className="grid gap-3 text-sm sm:grid-cols-4">
+            <FactList className="sm:grid-cols-4">
               <Fact label="Rows">{restorePreview.summary.total_rows ?? 0}</Fact>
               <Fact label="Existing">{restorePreview.summary.existing_matches ?? 0}</Fact>
               <Fact label="Missing">{restorePreview.summary.missing_rows ?? 0}</Fact>
               <Fact label="Invalid">{restorePreview.summary.invalid_rows ?? 0}</Fact>
-            </dl>
+            </FactList>
           ) : null}
 
           <ActionBar>
@@ -711,11 +712,11 @@ export default function BackupSettingsPage() {
             </SectionHeading>
 
             {wholeRestorePreview ? (
-              <dl className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
+              <FactList className="mb-4 sm:grid-cols-3">
                 <Fact label="Modules">{wholeRestorePreview.summary.total_modules ?? 0}</Fact>
                 <Fact label="Rows">{wholeRestorePreview.summary.total_rows ?? 0}</Fact>
                 <Fact label="Backup type">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "—"}</Fact>
-              </dl>
+              </FactList>
             ) : null}
 
             <Field className="mb-4 max-w-md">
@@ -817,17 +818,3 @@ export default function BackupSettingsPage() {
   );
 }
 
-/**
- * A label over its value. Four of these were `dl` cells with the label, the ink and the
- * gutter written out longhand at each one — three grids on this page alone, and the
- * authentication page has a local twin of it. It stays page-local until a third page needs
- * it; 5.7 owns the metric tile this is deliberately *not* (§4.7 archetype 5).
- */
-function Fact({ label, children }: { label: string; children: ReactNode }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-2">
-      <dt className="text-xs font-medium text-copy-label">{label}</dt>
-      <dd className="mt-1 text-copy-secondary">{children}</dd>
-    </div>
-  );
-}

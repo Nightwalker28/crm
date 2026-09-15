@@ -60,11 +60,18 @@ export function RecordFormLayout({
 export function FormSection({
   title,
   description,
+  action,
   children,
   className,
 }: {
   title: string;
   description?: string;
+  /**
+   * A trailing control or status for the section — a count, a filter, an MFA state.
+   * `SectionHeading` has carried one since 5.2; this only forwards it, so a page with a
+   * section-level status stops drawing its own header row beside the primitive's.
+   */
+  action?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
@@ -77,7 +84,7 @@ export function FormSection({
     <Card className={cn("min-w-0 p-5 md:p-6", className)}>
       {/* R7: `text-base font-semibold text-copy-primary` was the pre-ruling heading, one
           step *louder* than the values under it. `SectionHeading` is the role. */}
-      <SectionHeading description={description} className="mb-5">
+      <SectionHeading description={description} action={action} className="mb-5">
         {title}
       </SectionHeading>
       {children}

@@ -1376,6 +1376,7 @@ exists. The list-and-record language in particular is not optional:
 | Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle. **Not** a tab strip (§7.7) |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
+| A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
 | Autosave feedback | `SaveStateIndicator` (R1) |
 | A settings control and its save state | `SettingsRow` inside a `FormSection` — archetype 4. **`SettingsSwitchRow` is deleted** |
 | An on/off setting | `SegmentedBoolean`. `Checkbox` is for *many from a set*, never for one boolean |
@@ -1736,6 +1737,43 @@ on a record.
 which are primitives themselves, and the mobile navigation drawer in
 `app/dashboard/layout.tsx`, which is `side="left"` and is not an editor. Nothing in
 `app/**` composes a sheet.
+
+### 7.12 A read-only label over its value is `Fact`, and it is an ink group
+
+The most-repeated shape in the app after the table: a field name, and the value under it,
+read-only. It existed three times outside the record spine, and the three disagreed on the
+two things a call site was left to decide.
+
+| Where | Container | Value ink |
+|---|---|---|
+| `profile`'s `SummaryTile` | none | `text-sm text-copy-primary` |
+| `settings/authentication`'s `Status` | none | `text-copy-secondary` |
+| `settings/backups`' `Fact` (5.6 batch 6d) | **bordered box** | `text-copy-secondary` |
+
+**It is an ink group, never a box (§1.3).** A read-only value is static, so a container is
+not earned by interactivity, and label-above-value already groups — a border there is
+separation that nothing asked for. All three sit inside a `Card` or a `FormSection`, so a
+box around each cell is the third container level §1.3 forbids. The argument was already
+written as a comment above `SummaryTile`; the bordered version landed anyway, one sub-phase
+later, because **a comment in one page is not a default** — §4.4's lesson, again.
+
+**The ink pair is `text-xs font-medium text-copy-label` over `text-sm text-copy-primary`.**
+It is R7's inversion: the label steps *down* so the value is what the eye lands on, because
+the operator came for the value.
+
+**`Fact` emits `dt`/`dd` and `FactList` supplies the `<dl>`**, so the pairing cannot be got
+wrong at a call site. All three call sites were already inside a `<dl>`; two of them said so
+in markup and rendered `div`s inside it, which is invalid.
+
+**`RecordSpineField` is deliberately not folded in.** It reads the same two token classes,
+but it is a *slot in the record archetype* whose siblings are `InlineFieldEdit`s and
+`RecordSpineLink`s — editable controls and anchors, not description-list terms. Wrapping
+those in a `<dl>` to share a primitive would buy one fewer file at the cost of invalid
+markup on every record page. The shared thing here is the ink pair, and that is a token
+decision, not a component one.
+
+A page-local `SummaryTile` / `DetailField` / `Fact` is a review failure — it is the renderer
+`rebuild.md` 5.10 checks for.
 
 ## 8. Accessibility floors
 

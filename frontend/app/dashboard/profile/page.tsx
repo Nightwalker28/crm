@@ -8,7 +8,11 @@ import { apiFetch } from "@/lib/api";
 import { Chip } from "@/components/ui/Chip";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import { Fact, FactList } from "@/components/ui/Fact";
+import { FormFooter } from "@/components/ui/ActionBar";
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
@@ -329,30 +333,15 @@ export default function ProfilePage() {
         </div>
       ) : null}
 
-      <Card role="region" aria-labelledby="profile-identity-heading">
-        <CardHeader>
-          <div>
-            <h2 id="profile-identity-heading" className="text-lg font-semibold text-copy-primary">Account identity</h2>
-            <p className="mt-1 text-sm text-copy-muted">Organization-managed account assignments.</p>
-          </div>
-        </CardHeader>
-        <CardBody>
-          <dl className="grid gap-3 md:grid-cols-3">
-            <SummaryTile label="Email" value={email} />
-            <SummaryTile label="Team" value={teamName || "Unassigned"} />
-            <SummaryTile label="Role" value={roleName || "Unassigned"} />
-          </dl>
-        </CardBody>
-      </Card>
+      <FormSection title="Account identity" description="Organization-managed account assignments.">
+        <FactList className="md:grid-cols-3">
+          <Fact label="Email">{email}</Fact>
+          <Fact label="Team">{teamName || <EmptyValue />}</Fact>
+          <Fact label="Role">{roleName || <EmptyValue />}</Fact>
+        </FactList>
+      </FormSection>
 
-      <Card role="region" aria-labelledby="profile-details-heading">
-        <CardHeader>
-          <div>
-            <h2 id="profile-details-heading" className="text-lg font-semibold text-copy-primary">Personal details</h2>
-            <p className="mt-1 text-sm text-copy-muted">Information used throughout your CRM workspace.</p>
-          </div>
-        </CardHeader>
-        <CardBody>
+      <FormSection title="Personal details" description="Information used throughout your CRM workspace.">
           <FieldGroup className="grid gap-4 md:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="profile-first-name">First name</FieldLabel>
@@ -400,30 +389,24 @@ export default function ProfilePage() {
             </Field>
           </FieldGroup>
 
-          <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle pt-5">
-            <span className="text-sm text-copy-muted">{dirty ? "You have unsaved profile changes." : "Profile changes are saved."}</span>
-            <Button onClick={() => void handleSave()} disabled={saving || !dirty}>
-              {saving ? "Saving…" : "Save profile"}
+          <FormFooter status={dirty ? "You have unsaved profile changes." : "Profile changes are saved."}>
+            <Button type="button" onClick={() => void handleSave()} disabled={saving || !dirty}>
+              {saving ? "Saving\u2026" : "Save profile"}
             </Button>
-          </div>
-        </CardBody>
-      </Card>
+          </FormFooter>
+      </FormSection>
 
-      <Card role="region" aria-labelledby="profile-security-heading">
-        <CardHeader>
-          <div>
-            <h2 id="profile-security-heading" className="text-lg font-semibold text-copy-primary">Account security</h2>
-            <p className="mt-1 text-sm text-copy-muted">Manage multi-factor authentication for manual CRM sign-in.</p>
-          </div>
-          <MfaStatus enabled={mfaEnabled} required={mfaRequired} />
-        </CardHeader>
-        <CardBody>
+      <FormSection
+        title="Account security"
+        description="Manage multi-factor authentication for manual CRM sign-in."
+        action={<MfaStatus enabled={mfaEnabled} required={mfaRequired} />}
+      >
           {!mfaEnabled ? (
             <div className="grid gap-4">
               {!mfaSecret ? (
                 <div className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
                   <div>
-                    <h3 className="text-sm font-semibold text-copy-primary">Authenticator app</h3>
+                    <SectionHeading as="h3">Authenticator app</SectionHeading>
                     <p className="mt-1 text-sm text-copy-muted">Add a second verification step to manual sign-in.</p>
                   </div>
                   <Button type="button" onClick={() => void handleStartMfaSetup()} disabled={mfaBusy}>
@@ -434,12 +417,12 @@ export default function ProfilePage() {
               ) : (
                 <div className="grid gap-4">
                   <div className="rounded-[var(--radius-control)] border border-state-warning/40 bg-state-warning-muted p-4">
-                    <div className="text-xs font-medium text-state-warning">Authenticator secret</div>
+                    <div className="text-xs font-medium text-copy-label">Authenticator secret</div>
                     <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
                     <p className="mt-2 text-xs text-copy-secondary">Treat this secret like a password. Add it to your authenticator before continuing.</p>
                   </div>
                   {mfaOtpAuthUri ? (
-                    <a href={mfaOtpAuthUri} className="w-fit rounded-[var(--radius-control-sm)] text-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                    <a href={mfaOtpAuthUri} className="w-fit rounded-[var(--radius-control-sm)] text-sm text-copy-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
                       Open authenticator setup link
                     </a>
                   ) : null}
@@ -480,28 +463,15 @@ export default function ProfilePage() {
 
           {mfaRecoveryCodes.length ? (
             <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-4">
-              <div className="text-sm font-semibold text-state-success">Save these recovery codes now</div>
+              <div className="text-sm font-semibold text-copy-primary">Save these recovery codes now</div>
               <p className="mt-1 text-sm text-copy-secondary">Each code can be used once if your authenticator is unavailable.</p>
               <div className="mt-3 grid gap-1 font-mono text-xs text-copy-primary sm:grid-cols-2">
                 {mfaRecoveryCodes.map((code) => <span key={code}>{code}</span>)}
               </div>
             </div>
           ) : null}
-        </CardBody>
-      </Card>
+      </FormSection>
     </PageShell>
-  );
-}
-
-// An ink group, not a box: a read-only field display is static, so it is not earned by
-// interactivity, and it groups rather than separates (design.md 1.3). It sits inside a
-// Card already, so a border here is the third container level 1.3 forbids.
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium text-copy-label">{label}</dt>
-      <dd className="mt-1 break-words text-sm text-copy-primary">{value}</dd>
-    </div>
   );
 }
 

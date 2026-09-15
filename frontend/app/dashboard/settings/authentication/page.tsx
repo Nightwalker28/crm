@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { Check } from "lucide-react";
 
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { Fact, FactList } from "@/components/ui/Fact";
 import { ActionBar, FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
@@ -135,12 +136,12 @@ export default function AuthenticationSettingsPage() {
             <Field><FieldLabel>UserInfo endpoint</FieldLabel><Input value={draft.draft.userinfo_endpoint} onChange={(event) => draft.update("userinfo_endpoint", event.target.value)} /></Field>
             <Field><FieldLabel>JWKS URI</FieldLabel><Input value={draft.draft.jwks_uri} onChange={(event) => draft.update("jwks_uri", event.target.value)} /></Field>
           </div>
-          <div className="grid gap-3 border-t border-line-subtle pt-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
-            <Status label="Last successful test" value={settings.ssoSettings?.last_successful_test ? formatDateTime(settings.ssoSettings.last_successful_test.checked_at) : "None recorded"} />
-            <Status label="Last failed test" value={settings.ssoSettings?.last_failed_test ? formatDateTime(settings.ssoSettings.last_failed_test.checked_at) : "None recorded"} />
-            <Status label="Last successful login" value={settings.ssoSettings?.last_successful_login_at ? formatDateTime(settings.ssoSettings.last_successful_login_at) : "Never"} />
-            <Status label="Last failed login" value={settings.ssoSettings?.last_failed_login_reason ? "A recent sign-in failed" : "None recorded"} />
-          </div>
+          <FactList className="border-t border-line-subtle pt-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Fact label="Last successful test">{settings.ssoSettings?.last_successful_test ? formatDateTime(settings.ssoSettings.last_successful_test.checked_at) : "None recorded"}</Fact>
+            <Fact label="Last failed test">{settings.ssoSettings?.last_failed_test ? formatDateTime(settings.ssoSettings.last_failed_test.checked_at) : "None recorded"}</Fact>
+            <Fact label="Last successful login">{settings.ssoSettings?.last_successful_login_at ? formatDateTime(settings.ssoSettings.last_successful_login_at) : "Never"}</Fact>
+            <Fact label="Last failed login">{settings.ssoSettings?.last_failed_login_reason ? "A recent sign-in failed" : "None recorded"}</Fact>
+          </FactList>
           {settings.ssoSettings?.last_failed_test ? (
             <div className="flex flex-col gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm sm:flex-row sm:items-start sm:justify-between">
               <div>
@@ -166,8 +167,4 @@ export default function AuthenticationSettingsPage() {
       </FormSection>
     </PageShell>
   );
-}
-
-function Status({ label, value }: { label: string; value: string }) {
-  return <div><div className="text-xs font-medium text-copy-label">{label}</div><div className="mt-1 text-copy-secondary">{value}</div></div>;
 }

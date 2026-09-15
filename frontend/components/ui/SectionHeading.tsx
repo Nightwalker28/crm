@@ -15,6 +15,8 @@ type SectionHeadingProps = {
   action?: ReactNode;
   /** A group marker above the heading. `text-2xs font-semibold text-copy-label` (3.3). */
   eyebrow?: ReactNode;
+  /** For a region that names itself with `aria-labelledby` pointing at this heading. */
+  id?: string;
   className?: string;
 };
 
@@ -41,6 +43,7 @@ export function SectionHeading({
   description,
   action,
   eyebrow,
+  id,
   className,
 }: SectionHeadingProps) {
   return (
@@ -52,7 +55,7 @@ export function SectionHeading({
         {eyebrow ? (
           <div className="mb-1 text-2xs font-semibold text-copy-label">{eyebrow}</div>
         ) : null}
-        <Heading className="text-sm font-semibold text-copy-label">{children}</Heading>
+        <Heading id={id} className="text-sm font-semibold text-copy-label">{children}</Heading>
         {description ? (
           <p className="mt-1 text-p-sm text-copy-muted">{description}</p>
         ) : null}

@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { ActionBar } from "@/components/ui/ActionBar";
+import { FormFooter } from "@/components/ui/ActionBar";
+import { FormSection } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
-import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
@@ -234,130 +234,97 @@ export default function CompanyPage() {
       backHref="/dashboard/settings"
       backLabel="Back to settings"
     >
-      {(
-        <form
-          className="grid gap-5"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSave();
-          }}
-        >
-          {actionError ? (
-            <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-              {actionError}
-            </div>
-          ) : null}
+      <form
+        className="flex flex-col gap-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSave();
+        }}
+      >
+        <FormSection title="Company profile" description="Primary business details shown across administrative and operational surfaces.">
+          <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="company-name">Company name <RequiredMark /></FieldLabel>
+              <Input id="company-name" required maxLength={150} value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-primary-email">Primary email</FieldLabel>
+              <Input id="company-primary-email" type="email" maxLength={150} value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-website">Website</FieldLabel>
+              <Input id="company-website" type="url" maxLength={255} value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} placeholder="https://company.com" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-primary-phone">Primary phone</FieldLabel>
+              <Input id="company-primary-phone" type="tel" maxLength={50} value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-industry">Industry</FieldLabel>
+              <Input id="company-industry" maxLength={120} value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-country">Country</FieldLabel>
+              <Input id="company-country" maxLength={120} value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
+            </Field>
+          </FieldGroup>
+        </FormSection>
 
-          <Card aria-label="Company settings workspace">
-            <CardHeader>
-              <div>
-                <h2 className="text-base font-semibold text-copy-primary">Company profile</h2>
-                <p className="mt-1 text-p-sm text-copy-muted">Primary business details shown across administrative and operational surfaces.</p>
-              </div>
-            </CardHeader>
-            <CardBody>
-              <FieldGroup className="grid gap-4 md:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="company-name">Company name <RequiredMark /></FieldLabel>
-                  <Input id="company-name" required maxLength={150} value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-primary-email">Primary email</FieldLabel>
-                  <Input id="company-primary-email" type="email" maxLength={150} value={form.primary_email} onChange={(event) => setForm((current) => ({ ...current, primary_email: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-website">Website</FieldLabel>
-                  <Input id="company-website" type="url" maxLength={255} value={form.website} onChange={(event) => setForm((current) => ({ ...current, website: event.target.value }))} placeholder="https://company.com" />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-primary-phone">Primary phone</FieldLabel>
-                  <Input id="company-primary-phone" type="tel" maxLength={50} value={form.primary_phone} onChange={(event) => setForm((current) => ({ ...current, primary_phone: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-industry">Industry</FieldLabel>
-                  <Input id="company-industry" maxLength={120} value={form.industry} onChange={(event) => setForm((current) => ({ ...current, industry: event.target.value }))} />
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-country">Country</FieldLabel>
-                  <Input id="company-country" maxLength={120} value={form.country} onChange={(event) => setForm((current) => ({ ...current, country: event.target.value }))} />
-                </Field>
-              </FieldGroup>
-            </CardBody>
-            <section className="border-t border-line-subtle">
-            <CardHeader>
-              <div>
-                <h2 className="text-base font-semibold text-copy-primary">Commercial defaults</h2>
-                <p className="mt-1 text-p-sm text-copy-muted">Shared currency and billing information used by commercial records.</p>
-              </div>
-            </CardHeader>
-            <CardBody>
-              <FieldGroup className="grid gap-4 md:grid-cols-2">
-                <Field>
-                  <FieldLabel htmlFor="company-operating-currencies">Operating currencies <RequiredMark /></FieldLabel>
-                  <Input
-                    id="company-operating-currencies"
-                    required
-                    pattern="([A-Za-z]{3})(\s*,\s*[A-Za-z]{3})*"
-                    title="Enter three-letter currency codes separated by commas."
-                    value={form.operating_currencies}
-                    onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
-                    placeholder="USD, EUR, GBP"
-                  />
-                  <FieldDescription>Comma-separated three-letter ISO codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
-                </Field>
-                <Field>
-                  <FieldLabel htmlFor="company-billing-address">Billing address</FieldLabel>
-                  <Textarea id="company-billing-address" value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={5} />
-                  <FieldDescription>One primary company record is supported. Multi-company tenancy remains deferred.</FieldDescription>
-                </Field>
-              </FieldGroup>
-            </CardBody>
-            </section>
-
-            <section className="border-t border-line-subtle">
-            <CardHeader>
-              <div>
-                <h2 className="text-base font-semibold text-copy-primary">Branding</h2>
-                <p className="mt-1 text-p-sm text-copy-muted">Manage the tenant company logo used across CRM documents and workspace surfaces.</p>
-              </div>
-            </CardHeader>
-            <CardBody>
-              <ImageAssetField
-                id="company-logo-upload"
-                label="Company logo"
-                imageUrl={logoUrl}
-                previewAlt="Company logo preview"
-                uploadAriaLabel="Upload company logo"
-                busyAction={logoBusyAction}
-                error={logoError}
-                onFileSelected={(file) => void handleLogoUpload(file)}
-                onRemove={() => void handleLogoRemove()}
+        <FormSection title="Commercial defaults" description="Shared currency and billing information used by commercial records.">
+          <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="company-operating-currencies">Operating currencies <RequiredMark /></FieldLabel>
+              <Input
+                id="company-operating-currencies"
+                required
+                pattern="([A-Za-z]{3})(\s*,\s*[A-Za-z]{3})*"
+                title="Enter three-letter currency codes separated by commas."
+                value={form.operating_currencies}
+                onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
+                placeholder="USD, EUR, GBP"
               />
-            </CardBody>
-            </section>
+              <FieldDescription>Comma-separated three-letter ISO codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-billing-address">Billing address</FieldLabel>
+              <Textarea id="company-billing-address" value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={5} />
+              <FieldDescription>One primary company record is supported. Multi-company tenancy remains deferred.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </FormSection>
 
-            {/* The company profile is a configuration record — the fields validate together
-                and one write commits them — so it keeps a manual save (archetype 4). What
-                goes is the stickiness (R3) and the colour: R5 paints exception, and a form
-                with unsaved edits is not one, so the dirty line is ordinary muted ink. */}
-            <CardFooter className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">
-                {isDirty ? "You have unsaved company changes." : "All company settings are saved."}
-              </span>
-              <ActionBar size="default">
-                <Button type="button" variant="outline" disabled={!isDirty || saving || logoBusyAction !== null} onClick={() => void handleDiscard()}>
-                  <RotateCcw />
-                  Discard
-                </Button>
-                <Button type="submit" disabled={saving || logoBusyAction !== null || !isDirty || !form.name.trim()}>
-                  <Save />
-                  {saving ? "Saving..." : "Save company"}
-                </Button>
-              </ActionBar>
-            </CardFooter>
-          </Card>
-        </form>
-      )}
+        <FormSection title="Branding" description="Manage the tenant company logo used across CRM documents and workspace surfaces.">
+          <ImageAssetField
+            id="company-logo-upload"
+            label="Company logo"
+            imageUrl={logoUrl}
+            previewAlt="Company logo preview"
+            uploadAriaLabel="Upload company logo"
+            busyAction={logoBusyAction}
+            error={logoError}
+            onFileSelected={(file) => void handleLogoUpload(file)}
+            onRemove={() => void handleLogoRemove()}
+          />
+
+          {/* The company profile is a configuration record — the fields validate together
+              and one write commits them — so it keeps a manual save (archetype 4). What
+              goes is the stickiness (R3) and the colour: R5 paints exception, and a form
+              with unsaved edits is not one, so the dirty line is ordinary muted ink. The
+              footer sits in the last section because the three sections are one record. */}
+          <FormFooter status={actionError
+            ? <span role="alert" className="text-state-danger">{actionError}</span>
+            : isDirty ? "You have unsaved company changes." : "All company settings are saved."}>
+            <Button type="button" variant="outline" disabled={!isDirty || saving || logoBusyAction !== null} onClick={() => void handleDiscard()}>
+              <RotateCcw />
+              Discard
+            </Button>
+            <Button type="submit" disabled={saving || logoBusyAction !== null || !isDirty || !form.name.trim()}>
+              <Save />
+              {saving ? "Saving\u2026" : "Save company"}
+            </Button>
+          </FormFooter>
+        </FormSection>
+      </form>
     </PageShell>
   );
 }

@@ -133,7 +133,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | done |
 | `dashboard/not-found.tsx` | 5 | 5.1 | rebuild | | done |
-| `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | |
+| `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | **done, batch 7b** — three `Card`s → `FormSection`, the hand-rolled commit row → `FormFooter`, `SummaryTile` → the new `Fact` primitive (§7.12), two redundant colour signals and a `text-primary` link corrected |
 | `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit |
@@ -254,12 +254,12 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `settings/layout.tsx` | 5 | 5.6 | rebuild | A 5-line passthrough. **Becomes the nav rail (A8)** | **done, batch 1** — full-height two-column grid, `SettingsNavRail` + a scrolling content column. Not sticky |
 | `settings/page.tsx` | 180 | 5.6 | rebuild | The hub's `SETTINGS_SECTIONS` is the second, disagreeing IA | **done, batch 1** — 180 → 58 lines, rendering `SETTINGS_NAV_GROUPS`. The second IA is gone |
-| `settings/general/page.tsx` | 357 | 5.6 | rebuild | | **footer done, batch 2** — un-stickied, `ActionBar`, R5 on the dirty line. The page body is batch 7's |
-| `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | **done, batch 2** — three `FormSection`s; MFA on `SettingsRow` + `useAutosave`, SSO on a non-sticky `FormFooter` |
+| `settings/general/page.tsx` | 357 | 5.6 | rebuild | | **done, batch 7b** — footer batch 2; the body here: one `Card` holding three hand-written sections → three `FormSection`s, commit row → `FormFooter` |
+| `settings/authentication/page.tsx` | 105 | 5.6 | rebuild | **Autosave at `:45` + explicit footer 40 lines below.** R1 settles it | **done, batch 2** — three `FormSection`s; MFA on `SettingsRow` + `useAutosave`, SSO on a non-sticky `FormFooter`. Its local `Status` pair → `Fact`, batch 7b |
 | `settings/users/page.tsx` | 110 | 5.6 | rebuild | | **denied state, batch 3.** The table is batch 4's |
 | `settings/users/error.tsx` | 14 | 5.1 | rebuild | | done |
 | `settings/users/loading.tsx` | 5 | 5.1 | rebuild | | done |
-| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | **both editors, batch 7a** — two `EditorPanel`s; create panels stopped saying "All changes saved". The page body is 7b's |
+| `settings/teams/page.tsx` | 459 | 5.6 | rebuild | | **done, batches 7a + 7b** — two `EditorPanel`s and their create-panel dirty lines; then the body: two icon-chip headers and a third container level deleted, actions to `PageShell`. Not a `RecordTable` — `groupBy` takes a label, and a department carries a description, a count and three actions |
 | `settings/permissions/page.tsx` | 587 | 5.6 | rebuild | Raw `Table` → `MatrixTable` (R10) | **done, batch 4b** — the matrix is not a list; `MatrixTable` is the new sibling primitive (§7.10). Footer landed in batch 2, the create-role drawer in 7a |
 | `settings/permissions/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -276,7 +276,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/provisioning/page.tsx` | 55 | 5.6 | rebuild | | **done, batch 2** — `FormSection` + `SettingsRow`, non-sticky footer, checkbox → `SegmentedBoolean` |
 | `settings/calendar-booking/page.tsx` | 624 | 5.6 | rebuild | | **done, batch 6a** — first consumer of `EditorPanel`; `Card` + hand-rolled headings → `FormSection`, the duplicate error banner and the third New button deleted, and the table stopped drawing a second border |
-| `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | **done, batch 6d** — the `Configure` drawer deleted and the schedule brought onto the page as archetype 4, three icon-chip headers → `FormSection`, the disabled module grid → conditional (§7.9), `formatBytes` hoisted to `lib/format.ts` |
+| `settings/backups/page.tsx` | 938 | 5.6 | rebuild | Largest settings page | **done, batch 6d** — the `Configure` drawer deleted and the schedule brought onto the page as archetype 4, three icon-chip headers → `FormSection`, the disabled module grid → conditional (§7.9), `formatBytes` hoisted to `lib/format.ts`. **Its local `Fact` was hoisted in 7b** — and drew a box the §1.3 argument in `profile` already forbade |
 | `settings/recycle-bin/page.tsx` | 264 | 5.6 | rebuild | ~~Raw `Table`~~ — **already on `RecordTable`**; the note was stale, corrected 5.6 batch 1 | |
 | `settings/activity-log/page.tsx` | 181 | 5.6 | rebuild | | **denied state, batch 3** |
 | `settings/message-templates/page.tsx` | 168 | 5.6 | rebuild | | **denied state, batch 3** |
