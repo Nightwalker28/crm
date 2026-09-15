@@ -4343,6 +4343,58 @@ rather than a bare button floating at the end of a flex row.
 **Next.** Batch 6b — `fields` (796) onto `EditorPanel`, which is the page whose panel has two
 modes in one sheet.
 
+### Status: batch 6b — the catalogue was a table, and the panel was written twice
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back at
+the known 2 of 14.
+
+**`fields` held two complete copies of the sheet recipe in one file** — one for create, one
+for inspect, sixty lines of chrome between them — and the tell is that only one of them
+commits on Enter. The create half was a `<form onSubmit>`; the inspect half was a `<div>` with
+an `onClick` Save, so typing a new label and pressing Enter in the inspector did nothing at
+all. One `EditorPanel` whose title, description, status, footer and `onSubmit` branch on
+`panelMode` is the whole panel now, and both halves submit.
+
+**The field catalogue was a hand-assembled list, and R10 says there is no third table.** It
+was a `divide-y` of rows where the entire row was a `<button aria-pressed>` wrapping a
+heading, two chips and a subtitle, with a `Popover` of two ghost `Button`s standing in for a
+menu — a popover is not a menu: no `role="menu"`, no arrow-key traversal, no typeahead. Every
+part of it is `RecordTable`'s:
+
+- the row-open gesture and its accessible name;
+- `isRowHighlighted` for the row the editor is open over, which the page was painting with
+  `bg-action-primary-muted` — the *action* tint, used to mean "selected";
+- the loading state, which was a page-local `RouteLoadingState` inside a `p-5` div;
+- the filtered-empty state, which the page distinguished from the truly empty state by hand with a
+  ternary on `catalog.length` in three separate props.
+
+**The menu collapsed to a button once the table existed.** Its two items were *Inspect field*
+— which is the row-open gesture, so it was a menu item duplicating the row you had to click to
+reach it — and *Enable / Disable*, which is one action and belongs in `rowActions`. Protected
+fields keep the disabled control and its `title`, because a control the backend will refuse is
+drawn disabled rather than hidden (§7.9).
+
+**Ruling 4 applied twice more.** `Field orientation="horizontal"` wrapping a lone `Checkbox` in
+a bordered box — once in create (`Require a value when records are saved`), once in inspect
+(`Required`) — is the exact drift the ruling names: `Checkbox` is *many from a set*, and a
+single on/off setting is `SegmentedBoolean`. Both are now `Required` / `Optional`, and the two
+halves finally use the same words for the same field.
+
+**Two more colour misuses, both in the inspector.** `<Lock className="h-4 w-4 text-primary">`
+beside the title set an icon's colour independently of its label (§5), and the protected
+notice was `border-primary/30 bg-action-primary-muted` — the primary action's tint carrying an
+*informational* message. The lock is a `Chip` in the table's Status column where it names a
+state, and the notice is an ordinary muted panel.
+
+**The dirty line is prose again.** `text-state-warning` / `text-state-success` for
+*unsaved* / *saved* was §7.11's third drift and this was its second instance; the panel's
+status slot carries it in `text-copy-muted`, and the two page-local error paragraphs
+(`createError`, `inspectorError`) moved into the same slot rather than floating at the end of
+the scroll body where a long form pushes them out of view.
+
+**Next.** Batch 6c — `module-builder` (892), whose panel is a field inspector over a
+drag-ordered list, and whose two `window.confirm` calls batch 5 filed here.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail
