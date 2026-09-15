@@ -1222,6 +1222,26 @@ primitive §7.1 already names, in 2 files, while the real one was in 7. It is de
 the module-access grid are. A lone `Checkbox` standing in for a single on/off setting is
 the drift, not a third option.
 
+##### The address is the page's state, and it speaks one vocabulary
+
+A settings page that holds a selection or a workspace puts it in the query string, written
+through the app's single address writer — `usePageAddress`, which was `useListAddress` until
+settings needed it and it turned out nothing in it was about a list.
+
+| What it names | Param | Where |
+|---|---|---|
+| The module the page is configuring | `?module=<key>` | `fields`, `module-builder`, `automation` |
+| A workspace within one page | `?tab=` | the word the record archetype's strip already uses |
+| A saved view's id | `?view=` | lists, and nowhere else |
+
+One word, one meaning, app-wide: `?view=` became *saved view id* on all sixteen lists in
+rebuild 5.5, so `settings/automation`'s `rules|runs` switch is `?tab=`, and the module scope
+is `?module=` rather than a second spelling of the same idea.
+
+**A draft is never addressed.** The automation rule editor and the new-module panel hold
+unsaved work, so a link to either would promise a state the URL cannot carry — they stay
+local modes over an addressed page. What the address holds is what a colleague could open.
+
 ---
 
 #### Archetype 5 — Dashboard

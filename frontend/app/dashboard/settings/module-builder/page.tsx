@@ -52,6 +52,7 @@ import {
 } from "@/hooks/useModuleBuilder";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { useConfirm } from "@/hooks/useConfirm";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { useSidebarTabsAdmin, type SidebarTab } from "@/hooks/admin/useModulesAdmin";
 import { cn } from "@/lib/utils";
 
@@ -726,12 +727,23 @@ export default function ModuleBuilderPage() {
   } = useModuleBuilder();
   const { tabs: sidebarTabs, createTab, updateTab, isSaving: isSavingTabs } = useSidebarTabsAdmin();
   const [search, setSearch] = useState("");
-  const [selectedModuleId, setSelectedModuleId] = useState<number | null>(null);
   const [creating, setCreating] = useState(false);
   const [workspaceDirty, setWorkspaceDirty] = useState(false);
   const [workspaceRevision, setWorkspaceRevision] = useState(0);
 
-  const selectedModule = modules.find((module) => module.id === selectedModuleId)
+  /*
+   * A10: the selected module lives in `?module=<key>` (rebuild.md 5.6 batch 5), so a module's
+   * workspace can be linked to and Back returns to it. The address carries the **key**, not
+   * the id — it is what the runtime route, the field config and the saved-view editor all
+   * already use, and it survives a round trip through a human's clipboard. An unknown key
+   * falls through to the same first-undeleted-module default a fresh visit gets.
+   *
+   * `creating` stays local: the new-module panel holds an unsaved draft, so addressing it
+   * would promise a state the URL cannot carry.
+   */
+  const { params, updateAddress } = usePageAddress();
+  const addressedModuleKey = params.get("module")?.trim() || null;
+  const selectedModule = modules.find((module) => module.key === addressedModuleKey)
     ?? modules.find((module) => !module.deleted_at)
     ?? modules[0]
     ?? null;
@@ -752,13 +764,13 @@ export default function ModuleBuilderPage() {
     });
   }
 
-  async function selectModule(moduleId: number) {
-    if (moduleId === selectedModule?.id && !creating) return;
+  async function selectModule(moduleKey: string) {
+    if (moduleKey === selectedModule?.key && !creating) return;
     if (!(await canLeaveWorkspace())) return;
     setWorkspaceDirty(false);
     setCreating(false);
     setSearch("");
-    setSelectedModuleId(moduleId);
+    updateAddress((next) => next.set("module", moduleKey));
   }
 
   async function startCreating() {
@@ -793,11 +805,11 @@ export default function ModuleBuilderPage() {
           <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
             <SearchBar value={search} onChange={setSearch} placeholder="Search modules" className="sm:w-56" />
             {modules.length ? (
-              <Select value={creating || !selectedModule ? "" : String(selectedModule.id)} onValueChange={(value) => void selectModule(Number(value))}>
+              <Select value={creating || !selectedModule ? "" : selectedModule.key} onValueChange={(value) => void selectModule(value)}>
                 <SelectTrigger className="w-full sm:w-72" aria-label="Module"><SelectValue placeholder={creating ? "New module" : "Select module"} /></SelectTrigger>
                 <SelectContent>
                   {selectableModules.map((module) => (
-                    <SelectItem key={module.id} value={String(module.id)}>
+                    <SelectItem key={module.id} value={module.key}>
                       {module.display_name || module.name}{module.deleted_at ? " · Deleted" : ""}
                     </SelectItem>
                   ))}
@@ -823,7 +835,7 @@ export default function ModuleBuilderPage() {
               onCancel={() => setCreating(false)}
               onCreate={async (payload) => {
                 const created = await createModule(payload);
-                setSelectedModuleId(created.id);
+                updateAddress((next) => next.set("module", created.key));
                 setCreating(false);
               }}
             />

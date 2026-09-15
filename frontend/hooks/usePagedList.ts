@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 
-import { useListAddress } from "@/hooks/useListAddress";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { canonicalSavedViewFiltersKey, LIST_ADDRESS_KEYS } from "@/lib/savedViewQuery";
 
@@ -67,7 +67,7 @@ export function usePagedList<T, Response extends PagedListResponse<T>>({
   errorMessage,
   fallbackErrorMessage = "Failed to load records",
 }: UsePagedListOptions<T, Response>) {
-  const { params, updateAddress } = useListAddress(address);
+  const { params, updateAddress } = usePageAddress(address);
 
   // Only the search *string* is held back. Everything else in `filters` is passed through
   // as it arrives, so a chip or a dropdown still applies on the click that set it.

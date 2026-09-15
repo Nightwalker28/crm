@@ -136,7 +136,7 @@ test("keeps run history separate and opens sanitized details in a sheet", async 
 
 test("preserves module scope and supports the mobile keyboard create flow", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/dashboard/settings/automation?module_key=sales_leads");
+  await page.goto("/dashboard/settings/automation?module=sales_leads");
   await expect(page.getByText("Sales Leads automation")).toBeVisible();
   await page.getByRole("button", { name: "Create rule" }).focus();
   await page.keyboard.press("Enter");

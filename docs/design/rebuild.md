@@ -3827,7 +3827,7 @@ use the same vocabulary: `?module=` on `fields` and `module-builder`.
 | 2 | The seven sticky footers, R1/R3 applied | The commit model has to be settled before the pages that use it are rebuilt |
 | 3 | Permission walls that read as denied, and A9's three admin-only links | Cheap, and it is what a non-admin actually experiences |
 | 4 | The ten raw `Table` files → `RecordTable` (R10) | Mechanical, and it unblocks R10's importer count at the end of 5.7. Split 4a / 4b; **closed** |
-| 5 | A10 deep links + `?tab=` on automation | Address vocabulary, one commit |
+| 5 | A10 deep links + `?tab=` on automation | Address vocabulary, one commit; **closed** |
 | 6 | The four large pages rebuilt — `backups`, `module-builder`, `fields`, `calendar-booking` | 44% of the surface; they need batches 1–5 in place first |
 | 7 | The stragglers — `profile`, `teams`, record layouts, activity log, templates, integrations, domains, automation components | |
 | 8 | Close-out — the end-of-sub-phase pass and one correction commit | |
@@ -4196,6 +4196,73 @@ at once.
 group and the table's own group band); a probe confirmed the band renders visible at the
 right geometry with the right text. `shows distinct real-empty…` passes standalone and
 fails in sequence, which is the order-dependence that document also records.
+
+---
+
+### Status: batch 5 — the address vocabulary, and a hook whose name had gone stale
+
+**Landed.** `lint`, `tsc --noEmit`, `build` and `check-design.sh` green; the guard is back
+at the known 2 of 14. Rendered guards and specs stay for the sub-phase close-out, per the
+cadence.
+
+**`useListAddress` is `usePageAddress`.** 5.5 built the one router-writer for lists, and
+nothing inside it is about a list — it reads `window.location.search` at call time, mutates,
+and `replace`s. Three settings pages needed exactly that, and importing `useListAddress`
+into `settings/module-builder` is the misnomer that makes the fourth page hand-roll its own
+`router.replace` instead. It is the `RecordTabs` → `SectionTabs` lesson, applied before it
+costs anything: four call sites renamed, no behaviour changed.
+
+**The trap the rename surfaced, now written on the hook.** `router.replace` is async, so
+`window.location.search` has *not* moved when a second synchronous `updateAddress` reads it
+— two calls in one handler and the second silently drops the first's param. The list hooks
+never hit this because they write from separate renders. `viewRuns(rule)` changes two params
+in one gesture, so the rule is **one `updateAddress` per gesture**, one mutation inside it.
+
+**Ruling 5, applied.** `settings/automation`'s `?view=rules|runs` is `?tab=`, because 5.5
+made `?view=` mean *saved view id* on all sixteen lists and two meanings for one word is the
+drift this sub-phase exists to delete. The module scope is `?module=` — `?module_key=` is
+gone rather than aliased, for the same reason; the two internal links that wrote it
+(`settings/modules`, `settings/modules/[moduleId]`) and the one e2e spec that navigated with
+it were updated in the same commit, and they were the only writers.
+
+**The automation page had three params and seeded all of them into state.** `tab`, `module`
+and `rule_id` are read on every render now, so the tab strip, the module filter and the runs
+filter are all links. Two things went with it:
+
+- **`changeModule` was `window.location.href = …`** — a full document reload to change a
+  select. It is an `updateAddress` call, and the page no longer throws away its React tree
+  to filter itself.
+- **`rule_id` was read and never written.** `View runs` on a rule set local state, so the
+  filtered run list an operator was looking at could not be sent to anyone. Changing the
+  module drops it, since it names a rule in the module being left.
+
+**A10 is closed on both pages, and the two answers differ in one way worth recording.**
+`fields` addresses `?module=<key>` directly. `module-builder` selected by **id** and now
+addresses by **key** — the key is what the runtime route, the field config and the saved-view
+editor already use, and an id in a URL is not something a human recognises as the module they
+meant. The `Select` moved to keys with it, so nothing converts between the two.
+
+**An unknown key falls back; the stale param stays.** Both pages fall through to their
+default rather than rendering an empty catalogue for a typo — `fields` only *after* the
+custom modules resolve, since a deep link to a custom module is unrecognisable while the list
+is still loading. Neither page rewrites the address to match: a write on mount is precisely
+what replaces a shared link's state with the defaults, which is the mount problem 5.5 solved
+by adopting rather than writing.
+
+**What is deliberately not addressed.** The automation rule editor and the new-module panel
+both hold an unsaved draft, so a link to either promises a state the URL cannot carry. They
+became local modes over an addressed page — `isEditing`, `creating` — rather than a third
+value of the workspace enum. `AutomationSettingsPage`'s `Workspace = "rules" | "editor" |
+"runs"` is `Tab = "rules" | "runs"`, and the editor is a branch above the shell.
+
+**Written into `design.md` first** (§12): archetype 4 gained *The address is the page's state,
+and it speaks one vocabulary* — the three-param table, and the rule that a draft is never
+addressed.
+
+**Next.** Batch 6 — the four large pages rebuilt (`backups`, `module-builder`, `fields`,
+`calendar-booking`), 44% of the surface. Two of them are the pages this batch just deep-linked;
+the address work survives the rebuild, and `module-builder`'s two `window.confirm` calls
+(`:410`, `:873`) are batch 6's to remove, not this one's.
 
 ---
 

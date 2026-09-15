@@ -15,7 +15,7 @@ import Pagination from "@/components/ui/Pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useDocumentActions, usePagedDocuments, useDocumentStorageUsage, type DocumentSortState } from "@/hooks/useDocuments";
 import { useConfirm } from "@/hooks/useConfirm";
-import { useListAddress } from "@/hooks/useListAddress";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { LIST_ADDRESS_KEYS } from "@/lib/savedViewQuery";
 import type { DocumentItem } from "@/hooks/useDocuments";
@@ -35,11 +35,11 @@ export default function DocumentsPage() {
   const requestedSearch = searchParams.get("search") ?? "";
   const documentIdParam = searchParams.get("documentId");
   const requestedDocumentId = documentIdParam && /^\d+$/.test(documentIdParam) ? Number(documentIdParam) : null;
-  const { updateAddress } = useListAddress();
+  const { updateAddress } = usePageAddress();
   const [search, setSearch] = useState(requestedSearch);
   /**
    * Documents has no saved views, so its draft is these two fields. They still go through
-   * `useListAddress` and the same `search` key every other list writes, so the page reads
+   * `usePageAddress` and the same `search` key every other list writes, so the page reads
    * and writes one vocabulary rather than inventing a second (rebuild.md 5.5).
    */
   const [documentFilter, setDocumentFilter] = useState<"all" | "templates" | "files">(() => {

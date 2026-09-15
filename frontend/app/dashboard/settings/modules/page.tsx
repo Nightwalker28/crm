@@ -227,7 +227,7 @@ export default function ModulesPage() {
                 <Link href={SETTINGS_ROUTES.moduleAccess(module.id)}><ShieldCheck />Access</Link>
               </Button>
               <Button asChild variant="ghost" size="sm">
-                <Link href={`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(module.name)}`}><Repeat2 />Automation</Link>
+                <Link href={`${SETTINGS_ROUTES.automation}?module=${encodeURIComponent(module.name)}`}><Repeat2 />Automation</Link>
               </Button>
             </div>
           );

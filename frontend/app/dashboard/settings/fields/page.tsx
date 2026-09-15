@@ -34,6 +34,7 @@ import { isProtectedFieldKey, useModuleFieldConfigs, type ModuleFieldSource } fr
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
 import { useConfirm } from "@/hooks/useConfirm";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { SETTINGS_ROUTES } from "@/lib/routes";
@@ -189,6 +190,8 @@ function buildCustomModuleCatalog(module: CustomModuleDefinition | null): FieldC
   }));
 }
 
+const DEFAULT_MODULE_KEY = "sales_contacts";
+
 export default function FieldsPage() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
@@ -214,7 +217,21 @@ export default function FieldsPage() {
     [builtInOptions, customModules],
   );
 
-  const [moduleKey, setModuleKey] = useState("sales_contacts");
+  /*
+   * A10: the module lives in `?module=`, not in local state (rebuild.md 5.6 batch 5). Every
+   * visit used to start on `sales_contacts`, so a link to a module's field config could not
+   * be sent and Back from a field's module lost it.
+   *
+   * An unknown key falls back to the default rather than showing an empty catalogue — but
+   * only once the custom modules have resolved, since a deep link to a custom module is
+   * unrecognisable while the list is still loading. The stale param is left in the address:
+   * rewriting the URL on mount is what replaces a shared link's state with the defaults.
+   */
+  const { params, updateAddress } = usePageAddress();
+  const addressedModuleKey = params.get("module")?.trim() || null;
+  const moduleKey = addressedModuleKey && (isLoadingCustomModules || moduleOptions.some((option) => option.key === addressedModuleKey))
+    ? addressedModuleKey
+    : DEFAULT_MODULE_KEY;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FieldFilter>("all");
   const [panelMode, setPanelMode] = useState<PanelMode>("inspect");
@@ -362,7 +379,10 @@ export default function FieldsPage() {
 
   async function handleModuleChange(nextModuleKey: string) {
     if (!await confirmDiscard("Your unsaved field changes will be lost when you switch modules.")) return;
-    setModuleKey(nextModuleKey);
+    updateAddress((next) => {
+      if (nextModuleKey === DEFAULT_MODULE_KEY) next.delete("module");
+      else next.set("module", nextModuleKey);
+    });
     setSearch("");
     setFilter("all");
     setPanelMode("inspect");

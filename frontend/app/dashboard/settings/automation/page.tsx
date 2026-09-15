@@ -1,7 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, History, Plus, Workflow } from "lucide-react";
 import { toast } from "sonner";
@@ -24,28 +23,39 @@ import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { deleteAutomationRule, persistAutomationRule, previewAutomationRule, useAutomationRules, useAutomationRuns, useAutomationTriggers } from "@/hooks/useAutomationRules";
 import { useConfirm } from "@/hooks/useConfirm";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { MODULE_REGISTRY, getModuleRegistryLabel } from "@/lib/module-registry";
-import { SETTINGS_ROUTES } from "@/lib/routes";
 
-type Workspace = "rules" | "editor" | "runs";
+type Tab = "rules" | "runs";
 
 export default function AutomationSettingsPage() {
-  const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
-  const selectedModuleKey = (searchParams.get("module_key") || searchParams.get("module"))?.trim() || null;
-  const [workspace, setWorkspace] = useState<Workspace>(searchParams.get("view") === "runs" ? "runs" : "rules");
+  /*
+   * The page's address, not its mount arguments (rebuild.md 5.6 batch 5). Three params are
+   * read on every render rather than seeded into state: `?module=` scopes the page,
+   * `?tab=rules|runs` is the workspace — it was `?view=`, which 5.5 made mean *saved view
+   * id* on every list in the app — and `?rule_id=` is the runs filter, which was already an
+   * inbound deep link and is now written as well as read.
+   *
+   * The editor is deliberately *not* addressed. It holds an unsaved draft, so a link to it
+   * would promise a state the URL cannot carry; it is a local mode over the rules tab.
+   */
+  const { params, updateAddress } = usePageAddress();
+  const selectedModuleKey = params.get("module")?.trim() || null;
+  const tab: Tab = params.get("tab") === "runs" ? "runs" : "rules";
+  const runRuleFilter = params.get("rule_id") ?? "all";
+  const [isEditing, setIsEditing] = useState(false);
   const [editorRule, setEditorRule] = useState<AutomationRule | undefined>();
   const [isDuplicate, setIsDuplicate] = useState(false);
   const [ruleSearch, setRuleSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [runRuleFilter, setRunRuleFilter] = useState(searchParams.get("rule_id") ?? "all");
   const [runStatusFilter, setRunStatusFilter] = useState("all");
   const [selectedRun, setSelectedRun] = useState<AutomationRun | null>(null);
 
   const rulesQuery = useAutomationRules(selectedModuleKey);
   const triggersQuery = useAutomationTriggers();
-  const runsQuery = useAutomationRuns(selectedModuleKey, null, workspace === "runs");
+  const runsQuery = useAutomationRuns(selectedModuleKey, null, tab === "runs");
   const triggerGroups = useMemo(() => {
     const groups = triggersQuery.data ?? [];
     return selectedModuleKey ? groups.filter((group) => group.module_key === selectedModuleKey) : groups;
@@ -83,9 +93,24 @@ export default function AutomationSettingsPage() {
     onError: () => toast.error("The automation rule could not be deleted."),
   });
 
-  function openEditor(rule?: AutomationRule, duplicate = false) { setEditorRule(rule); setIsDuplicate(duplicate); setWorkspace("editor"); }
+  function openEditor(rule?: AutomationRule, duplicate = false) { setEditorRule(rule); setIsDuplicate(duplicate); setIsEditing(true); }
+  /*
+   * One `updateAddress` per gesture: `router.replace` is async, so two calls in a tick would
+   * read the same stale query string and the second would drop the first's param. Changing
+   * the module also drops `?rule_id=`, which names a rule in the module being left.
+   */
   function changeModule(value: string) {
-    window.location.href = value === "all" ? SETTINGS_ROUTES.automation : `${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(value)}`;
+    updateAddress((next) => {
+      if (value === "all") next.delete("module");
+      else next.set("module", value);
+      next.delete("rule_id");
+    });
+  }
+  function showTab(next: Tab) {
+    updateAddress((address) => { if (next === "rules") address.delete("tab"); else address.set("tab", next); });
+  }
+  function filterRunsByRule(value: string) {
+    updateAddress((next) => { if (value === "all") next.delete("rule_id"); else next.set("rule_id", value); });
   }
   async function toggleRule(rule: AutomationRule) {
     if (rule.enabled) {
@@ -98,7 +123,13 @@ export default function AutomationSettingsPage() {
     const confirmed = await confirm({ title: `Delete ${rule.name}?`, description: "The rule will stop running. Existing run history remains available for audit.", confirmLabel: "Delete rule", variant: "destructive" });
     if (confirmed) deleteMutation.mutate(rule.id);
   }
-  function viewRuns(rule?: AutomationRule) { setRunRuleFilter(rule ? String(rule.id) : "all"); setWorkspace("runs"); }
+  function viewRuns(rule?: AutomationRule) {
+    updateAddress((next) => {
+      next.set("tab", "runs");
+      if (rule) next.set("rule_id", String(rule.id));
+      else next.delete("rule_id");
+    });
+  }
 
   const isResolving = rulesQuery.isLoading || triggersQuery.isLoading;
   const failedToLoad = rulesQuery.isError || triggersQuery.isError;
@@ -121,8 +152,8 @@ export default function AutomationSettingsPage() {
     );
   }
 
-  if (workspace === "editor") {
-    return <AutomationRuleEditor key={`${editorRule?.id ?? "new"}-${isDuplicate ? "copy" : "edit"}`} rule={editorRule} duplicate={isDuplicate} triggerGroups={triggerGroups} onClose={() => setWorkspace("rules")} onSaved={(rule) => { setEditorRule(rule); setIsDuplicate(false); }} onDeleted={() => setWorkspace("rules")} />;
+  if (isEditing) {
+    return <AutomationRuleEditor key={`${editorRule?.id ?? "new"}-${isDuplicate ? "copy" : "edit"}`} rule={editorRule} duplicate={isDuplicate} triggerGroups={triggerGroups} onClose={() => setIsEditing(false)} onSaved={(rule) => { setEditorRule(rule); setIsDuplicate(false); }} onDeleted={() => setIsEditing(false)} />;
   }
 
   const moduleLabel = selectedModuleKey ? getModuleRegistryLabel(selectedModuleKey) ?? formatModuleLabel(selectedModuleKey) : null;
@@ -133,15 +164,15 @@ export default function AutomationSettingsPage() {
    context={moduleLabel ? `${moduleLabel} automation` : "Automation workspace"}
    actions={(
      <>
-     <SegmentedControl aria-label="Automation workspace" value={workspace} onValueChange={(next) => (next === "runs" ? viewRuns() : setWorkspace("rules"))}>
+     <SegmentedControl aria-label="Automation workspace" value={tab} onValueChange={(next) => showTab(next as Tab)}>
        <SegmentedItem value="rules"><Workflow />Rules</SegmentedItem>
        <SegmentedItem value="runs"><History />Runs</SegmentedItem>
      </SegmentedControl>
-     {workspace === "rules" ? <Button type="button" onClick={() => openEditor()}><Plus />Create rule</Button> : null}
+     {tab === "rules" ? <Button type="button" onClick={() => openEditor()}><Plus />Create rule</Button> : null}
      </>
    )}
  >
-    {workspace === "rules" ? <>
+    {tab === "rules" ? <>
       <div className="grid gap-3 sm:grid-cols-[minmax(12rem,1fr)_13rem_11rem]">
         <SearchBar value={ruleSearch} onChange={setRuleSearch} placeholder="Search rules" />
         <Field><FieldLabel className="sr-only">Module filter</FieldLabel><Select value={selectedModuleKey ?? "all"} onValueChange={changeModule}><SelectTrigger aria-label="Module filter"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All modules</SelectItem>{MODULE_REGISTRY.filter((module) => !module.adminOnly && module.enabled && !module.requiredModuleKey).map((module) => <SelectItem key={module.key} value={module.key}>{module.label}</SelectItem>)}</SelectContent></Select></Field>
@@ -150,11 +181,11 @@ export default function AutomationSettingsPage() {
       <AutomationRulesTable rules={filteredRules} triggerLabels={triggerLabels} isRefreshing={rulesQuery.isFetching} hasFilters={Boolean(ruleSearch || statusFilter !== "all")} onCreate={() => openEditor()} onClearFilters={() => { setRuleSearch(""); setStatusFilter("all"); }} onEdit={(rule) => openEditor(rule)} onDuplicate={(rule) => openEditor(rule, true)} onToggle={(rule) => void toggleRule(rule)} onDelete={(rule) => void removeRule(rule)} onViewRuns={viewRuns} />
     </> : <>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <Button type="button" variant="ghost" size="sm" onClick={() => setWorkspace("rules")}><ArrowLeft />Rules</Button>
-        <Field className="sm:w-64"><FieldLabel className="sr-only">Filter runs by rule</FieldLabel><Select value={runRuleFilter} onValueChange={setRunRuleFilter}><SelectTrigger aria-label="Filter runs by rule"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All rules</SelectItem>{(rulesQuery.data ?? []).map((rule) => <SelectItem key={rule.id} value={String(rule.id)}>{rule.name}</SelectItem>)}</SelectContent></Select></Field>
+        <Button type="button" variant="ghost" size="sm" onClick={() => showTab("rules")}><ArrowLeft />Rules</Button>
+        <Field className="sm:w-64"><FieldLabel className="sr-only">Filter runs by rule</FieldLabel><Select value={runRuleFilter} onValueChange={filterRunsByRule}><SelectTrigger aria-label="Filter runs by rule"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All rules</SelectItem>{(rulesQuery.data ?? []).map((rule) => <SelectItem key={rule.id} value={String(rule.id)}>{rule.name}</SelectItem>)}</SelectContent></Select></Field>
         <Field className="sm:w-48"><FieldLabel className="sr-only">Filter runs by status</FieldLabel><Select value={runStatusFilter} onValueChange={setRunStatusFilter}><SelectTrigger aria-label="Filter runs by status"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All statuses</SelectItem><SelectItem value="succeeded">Succeeded</SelectItem><SelectItem value="failed">Failed</SelectItem><SelectItem value="skipped">Skipped</SelectItem></SelectContent></Select></Field>
       </div>
-      {runsQuery.isLoading ? <RouteLoadingState label="automation runs" /> : runsQuery.isError ? <Card><EmptyState icon={History} title="Run history could not be loaded" description="The rules are unaffected. Try loading recent runs again." action={<Button type="button" variant="outline" onClick={() => void runsQuery.refetch()}>Try again</Button>} /></Card> : <AutomationRunsTable runs={filteredRuns} isRefreshing={runsQuery.isFetching} hasFilters={runRuleFilter !== "all" || runStatusFilter !== "all"} onClearFilters={() => { setRunRuleFilter("all"); setRunStatusFilter("all"); }} onInspect={(run) => setSelectedRun(run)} />}
+      {runsQuery.isLoading ? <RouteLoadingState label="automation runs" /> : runsQuery.isError ? <Card><EmptyState icon={History} title="Run history could not be loaded" description="The rules are unaffected. Try loading recent runs again." action={<Button type="button" variant="outline" onClick={() => void runsQuery.refetch()}>Try again</Button>} /></Card> : <AutomationRunsTable runs={filteredRuns} isRefreshing={runsQuery.isFetching} hasFilters={runRuleFilter !== "all" || runStatusFilter !== "all"} onClearFilters={() => { filterRunsByRule("all"); setRunStatusFilter("all"); }} onInspect={(run) => setSelectedRun(run)} />}
       <AutomationRunDetails run={selectedRun} open={Boolean(selectedRun)} onOpenChange={(open) => { if (!open) setSelectedRun(null); }} />
     </>}
   </PageShell>;

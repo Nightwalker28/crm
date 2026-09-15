@@ -246,7 +246,7 @@ function ModuleAccessEditor({
       actions={(
         <>
           <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module Settings</Button>
-          <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module_key=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
+          <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
         </>
       )}
     >

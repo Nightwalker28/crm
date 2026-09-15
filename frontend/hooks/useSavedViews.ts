@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import { useListAddress } from "@/hooks/useListAddress";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import {
   canonicalSavedViewFiltersKey,
   LIST_ADDRESS_KEYS,
@@ -169,7 +169,7 @@ export function useSavedViews(
   address = true,
 ) {
   const queryClient = useQueryClient();
-  const { params: addressParams, updateAddress } = useListAddress(address);
+  const { params: addressParams, updateAddress } = usePageAddress(address);
   const [selectedViewId, setSelectedViewId] = useState<string>(
     () => (address ? addressParams.get(LIST_ADDRESS_KEYS.view) : null) ?? "",
   );
