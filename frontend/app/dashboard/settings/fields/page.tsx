@@ -603,7 +603,10 @@ export default function FieldsPage() {
             key: "is_required",
             label: "Required",
             size: "sm",
-            render: (field) => (field.is_required ? <StatusValue status={{ tone: "attention", label: "Required" }} /> : <EmptyValue context="cell" />),
+            // R5: required-ness is a property, not a status — it has no better or worse, so
+            // it is ink. It was `StatusValue tone="attention"`, which painted a whole column
+            // amber for a boolean.
+            render: (field) => (field.is_required ? <span className="text-copy-secondary">Required</span> : <EmptyValue context="cell" />),
           },
           {
             key: "is_enabled",

@@ -4566,6 +4566,38 @@ shapes of fix are written into `e2e-suite-status.md`; **the seven tests were lef
 because they were red before batch 6 and clearing them is that document's triage rather than a
 design batch's.
 
+### The browser pass — two defects nothing asserted, and both were carried in
+
+**Fifteen screenshots**: four pages × both themes, three at 768px, and the `EditorPanel` open
+in both themes plus at 390px. `design-rules.spec.ts` and `scroll-containers.spec.ts` came back
+green over **94 routes, none unreachable** — the strong shape of that run, per
+`e2e-suite-status.md`.
+
+Everything the assertions cover was right, and two things they do not cover were not.
+
+**A create panel cannot report *All changes saved*.** The booking-link editor opens empty and
+its footer said the draft was saved, because `isDirty` compares the draft to itself and an
+empty draft equals an empty baseline. It is the pre-rebuild line, carried across unchanged —
+and the fix is the phrasing 5.4 already settled for exactly this case: an edit panel says *All
+changes saved*, a create panel says what is still needed. Nothing asserts a footer's wording,
+so nothing caught it.
+
+**A whole column painted amber for a boolean.** `fields` rendered `Required` as
+`StatusValue tone="attention"` in every required row. §7.1 draws the line by asking whether the
+value has a *better or worse*: a status does, and required-ness does not — it is a property of
+the field, like its source and its type. R5 deleted `Pill` for exactly this, colour repeating
+hundreds of times per table where ink would do, and the column is ink now.
+
+Both were pre-existing and neither was introduced by this batch; both were also in files being
+rebuilt, which is when they are cheapest to fix. Neither is visible in a diff, in a lint run or
+in a rendered guard — only in a screenshot.
+
+**What the narrow viewport confirmed.** At 768px the rail is correctly not drawn (Ruling 1),
+the `RecordTable` scrolls inside its own container rather than the page (§4.5), and the
+segmented filter strip scrolls sideways in its own overflow. The `EditorPanel` at 390px is
+full-bleed with no left border, which is the `RecordSpine` / `QuickCreateSurface` shape §7.11
+adopted and the ten page-level drawers never had.
+
 ---
 
 ## 5.7 — Dashboard, reports, boards, calendars, mail

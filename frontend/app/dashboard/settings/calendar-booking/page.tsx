@@ -433,7 +433,7 @@ export default function CalendarBookingSettingsPage() {
         closeLabel="Close booking link editor"
         size="wide"
         onSubmit={() => saveMutation.mutate(draft)}
-        status={isDirty ? "Unsaved changes" : "All changes saved"}
+        status={isDirty ? "Unsaved changes" : isEditing ? "All changes saved" : "Complete the required fields to create this booking link."}
         footer={(
           <>
             <Button type="button" variant="outline" onClick={() => handleEditorOpenChange(false)} disabled={saveMutation.isPending}>Cancel</Button>
