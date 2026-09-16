@@ -5807,7 +5807,7 @@ found five things and all five are fixed.
 | `check-design.sh` | **2 of 14**, the known baseline — no 5.7 file adds a source-rule failure |
 | `lint`, `tsc --noEmit`, `build` | Green, after the last correction |
 | `design-rules.spec.ts` | Green, **`Audited 94 routes. Unreachable: none`** — twice, the second after the browser-pass fixes |
-| `scroll-containers.spec.ts` | Green before the browser-pass fixes. **The re-run after them did not happen**: the remote Postgres stopped accepting connections mid-session (below) |
+| `scroll-containers.spec.ts` | Green before the browser-pass fixes, and **green again after all of them** (2.5m), once the database was back |
 | The in-scope suite — 285 tests in 54 files (all but the two guards, contracts and support) | **218 passed / 67 failed** at `b0d3ff5` |
 | The attribution — the 67 re-run against pre-5.7 (`9923ceb`) on the same dev server | **61 fail there too. 6 passed before 5.7** |
 | The browser pass — 11 routes × 2 themes at 1440, the same at 768, a 40-stop tab walk, the palette, the profile menu, a keyboard move, the month grid | Five findings, fixed |
@@ -5825,8 +5825,8 @@ found five things and all five are fixed.
 
 **None was an app defect.** The four contract moves are fixed in the specs; the two flakes are listed
 under *Known flaky* in `docs/e2e-suite-status.md`. A seventh, `command-palette-actions:287`, timed out
-at exactly 30s in the targeted re-run after passing in the full suite; its confirming run was one of
-the casualties of the database outage.
+at exactly 30s in the targeted re-run after passing in the full suite, and passed alone in 27.8s: a slow
+test under load, not a regression.
 
 #### The browser pass — five findings
 
@@ -5885,13 +5885,13 @@ Themes proved distinct by measurement, as 5.6 prescribed: body ground `rgb(11, 1
   `server closed the connection`, then `Connection timed out` to `100.107.171.33:5432` on restart. Logins
   fail as *Expected login to reach the dashboard or MFA challenge*, which is how `scroll-containers`'
   post-fix re-run read. Check `docker compose logs backend | grep OperationalError` before believing a
-  login failure.
+  login failure. **When the host can reach the database again, the backend container may still time
+  out** — restart it; its startup retry loop does not recover by itself.
 
 ### What 5.7 leaves open, deliberately
 
 | Item | Owner |
 |---|---|
-| `scroll-containers.spec.ts` re-run after the browser-pass fixes (`PageHeader`, `Pagination`, the palette input, mail, the dashboard layout) — blocked by the database outage. `design-rules` did run after all but the layout change | The next session, first thing |
 | Widget titles in Title Case (`CRM Snapshot`, `Leads By Status`), *Create Task* / *Save Task* / *Move To Recycle Bin*, *User Invite* / *Team Share*, *Add Task* — each asserted by a spec or catalogued | 5.9 |
 | The sidebar's *Log out* and the profile menu's are the same action twice; `application-shell-refactor` asserts the sidebar's | The owner |
 | The listbox / menu active-option ground (`--color-primary-muted`) in `select.tsx`, `DropdownMenuItem` and the palette | 5.10, with the owner (§7.16) |
