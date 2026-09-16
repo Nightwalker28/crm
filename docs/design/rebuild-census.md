@@ -241,7 +241,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `mail/page.tsx` | 760 | 5.7 | rebuild | | batch 6 — the message rows are `ListRow`s in an inset `RowList`; the selected row is elevation, not the action tint. **The rest of the page is batch 8's** |
+| `mail/page.tsx` | 760 | 5.7 | rebuild | | batch 6 — the message rows are `ListRow`s in an inset `RowList`; the selected row is elevation, not the action tint. **batch 8b** — §4.4 page split: messages `Card` (list and reader side by side from a 48rem container) and a 20rem connections rail of `ListRow`s. Header 4 controls → *New mail*. IMAP form → `EditorPanel`. Success tints, boxed body, boxed link targets and scope chips gone; states are `PanelStates` |
 | `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | |
 | `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates`. Batch 6 — the invite and provider rows are `ListRow`s |
 | `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | **done, batch 7** (A11 is the sidebar's, batch 8) — raw `Table` → `RecordTable variant="readOnly"`, `ForecastBucketList` → `ListRow`, four tinted error banners → `PanelError` / `FieldError` / toasts, headings → `PanelHeader`, the chart's `Skeleton` and `EmptyState` → `PanelStates`, *Top result* → `Fact`, presets off the action tint |
@@ -416,7 +416,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | **done, batch 4** — 232 → 104 lines, a body renderer over `Board`. The card title is a link to the deal; the "High-value deal" quartile tint is gone (R5) |
 | `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | **done, batch 4** — 138 → 80 lines, a body renderer over `Board` |
 | `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | **done, batch 5** — 178 → 75 lines, `MonthGrid` in the list's `ModuleTableShell` with `renderListState` |
-| `tasks/TaskDialog.tsx` | 395 | 5.7 | rebuild | | |
+| `tasks/TaskDialog.tsx` | 395 | 5.7 | rebuild | | batch 8b — the calendar's buttons left the six-control footer for a *Calendar* section that states whether the task is on it; *Assignments* is a `SectionHeading`; option states are `PanelStates`. Title / commit Title Case left for 5.9 (`tasks-revamp` asserts it) |
 | `tasks/TaskAssigneePicker.tsx` | 104 | 5.7 | adopt | | |
 | `calendar/CalendarEventDialog.tsx` | 346 | 5.7 | rebuild | | **done, batch 5** — the Radix `Switch` is `SegmentedBoolean` in a `Field`; the owner notice is ink, not a box. Its Title Case (`Create Event`, `Move To Recycle Bin`) is 5.9's |
 | `calendar/CalendarParticipantPicker.tsx` | 110 | 5.7 | adopt | | |
@@ -424,7 +424,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | |
 | `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | |
 | `mail/MailComposePage.tsx` | 239 | 5.7 | rebuild | On `RecordFormLayout`, so 5.4 batch 3 moved it with the other 15 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.7 still owns its final shape |
-| `mail/RecordEmailComposer.tsx` | 498 | 5.7 | rebuild | | |
+| `mail/RecordEmailComposer.tsx` | 498 | 5.7 | rebuild | | batch 8b — local `formatBytes` → `lib/format`; attachments were a box per file and are a divided list; Cc and Bcc are two `Field`s; the no-mailbox actions are an `ActionBar` |
 | `mail/RecordEmailAction.tsx` | 103 | 5.3 | adopt | A record-page action | **done, close-out** — returns `null` without an address instead of a disabled `Email` / `Email Opt Out` (§4.7). Opt-out is already drawn in `Details` as `Opted out` |
 
 ### 2.6 Shell, search, notifications, identity (8)

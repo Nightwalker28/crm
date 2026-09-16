@@ -5726,6 +5726,75 @@ places. `application-shell-refactor` asserts the sidebar's, so which one goes is
 **Next: batch 8b** — `mail/page.tsx` rebuilt (its message rows are batch 6's), `RecordEmailComposer`,
 `TaskDialog`.
 
+### Status: batch 8b — `mail`, and a header that did the rows' work
+
+**Landed.** The last rebuild rows 5.7 owns.
+
+- **`mail/page.tsx` (739 → ~600) is the §4.4 page split**, the calendar page's shape: a messages
+  `Card` and a 20rem rail holding *Mail connections*.
+  **Rejected: connections on top, as they were.** Three boxed provider cards pushed the inbox —
+  what the operator opens the page for — below the fold. **Rejected: moving connections to
+  settings/integrations.** Mailboxes are per user and the OAuth connect runs from here.
+  - **The list and the message sit side by side once the card is 48rem** (`@3xl`), which beside
+    the rail is a 1440 viewport. Narrower, the message follows the list as it did. A container
+    query for the reason §7.14 gives; checked in the built CSS (`@container (min-width:48rem)`).
+  - **Header (ruling 3's reasoning).** *Manage Integrations*, *Sync IMAP*, *Reconfigure IMAP*,
+    *New Mail*. The middle two repeated the IMAP row's own actions; *Manage integrations* is the
+    empty state's action now. The header is *New mail*.
+  - **Connections are `ListRow`s**: status as `StatusValue`, mailbox and last sync as `Fact`s,
+    *Manage* / *Sync* as row actions named for the provider (*Sync Gmail*). R5: the green *Inbox
+    sync is available* box went, since *Ready* already says it. The warning box is a warning
+    line. The scope chips (`gmail.send`) went too: technical detail, and the calendar rail never
+    showed them. **§7.9**: *Sync* was drawn disabled on every send-only mailbox; it is drawn
+    where it can run.
+  - **The IMAP form was a card that opened between the connections and the inbox.** It is an
+    `EditorPanel` (§7.11), opened from the IMAP row or from *Connect IMAP/SMTP* under the rail.
+    Closing it clears the password, as a successful save already did.
+  - **The reader.** Subject over `Fact`s (*From*, *To*, *Received* / *Sent*, *Linked record*).
+    The green *Linked to …* box and the *Open Linked Record* button said one thing twice, and the
+    fact's value is now the link. The body was a bordered, recessed box inside the card (§1.3); it
+    is prose under a rule, and it comes **before** *Link to a record*, not after. Link targets were
+    full-width outline buttons with *Link* printed inside. They are rows now, with a *Link* action.
+  - **States.** Two tinted error boxes and two loading lines are `PanelStates`. A folder or
+    search that matched nothing said *No mail messages yet — connect Gmail…*; it says *No messages
+    match*.
+- **`RecordEmailComposer`** was already close. Its local `formatBytes` is `lib/format`'s, which
+  5.6 wrote to end four such copies. This was the fifth, and it rounded KB to integers. Each
+  attachment was a bordered, recessed box in the dialog; they are a divided list. Cc and Bcc were
+  **one `Field` with two labels**, so the error under them belonged to neither; they are two. The
+  no-mailbox buttons are an `ActionBar` without call-site sizes.
+- **`TaskDialog`** — the footer held up to **six** controls: *Move To Recycle Bin*, *Add To
+  Calendar* (disabled as *Already On Calendar* once it was), *Open Calendar Event*, *Remove From
+  Calendar*, *Cancel*, *Save Task*. The calendar three act on the task's calendar entry, not the
+  form, so they are a *Calendar* section that says *On the calendar for …* or *Not on the
+  calendar*. *Assignments* was `text-copy-primary` over a `FieldDescription`; it is a
+  `SectionHeading`. The option loading line and tinted error are `PanelStates`. The top-of-dialog
+  submit error keeps its tinted alert, the same as `CalendarEventDialog`.
+
+**Verification:** lint, `tsc --noEmit`, build green, one at a time, in `run --no-deps` containers
+as in 8a; `check-design.sh` at the known 2 of 14.
+
+**Specs that will move at close-out.** `mail-revamp` "IMAP settings use labeled controls" clicks
+*Reconfigure IMAP*. It finds the IMAP row's *Reconfigure* button, named *Reconfigure IMAP/SMTP*,
+by substring, and the form is in a sheet now. *Mailbox email*, both security comboboxes, *Disconnect
+IMAP* and the confirmation are kept. Its note that *"the page behind the dialog has its own
+Cancel"* is still true: the sheet's. "Mail hides technical provider…" keeps *The provider needs
+attention…* and *We could not load mail messages.* `tasks-revamp` keeps *Edit Task*, *Create Task*
+and *Task title*. Nothing asserts the calendar buttons' old names.
+
+**For the close-out's browser pass:** mail at 1440 (side by side) and 1280 (stacked) in both
+themes. Open the IMAP sheet from the row, then run disconnect's confirm over the sheet. Tab through
+the reader: facts, the linked-record link, the link search, then a result's *Link*. Check a task
+dialog with a linked calendar event, and the composer's attachment list with more than five files.
+
+**Left knowingly.** `mail/page.tsx` still hard-codes `linkedRecordHref` per module, a registry
+question and not a visual one. *Create Task* / *Save Task* / *Move To Recycle Bin* are 5.9's Title
+Case, asserted by `tasks-revamp`.
+
+**Next: batch 9** — 5.7's close-out: `check-design.sh`, both rendered guards, the specs named in
+batches 2–8b, the browser pass collected above, and one correction commit carrying the items filed
+for it (`OpportunitiesTable`'s green value cell, `DocumentList`'s detail panel).
+
 ---
 
 ## 5.8 — Client portal, public, and auth

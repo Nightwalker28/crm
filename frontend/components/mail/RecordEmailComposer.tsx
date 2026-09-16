@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -32,6 +33,7 @@ import {
   useRecordMailSend,
   RecordMailError,
 } from "@/hooks/useRecordMail";
+import { formatBytes } from "@/lib/format";
 import type { RecordModuleKey } from "@/types/record-activity";
 
 /**
@@ -86,13 +88,6 @@ function newIdempotencyKey() {
     return crypto.randomUUID();
   }
   return `compose-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-}
-
-function formatBytes(bytes?: number | null) {
-  if (!bytes || bytes < 0) return null;
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function RecordEmailComposer({
@@ -271,7 +266,7 @@ export default function RecordEmailComposer({
       returnFocusRef={returnFocusRef}
       showCreateAndOpen={false}
       createLabel="Send email"
-      pendingLabel="Sending..."
+      pendingLabel="Sending…"
       error={errorBanner}
       submitErrorMessage="We could not send this email."
       statusMessage={
@@ -297,18 +292,18 @@ export default function RecordEmailComposer({
             You can still write this email in your own mail app — it just will not be filed against
             this record automatically.
           </p>
-          <div className="flex flex-wrap gap-2">
-            <Button asChild size="sm">
+          <ActionBar size="sm" align="start">
+            <Button asChild>
               <Link href="/dashboard/mail" onClick={() => onOpenChange(false)}>
                 {reconnectableConnections.length ? "Reconnect a mailbox" : "Connect a mailbox"}
               </Link>
             </Button>
             {defaultRecipient ? (
-              <Button asChild size="sm" variant="outline">
+              <Button asChild variant="outline">
                 <a href={`mailto:${defaultRecipient}`}>Open in your email app</a>
               </Button>
             ) : null}
-          </div>
+          </ActionBar>
         </div>
       ) : (
         <FieldGroup>
@@ -358,38 +353,43 @@ export default function RecordEmailComposer({
             <FieldError>{recipientError}</FieldError>
           </Field>
 
+          {/* Cc and Bcc were one `Field` holding two labels and two inputs, so the error under them
+              belonged to neither. Two fields; the error sits under the second, and both inputs
+              are marked invalid because the message names the address, not the field. */}
           {showCopyFields ? (
-            <Field data-invalid={Boolean(copyError)}>
-              <FieldLabel htmlFor="record-mail-cc">Cc</FieldLabel>
-              <Input
-                id="record-mail-cc"
-                type="text"
-                inputMode="email"
-                value={cc}
-                onChange={(event) => {
-                  setCc(event.target.value);
-                  if (copyError) setCopyError(null);
-                }}
-                aria-invalid={Boolean(copyError)}
-                placeholder="name@example.com"
-              />
-              <FieldLabel htmlFor="record-mail-bcc" className="mt-3">
-                Bcc
-              </FieldLabel>
-              <Input
-                id="record-mail-bcc"
-                type="text"
-                inputMode="email"
-                value={bcc}
-                onChange={(event) => {
-                  setBcc(event.target.value);
-                  if (copyError) setCopyError(null);
-                }}
-                aria-invalid={Boolean(copyError)}
-                placeholder="name@example.com"
-              />
-              <FieldError>{copyError}</FieldError>
-            </Field>
+            <>
+              <Field data-invalid={Boolean(copyError)}>
+                <FieldLabel htmlFor="record-mail-cc">Cc</FieldLabel>
+                <Input
+                  id="record-mail-cc"
+                  type="text"
+                  inputMode="email"
+                  value={cc}
+                  onChange={(event) => {
+                    setCc(event.target.value);
+                    if (copyError) setCopyError(null);
+                  }}
+                  aria-invalid={Boolean(copyError)}
+                  placeholder="name@example.com"
+                />
+              </Field>
+              <Field data-invalid={Boolean(copyError)}>
+                <FieldLabel htmlFor="record-mail-bcc">Bcc</FieldLabel>
+                <Input
+                  id="record-mail-bcc"
+                  type="text"
+                  inputMode="email"
+                  value={bcc}
+                  onChange={(event) => {
+                    setBcc(event.target.value);
+                    if (copyError) setCopyError(null);
+                  }}
+                  aria-invalid={Boolean(copyError)}
+                  placeholder="name@example.com"
+                />
+                <FieldError>{copyError}</FieldError>
+              </Field>
+            </>
           ) : (
             <Button
               type="button"
@@ -456,31 +456,35 @@ export default function RecordEmailComposer({
                 This record&apos;s files could not be loaded. You can still send without attachments.
               </FieldDescription>
             ) : documents.length ? (
+              // Each file was a bordered, recessed box inside the dialog. The checkbox is the
+              // control and the row is its label; a divided list says the same without a box
+              // per line (§7.15).
               <div className="grid gap-2">
-                {documents.map((document) => {
-                  const checked = attachmentIds.includes(document.id);
-                  const size = formatBytes(document.file_size_bytes);
-                  return (
-                    <label
-                      key={document.id}
-                      className="flex items-start gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2"
-                    >
-                      <Checkbox
-                        checked={checked}
-                        disabled={!checked && attachmentIds.length >= MAX_ATTACHMENTS}
-                        onCheckedChange={(value) => toggleAttachment(document.id, value === true)}
-                      />
-                      <span className="min-w-0">
-                        <span className="block truncate text-p-sm text-copy-primary">
-                          {document.display_name || document.title}
-                        </span>
-                        <span className="block text-p-xs text-copy-muted">
-                          {[document.original_filename, size].filter(Boolean).join(" · ")}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                })}
+                <ul aria-label="Files on this record" className="divide-y divide-line-subtle border-y border-line-subtle">
+                  {documents.map((document) => {
+                    const checked = attachmentIds.includes(document.id);
+                    const size = formatBytes(document.file_size_bytes);
+                    return (
+                      <li key={document.id}>
+                        <label className="flex cursor-pointer items-start gap-3 py-2">
+                          <Checkbox
+                            checked={checked}
+                            disabled={!checked && attachmentIds.length >= MAX_ATTACHMENTS}
+                            onCheckedChange={(value) => toggleAttachment(document.id, value === true)}
+                          />
+                          <span className="min-w-0">
+                            <span className="block truncate text-p-sm text-copy-primary">
+                              {document.display_name || document.title}
+                            </span>
+                            <span className="block text-p-xs text-copy-muted">
+                              {[document.original_filename, size].filter(Boolean).join(" · ")}
+                            </span>
+                          </span>
+                        </label>
+                      </li>
+                    );
+                  })}
+                </ul>
                 <FieldDescription>
                   Attach up to {MAX_ATTACHMENTS} files already linked to this record.
                 </FieldDescription>

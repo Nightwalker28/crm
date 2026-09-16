@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
+import { ActionBar } from "@/components/ui/ActionBar";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,8 +17,9 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -300,25 +303,22 @@ export default function TaskDialog({
               </Field>
             </FieldGroup>
 
-            <div className="border-t border-line-subtle pt-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-copy-primary">Assignments</div>
-                  <FieldDescription>
-                    Search and assign individual users or whole teams. Team assignments notify the full team.
-                  </FieldDescription>
-                </div>
-                <div className="text-xs font-medium text-copy-label">
-                  {selectedAssigneeCount} selected
-                </div>
-              </div>
+            {/* R7: the section's name was `text-copy-primary`, as loud as the task title field under
+                it, with its description borrowed from a form field. */}
+            <section className="border-t border-line-subtle pt-4">
+              <SectionHeading
+                as="h3"
+                description="Search and assign individual users or whole teams. Team assignments notify the full team."
+                action={<span className="text-xs text-copy-muted tabular-nums">{selectedAssigneeCount} selected</span>}
+              >
+                Assignments
+              </SectionHeading>
 
               {optionsQuery.isLoading ? (
-                <div className="mt-4 text-sm text-copy-muted">Loading assignee options…</div>
+                <PanelLoading label="Loading assignee options…" />
               ) : optionsQuery.error ? (
-                <div role="alert" className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-sm text-copy-primary">
-                  <span>Task assignment options could not be loaded.</span>
-                  <Button type="button" size="sm" variant="outline" onClick={() => void optionsQuery.refetch()}>Try again</Button>
+                <div className="mt-4">
+                  <PanelError message="Task assignment options could not be loaded." onRetry={() => void optionsQuery.refetch()} />
                 </div>
               ) : (
                 <div className="mt-4 space-y-3">
@@ -337,7 +337,51 @@ export default function TaskDialog({
                   ) : null}
                 </div>
               )}
-            </div>
+            </section>
+
+            {/* The calendar's four buttons shared the footer with delete, cancel and save — six
+                controls in the commit row, one of them a disabled *Already On Calendar* standing in
+                for a sentence. They act on the task's calendar entry, not on the form, so they are
+                a section of the body with its state written down. */}
+            {task && (onAddToCalendar || linkedCalendarEvent) ? (
+              <section className="space-y-3 border-t border-line-subtle pt-4">
+                <SectionHeading
+                  as="h3"
+                  description={linkedCalendarEvent
+                    ? `On the calendar${linkedCalendarEvent.start_at ? ` for ${formatDateTime(linkedCalendarEvent.start_at)}` : ""}.`
+                    : "Not on the calendar."}
+                >
+                  Calendar
+                </SectionHeading>
+                <ActionBar size="sm" align="start">
+                  {!linkedCalendarEvent && onAddToCalendar ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void runCalendarAction(onAddToCalendar, "The task could not be added to the calendar.")}
+                      disabled={isSubmitting || isDeleting || isAddingToCalendar}
+                    >
+                      {isAddingToCalendar ? "Adding…" : "Add to calendar"}
+                    </Button>
+                  ) : null}
+                  {linkedCalendarEvent && onOpenCalendarEvent ? (
+                    <Button type="button" variant="outline" onClick={onOpenCalendarEvent} disabled={isSubmitting || isDeleting}>
+                      Open calendar event
+                    </Button>
+                  ) : null}
+                  {linkedCalendarEvent && onRemoveFromCalendar ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void runCalendarAction(onRemoveFromCalendar, "The task could not be removed from the calendar.")}
+                      disabled={isSubmitting || isDeleting || isRemovingFromCalendar}
+                    >
+                      {isRemovingFromCalendar ? "Removing…" : "Remove from calendar"}
+                    </Button>
+                  ) : null}
+                </ActionBar>
+              </section>
+            ) : null}
           </div>
 
           <DialogFooter className="mt-6">
@@ -350,31 +394,6 @@ export default function TaskDialog({
                 disabled={isSubmitting || isDeleting}
               >
                 Move To Recycle Bin
-              </Button>
-            ) : null}
-            {task && onAddToCalendar ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void runCalendarAction(onAddToCalendar, "The task could not be added to the calendar.")}
-                disabled={isSubmitting || isDeleting || isAddingToCalendar || Boolean(linkedCalendarEvent)}
-              >
-                {linkedCalendarEvent ? "Already On Calendar" : isAddingToCalendar ? "Adding..." : "Add To Calendar"}
-              </Button>
-            ) : null}
-            {task && linkedCalendarEvent && onOpenCalendarEvent ? (
-              <Button type="button" variant="outline" onClick={onOpenCalendarEvent} disabled={isSubmitting || isDeleting}>
-                Open Calendar Event
-              </Button>
-            ) : null}
-            {task && linkedCalendarEvent && onRemoveFromCalendar ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void runCalendarAction(onRemoveFromCalendar, "The task could not be removed from the calendar.")}
-                disabled={isSubmitting || isDeleting || isRemovingFromCalendar}
-              >
-                {isRemovingFromCalendar ? "Removing..." : "Remove From Calendar"}
               </Button>
             ) : null}
             <Button type="button" variant="ghost" onClick={onClose}>
