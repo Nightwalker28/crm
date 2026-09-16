@@ -5730,7 +5730,7 @@ places. `application-shell-refactor` asserts the sidebar's, so which one goes is
 
 **Landed.** The last rebuild rows 5.7 owns.
 
-- **`mail/page.tsx` (739 → ~600) is the §4.4 page split**, the calendar page's shape: a messages
+- **`mail/page.tsx` (739 → 727) is the §4.4 page split**, the calendar page's shape: a messages
   `Card` and a 20rem rail holding *Mail connections*.
   **Rejected: connections on top, as they were.** Three boxed provider cards pushed the inbox —
   what the operator opens the page for — below the fold. **Rejected: moving connections to
