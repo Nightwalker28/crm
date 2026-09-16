@@ -261,7 +261,7 @@ export default function TasksPage() {
       ) : displayMode === "board" ? (
         <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={openCreateDialog} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
       ) : (
-        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} />
+        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onOpen={openEditDialog} />
       )}
 
       <Pagination

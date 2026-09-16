@@ -1399,6 +1399,7 @@ exists. The list-and-record language in particular is not optional:
 | Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle. **Not** a tab strip (§7.7) |
 | A list the operator reorders | `SortableList` — see §7.13 |
 | A kanban | `Board` — see §7.13. The same rows as the list, in `ModuleTableShell` |
+| A month calendar | `MonthGrid` — see §7.14. The grid and the narrow day picker are one component |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
@@ -1845,6 +1846,48 @@ quartile computed over the loaded page is not a fact about the deal, and is not 
 **The display is addressed.** A list that can render as a table, a board or a calendar holds
 the choice in `?display=` (§4.7 archetype 4's vocabulary table), so a reload or a shared link
 opens the same view. The default display is never written.
+
+### 7.14 A month calendar is `MonthGrid`, and the day picker is part of it
+
+The task calendar and the calendar page were the same 42-cell grid written twice, each with
+its own narrow-viewport day picker written twice more (`rebuild.md` 5.7 ruling 5). One
+primitive; **entries are a render prop**, because a task and an event are different rows and
+the grid knows neither. It draws **no container of its own** — the task calendar sits in the
+list's `ModuleTableShell` beside the table and the board, the calendar page's in a `Card`.
+
+It owns:
+
+- **The header**: the month as a `SectionHeading`, an optional description, and *Previous
+  month* / *Today* / *Next month* in an `ActionBar`. The header stays while the days load or
+  fail, so the operator can always leave a month.
+- **Days are keyed in the operator's timezone** (`getUserTimezone`), the same zone every time
+  on the entry is printed in. The grid and the text beside it cannot disagree about which day
+  a 23:30 meeting is on.
+- **The grid, when the grid's own box is at least 42rem** (`@2xl/month-grid`). A container
+  query, not a viewport breakpoint: at one viewport the task list's shell is a page wide and
+  the calendar page's panel shares its row with the §4.4 20rem rail. Cells are separated by hairline rules and carry no ground; a
+  day outside the month keeps its rules and dims its numeral. At most three entries show,
+  then **`+N more`, which opens the day** in a popover — it was static text on both
+  originals, so the fourth entry of a busy day was unreachable.
+- **Narrower than that, the day picker and the selected day's agenda**, aligned under a weekday row.
+  The task calendar's picker started every month on the first column, so a month that began
+  on a Wednesday labelled every date with the wrong weekday.
+- **Today is weight and ink** on the numeral — `font-semibold text-copy-primary` and
+  `aria-current="date"` — never a filled circle. **The selected day is elevation**,
+  `bg-surface-raised`, never the action tint. A day with entries is marked in the picker by a
+  dot in `bg-copy-muted`: *has entries* is a property, not a state.
+- **The day numerals are one tab stop**, with arrow keys moving by day and week, `Home` / `End`
+  to the week's edges and `PageUp` / `PageDown` by month, crossing month edges as they go. A
+  per-day action (`renderDayAction`, the calendar page's *Create event on…*) is tabbable only on
+  the selected day, so a month is not 84 tab stops.
+- **The entry box and its open gesture.** An entry is a button with no border and no ground —
+  the cell is its container — that raises on hover. The call site supplies what is inside it.
+
+**Colour on an entry is exception only (R5).** An invite awaiting the operator's response
+carries the warning mark in words; *shared with me* is a property and is ink.
+
+**Rejected: a week or agenda view.** Neither page had one, and a view is a feature, not a
+rebuild.
 
 ## 8. Accessibility floors
 

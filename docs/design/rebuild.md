@@ -5414,6 +5414,102 @@ the close-out's correction commit. `Add Task` on the tasks toolbar is 5.9's Titl
 **Next: batch 5** — `MonthGrid`: `TasksCalendar`, then `calendar/page.tsx` rebuilt around it, and
 `CalendarEventDialog` onto `SegmentedBoolean`.
 
+### Status: batch 5 — `MonthGrid`, and a picker that got the weekdays wrong
+
+**Landed.** Ruling 5, rule first: `design.md` §7.14 and its §7.1 row.
+
+- **`components/ui/MonthGrid.tsx`** — header, the 42-day grid, the narrow day picker with the
+  selected day's agenda, and the entry box. **It draws no container**: the task calendar sits in
+  the list's `ModuleTableShell`, the calendar page's in a `Card`. One controlled value,
+  `selectedDay`: the month shown is the selected day's, so *Previous month* selects a day in
+  the previous month and a month cannot disagree with its selection. Entries are
+  `renderEntry(entry, "cell" | "row")` inside a button the grid owns, which is `Board`'s split
+  — the call site supplies the inside, the primitive the box, hover and focus.
+- **A container query, not `md` or `lg`.** The two originals switched to the picker at `md` and
+  at `lg`. Neither is right for a primitive: at 1280px the task list's shell is ~980px wide and
+  the calendar page's panel, beside the §4.4 20rem rail, is ~630px. The grid shows when *its own*
+  box is 42rem (`@2xl/month-grid`), which is 96px a day. Checked in the built CSS
+  (`container:month-grid/inline-size`, `@container month-grid (min-width:42rem)`), as batch 2's
+  selectors were. **Rejected: a `compact` prop** — the caller would be guessing a width the
+  browser already knows.
+- **What the two disagreed on, and what won.**
+
+  | | `TasksCalendar` | `calendar/page.tsx` | `MonthGrid` |
+  |---|---|---|---|
+  | Today | `bg-action-primary` filled circle | not marked | `font-semibold text-copy-primary`, `aria-current="date"` |
+  | Selected (picker) | `border-primary bg-action-primary-muted` | same | `border-line-strong bg-surface-raised` |
+  | *Has entries* dot | `bg-state-info` | `bg-state-info` | `bg-copy-muted` |
+  | `+N more` | static text | static text | opens the day in a popover |
+  | Day keyed in | browser zone | browser zone | `getUserTimezone()` — the zone the time is printed in |
+  | Tab stops per month | 42+ | 84+ (numeral and *+* per day) | 1 numeral, plus the selected day's action |
+
+- **Found: the task picker's weekdays were wrong.** It filtered the 42 days to the month and laid
+  them straight into seven columns with no weekday row, so every month started in the first
+  column. September 2026 begins on a Tuesday; its 1st sat where a Sunday goes. The picker now has
+  the weekday row and the leading blanks. The calendar page's picker had the same bug.
+- **Found: `+N more` hid entries.** A fourth task due on a day was unreachable in the grid on both
+  pages — the text was not a control. It opens a popover listing the whole day, which closes when
+  an entry opens its dialog.
+- **Keyboard.** The day numerals are one roving tab stop: arrows by day and week, `Home` / `End`
+  to the week's edges, `PageUp` / `PageDown` by month, crossing month boundaries, with focus
+  following the selection (re-queried after render, the batch 3 and 4 pattern). The calendar
+  page's *Create event on…* is `renderDayAction`, handed a `tabIndex` that is 0 on the selected
+  day only.
+- **`components/ui/ListStates.tsx`** — `renderListState`, `Board`'s four states lifted out
+  unchanged. The task calendar would have been their third copy. `RecordTable` keeps its own:
+  it splits the alert wrapper from the content, and takes error and permission slots the other
+  two do not.
+- **`TasksCalendar`** (178 → 75) — now in `ModuleTableShell` like the board, with the *Refreshing*
+  badge instead of `· Refreshing…` in its subtitle, and the filtered-empty state it did not have:
+  a filter that matched nothing said *No tasks to schedule*. The priority went from a
+  `StatusValue` line per cell to words in the agenda row; a cell holds the title.
+- **`calendar/page.tsx`** (631 → 391) — `PageShell`, then the §4.4 page split: the grid's `Card`,
+  and a rail of *Pending invites* and *Calendar sync*.
+  - **The *Selected day* panel is gone.** At the grid's width the cells and `+N more` show the day,
+    and narrower the grid's own agenda does, so a third list of the same events was redundant.
+  - **R5.** Event tone by response was a tinted box per event: `pending` warning, `shared` info,
+    `declined` a muted ground. `pending` keeps a warning mark (an icon in the cell, *Awaiting your
+    response* in the row) and nothing else, `shared` is ink, and `declined` is disabled ink with
+    the word. Invites were warning-tinted boxes in a panel whose title already says they are
+    pending; they are rows. Provider health was a `rounded-full` tinted capsule — `Pill` under
+    another name — and is `StatusValue` over a descriptor, so *Ready* is ink.
+  - **The header lost a bordered text box**, *External sync active for this session*, hidden
+    below `xl`. It is the sync panel's description. Each provider's own *Sync* button, a second
+    copy of the header's *Sync now*, went too.
+  - **States.** The context error was a page-wide red banner about provider status; it is
+    `PanelError` in the panel it describes. The events error keeps the grid's header so the
+    operator can still leave a month that failed.
+  - **The events query is keyed on the month**, not the selected day, so picking a day does not
+    refetch.
+- **`CalendarEventDialog`** — the hand-styled Radix `Switch` is `SegmentedBoolean` (*All day* /
+  *Timed*) in a `Field`, as the message-template and webhook forms write it. `switch.tsx` has two
+  importers left, both 5.3's. The *owner only* notice was a bordered box and is a line of ink.
+
+**Verification:** `tsc --noEmit`, lint, build green, one at a time; `check-design.sh` at the known
+2 of 14.
+
+**Specs that will move at close-out.** `calendar-revamp` "keeps core scheduling usable on mobile"
+asserts `getByLabel("Calendar month agenda")` — the region is *Event calendar* now, at every
+width — and clicks *All-day event* expecting `data-state="checked"`, which is a Radix switch
+attribute; the control is a radio group whose *All day* item takes `aria-checked`. Its other
+assertions — *Previous month*, *Next month*, the event title (today's agenda), *New event*,
+*Create Event* — should hold. "Provider cards hide technical sync details" asserts *Reconnect
+required*, the failure line and *Reconnect Google*, all kept. `tasks-revamp:84`'s region *Task
+due date calendar* is kept.
+
+**For the close-out's browser pass:** both pages in both themes at 1440 (grid) and 1024 (the
+calendar page's panel narrower than 42rem beside the rail — picker); the today numeral against a
+selected cell; a day with four entries and its popover, then opening an entry from it; the arrow
+keys across a month edge on the grid and on the picker, focus visible at every stop; and the
+picker's first row against the weekday header on a month that does not begin on a Sunday.
+
+**Left knowingly.** An event spanning several days is placed on its start day only, as both
+originals did. The dialog's `Create Event` / `Save Event` / `Move To Recycle Bin` are 5.9's Title
+Case.
+
+**Next: batch 6** — `ListRow`: re-measure the row set first, then the activity / notification /
+invite / message rows.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

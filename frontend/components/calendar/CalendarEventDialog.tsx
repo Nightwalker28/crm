@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import CalendarParticipantPicker from "@/components/calendar/CalendarParticipantPicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   CalendarAssignmentTeamOption,
@@ -193,9 +193,7 @@ export default function CalendarEventDialog({
 
           <fieldset disabled={!canManage} className="mt-4 space-y-4 disabled:opacity-80">
             {!canManage ? (
-              <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
-                Only the event owner can change or delete this event.
-              </div>
+              <p className="text-sm text-copy-muted">Only the event owner can change or delete this event.</p>
             ) : null}
             {error ? (
               <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
@@ -279,21 +277,15 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                  <div>
-                    <FieldLabel htmlFor="calendar-all-day">All-day event</FieldLabel>
-                    <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
-                  </div>
-                  <Switch
-                    id="calendar-all-day"
-                    checked={form.is_all_day}
-                    onCheckedChange={(checked) => setForm((current) => ({ ...current, is_all_day: checked }))}
-                    aria-label="All-day event"
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface data-[state=checked]:bg-primary"
-                  >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
-                  </Switch>
-                </div>
+                <FieldLabel>All-day event</FieldLabel>
+                <SegmentedBoolean
+                  aria-label="All-day event"
+                  value={form.is_all_day}
+                  onValueChange={(isAllDay) => setForm((current) => ({ ...current, is_all_day: isAllDay }))}
+                  trueLabel="All day"
+                  falseLabel="Timed"
+                />
+                <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
               </Field>
             </FieldGroup>
 

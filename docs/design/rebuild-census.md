@@ -243,7 +243,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `mail/page.tsx` | 760 | 5.7 | rebuild | | |
 | `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | |
-| `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | |
+| `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates` |
 | `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | |
 
 ### 1.11 `app/dashboard/settings/**` (25)
@@ -415,10 +415,10 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | **done, batches 1–3** — the header onto `PanelHeader` (1), the edit bar off `sticky top-2` onto an in-flow `ActionBar` (2), the grid onto `SortableList` (3) |
 | `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | **done, batch 4** — 232 → 104 lines, a body renderer over `Board`. The card title is a link to the deal; the "High-value deal" quartile tint is gone (R5) |
 | `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | **done, batch 4** — 138 → 80 lines, a body renderer over `Board` |
-| `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | |
+| `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | **done, batch 5** — 178 → 75 lines, `MonthGrid` in the list's `ModuleTableShell` with `renderListState` |
 | `tasks/TaskDialog.tsx` | 395 | 5.7 | rebuild | | |
 | `tasks/TaskAssigneePicker.tsx` | 104 | 5.7 | adopt | | |
-| `calendar/CalendarEventDialog.tsx` | 346 | 5.7 | rebuild | | |
+| `calendar/CalendarEventDialog.tsx` | 346 | 5.7 | rebuild | | **done, batch 5** — the Radix `Switch` is `SegmentedBoolean` in a `Field`; the owner notice is ink, not a box. Its Title Case (`Create Event`, `Move To Recycle Bin`) is 5.9's |
 | `calendar/CalendarParticipantPicker.tsx` | 110 | 5.7 | adopt | | |
 | `calendar/CalendarSyncBridge.tsx` | 85 | — | unchanged | No UI | |
 | `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | |
@@ -534,7 +534,7 @@ taken. Counted here so the denominator stays honest.
 | `input-group.tsx` | 171 | — | unchanged | same | |
 | `checkbox.tsx` | 142 | — | unchanged | same | |
 | `radio-group.tsx` | 130 | — | unchanged | | |
-| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | **done (ruled, not rebuilt), batch 1; a fifth idiom found in 7c** — `SegmentedBoolean` is the boolean (ruling 4). Its 3 call sites are not 5.6's rows: `CatalogRecordsTable` and `LeadConversionForm` → 5.3, `CalendarEventDialog` → 5.7. 7c added a fifth: a `Button` flipping `variant` with `aria-pressed`, in `RecordLayoutBuilder` |
+| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | **done (ruled, not rebuilt), batch 1; a fifth idiom found in 7c** — `SegmentedBoolean` is the boolean (ruling 4). Its 3 call sites are not 5.6's rows: `CatalogRecordsTable` and `LeadConversionForm` → 5.3, `CalendarEventDialog` → 5.7 (**done, 5.7 batch 5** — two importers left). 7c added a fifth: a `Button` flipping `variant` with `aria-pressed`, in `RecordLayoutBuilder` |
 | `SettingsSwitchRow.tsx` | 112 | 5.6 | **delete** | A purpose-built settings primitive used in **2** files | **done, batch 1** — a hand-rolled `SegmentedBoolean` (ruling 4). Replaced by `SettingsRow`, whose control is a slot |
 | `label.tsx` | 24 | — | unchanged | | |
 | `field.tsx` | 248 | 5.4 | adopt | | **done, close-out** — shared form framing adopted |

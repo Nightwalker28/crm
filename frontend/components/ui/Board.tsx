@@ -2,13 +2,11 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import type { LucideIcon } from "lucide-react";
-import { GripVertical, Inbox, ShieldX, TriangleAlert } from "lucide-react";
+import { GripVertical } from "lucide-react";
 
-import { EmptyState } from "@/components/ui/EmptyState";
+import { renderListState, type ListStateSlot } from "@/components/ui/ListStates";
 import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { StatusValue } from "@/components/ui/StatusValue";
-import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { StatusDescriptor } from "@/lib/statusStyles";
@@ -23,13 +21,6 @@ export type BoardColumn = {
    * *Unstaged*. Its cards show, but it is neither a drop target nor a move option.
    */
   acceptsCards?: boolean;
-};
-
-type StateSlot = {
-  icon?: LucideIcon;
-  title: string;
-  description?: string;
-  action?: ReactNode;
 };
 
 type BoardProps<T> = {
@@ -58,9 +49,9 @@ type BoardProps<T> = {
   onRetry?: () => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
-  emptyState: StateSlot;
+  emptyState: ListStateSlot;
   /** The table's own filtered copy, when it has one — the board says what the table says. */
-  filteredEmptyState?: Partial<StateSlot>;
+  filteredEmptyState?: Partial<ListStateSlot>;
 };
 
 /**
@@ -141,49 +132,18 @@ export function Board<T>({
     setDropColumn(null);
   }
 
-  function renderState() {
-    if (isPermissionDenied) {
-      return (
-        <div role="alert">
-          <EmptyState
-            icon={ShieldX}
-            title={`You do not have access to ${itemsLabel}`}
-            description="Ask an administrator for the required module or action access."
-          />
-        </div>
-      );
-    }
-    if (isLoading) return null;
-    if (hasError) {
-      return (
-        <div role="alert">
-          <EmptyState
-            icon={TriangleAlert}
-            title={`${label} could not be loaded`}
-            description="Check your connection and try again."
-            action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
-          />
-        </div>
-      );
-    }
-    if (items.length) return null;
-    if (hasActiveFilters) {
-      return (
-        <EmptyState
-          icon={filteredEmptyState?.icon ?? emptyState.icon ?? Inbox}
-          title={filteredEmptyState?.title ?? `No ${itemsLabel} match these filters`}
-          description={filteredEmptyState?.description ?? "Clear one or more filters and try again."}
-          action={
-            filteredEmptyState?.action ??
-            (onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined)
-          }
-        />
-      );
-    }
-    return <EmptyState icon={emptyState.icon ?? Inbox} title={emptyState.title} description={emptyState.description} action={emptyState.action} />;
-  }
-
-  const state = renderState();
+  const state = renderListState({
+    label,
+    hasItems: items.length > 0,
+    isLoading,
+    isPermissionDenied,
+    hasError,
+    onRetry,
+    hasActiveFilters,
+    onClearFilters,
+    emptyState,
+    filteredEmptyState,
+  });
 
   return (
     <ModuleTableShell label={label} isLoading={isLoading} isRefreshing={isRefreshing}>
