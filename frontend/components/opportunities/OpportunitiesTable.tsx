@@ -6,6 +6,7 @@ import { BriefcaseBusiness } from "lucide-react";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/types/table";
@@ -115,9 +116,10 @@ function renderCell(opportunity: Opportunity, column: string) {
     }
     case "total_cost_of_project":
       return opportunity.total_cost_of_project ? (
-        <span className="text-sm font-semibold tabular-nums text-state-success">{opportunity.total_cost_of_project}</span>
+        // A pipeline value is a number, not good news (5.7 ruling 2): ink, not the success hue.
+        <span className="text-sm font-semibold tabular-nums text-copy-primary">{opportunity.total_cost_of_project}</span>
       ) : (
-        <span className="text-sm text-copy-disabled">—</span>
+        <EmptyValue />
       );
     case "probability_percent":
       return opportunity.probability_percent !== null &&

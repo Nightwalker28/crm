@@ -1,18 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, Download, FileText, History, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
+import { ChevronDown, Download, FileText, Share2, Tag, Trash2, Upload, XCircle } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { ListRow, RowList } from "@/components/ui/ListRow";
 import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
@@ -23,12 +25,7 @@ import {
   useDocumentVersions,
 } from "@/hooks/useDocuments";
 import { formatDateTime } from "@/lib/datetime";
-
-function formatBytes(value: number) {
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
+import { formatBytes } from "@/lib/format";
 
 function providerLabel(provider: string) {
   if (provider === "google_drive") return "Google Drive";
@@ -93,7 +90,7 @@ function DocumentTitleCell({ document, highlighted }: { document: DocumentItem; 
           ) : null}
         </div>
         <div className="mt-1 text-xs text-copy-muted">
-          {document.original_filename} / {document.extension.toUpperCase()} / {formatBytes(document.file_size_bytes)} / {providerLabel(document.storage_provider)}
+          {[document.original_filename, document.extension.toUpperCase(), formatBytes(document.file_size_bytes), providerLabel(document.storage_provider)].filter(Boolean).join(" / ")}
         </div>
         {document.category || document.tags.length ? (
           <div className="mt-2 flex flex-wrap gap-1.5">
@@ -240,11 +237,11 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
         </div>
       ) : null}
 
-      <div className="mt-5 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-        <div className="mb-3 flex items-center gap-2 text-xs font-medium text-copy-label">
-          <Share2 className="h-3.5 w-3.5" />
-          Client Portal Access
-        </div>
+      {/* This section was a recessed, bordered box inside the detail panel's own box — the level
+          §1.3 forbids — with a hand-written `text-xs` label and its own icon. It is a section
+          under a heading, like *Version history* beside it. */}
+      <section className="mt-5 space-y-3">
+        <SectionHeading as="h3">Client portal access</SectionHeading>
         {canEdit ? (
           <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
             <Field>
@@ -319,13 +316,10 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
         ) : (
           <p className="mt-4 text-sm text-copy-muted">Not shared with any client portal account.</p>
         )}
-      </div>
+      </section>
 
-      <div className="mt-4">
-        <div className="mb-2 flex items-center gap-2 text-xs font-medium text-copy-label">
-          <History className="h-3.5 w-3.5" />
-          Version History
-        </div>
+      <section className="mt-5 space-y-3 border-t border-line-subtle pt-5">
+        <SectionHeading as="h3">Version history</SectionHeading>
         {versionsQuery.isLoading ? (
           <PanelLoading label="Loading versions…" />
         ) : versionsQuery.error ? (
@@ -336,7 +330,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
               <ListRow
                 key={version.id}
                 title={`Version ${version.version_number}`}
-                meta={`${version.file_name} · ${formatBytes(version.size_bytes)} · ${formatDateTime(version.created_at)}`}
+                meta={[version.file_name, formatBytes(version.size_bytes), formatDateTime(version.created_at)].filter(Boolean).join(" · ")}
                 actions={
                   <Button
                     type="button"
@@ -353,7 +347,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
         ) : (
           <p className="text-sm text-copy-muted">No versions recorded yet.</p>
         )}
-      </div>
+      </section>
     </div>
   );
 }
@@ -396,7 +390,10 @@ export default function DocumentList({
       },
       {
         ...head("file_size_bytes", "Size", "sm"),
-        render: (document) => <span className="text-sm tabular-nums text-copy-secondary">{formatBytes(document.file_size_bytes)}</span>,
+        render: (document) => {
+          const size = formatBytes(document.file_size_bytes);
+          return size ? <span className="text-sm tabular-nums text-copy-secondary">{size}</span> : <EmptyValue />;
+        },
       },
       {
         ...head("storage_provider", "Storage"),
