@@ -5510,6 +5510,93 @@ Case.
 **Next: batch 6** — `ListRow`: re-measure the row set first, then the activity / notification /
 invite / message rows.
 
+### Status: batch 6 — `ListRow`, and the eleven were fourteen
+
+**Landed.** Rule first: `design.md` §7.15 and its §7.1 row.
+
+**The re-measure.** The plan's *11 unshared row implementations* had no source, as the head of
+the sub-phase warned. Counted over every `divide-y` and every mapped list of lines outside
+`components/ui/`, with contracts and support out (decision 8), there are **fourteen**:
+
+| Row | File | Was |
+|---|---|---|
+| Timeline entry | `RecordTimeline` | `divide-y`, icon, title `text-sm` |
+| Audit line | `RecordAuditHistory` | `divide-y`, time `text-xs` |
+| Notification | `NotificationCenter` | **action tint** for unread, time `text-[11px]` |
+| Notification | `DashboardOperationalWidgets` | `-mx-4` bleed, time on its own line |
+| Activity line | `DashboardOperationalWidgets` | module name as title, description second |
+| Amount line | `DashboardCrmWidgets`' `AmountRow` | `divide-y` |
+| Forecast bucket | `reports`' `ForecastBucketList` | **boxed**, tinted — batch 7's |
+| Pending invite | `calendar/page.tsx` | title button, `ActionBar` under it |
+| Provider | `calendar/page.tsx` | status beside, actions under |
+| Mail message | `mail/page.tsx` | a `Button variant="ghost"`, **action tint** for selected |
+| Linked task | `RecordTasksPanel` | **boxed**, tinted, two `Chip`s |
+| Score factor | `leads/[leadId]` | `divide-y` |
+| Document share | `DocumentList` | **boxed** list inside a boxed section |
+| Document version | `DocumentList` | **boxed** list inside a boxed section |
+
+Four boxes inside a panel (§1.3), two action tints carrying a state, three title weights and three
+time sizes for one role. Thirteen are on the primitive; the fourteenth moves with `reports` in
+batch 7.
+
+- **`components/ui/ListRow.tsx`** — `RowList` (the `<ol>`/`<ul>`, its name, the rules) and
+  `ListRow` (leading mark, title, one trailing value, one metadata line, body, actions). The call
+  site supplies content only; the ink is fixed (§7.15).
+- **The open gesture is the title, stretched.** `href` makes it a `Link`, `onSelect` a button, and
+  its `after:absolute inset-0` box covers the row, so the row is the target, a link still opens
+  in a new tab, and the actions sit above it on `z-10`. The focus outline is drawn on the
+  stretched box — the row's edge, not the title's words. Checked in the built CSS, as batches 2
+  and 5 were: `focus-visible:after:-outline-offset-2` compiles to `outline-offset: calc(2px*-1)`.
+  **Rejected: the whole row as a `Link`** (the two notification lists' shape). A row with actions
+  cannot be one — a button inside a link is invalid — so the pattern would have split in two the
+  first time a row had both, which two of the fourteen do — the invite and the linked task.
+- **`inset` is the list's.** A list in a padded panel drops its first and last rows' outer padding
+  and underlines a link title on hover; an inset list (the popover, the mail card) pads every row
+  `px-4` and raises it on hover with `bg-surface-row-hover`, the table's own token. **Rejected:
+  a `-mx-2` hover ground in padded panels** — it draws a ground wider than the rules above and
+  below it.
+- **Actions sit at the row's end and wrap under the content** below a 12rem content column, which
+  is how the calendar rail's invites fit in 20rem without a breakpoint. They are an `ActionBar`
+  at `sm` (R4), so the invite buttons, `Complete`, `Revoke` and `Download` lost their call-site
+  sizes.
+- **R5.** `NotificationCenter`'s unread row was `bg-action-primary-muted` with a `bg-primary`
+  dot — the fourth instance of the action tint carrying a state, as 5.6 batch 8 measured it. The
+  mail list's selected row was the sixth, after batch 4's drop targets. Unread is `font-semibold` and a `bg-copy-primary` dot named *Unread*; selected is
+  `bg-surface-raised`, §7.14's selected day. The timeline's delete went from a hand-painted
+  `hover:bg-state-danger-muted` ghost to `variant="destructiveGhost"` (§7.3).
+- **The dashboard activity line's title is what happened** — the description — with the module,
+  action and record in metadata. It was the module name in bold over the sentence.
+- **`NotificationCenter`'s states** were three hand-written blocks; they are `PanelStates`. The
+  *Refreshing…* line was `text-[11px]`, off the ramp, and is `text-xs`.
+- **`RecordTasksPanel`** — status and priority were two `Chip`s. A status is not a tag (§7.1);
+  they are words in the metadata. The `Link` and `Chip` imports went.
+- **`DocumentList`** — the detail section's two inner boxes went; its own tinted section box and
+  its Title Case *Version History* / *Client Portal Access* labels stay, filed below.
+
+**Verification:** `tsc --noEmit`, lint, build green, one at a time; `check-design.sh` at the known
+2 of 14.
+
+**Specs that will move at close-out.** None found by name. `notifications-revamp:52` finds the
+link by `/Renewal task assigned/`, which the title still carries — but the link's accessible name
+is now the title alone, not title, time and message; a spec reading the whole row through the
+link will see less. `documents-revamp:361`'s *Revoke* is kept.
+
+**For the close-out's browser pass:** the notification popover in both themes — unread weight and
+dot, hover ground to the edge, focus outline inside the popover's clip; Tab through a row with
+actions (the timeline's delete, a pending invite) and confirm the actions are reachable and
+clickable above the stretched target; the calendar rail at 1440 and 1024 with an invite whose
+buttons wrap; the mail list's selected row against its hover.
+
+**Left knowingly.** `ForecastBucketList` → batch 7. `DocumentList`'s detail panel — a
+`bg-surface-muted` bordered section with Title Case labels and a local `formatBytes` that
+`lib/format.ts` already exports — is a documents surface, not a row; filed for the close-out's
+correction commit. `DashboardModuleEntryPoints`, `DashboardQuickActions` and `RecordRelatedLink`
+are **not rows**: each is a box earned by being a link (R8, 5.3's ruling on `RecordRelatedLink`),
+and they were not counted.
+
+**Next: batch 7** — `reports` rebuilt: raw `Table` → `RecordTable`, and `ForecastBucketList` onto
+`ListRow`.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

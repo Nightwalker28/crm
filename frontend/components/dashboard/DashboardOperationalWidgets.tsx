@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowRight, Bell, ClipboardList, LayoutGrid, Zap } from "lucide-react";
 
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import type { UserNotification } from "@/hooks/useNotifications";
@@ -108,20 +109,18 @@ export function DashboardRecentActivity({
   if (isError) return <PanelError message="Recent activity could not be loaded." onRetry={onRetry} />;
   if (!items.length) return <PanelEmpty icon={ClipboardList} title="No recent activity yet" />;
   return (
-    <div className="divide-y divide-line-subtle">
+    <RowList ordered label="Recent activity">
       {items.map((item) => (
-        <div key={item.id} className="py-4 first:pt-0 last:pb-0">
-          {/* The action was a bordered capsule — `Pill` under another name (R5). It is a word
-              in the row's metadata. */}
-          <div className="flex flex-wrap items-baseline gap-x-2">
-            <span className="text-sm font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span>
-            <span className="text-xs text-copy-muted">{actionLabel(item.action)} · {item.entity_type} #{item.entity_id}</span>
-          </div>
-          <div className="mt-2 text-sm text-copy-secondary">{item.description || `${item.entity_type} ${item.entity_id}`}</div>
-          <div className="mt-1 text-xs text-copy-muted">{formatDateTime(item.created_at)}</div>
-        </div>
+        // The action was a bordered capsule — `Pill` under another name (R5). It is a word in
+        // the row's metadata.
+        <ListRow
+          key={item.id}
+          title={item.description || `${item.entity_type} ${item.entity_id}`}
+          trailing={<time dateTime={item.created_at}>{formatDateTime(item.created_at)}</time>}
+          meta={`${getModuleDisplayName(item.module_key)} · ${actionLabel(item.action)} · ${item.entity_type} #${item.entity_id}`}
+        />
       ))}
-    </div>
+    </RowList>
   );
 }
 
@@ -142,27 +141,22 @@ export function DashboardNotifications({
   if (isError) return <PanelError message="Notifications could not be loaded." onRetry={onRetry} />;
   if (!notifications.length) return <PanelEmpty icon={Bell} title="No notifications yet" />;
   return (
-    <div className="-mx-4 divide-y divide-line-subtle">
+    <RowList label="Notifications">
       {notifications.slice(0, 6).map((notification) => (
-        <Link
+        // A9: the fallback was the admin-only activity log, on a widget every role sees. The
+        // default lands on the dashboard instead. Unread is not success (R5): it is weight and
+        // a dot in ink (§7.15).
+        <ListRow
           key={notification.id}
-          // A9: the fallback was the admin-only activity log, on a widget every role
-          // sees. The default lands on the dashboard instead.
           href={resolveNotificationHref(notification.link_url)}
-          onClick={() => onRead(notification.id)}
-          className="block px-4 py-4 transition-colors hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+          onNavigate={() => onRead(notification.id)}
+          unread={!notification.read_at}
+          title={notification.title}
+          trailing={<time dateTime={notification.created_at}>{formatDateTime(notification.created_at)}</time>}
         >
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-copy-primary">{notification.title}</div>
-              <div className="mt-1 text-p-sm text-copy-secondary">{notification.message}</div>
-              <div className="mt-2 text-xs text-copy-muted">{formatDateTime(notification.created_at)}</div>
-            </div>
-            {/* Unread is not success (R5): the mark is ink, and it says what it means. */}
-            {notification.read_at ? null : <span className="mt-1.5 size-2 shrink-0 rounded-full bg-copy-primary" role="img" aria-label="Unread" />}
-          </div>
-        </Link>
+          {notification.message}
+        </ListRow>
       ))}
-    </div>
+    </RowList>
   );
 }

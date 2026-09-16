@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { CheckCircle2, ClipboardList, Plus } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -12,9 +11,9 @@ import {
   PanelLoading,
 } from "@/components/ui/PanelStates";
 import TaskAssigneePicker from "@/components/tasks/TaskAssigneePicker";
-import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -325,48 +324,35 @@ export default function RecordTasksPanel({
       ) : query.error ? (
         <div className="mt-4"><PanelError message="Linked tasks could not be loaded." onRetry={() => void query.refetch()} /></div>
       ) : tasks.length ? (
-        <ol className="mt-4 space-y-3" aria-label="Linked tasks">
+        // Each task was a bordered, tinted box inside the tab's panel — the third container
+        // level (§1.3) — with its status and priority as two `Chip`s. A task is a row; the two
+        // values are words in its metadata (§7.15).
+        <RowList ordered label="Linked tasks" className="mt-4">
           {tasks.map((task) => (
-            <li
+            <ListRow
               key={task.id}
-              className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-2">
-                <div className="min-w-0">
-                  <Link
-                    href={`/dashboard/tasks?taskId=${task.id}`}
-                    className="block truncate text-sm font-semibold text-copy-primary hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              title={task.title}
+              href={`/dashboard/tasks?taskId=${task.id}`}
+              trailing={task.due_at ? `Due ${formatDateTime(task.due_at)}` : null}
+              meta={`${statusLabel(task.status)} · ${task.priority} priority`}
+              actions={
+                canEdit && task.status !== "completed" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void handleCompleteTask(task)}
+                    disabled={completingTaskId === task.id}
                   >
-                    {task.title}
-                  </Link>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    <Chip>{statusLabel(task.status)}</Chip>
-                    <Chip>{task.priority} priority</Chip>
-                  </div>
-                </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  {task.due_at ? <div className="text-xs text-copy-muted">Due {formatDateTime(task.due_at)}</div> : null}
-                  {canEdit && task.status !== "completed" ? (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        void handleCompleteTask(task);
-                      }}
-                      disabled={completingTaskId === task.id}
-                    >
-                      <CheckCircle2 />
-                      {completingTaskId === task.id ? "Saving…" : "Complete"}
-                    </Button>
-                  ) : null}
-                </div>
-              </div>
-              {task.description ? <div className="mt-3 line-clamp-2 text-p-sm text-copy-secondary">{task.description}</div> : null}
-            </li>
+                    <CheckCircle2 />
+                    {completingTaskId === task.id ? "Saving…" : "Complete"}
+                  </Button>
+                ) : null
+              }
+            >
+              {task.description ? <p className="line-clamp-2">{task.description}</p> : null}
+            </ListRow>
           ))}
-        </ol>
+        </RowList>
       ) : (
         <div className="mt-4"><PanelEmpty icon={ClipboardList} title="No linked tasks yet" description="Follow-up tasks created here stay attached to this record, so the next action is where the history is." /></div>
       )}

@@ -7,10 +7,10 @@ import { Mail, PlugZap, Plus, RefreshCw, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 
 import CalendarEventDialog from "@/components/calendar/CalendarEventDialog";
-import { ActionBar } from "@/components/ui/ActionBar";
 import { Card } from "@/components/ui/Card";
 import { Chip } from "@/components/ui/Chip";
 import { Fact, FactList } from "@/components/ui/Fact";
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { MonthGrid, monthGridDays, todayInUserTimezone } from "@/components/ui/MonthGrid";
 import { PageShell } from "@/components/ui/PageShell";
 import { PanelEmpty, PanelError, PanelHeader, PanelLoading } from "@/components/ui/PanelStates";
@@ -286,30 +286,26 @@ export default function CalendarPage() {
               {eventsQuery.isLoading ? (
                 <PanelLoading label="Loading invites…" />
               ) : pendingInvites.length ? (
-                <ul className="divide-y divide-line-subtle">
+                <RowList label="Pending invites">
                   {pendingInvites.map((event) => (
-                    <li key={event.id} className="py-3 first:pt-0 last:pb-0">
-                      <button
-                        type="button"
-                        onClick={() => openEditDialog(event)}
-                        className="rounded-[var(--radius-control-sm)] text-left text-sm font-medium text-copy-primary hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
-                      >
-                        {event.title}
-                      </button>
-                      <p className="mt-0.5 text-xs text-copy-muted">
-                        {formatDateTime(event.start_at)}{event.owner_name ? ` · from ${event.owner_name}` : ""}
-                      </p>
-                      <ActionBar size="sm" align="start" className="mt-2">
-                        <Button type="button" disabled={isResponding} onClick={() => void handleInviteResponse(event, "accepted")}>
-                          Accept
-                        </Button>
-                        <Button type="button" variant="outline" disabled={isResponding} onClick={() => void handleInviteResponse(event, "declined")}>
-                          Decline
-                        </Button>
-                      </ActionBar>
-                    </li>
+                    <ListRow
+                      key={event.id}
+                      title={event.title}
+                      onSelect={() => openEditDialog(event)}
+                      meta={`${formatDateTime(event.start_at)}${event.owner_name ? ` · from ${event.owner_name}` : ""}`}
+                      actions={
+                        <>
+                          <Button type="button" disabled={isResponding} onClick={() => void handleInviteResponse(event, "accepted")}>
+                            Accept
+                          </Button>
+                          <Button type="button" variant="outline" disabled={isResponding} onClick={() => void handleInviteResponse(event, "declined")}>
+                            Decline
+                          </Button>
+                        </>
+                      }
+                    />
                   ))}
-                </ul>
+                </RowList>
               ) : (
                 <PanelEmpty title="No pending invites" description="New calendar invitations will appear here." />
               )}
@@ -327,17 +323,20 @@ export default function CalendarPage() {
               ) : contextQuery.isError ? (
                 <PanelError message="Provider status could not be loaded." onRetry={() => void contextQuery.refetch()} />
               ) : contextQuery.data?.connections.length ? (
-                <ul className="divide-y divide-line-subtle">
+                <RowList label="Calendar providers">
                   {contextQuery.data.connections.map((connection) => (
-                    <li key={connection.provider} className="py-3 first:pt-0 last:pb-0">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-copy-primary">{providerLabel(connection.provider)} Calendar</div>
-                          <div className="mt-0.5 truncate text-xs text-copy-muted">{connection.account_email || "No account email"}</div>
-                        </div>
-                        <StatusValue status={connectionStatus(connection)} className="shrink-0 text-xs" />
-                      </div>
-                      <FactList className="mt-3 grid-cols-2">
+                    <ListRow
+                      key={connection.provider}
+                      title={`${providerLabel(connection.provider)} Calendar`}
+                      meta={connection.account_email || "No account email"}
+                      trailing={<StatusValue status={connectionStatus(connection)} />}
+                      actions={
+                        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/settings/integrations")}>
+                          {connection.reconnect_label || "Manage provider"}
+                        </Button>
+                      }
+                    >
+                      <FactList className="grid-cols-2">
                         <Fact label="Calendar">
                           {connection.provider_calendar_name || connection.provider_calendar_id || "Not selected yet"}
                         </Fact>
@@ -351,14 +350,9 @@ export default function CalendarPage() {
                           The provider needs attention. Reconnect it, then try syncing again.
                         </p>
                       ) : null}
-                      <ActionBar size="sm" align="start" className="mt-3">
-                        <Button type="button" variant="outline" onClick={() => router.push("/dashboard/settings/integrations")}>
-                          {connection.reconnect_label || "Manage provider"}
-                        </Button>
-                      </ActionBar>
-                    </li>
+                    </ListRow>
                   ))}
-                </ul>
+                </RowList>
               ) : (
                 <PanelEmpty
                   icon={PlugZap}

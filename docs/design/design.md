@@ -1400,6 +1400,7 @@ exists. The list-and-record language in particular is not optional:
 | A list the operator reorders | `SortableList` — see §7.13 |
 | A kanban | `Board` — see §7.13. The same rows as the list, in `ModuleTableShell` |
 | A month calendar | `MonthGrid` — see §7.14. The grid and the narrow day picker are one component |
+| A feed, inbox or history line — activity, a notification, an invite, a message, a linked task | `ListRow` inside `RowList` — see §7.15. Not a table and not a card |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
@@ -1888,6 +1889,46 @@ carries the warning mark in words; *shared with me* is a property and is ink.
 
 **Rejected: a week or agenda view.** Neither page had one, and a view is a feature, not a
 rebuild.
+
+### 7.15 A line in a feed is `ListRow`, and a row is never a box
+
+After the table, the most-repeated list in the app is the one with no columns: a timeline
+entry, an audit line, a notification, a dashboard activity line, a pending invite, a mail
+message, a linked task, a document version. Rebuild 5.7 batch 6 measured **fourteen**
+hand-written implementations. Every one was the same shape — an optional leading mark, a
+title with one trailing value on its line, a quieter metadata line, an optional body, optional
+actions — and they disagreed on everything a call site was left to decide: the title at
+`text-sm`, `font-medium` or `font-semibold`; the time at `text-xs`, `text-p-xs` or `text-[11px]`,
+beside the title or on its own line; four rows drew a bordered box inside a panel that was
+already a box (§1.3); and two marked *unread* or *selected* with the primary action's tint.
+
+**`RowList` is the `<ol>` / `<ul>` and the rules between rows. `ListRow` is one line.** It owns:
+
+- **The ink.** The title is `text-sm font-medium text-copy-primary`; the trailing value and the
+  metadata line are `text-xs text-copy-muted`; the body is `text-p-sm text-copy-secondary`. A
+  trailing value that is the row's figure — an amount — is the call site's to set in ink.
+- **The open gesture is the title**, a link (`href`) or a button (`onSelect`), stretched over the
+  whole row so the row is the target and the actions stay reachable above it. A row that is a
+  link is still not a box: it takes the row-hover ground in an inset list and an underlined
+  title in a padded one. The focus outline is drawn on the row's edge, not the title's.
+- **Actions sit at the row's end** and wrap under the content when the row is too narrow for
+  both. They are an `ActionBar` at `sm` (R4), never inside the target.
+- **Unread is weight and a dot in ink** — `font-semibold` on the title and a `bg-copy-primary`
+  dot with `aria-label="Unread"`. **Selected is elevation**, `bg-surface-raised`, as §7.14's
+  selected day is. Neither is the action tint.
+
+**Inset is the list's, not the row's.** A list inside a padded panel sits in the panel's
+content box and its first and last rows lose their outer padding. A list that runs to its
+container's edge — a popover body, a flush section of a card — is `inset`, and every row pads
+itself by `px-4` so the hover and selected grounds reach the edge. The two cannot be mixed in
+one list.
+
+**Rejected: a card per row.** It is what four of the fourteen did, and it is §1.3's third
+container level wherever the list sits in a panel, which is everywhere. **Rejected: folding
+it into `RecordTable`.** A feed has no columns to sort, select or hide, and one line's body
+can be three lines of an email; a table row of variable height with one cell is not a table.
+**Rejected: `SettingsRow` as the base.** Its control is the point of the row and is always
+visible; a feed row's actions are secondary to what it says.
 
 ## 8. Accessibility floors
 

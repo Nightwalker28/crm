@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -55,7 +56,7 @@ type Props = {
  * furniture — and the sheet sits next to the `Updated 2h ago` line that prompts the
  * question in the first place.
  *
- * Rows are `divide-y` lines, not boxes. R8: a repeated item that is not interactive is not
+ * Rows are `ListRow`s (§7.15), not boxes. R8: a repeated item that is not interactive is not
  * a box, and this list was one of the five files that ruling names.
  */
 export default function RecordAuditHistory({ moduleKey, entityId, moduleEvents }: Props) {
@@ -98,21 +99,16 @@ export default function RecordAuditHistory({ moduleKey, entityId, moduleEvents }
   }
 
   return (
-    <ol className="divide-y divide-line-subtle" aria-label="Record history">
+    <RowList ordered label="Record history">
       {entries.map((entry) => (
-        <li key={entry.id} className="py-3 first:pt-0 last:pb-0">
-          <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <span className="text-sm text-copy-primary">{entry.label}</span>
-            <time dateTime={entry.occurredAt} className="text-xs text-copy-muted">
-              {formatDateTime(entry.occurredAt)}
-            </time>
-          </div>
-          {entry.detail ? (
-            <div className="mt-1 text-xs text-copy-muted">{entry.detail}</div>
-          ) : null}
-        </li>
+        <ListRow
+          key={entry.id}
+          title={entry.label}
+          trailing={<time dateTime={entry.occurredAt}>{formatDateTime(entry.occurredAt)}</time>}
+          meta={entry.detail}
+        />
       ))}
-    </ol>
+    </RowList>
   );
 }
 

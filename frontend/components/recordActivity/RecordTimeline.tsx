@@ -21,6 +21,7 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelState
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordActivity } from "@/hooks/useRecordActivity";
 import { apiFetch } from "@/lib/api";
@@ -42,7 +43,7 @@ import type {
  * the feed already emits `type="note"`, and rendering the same rows twice was the
  * duplication this sub-phase was called on to remove.
  *
- * Entries are `divide-y` lines, not cards. R8 names this list directly — a repeated item
+ * Entries are `ListRow`s (§7.15), not cards. R8 names this list directly — a repeated item
  * that is not interactive is not a box — and it was one of the five files split between
  * two different box recipes for one role.
  *
@@ -123,7 +124,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
       const from = metaString(item, "from_email");
       const to = metaList(item, "to_recipients");
       return (
-        <div className="mt-2 grid gap-1">
+        <div className="grid gap-1">
           {from ? <DetailLine label="From" value={from} /> : null}
           {to.length ? <DetailLine label="To" value={to.join(", ")} /> : null}
           {item.summary ? <p className="mt-1 text-p-sm text-copy-secondary">{item.summary}</p> : null}
@@ -141,7 +142,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
     case "whatsapp": {
       const phone = metaString(item, "phone_number");
       return (
-        <div className="mt-2 grid gap-1">
+        <div className="grid gap-1">
           {phone ? <DetailLine label="To" value={phone} /> : null}
           {item.summary ? (
             <blockquote className="mt-1 border-l-2 border-line-default pl-3 text-p-sm text-copy-secondary">
@@ -160,7 +161,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
       const location = metaString(item, "location");
       const participants = metaList(item, "participants");
       return (
-        <div className="mt-2 grid gap-1">
+        <div className="grid gap-1">
           {start ? (
             <DetailLine
               label="When"
@@ -178,7 +179,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
       const assignees = metaList(item, "assignees");
       const priority = metaString(item, "priority");
       return (
-        <div className="mt-2 grid gap-1">
+        <div className="grid gap-1">
           {due ? <DetailLine label="Due" value={formatDateTime(due)} /> : null}
           {assignees.length ? <DetailLine label="Assigned" value={assignees.join(", ")} /> : null}
           {priority ? <DetailLine label="Priority" value={priority} /> : null}
@@ -189,7 +190,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
     case "follow_up": {
       const channel = metaString(item, "channel");
       return (
-        <div className="mt-2 grid gap-1">
+        <div className="grid gap-1">
           {channel ? <DetailLine label="Channel" value={CHANNEL_LABELS[channel] ?? channel} /> : null}
           {item.summary ? <p className="mt-1 text-p-sm text-copy-secondary">{item.summary}</p> : null}
           {item.meta.follow_up_task_id ? (
@@ -202,7 +203,7 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
     case "note":
     default:
       return item.summary ? (
-        <p className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.summary}</p>
+        <p className="whitespace-pre-wrap">{item.summary}</p>
       ) : null;
   }
 }
@@ -216,40 +217,40 @@ function ActivityRow({
 }) {
   const Icon = TYPE_ICONS[item.type] ?? History;
   return (
-    <li className="flex min-w-0 items-start gap-3 py-4 first:pt-0 last:pb-0">
-      <span
-        className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-line-subtle"
-        aria-hidden="true"
-      >
-        <Icon className="h-3.5 w-3.5 text-copy-muted" />
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-          <p className="min-w-0 break-words text-sm text-copy-primary">{item.title}</p>
-          <time dateTime={item.occurred_at} className="shrink-0 text-p-xs text-copy-muted">
-            {formatDateTime(item.occurred_at)}
-          </time>
-        </div>
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2 text-p-xs text-copy-muted">
-          <span>{TYPE_LABELS[item.type] ?? item.type}</span>
-          {item.actor?.name ? <span>· {item.actor.name}</span> : null}
-          {item.meta.is_internal === true ? <span>· Internal</span> : null}
-        </div>
-        <ActivityBody item={item} />
-      </div>
-      {onDelete ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="shrink-0 text-copy-muted hover:bg-state-danger-muted hover:text-state-danger"
-          onClick={onDelete}
-          aria-label={`Delete ${TYPE_LABELS[item.type]?.toLocaleLowerCase() ?? "entry"}`}
+    <ListRow
+      leading={
+        <span
+          className="flex size-7 items-center justify-center rounded-full border border-line-subtle"
+          aria-hidden="true"
         >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      ) : null}
-    </li>
+          <Icon className="size-3.5 text-copy-muted" />
+        </span>
+      }
+      title={item.title}
+      trailing={<time dateTime={item.occurred_at}>{formatDateTime(item.occurred_at)}</time>}
+      meta={
+        <>
+          {TYPE_LABELS[item.type] ?? item.type}
+          {item.actor?.name ? ` · ${item.actor.name}` : null}
+          {item.meta.is_internal === true ? " · Internal" : null}
+        </>
+      }
+      actions={
+        onDelete ? (
+          <Button
+            type="button"
+            variant="destructiveGhost"
+            size="icon-sm"
+            onClick={onDelete}
+            aria-label={`Delete ${TYPE_LABELS[item.type]?.toLocaleLowerCase() ?? "entry"}`}
+          >
+            <Trash2 />
+          </Button>
+        ) : null
+      }
+    >
+      <ActivityBody item={item} />
+    </ListRow>
   );
 }
 
@@ -351,7 +352,7 @@ export default function RecordTimeline({
         </div>
       ) : hasLoadedHistory ? (
         <>
-          <ol className="mt-4 divide-y divide-line-subtle" aria-label="Timeline entries">
+          <RowList ordered label="Timeline entries" className="mt-4">
             {items.map((item) => (
               <ActivityRow
                 key={item.id}
@@ -361,7 +362,7 @@ export default function RecordTimeline({
                 }
               />
             ))}
-          </ol>
+          </RowList>
 
           {/* A failed "load more" keeps the history already on screen. */}
           {query.error ? (

@@ -10,6 +10,8 @@ import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -294,24 +296,29 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
             </Button>
           </div>
         ) : null}
-        <div className="mt-4 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default bg-surface">
-          {activeShares.length ? activeShares.map((share) => (
-            <div key={share.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
-              <div className="text-sm text-copy-secondary">
-                {share.contact_id ? `Contact #${share.contact_id}` : `Account #${share.organization_id}`}
-                <span className="ml-2 text-xs text-copy-muted">
-                  {share.expires_at ? `Expires ${formatDateTime(share.expires_at)}` : "No expiry"}
-                </span>
-              </div>
-              {canEdit ? (
-                <Button type="button" variant="destructiveGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
-                  <XCircle className="h-4 w-4" />
-                  Revoke
-                </Button>
-              ) : null}
-            </div>
-          )) : <div className="px-3 py-3 text-sm text-copy-muted">Not shared with any client portal account.</div>}
-        </div>
+        {/* The shares and versions were each a bordered list inside this bordered section —
+            a box inside a box (§1.3). They are rows (§7.15). */}
+        {activeShares.length ? (
+          <RowList label="Client portal shares" className="mt-4">
+            {activeShares.map((share) => (
+              <ListRow
+                key={share.id}
+                title={share.contact_id ? `Contact #${share.contact_id}` : `Account #${share.organization_id}`}
+                meta={share.expires_at ? `Expires ${formatDateTime(share.expires_at)}` : "No expiry"}
+                actions={
+                  canEdit ? (
+                    <Button type="button" variant="destructiveGhost" onClick={() => void handleRevokeShare(share.id)} disabled={isRevokingDocumentShare}>
+                      <XCircle />
+                      Revoke
+                    </Button>
+                  ) : null
+                }
+              />
+            ))}
+          </RowList>
+        ) : (
+          <p className="mt-4 text-sm text-copy-muted">Not shared with any client portal account.</p>
+        )}
       </div>
 
       <div className="mt-4">
@@ -320,34 +327,31 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
           Version History
         </div>
         {versionsQuery.isLoading ? (
-          <div className="rounded-[var(--radius-control)] border border-line-default px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading versions...</div>
+          <PanelLoading label="Loading versions…" />
         ) : versionsQuery.error ? (
-          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-3 text-sm text-copy-secondary">
-            <p>Document versions could not be loaded.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => void versionsQuery.refetch()}><History />Try again</Button>
-          </div>
-        ) : (
-          <div className="divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default bg-surface">
-            {(versionsQuery.data ?? []).map((version) => (
-              <div key={version.id} className="flex flex-col gap-2 px-3 py-3 md:flex-row md:items-center md:justify-between">
-                <div>
-                  <div className="text-sm font-medium text-copy-primary">Version {version.version_number}</div>
-                  <div className="mt-1 text-xs text-copy-muted">
-                    {version.file_name} / {formatBytes(version.size_bytes)} / {formatDateTime(version.created_at)}
-                  </div>
-                </div>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => window.open(documentVersionDownloadUrl(document.id, version.id), "_blank", "noopener,noreferrer")}
-                >
-                  <Download className="h-4 w-4" />
-                  Download
-                </Button>
-              </div>
+          <PanelError message="Document versions could not be loaded." onRetry={() => void versionsQuery.refetch()} />
+        ) : versionsQuery.data?.length ? (
+          <RowList ordered label="Document versions">
+            {versionsQuery.data.map((version) => (
+              <ListRow
+                key={version.id}
+                title={`Version ${version.version_number}`}
+                meta={`${version.file_name} · ${formatBytes(version.size_bytes)} · ${formatDateTime(version.created_at)}`}
+                actions={
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => window.open(documentVersionDownloadUrl(document.id, version.id), "_blank", "noopener,noreferrer")}
+                  >
+                    <Download />
+                    Download
+                  </Button>
+                }
+              />
             ))}
-            {!versionsQuery.data?.length ? <div className="px-3 py-3 text-sm text-copy-muted">No versions recorded yet.</div> : null}
-          </div>
+          </RowList>
+        ) : (
+          <p className="text-sm text-copy-muted">No versions recorded yet.</p>
         )}
       </div>
     </div>

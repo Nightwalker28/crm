@@ -136,7 +136,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/profile/page.tsx` | 512 | 5.6 | rebuild | Reads as settings; goes on archetype 4 | **done, batch 7b** — three `Card`s → `FormSection`, the hand-rolled commit row → `FormFooter`, `SummaryTile` → the new `Fact` primitive (§7.12), two redundant colour signals and a `text-primary` link corrected |
 | `sales/leads/page.tsx` | 158 | 5.5 | rebuild | | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
 | `sales/leads/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit |
+| `sales/leads/[leadId]/page.tsx` | 569 | 5.3 | rebuild | Archetype 1 today; tab-order default is wrong | **done** — the first module onto the spine; gains inline status edit. 5.7 batch 6 — the score factors are a `RowList` |
 | `sales/leads/[leadId]/edit/page.tsx` | 10 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/leads/[leadId]/convert/page.tsx` | 60 | 5.3 | rebuild | **A13** — no unsaved-changes guard | **done, batch 6** — A13 closed in the form below; the page's `Back to lead` carries `?tab=` because convert is a trip off the record like Edit is |
 | `sales/leads/error.tsx` | 3 | 5.1 | rebuild | | done |
@@ -241,9 +241,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `mail/page.tsx` | 760 | 5.7 | rebuild | | |
+| `mail/page.tsx` | 760 | 5.7 | rebuild | | batch 6 — the message rows are `ListRow`s in an inset `RowList`; the selected row is elevation, not the action tint. **The rest of the page is batch 8's** |
 | `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | |
-| `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates` |
+| `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates`. Batch 6 — the invite and provider rows are `ListRow`s |
 | `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | |
 
 ### 1.11 `app/dashboard/settings/**` (25)
@@ -297,7 +297,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `recordActivity/RecordActivityFeed.tsx` | 319 | 5.3 | **delete** | Replaced by `RecordTimeline` — composer on top, `divide-y` rows (R8) | **done** — file deleted, 0 importers |
 | `recordActivity/RecordActivityTimeline.tsx` | 88 | 5.3 | rebuild | Renamed — it is the *audit* history, and `Timeline` now names the feed. Moves into the spine's `History` sheet | done — `RecordAuditHistory` replaced it; the old file died with `CrmRecordActivitySection` in batch 4 |
 | `recordActivity/RecordCommentsPanel.tsx` | 315 | 5.3 | rebuild | Its composer becomes `Timeline`'s note mode; the feed already emits `type="note"`, so the list goes | done — deleted in batch 4 |
-| `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | **done, close-out** — 5.2 had given it the panel language; 5.3 took its `PanelHeader` off (`Tasks & reminders` under a `Tasks` tab, §4.7) and dropped the hand-written green on `Complete` (§2.2 — completing a task is not an exception, and a call site does not paint a `Button`) |
+| `recordActivity/RecordTasksPanel.tsx` | 374 | 5.3 | rebuild | | **done, close-out** — 5.2 had given it the panel language; 5.3 took its `PanelHeader` off (`Tasks & reminders` under a `Tasks` tab, §4.7) and dropped the hand-written green on `Complete` (§2.2 — completing a task is not an exception, and a call site does not paint a `Button`). 5.7 batch 6 — each task was a bordered tinted box inside the panel with two `Chip`s; it is a `ListRow` with status and priority as metadata |
 | `recordActivity/FollowUpPanel.tsx` | 157 | 5.3 | rebuild | Becomes a composer mode in `Timeline`, not a spine block — it logs an event, it does not edit a field | done — deleted in batch 4 |
 | `recordActivity/CommunicationActions.tsx` | 131 | 5.3 | adopt | | **done, close-out** — the deferred-question-1 deletion: deal and quote no longer mount it, and each channel now renders only when the record owns an address (§4.7). `showCopyActions`, `followUpTargetId` and the three WhatsApp override props went with it — 0 call sites between them |
 | `recordActivity/RecordDeleteButton.tsx` | 56 | 5.3 | adopt | Destructive confirm copy is 5.9 | **done** — gained the `menuItem` presentation for the header's `[⋯]` (§2.2) |
@@ -367,7 +367,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `tasks/TasksTable.tsx` | 171 | 5.5 | adopt | Priority becomes a category — no tone (R5) | **done — unchanged.** Priority is already a category with no tone (`cat()` in `statusStyles.ts`); 5.1's sweep settled it |
 | `catalog/CatalogRecordsTable.tsx` | 289 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `catalog/CatalogRecordsPage.tsx` | 166 | 5.5 | rebuild | Shared wrapper for two routes | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
-| `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | **done, batch 5 — unchanged, deliberately.** It was already on `RecordTable`; the toolbar and pager were the page's to supply |
+| `documents/DocumentList.tsx` | 459 | 5.5 | rebuild | No toolbar, no pagination | **done, batch 5 — unchanged, deliberately.** It was already on `RecordTable`; the toolbar and pager were the page's to supply. 5.7 batch 6 — the share and version lists were bordered lists inside the bordered detail section; they are `RowList`s, the versions' states `PanelStates` |
 | `finance/insertionOrderList.tsx` | 265 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | **done, batch 4** — selection props removed (**A6**) |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | **batch 4** — selection props removed (**A6**); the row action was always the verb. The overdue tone is still open |
@@ -408,8 +408,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `dashboard/DashboardCrmWidgets.tsx` | 231 | 5.7 | rebuild | `StatTile` — 1 of 5 metric implementations | **done, batch 1** — `Metric` → `StatGroup`/`StatTile`, states → `PanelStates`, bars and amounts off `state-success` onto `seriesColor(0)` and ink (R5), the index-indented funnel onto one baseline |
-| `dashboard/DashboardOperationalWidgets.tsx` | 188 | 5.7 | rebuild | | batch 1 — states → `PanelStates`, `DashboardEmptyMessage` deleted, the activity capsule and the green unread dot retired (R5). **The rows are batch 6's** (`ListRow`) |
+| `dashboard/DashboardCrmWidgets.tsx` | 231 | 5.7 | rebuild | `StatTile` — 1 of 5 metric implementations | **done, batch 1** — `Metric` → `StatGroup`/`StatTile`, states → `PanelStates`, bars and amounts off `state-success` onto `seriesColor(0)` and ink (R5), the index-indented funnel onto one baseline. Batch 6 — `AmountRow` is a `ListRow` |
+| `dashboard/DashboardOperationalWidgets.tsx` | 188 | 5.7 | rebuild | | batch 1 — states → `PanelStates`, `DashboardEmptyMessage` deleted, the activity capsule and the green unread dot retired (R5). **The rows are batch 6's** (`ListRow`). **done, batch 6** — the activity and notification rows are `ListRow`s; the notification widget's `-mx-4` bleed is gone |
 | `dashboard/DashboardPersonalWidgets.tsx` | 161 | 5.7 | rebuild | Raw `Table` → `RecordTable` | **done, batch 1** — `RecordTable variant="readOnly"`; the module tile is `Card variant="interactive"` around a `StatTile` |
 | `dashboard/DashboardReportChartWidget.tsx` | 162 | 5.7 | rebuild | Load the `dataviz` skill | **done, batch 1** — states → `PanelStates`; the bar chart stopped painting each bar its own hue (rank as identity) |
 | `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | **done, batches 1–3** — the header onto `PanelHeader` (1), the edit bar off `sticky top-2` onto an in-flow `ActionBar` (2), the grid onto `SortableList` (3) |
@@ -435,7 +435,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sidebar/SidebarNav.tsx` | 220 | 5.7 | rebuild | `text-[13px]` at `:166`. **A11** — reports as a collapsible group of one | |
 | `header/ProfileMenu.tsx` | 64 | 5.7 | adopt | | |
 | `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | |
-| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times |
+| `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times. **Row done, 5.7 batch 6** — `ListRow` in an inset `RowList`, unread is weight and an ink dot, and the hand-written loading / error / empty are `PanelStates` |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
 | `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.8 still owns its final shape and the `size-6` |

@@ -19,6 +19,7 @@ import {
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { Chip } from "@/components/ui/Chip";
 import { EmptyValue } from "@/components/ui/EmptyValue";
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
@@ -522,21 +523,20 @@ function LeadScore({
       </div>
       <details className="mt-3">
         <summary className="cursor-pointer text-xs font-medium text-copy-label">Factors</summary>
-        <div className="mt-2 divide-y divide-line-subtle">
-          {factors.length ? (
-            factors.map((factor) => (
-              <div key={factor.key} className="py-2 first:pt-0 last:pb-0">
-                <div className="flex items-center justify-between gap-3 text-sm text-copy-primary">
-                  <span>{factor.label}</span>
-                  <span className="tabular-nums">+{factor.points}</span>
-                </div>
-                <div className="mt-0.5 text-xs text-copy-muted">{factor.reason}</div>
-              </div>
-            ))
-          ) : (
-            <div className="text-xs text-copy-muted">No scoring factors recorded.</div>
-          )}
-        </div>
+        {factors.length ? (
+          <RowList label="Scoring factors" className="mt-2">
+            {factors.map((factor) => (
+              <ListRow
+                key={factor.key}
+                title={factor.label}
+                trailing={<span className="text-sm text-copy-primary">+{factor.points}</span>}
+                meta={factor.reason}
+              />
+            ))}
+          </RowList>
+        ) : (
+          <p className="mt-2 text-xs text-copy-muted">No scoring factors recorded.</p>
+        )}
       </details>
     </div>
   );

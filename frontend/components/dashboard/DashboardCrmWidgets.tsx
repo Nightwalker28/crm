@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { BarChart3, Filter, Lock, Users } from "lucide-react";
 
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { StatGroup, StatTile } from "@/components/ui/StatTile";
 import { seriesColor } from "@/lib/chartColors";
@@ -155,13 +156,11 @@ function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
 /** A line under a stat group: a name, its metadata, and an amount in ink. */
 function AmountRow({ title, meta, amount }: { title: string; meta: string; amount: string }) {
   return (
-    <li className="flex items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
-      <div className="min-w-0">
-        <div className="truncate text-sm font-medium text-copy-primary">{title}</div>
-        <div className="mt-1 text-xs text-copy-muted">{meta}</div>
-      </div>
-      <div className="shrink-0 text-sm font-medium tabular-nums text-copy-primary">{amount}</div>
-    </li>
+    <ListRow
+      title={title}
+      meta={meta}
+      trailing={<span className="text-sm font-medium text-copy-primary">{amount}</span>}
+    />
   );
 }
 
@@ -178,11 +177,11 @@ function WeightedForecast({ forecast }: { forecast: CrmDashboardSummary["forecas
       </StatGroup>
       <div className="p-4">
         {rows.length ? (
-          <ul className="divide-y divide-line-subtle">
+          <RowList label="Weighted pipeline by stage">
             {rows.map((row) => (
               <AmountRow key={row.key} title={row.label} meta={`${row.count} opportunities`} amount={formatDashboardCurrency(row.weighted_pipeline_amount)} />
             ))}
-          </ul>
+          </RowList>
         ) : <PanelEmpty icon={BarChart3} title="No deals close in this period" />}
       </div>
     </>
@@ -237,7 +236,7 @@ export function DashboardCrmWidget({
   if (type === "weighted_forecast") return <WeightedForecast forecast={summary.forecast_summary ?? null} />;
   if (!summary.owner_performance.length) return <PanelEmpty icon={Users} title="No owner activity yet" />;
   return (
-    <ul className="divide-y divide-line-subtle">
+    <RowList label="Owner performance">
       {summary.owner_performance.slice(0, 5).map((owner) => (
         <AmountRow
           key={`${owner.owner_id ?? "unassigned"}-${owner.owner_name}`}
@@ -246,6 +245,6 @@ export function DashboardCrmWidget({
           amount={`${owner.won_deal_count} won`}
         />
       ))}
-    </ul>
+    </RowList>
   );
 }

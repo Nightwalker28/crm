@@ -12,6 +12,7 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { ListRow, RowList } from "@/components/ui/ListRow";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -625,35 +626,21 @@ export default function MailPage() {
               </Button>
             </div>
           ) : messages.length ? (
-            <div className="divide-y divide-line-subtle">
+            // The selected message was the primary action's tint; it is elevation (§7.15).
+            <RowList inset label="Mail messages">
               {messages.map((message) => (
-                <Button
+                <ListRow
                   key={message.id}
-                  type="button"
-                  variant="ghost"
-                  onClick={() => setSelectedMessageId(message.id)}
-                  className={
-                    "h-auto w-full justify-start rounded-none p-5 text-left whitespace-normal " +
-                    (selectedMessageId === message.id ? "bg-action-primary-muted" : "")
-                  }
-                  aria-pressed={selectedMessageId === message.id}
+                  title={message.subject || "(no subject)"}
+                  onSelect={() => setSelectedMessageId(message.id)}
+                  selected={selectedMessageId === message.id}
+                  trailing={getMessageTime(message)}
+                  meta={`${message.from_name || message.from_email || "Unknown sender"}${message.source_label ? ` · ${message.source_label}` : ""}`}
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <h3 className="truncate text-sm font-semibold text-copy-primary">{message.subject || "(no subject)"}</h3>
-                      <p className="mt-1 truncate text-xs text-copy-muted">
-                        {message.from_name || message.from_email || "Unknown sender"}
-                        {message.source_label ? ` / ${message.source_label}` : ""}
-                      </p>
-                    </div>
-                    <div className="shrink-0 text-xs text-copy-muted">
-                      {getMessageTime(message)}
-                    </div>
-                  </div>
-                  {message.snippet ? <p className="mt-3 line-clamp-2 text-sm text-copy-secondary">{message.snippet}</p> : null}
-                </Button>
+                  {message.snippet ? <p className="line-clamp-2">{message.snippet}</p> : null}
+                </ListRow>
               ))}
-            </div>
+            </RowList>
           ) : (
             <EmptyState
               icon={Inbox}
