@@ -83,10 +83,15 @@ export default function Pagination({
     staleTime: 24 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
   });
-  const pageSizeOptions =
+  const configuredOptions =
     Array.isArray(paginationConfig?.page_size_options) && paginationConfig.page_size_options.length > 0
       ? paginationConfig.page_size_options
       : FALLBACK_PAGE_SIZE_OPTIONS;
+  // A page size the caller set outside the configured list — the task board loads 100 — left the
+  // trigger blank, because Radix shows nothing for a value no item carries.
+  const pageSizeOptions = configuredOptions.includes(pageSize)
+    ? configuredOptions
+    : [...configuredOptions, pageSize].sort((a, b) => a - b);
 
   return (
     <div className="flex w-full flex-col items-center justify-between gap-4 text-xs text-copy-muted md:flex-row md:text-sm">
@@ -99,7 +104,7 @@ export default function Pagination({
             value={String(pageSize)}
             onValueChange={(value) => onPageSizeChange(Number(value))}
           >
-            <SelectTrigger size="sm" className="w-[65px] text-xs">
+            <SelectTrigger size="sm" className="w-20 text-xs">
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent className="">

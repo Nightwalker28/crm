@@ -425,7 +425,11 @@ export default function MailPage() {
           {/* The list and the open message side by side once the card itself is 48rem — beside
               the rail that is a 1440 viewport, not a breakpoint (§7.14's reasoning). Narrower,
               the message follows the list as it always did. */}
-          <div className="grid min-w-0 @3xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] @3xl:divide-x @3xl:divide-line-subtle">
+          <div className={selectedMessage
+            ? "grid min-w-0 @3xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)] @3xl:divide-x @3xl:divide-line-subtle"
+            // With nothing open, a 20rem list beside an empty column pinned the empty state to
+            // the left third of the card (5.7 close-out browser pass).
+            : "min-w-0"}>
             <div className="min-w-0">
               {messagesQuery.isLoading ? (
                 <PanelLoading label="Loading mail…" />

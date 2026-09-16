@@ -277,7 +277,9 @@ test("record-search failures stay recoverable without exposing backend details",
   await page.keyboard.press("Control+K");
   await page.getByLabel("Search records and modules").fill("private failure");
 
-  await expect(page.getByText("Search is temporarily unavailable. Check your connection and try again.")).toBeVisible();
+  // `PanelError` prints the failure and its recovery line separately (rebuild 5.7 batch 8a).
+  await expect(page.getByText("Search is temporarily unavailable.")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("database_connection=private-secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

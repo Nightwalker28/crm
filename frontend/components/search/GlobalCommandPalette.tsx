@@ -300,7 +300,9 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   value={query}
                   onValueChange={setQuery}
                   placeholder="Search records across the workspace..."
-                  className="h-10 w-full bg-transparent text-sm text-copy-primary outline-none placeholder:text-copy-muted"
+                  // It was `outline-none` with nothing in its place — the one focus stop in the
+                  // app with no indicator (§2.3), found in 5.7's close-out tab walk.
+                  className="h-10 w-full rounded-[var(--radius-control-sm)] bg-transparent px-2 text-sm text-copy-primary outline-none placeholder:text-copy-muted focus-visible:ring-2 focus-visible:ring-focus"
                   aria-label={SEARCH_LABEL}
                 />
                 <div className="hidden items-center gap-1 text-2xs text-copy-muted sm:flex">

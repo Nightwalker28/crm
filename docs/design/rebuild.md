@@ -7,8 +7,8 @@ Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.
 5.4 are done.** **5.5 is done** — seven batches, `7cb268e` through `8577c87`. Its browser pass
 found a layout defect every automated check had passed over; that is written up at the end of
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
-**5.7 is in progress**; its measurement, rulings and batch order are written at the head of
-the sub-phase.
+**5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
+commits. **5.8 is next.**
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -5161,7 +5161,7 @@ exactly the §7.7 row *a value one region re-renders from*. It gets its own word
 | 6 | `ListRow` — re-measure the set first, then the activity / notification / invite / message rows | Last of the primitives, because 1–5 each rebuild one of its consumers |
 | 7 | `reports` rebuilt — raw `Table` → `RecordTable`, which takes `Table.tsx` to the R10 importer count outside 5.8 | |
 | 8 | `mail` rebuilt, `RecordEmailComposer`, `TaskDialog`, and the shell `adopt` rows — sidebar with A11 (ruling 6), `ProfileMenu`, `GlobalCommandPalette`, `chart.tsx` | |
-| 9 | Close-out — the end-of-sub-phase pass and one correction commit | |
+| 9 | Close-out — the end-of-sub-phase pass and one correction commit | **Closed** — see *Status: batch 9* |
 
 ### Status: batch 1 — `StatTile`, and a dashed box inside every widget
 
@@ -5794,6 +5794,110 @@ Case, asserted by `tasks-revamp`.
 **Next: batch 9** — 5.7's close-out: `check-design.sh`, both rendered guards, the specs named in
 batches 2–8b, the browser pass collected above, and one correction commit carrying the items filed
 for it (`OpportunitiesTable`'s green value cell, `DocumentList`'s detail panel).
+
+### Status: batch 9 — close-out, and six specs out of sixty-seven
+
+**5.7 is complete.** Every census row it owns is marked, the attribution is done, the browser pass
+found five things and all five are fixed.
+
+**What ran.**
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **2 of 14**, the known baseline — no 5.7 file adds a source-rule failure |
+| `lint`, `tsc --noEmit`, `build` | Green, after the last correction |
+| `design-rules.spec.ts` | Green, **`Audited 94 routes. Unreachable: none`** — twice, the second after the browser-pass fixes |
+| `scroll-containers.spec.ts` | Green before the browser-pass fixes. **The re-run after them did not happen**: the remote Postgres stopped accepting connections mid-session (below) |
+| The in-scope suite — 285 tests in 54 files (all but the two guards, contracts and support) | **218 passed / 67 failed** at `b0d3ff5` |
+| The attribution — the 67 re-run against pre-5.7 (`9923ceb`) on the same dev server | **61 fail there too. 6 passed before 5.7** |
+| The browser pass — 11 routes × 2 themes at 1440, the same at 768, a 40-stop tab walk, the palette, the profile menu, a keyboard move, the month grid | Five findings, fixed |
+
+#### The six, read against the diff
+
+| Spec | What it was |
+|---|---|
+| `tasks-revamp:61` | **Ruling 7.** Opening a board card keeps `?display=board`; the spec asserted the address without it. Predicted in batch 4's status |
+| `dashboard-edit-mode-revamp:126` | **Batch 2.** Discard is a `useConfirm` dialog; the spec accepted a native `dialog` event that no longer fires. Predicted in batch 2's status |
+| `command-palette-actions:268` | **Batch 8a.** `PanelError` prints the failure and *Check your connection and try again.* as two elements. Predicted |
+| `custom-modules-revamp:94` | **Batch 1.** The dashboard's module summary names each module as a link, so `link "Projects"` matched the summary as well as the sidebar. Scoped to *Primary navigation* — the guard under test is the sidebar's |
+| `accounts-revamp:92` | **Load flake.** Passed alone at HEAD (14.5s); in the suite it ran into the 30s test timeout |
+| `application-shell-refactor:19` | **Load flake.** Passed alone at HEAD (6.6s) — the centring poll's 5s window, under a loaded box |
+
+**None was an app defect.** The four contract moves are fixed in the specs; the two flakes are listed
+under *Known flaky* in `docs/e2e-suite-status.md`. A seventh, `command-palette-actions:287`, timed out
+at exactly 30s in the targeted re-run after passing in the full suite; its confirming run was one of
+the casualties of the database outage.
+
+#### The browser pass — five findings
+
+Themes proved distinct by measurement, as 5.6 prescribed: body ground `rgb(11, 13, 16)` dark,
+`rgb(247, 248, 250)` light. Screenshots under `frontend/test-results/browser-pass-57/` (not committed).
+
+- **`reports` ran off the page at 768.** Batch 7 took `size="sm"` off the header's four buttons, which
+  made the row wider than 528px — and `PageHeader`'s action row was `sm:shrink-0`, so it could not wrap.
+  *Save changes* sat past the right edge and the content scroller scrolled sideways (572 > 528). It is
+  `sm:min-w-0` now, and the row wraps inside itself. The same change took `tasks` (552) and
+  `settings/users` (659) back to 528 as well. **The fix is in a shared primitive** and was re-checked on
+  all three routes, and `design-rules` was re-run over all 94 routes after it.
+- **The command palette's search input was the one focus stop with no indicator.** `outline-none` with
+  nothing in its place (§2.3); it has been that way since before 5.7, and 8a adopted the file without
+  seeing it. It takes the focus ring now — measured, `rgb(143, 154, 168) 0 0 0 2px`.
+- **Mail with no messages pinned its empty state to the left third of the card.** The list and reader
+  split applied whether or not a message was open. The split is conditional on a message now.
+- **The task board's *Items per page* was blank**, and older than 5.7: the board sets a page size of 100,
+  which is not a configured option, and a Radix `Select` shows nothing for a value no item carries.
+  `Pagination` appends the current size when it is missing. Its trigger was a fixed `w-[65px]`, which
+  clipped `100` to `10(`; it is `w-20`.
+- **`dashboard/layout.tsx`'s *Checking access...*** was a recessed, bordered box standing where the page
+  would be. It is `RouteLoadingState`. Found while marking the last unmarked census rows, not in the pass.
+
+**What the pass cleared rather than found:**
+
+- **No page scrolls sideways at 1440** on any of the 11 routes, in either theme.
+- **The tab walk has no invisible stop.** Forty stops from the top of `reports`: wordmark, collapse,
+  the eight sidebar entries — *Sales → Finance* directly, so the closed groups' links really are
+  `inert` — *Log out*, the palette, notifications, profile, then the page. Every stop draws an outline
+  or a ring. (The first attempt at this walk opened the palette with its own starting click and walked
+  the palette's input forty times; that is how the input's missing ring surfaced.)
+- **A11** — *Reports*, *Services* and *Support Cases* render as links; the current one carries the
+  §7.16 ground and bar in both themes, and a collapsed sidebar shows it on the icon.
+- **Palette headings** — each record group's heading occurs once. *Modules:4* is the heading plus three
+  items' *Modules* type tag, which is content, not a repeat.
+- **Profile menu** — Enter opens a `role="menu"`, arrows move between `menuitem`s, Escape returns focus
+  to *Open profile menu*.
+- **`SortableList`** — *Move Notifications up* twice from the keyboard moved the widget from 10 to 8 with
+  focus on the same control after both presses: batch 3's reasoned-not-observed focus restore, observed.
+  Cancel and *Discard changes* wrote nothing.
+- **`MonthGrid`** — ArrowDown six times from 16 September crosses into October a week at a time, a ring
+  at every stop; at 1024 beside the rail the picker's first row starts on Tuesday under *Tue*, which is
+  September 2026's.
+
+#### Two environment facts that cost time, for whoever runs this next
+
+- **A production build leaves a `.next/` that can hang the dev server.** The per-batch builds ran in
+  `docker compose run --no-deps` containers, which write `frontend/.next` through the bind mount; the dev
+  server started over it sat on `Compiling /dashboard/calendar` at 0% CPU until every warm-up curl timed
+  out. `rm -rf frontend/.next` (from a container — the files are root-owned) and it compiled in 6s.
+- **`docker compose run frontend-e2e` without the port override recreates the stack from the base file**,
+  whose backend binds 8000 — frappe's. It took the running backend down. Every e2e command needs the same
+  `-f docker-compose.yml -f docker-compose.limits.yml -f <override>` *and* `--no-deps`.
+- And the known one, arriving on schedule: **the remote Postgres went away** at about 02:15 — first
+  `server closed the connection`, then `Connection timed out` to `100.107.171.33:5432` on restart. Logins
+  fail as *Expected login to reach the dashboard or MFA challenge*, which is how `scroll-containers`'
+  post-fix re-run read. Check `docker compose logs backend | grep OperationalError` before believing a
+  login failure.
+
+### What 5.7 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| `scroll-containers.spec.ts` re-run after the browser-pass fixes (`PageHeader`, `Pagination`, the palette input, mail, the dashboard layout) — blocked by the database outage. `design-rules` did run after all but the layout change | The next session, first thing |
+| Widget titles in Title Case (`CRM Snapshot`, `Leads By Status`), *Create Task* / *Save Task* / *Move To Recycle Bin*, *User Invite* / *Team Share*, *Add Task* — each asserted by a spec or catalogued | 5.9 |
+| The sidebar's *Log out* and the profile menu's are the same action twice; `application-shell-refactor` asserts the sidebar's | The owner |
+| The listbox / menu active-option ground (`--color-primary-muted`) in `select.tsx`, `DropdownMenuItem` and the palette | 5.10, with the owner (§7.16) |
+| `mail/page.tsx`'s per-module `linkedRecordHref` | A registry question, not a visual one |
+| An event spanning several days is placed on its start day only | A feature, not a rebuild |
+| 61 suite failures that also fail before 5.7 | Not this sub-phase's — `docs/e2e-suite-status.md` |
 
 ---
 

@@ -327,6 +327,12 @@ await expect.poll(async () => page.evaluate(() => sessionStorage.getItem("lynk_u
   Playwright calls happened to take. Now polls for the settled value. Passes 3/3.
 - `accounts-revamp.spec.ts` — "keeps shared controls usable on mobile" passed 3/3 in isolation
   after failing in a full run.
+- `accounts-revamp.spec.ts:92` — "Account create, detail, edit…" hit the 30s test timeout in the
+  2026-09-17 full run and passed alone in 14.5s (rebuild 5.7 close-out).
+- `application-shell-refactor.spec.ts:19` — failed its 5s centring poll in the same full run and passed
+  alone in 6.6s. The 2026-08-13 fix made it deterministic on an idle box, not on a loaded one.
+- `command-palette-actions.spec.ts:287` — "routes administrator actions" passed in that full run and
+  timed out at exactly 30s in a targeted re-run; it loads `/dashboard` four times in one test.
 - `payments-revamp.spec.ts:74` — "distinguishes filtered empty results" observed
   **fail/pass/pass** in isolation on 2026-08-14, and passing then failing within the same
   session. Listed above under the unconfirmed-cause group as `button "Clear filters"` not
@@ -361,6 +367,20 @@ typescript-eslint turns `no-undef` off because it assumes `tsc` covers it. So a 
 reference an undefined variable and **neither `tsc --noEmit` nor `npm run lint` will say so** —
 only a run will. One of the edits above hit exactly that and was caught by re-running, not by
 either gate. Worth a cheap guard; filed to 5.10.
+
+## Cleared in rebuild 5.7's close-out (batch 9)
+
+**285 in-scope tests at `b0d3ff5`: 218 passed / 67 failed.** The 67 were re-run against the pre-5.7
+tree (`9923ceb`) on the same dev server, specs at HEAD; **61 also failed there.** Six passed before 5.7:
+
+| Spec | What it was |
+| --- | --- |
+| `tasks-revamp:61` | Ruling 7 — opening a board card keeps `?display=board` in the address. Spec updated |
+| `dashboard-edit-mode-revamp:126` | Discard became a `useConfirm` dialog; the spec listened for a native `dialog` event. Spec updated |
+| `command-palette-actions:268` | `PanelError` prints the message and *Check your connection…* separately. Spec updated |
+| `custom-modules-revamp:94` | The dashboard summary's module names became links, so `link "Projects"` matched twice. Scoped to the sidebar |
+| `accounts-revamp:92` | Load flake — passed alone at HEAD. See *Known flaky* |
+| `application-shell-refactor:19` | Load flake — passed alone at HEAD. See *Known flaky* |
 
 ## Already fixed this session
 

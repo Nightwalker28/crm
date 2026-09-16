@@ -132,8 +132,9 @@ test("cancel discards the whole dashboard draft without writing", async ({ page 
 
   await page.getByRole("button", { name: "Edit dashboard" }).click();
   await page.getByRole("button", { name: "Remove Quick Actions" }).click();
-  page.once("dialog", (dialog) => dialog.accept());
+  // Discarding is a `useConfirm` dialog, not a native confirm (rebuild 5.7 batch 2).
   await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Discard changes" }).click();
 
   await expect(page.getByRole("heading", { name: "Quick Actions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit dashboard" })).toBeVisible();

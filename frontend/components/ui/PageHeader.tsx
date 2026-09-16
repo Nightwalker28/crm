@@ -61,8 +61,11 @@ export function PageHeader({
       {eyebrow ? <div className="sr-only">{eyebrow}</div> : null}
       {description ? <p className="sr-only">{description}</p> : null}
       {context ? <div className="min-w-0 text-xs font-medium text-copy-muted">{context}</div> : null}
+      {/* `min-w-0`, not `shrink-0`: a row of default-height actions wider than the header must
+          wrap inside itself. `shrink-0` held it on one line, so four buttons on `reports` ran
+          off the page at 768 (rebuild 5.7 close-out). */}
       {actions ? (
-        <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:shrink-0">
+        <div className="ml-auto flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:min-w-0">
           {actions}
         </div>
       ) : null}

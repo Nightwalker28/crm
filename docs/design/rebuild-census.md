@@ -114,7 +114,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
 | `public/quotes/proposal/[token]/page.tsx` | 233 | 5.8 | rebuild | Unwalked by the guard today | |
-| `book/[...bookingPath]/page.tsx` | 18 | 5.7 | unchanged | Shim to `PublicBookingPage`; the calendar grid is 5.7 | |
+| `book/[...bookingPath]/page.tsx` | 18 | 5.7 | unchanged | Shim to `PublicBookingPage`; the calendar grid is 5.7 | close-out — unchanged. The grid claim was re-measured at the head of 5.7: `BookingForm` lists slots and draws no month grid, so `MonthGrid` has two consumers, not three |
 
 ### 1.5 `app/e2e/**` (3)
 
@@ -128,7 +128,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `dashboard/layout.tsx` | 170 | 5.7 | adopt | The `h1` sequence is closed; the backdrop is §9 | |
+| `dashboard/layout.tsx` | 170 | 5.7 | adopt | The `h1` sequence is closed; the backdrop is §9 | close-out — the *Checking access...* recessed box is `RouteLoadingState`. Backdrop untouched (§9) |
 | `dashboard/page.tsx` | 475 | 5.7 | rebuild | Archetype 5. A9: an admin-only href with no `isAdmin` check at `:404` | batch 2 — header down to its own three actions (ruling 3; A9's link goes with the other four), both `window.confirm` → `useConfirm`, the duplicate save-error banner deleted. Edit mode's widgets wait for `SortableList` (batch 3) |
 | `dashboard/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | done |
@@ -242,7 +242,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
 | `mail/page.tsx` | 760 | 5.7 | rebuild | | batch 6 — the message rows are `ListRow`s in an inset `RowList`; the selected row is elevation, not the action tint. **batch 8b** — §4.4 page split: messages `Card` (list and reader side by side from a 48rem container) and a 20rem connections rail of `ListRow`s. Header 4 controls → *New mail*. IMAP form → `EditorPanel`. Success tints, boxed body, boxed link targets and scope chips gone; states are `PanelStates` |
-| `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | |
+| `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | close-out — unchanged, a shim |
 | `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates`. Batch 6 — the invite and provider rows are `ListRow`s |
 | `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | **done, batch 7** (A11 is the sidebar's, batch 8) — raw `Table` → `RecordTable variant="readOnly"`, `ForecastBucketList` → `ListRow`, four tinted error banners → `PanelError` / `FieldError` / toasts, headings → `PanelHeader`, the chart's `Skeleton` and `EmptyState` → `PanelStates`, *Top result* → `Fact`, presets off the action tint |
 
@@ -417,9 +417,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | **done, batch 4** — 138 → 80 lines, a body renderer over `Board` |
 | `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | **done, batch 5** — 178 → 75 lines, `MonthGrid` in the list's `ModuleTableShell` with `renderListState` |
 | `tasks/TaskDialog.tsx` | 395 | 5.7 | rebuild | | batch 8b — the calendar's buttons left the six-control footer for a *Calendar* section that states whether the task is on it; *Assignments* is a `SectionHeading`; option states are `PanelStates`. Title / commit Title Case left for 5.9 (`tasks-revamp` asserts it) |
-| `tasks/TaskAssigneePicker.tsx` | 104 | 5.7 | adopt | | |
+| `tasks/TaskAssigneePicker.tsx` | 104 | 5.7 | adopt | | close-out — already a thin adapter over `UserTeamPicker` (5.4); nothing drawn here to adopt |
 | `calendar/CalendarEventDialog.tsx` | 346 | 5.7 | rebuild | | **done, batch 5** — the Radix `Switch` is `SegmentedBoolean` in a `Field`; the owner notice is ink, not a box. Its Title Case (`Create Event`, `Move To Recycle Bin`) is 5.9's |
-| `calendar/CalendarParticipantPicker.tsx` | 110 | 5.7 | adopt | | |
+| `calendar/CalendarParticipantPicker.tsx` | 110 | 5.7 | adopt | | close-out — already on `UserTeamPicker`. Its *User Invite* / *Team Share* type labels are 5.9's Title Case |
 | `calendar/CalendarSyncBridge.tsx` | 85 | — | unchanged | No UI | |
 | `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | |
 | `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | |

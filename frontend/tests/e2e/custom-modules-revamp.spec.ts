@@ -124,7 +124,9 @@ test("refreshes mounted module guards after custom-module access changes", async
   });
   await accessRefresh;
 
-  const customModuleLink = page.getByRole("link", { name: "Projects", exact: true });
+  // The dashboard's module summary names its modules as links too (rebuild 5.7 batch 1), so
+  // the guard under test is the sidebar's entry.
+  const customModuleLink = page.getByRole("complementary", { name: "Primary navigation" }).getByRole("link", { name: "Projects", exact: true });
   await expect(customModuleLink).toBeVisible();
   await customModuleLink.click();
   await expect(page).toHaveURL(/\/dashboard\/custom\/custom_projects$/);

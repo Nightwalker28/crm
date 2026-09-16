@@ -73,12 +73,13 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByRole("region", { name: "To do tasks" }).locator('[data-slot="status-value"]', { hasText: "To do" })).toBeVisible();
   await page.getByRole("button", { name: "Prepare renewal brief" }).click();
   await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
-  await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?taskId=${taskId}$`));
+  // The display is addressed (rebuild 5.7 ruling 7), so opening a card keeps ?display=board.
+  await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?display=board&taskId=${taskId}$`));
   await page.getByRole("button", { name: "Cancel" }).click();
   // Closing clears ?taskId through router.replace, which lands in a transition rather than
   // synchronously. Switching views before it settles loses the click to the re-render.
   await expect(page.getByRole("dialog")).toHaveCount(0);
-  await expect(page).toHaveURL(/\/dashboard\/tasks$/);
+  await expect(page).toHaveURL(/\/dashboard\/tasks\?display=board$/);
 
   await page.getByRole("radio", { name: "Calendar" }).click();
   await expect(page.getByRole("region", { name: "Task due date calendar" })).toBeVisible();
