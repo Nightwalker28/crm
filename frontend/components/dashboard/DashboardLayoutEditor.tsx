@@ -1,15 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import {
-  ArrowDown,
-  ArrowUp,
   BarChart3,
   Bell,
   ClipboardList,
   Filter,
-  GripVertical,
   LayoutDashboard,
   LayoutGrid,
   NotebookText,
@@ -25,6 +22,7 @@ import {
 
 import { ActionBar } from "@/components/ui/ActionBar";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
+import { SortableList } from "@/components/ui/SortableList";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -141,46 +139,29 @@ function widgetIcon(type: DashboardWidgetType): LucideIcon {
 function DashboardWidgetShell({
   title,
   widget,
-  index,
-  count,
   children,
-  onMove,
+  handle,
+  moveButtons,
   onResize,
   onRemove,
-  onDragStart,
-  onDrop,
   isEditing,
 }: {
   title: string;
   widget: DashboardWidget;
-  index: number;
-  count: number;
   children: ReactNode;
-  onMove: (from: number, to: number) => void;
+  handle: ReactNode;
+  moveButtons: ReactNode;
   onResize: (id: string, size: DashboardWidgetSize) => void;
   onRemove: (id: string) => void;
-  onDragStart: (index: number) => void;
-  onDrop: (index: number) => void;
   isEditing: boolean;
 }) {
   return (
     <Card
       asChild
       data-testid={`dashboard-widget-${widget.id}`}
-      className={cn(isEditing && "border-line-strong", sizeClass(widget.size))}
+      className={cn("h-full", isEditing && "border-line-strong")}
     >
-      <section
-        draggable={isEditing}
-        onDragStart={() => {
-          if (isEditing) onDragStart(index);
-        }}
-        onDragOver={(event) => {
-          if (isEditing) event.preventDefault();
-        }}
-        onDrop={() => {
-          if (isEditing) onDrop(index);
-        }}
-      >
+      <section>
       {/* R7: the widget's name is a section heading, one ink step quieter than the figures
           under it. It was an `h2` in `text-copy-primary` — the same weight as the data. */}
       <div className="border-b border-line-subtle px-4 py-3">
@@ -189,13 +170,8 @@ function DashboardWidgetShell({
           icon={isEditing ? undefined : widgetIcon(widget.type)}
           action={isEditing ? (
             <div className="flex flex-wrap items-center gap-1">
-              <GripVertical className="size-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
-              <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} up`} disabled={index === 0} onClick={() => onMove(index, index - 1)}>
-                <ArrowUp />
-              </Button>
-              <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
-                <ArrowDown />
-              </Button>
+              {handle}
+              {moveButtons}
               <SegmentedControl
                 aria-label={`Resize ${title}`}
                 value={widget.size}
@@ -265,8 +241,6 @@ export function DashboardLayoutEditor({
   onSave: (widgets: DashboardWidget[]) => void;
   renderWidget: (widget: DashboardWidget) => ReactNode;
 }) {
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-
   return (
     <>
       {/* R3: this was `sticky top-2` — a translucent `backdrop-blur` card floating over the
@@ -297,38 +271,40 @@ export function DashboardLayoutEditor({
         </ActionBar>
       ) : null}
 
-      <div className="grid auto-rows-min gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {widgets.map((widget, index) => (
+      {/* 5.7 batch 3: the grid's drag-and-drop was hand-written here, with its own move
+          buttons beside it. `SortableList` owns both, and puts focus back on the button after
+          a move — the moved card used to take the focus with it. */}
+      <SortableList
+        label="Dashboard widgets"
+        items={widgets}
+        getKey={(widget) => widget.id}
+        getItemLabel={(widget) => widgetTitle(widget, modulesByName)}
+        onMove={onMove}
+        disabled={!isEditing}
+        className="grid auto-rows-min gap-4 md:grid-cols-2 xl:grid-cols-4"
+        itemClassName={(widget) => sizeClass(widget.size)}
+        renderItem={(widget, { handle, moveButtons }) => (
           <DashboardWidgetShell
-            key={widget.id}
             title={widgetTitle(widget, modulesByName)}
             widget={widget}
-            index={index}
-            count={widgets.length}
-            onMove={onMove}
+            handle={handle}
+            moveButtons={moveButtons}
             onResize={onResize}
             onRemove={onRemove}
-            onDragStart={setDragIndex}
             isEditing={isEditing}
-            onDrop={(dropIndex) => {
-              if (dragIndex !== null && dragIndex !== dropIndex) onMove(dragIndex, dropIndex);
-              setDragIndex(null);
-            }}
           >
             {renderWidget(widget)}
           </DashboardWidgetShell>
-        ))}
-        {isEditing && !widgets.length ? (
-          <div className="md:col-span-2 xl:col-span-4">
-            <EmptyState
-              icon={LayoutDashboard}
-              title="Your dashboard draft is empty"
-              description="Add a widget or reset to the default layout before saving."
-              action={<Button type="button" onClick={() => onAddOpenChange(true)}><Plus />Add widget</Button>}
-            />
-          </div>
-        ) : null}
-      </div>
+        )}
+      />
+      {isEditing && !widgets.length ? (
+        <EmptyState
+          icon={LayoutDashboard}
+          title="Your dashboard draft is empty"
+          description="Add a widget or reset to the default layout before saving."
+          action={<Button type="button" onClick={() => onAddOpenChange(true)}><Plus />Add widget</Button>}
+        />
+      ) : null}
 
       <Dialog open={isEditing && addOpen} onClose={() => onAddOpenChange(false)}>
         <DialogBackdrop />

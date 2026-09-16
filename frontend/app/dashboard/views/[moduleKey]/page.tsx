@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
-import { ArrowDown, ArrowLeft, ArrowUp, Copy, EyeOff, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, EyeOff, Pencil, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { Chip } from "@/components/ui/Chip";
 import { SavedViewConditionEditor, getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { Button } from "@/components/ui/button";
+import { SortableList } from "@/components/ui/SortableList";
 import { Card, CardFooter, CardHeader } from "@/components/ui/Card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -58,7 +59,6 @@ export default function ManageModuleViewPage() {
   const [mode, setMode] = useState<EditorMode>("view");
   const [name, setName] = useState("");
   const [availableSearch, setAvailableSearch] = useState("");
-  const [draggedColumn, setDraggedColumn] = useState<string | null>(null);
   const [announcement, setAnnouncement] = useState("");
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -98,8 +98,9 @@ export default function ManageModuleViewPage() {
   function updateColumns(next: string[], message?: string) { if (!editable || !next.length) return; saved.setDraftConfig((current) => ({ ...current, visible_columns: next })); if (message) setAnnouncement(message); }
   function addColumn(key: string) { const option = safeDefinition.columns.find((column) => column.key === key); if (!visibleColumns.includes(key)) updateColumns([...visibleColumns, key], `${option?.label ?? key} added.`); }
   function removeColumn(key: string) { const option = safeDefinition.columns.find((column) => column.key === key); if (option?.is_protected || key === protectedColumnKey || visibleColumns.length <= 1) return; updateColumns(visibleColumns.filter((column) => column !== key), `${option?.label ?? key} removed.`); }
-  function moveColumn(key: string, direction: "up" | "down") { const index = visibleColumns.indexOf(key); const target = direction === "up" ? index - 1 : index + 1; if (index < 0 || target < 0 || target >= visibleColumns.length) return; const next = [...visibleColumns]; const [column] = next.splice(index, 1); next.splice(target, 0, column); const label = safeDefinition.columns.find((item) => item.key === key)?.label ?? key; updateColumns(next, `${label} moved to position ${target + 1}.`); }
-  function dropColumn(targetKey: string) { if (!editable || !draggedColumn || draggedColumn === targetKey) return; const next = [...visibleColumns]; const from = next.indexOf(draggedColumn); const target = next.indexOf(targetKey); if (from < 0 || target < 0) return; const [column] = next.splice(from, 1); next.splice(target, 0, column); setDraggedColumn(null); updateColumns(next, `${safeDefinition.columns.find((item) => item.key === column)?.label ?? column} moved to position ${target + 1}.`); }
+  // 5.7 batch 3: `moveColumn` and `dropColumn` were the same splice written twice, one per input
+  // method. `SortableList` hands both gestures over as one index move, and announces it.
+  function moveColumnTo(from: number, to: number) { if (!editable || from === to || from < 0 || to < 0 || to >= visibleColumns.length) return; const next = [...visibleColumns]; const [column] = next.splice(from, 1); next.splice(to, 0, column); updateColumns(next); }
 
   async function saveDraft() {
     if (!name.trim()) { setActionError("Enter a view name before saving."); return; }
@@ -146,7 +147,7 @@ export default function ManageModuleViewPage() {
 
   const columnsPanel = (
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.8fr)]">
-      <div><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-copy-primary">Selected columns</h3><p className="text-xs text-copy-muted">Ordered from left to right in the module table.</p></div><Chip>{selectedOptions.length}</Chip></div><div className="mt-3 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default">{selectedOptions.map((column, index) => { const isProtected = column.is_protected || column.key === protectedColumnKey; return <div key={column.key} data-testid={`selected-column-${column.key}`} draggable={editable} onDragStart={() => setDraggedColumn(column.key)} onDragEnd={() => setDraggedColumn(null)} onDragOver={(event) => event.preventDefault()} onDrop={() => dropColumn(column.key)} className="flex items-center gap-2 px-3 py-2"><GripVertical className="h-4 w-4 text-copy-muted" /><span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{index + 1}. {column.label}{isProtected ? " · Required" : ""}</span>{editable ? <><Button size="icon-sm" variant="ghost" disabled={index === 0} onClick={() => moveColumn(column.key, "up")} aria-label={`Move ${column.label} up`}><ArrowUp /></Button><Button size="icon-sm" variant="ghost" disabled={index === selectedOptions.length - 1} onClick={() => moveColumn(column.key, "down")} aria-label={`Move ${column.label} down`}><ArrowDown /></Button><Button size="icon-sm" variant="ghost" disabled={isProtected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={isProtected ? "This column is required." : undefined}><EyeOff /></Button></> : null}</div>; })}</div></div>
+      <div><div className="flex items-center justify-between gap-3"><div><h3 className="text-sm font-semibold text-copy-primary">Selected columns</h3><p className="text-xs text-copy-muted">Ordered from left to right in the module table.</p></div><Chip>{selectedOptions.length}</Chip></div><SortableList label="Selected columns" className="mt-3 divide-y divide-line-subtle rounded-[var(--radius-control)] border border-line-default" items={selectedOptions} getKey={(column) => column.key} getItemLabel={(column) => column.label} disabled={!editable} onMove={(from, to) => moveColumnTo(visibleColumns.indexOf(selectedOptions[from].key), visibleColumns.indexOf(selectedOptions[to].key))} renderItem={(column, { index, handle, moveButtons }) => { const isProtected = column.is_protected || column.key === protectedColumnKey; return <div data-testid={`selected-column-${column.key}`} className="flex items-center gap-2 px-3 py-2">{handle}<span className="min-w-0 flex-1 truncate text-sm text-copy-primary">{index + 1}. {column.label}{isProtected ? " · Required" : ""}</span>{editable ? <>{moveButtons}<Button size="icon-sm" variant="ghost" disabled={isProtected || selectedOptions.length <= 1} onClick={() => removeColumn(column.key)} aria-label={`Hide ${column.label}`} title={isProtected ? "This column is required." : undefined}><EyeOff /></Button></> : null}</div>; }} /></div>
       <div><h3 className="text-sm font-semibold text-copy-primary">Available columns</h3><SearchBar value={availableSearch} onChange={setAvailableSearch} placeholder="Search available columns" className="mt-3 md:w-full" />{editable ? <div className="mt-3 max-h-72 divide-y divide-line-subtle overflow-y-auto rounded-[var(--radius-control)] border border-line-default">{filteredAvailable.length ? filteredAvailable.map((column) => <button key={column.key} className="flex w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-surface-muted" onClick={() => addColumn(column.key)}><span>{column.label}</span><Plus className="h-4 w-4" /></button>) : <p className="p-3 text-sm text-copy-muted">{availableOptions.length ? "No columns match this search." : "All available columns are selected."}</p>}</div> : <p className="mt-3 text-sm text-copy-muted">Choose Edit view or Duplicate to change columns.</p>}</div>
       <p className="sr-only" aria-live="polite">{announcement}</p>
     </div>

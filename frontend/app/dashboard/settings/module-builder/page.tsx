@@ -4,9 +4,6 @@ import Link from "next/link";
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   Boxes,
-  ChevronDown,
-  ChevronUp,
-  GripVertical,
   LockKeyhole,
   Plus,
   RotateCcw,
@@ -19,6 +16,7 @@ import { toast } from "sonner";
 import { ActionBar } from "@/components/ui/ActionBar";
 import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
+import { SortableList } from "@/components/ui/SortableList";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -392,26 +390,12 @@ function ModuleWorkspace({
     if (selectedFieldId === field.clientId) setInspectorOpen(false);
   }
 
-  function moveField(clientId: string, direction: -1 | 1) {
+  function moveFieldTo(from: number, to: number) {
     setFields((current) => {
-      const index = current.findIndex((field) => field.clientId === clientId);
-      const target = index + direction;
-      if (index < 0 || target < 0 || target >= current.length) return current;
+      if (from < 0 || to < 0 || from >= current.length || to >= current.length) return current;
       const next = [...current];
-      [next[index], next[target]] = [next[target], next[index]];
-      return next;
-    });
-  }
-
-  function dropField(sourceId: string, targetId: string) {
-    if (!sourceId || sourceId === targetId) return;
-    setFields((current) => {
-      const sourceIndex = current.findIndex((field) => field.clientId === sourceId);
-      const targetIndex = current.findIndex((field) => field.clientId === targetId);
-      if (sourceIndex < 0 || targetIndex < 0) return current;
-      const next = [...current];
-      const [moved] = next.splice(sourceIndex, 1);
-      next.splice(targetIndex, 0, moved);
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
       return next;
     });
   }
@@ -471,48 +455,53 @@ function ModuleWorkspace({
       >
         Fields
       </SectionHeading>
-      <div className="grid gap-2">
-        {fields.length ? fields.map((field, index) => (
-          <div
-            key={field.clientId}
-            data-testid={`module-field-${field.clientId}`}
-            draggable={!disabled}
-            onDragStart={(event) => event.dataTransfer.setData("text/plain", field.clientId)}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => dropField(event.dataTransfer.getData("text/plain"), field.clientId)}
-            className={cn(
-              "flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2",
-              // The row the inspector is open over. It was `border-primary
-              // bg-action-primary-muted` — the *primary action's* tint standing in for
-              // "selected", which is the same misuse `fields` carried (§1.2).
-              selectedFieldId === field.clientId && "border-line-strong bg-surface-raised",
-            )}
-          >
-            <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedFieldId(field.clientId);
-                setInspectorOpen(true);
-              }}
-              className="min-w-0 flex-1 text-left"
-              aria-label={`Edit ${field.label || "untitled field"}`}
+      {/* 5.7 batch 3: this was the third hand-written drag-and-drop list, carrying its data in
+          `dataTransfer` rather than state and its own `ChevronUp` move buttons. */}
+      {fields.length ? (
+        <SortableList
+          label="Fields"
+          className="grid gap-2"
+          items={fields}
+          getKey={(field) => field.clientId}
+          getItemLabel={(field) => field.label || "untitled field"}
+          disabled={disabled}
+          onMove={moveFieldTo}
+          renderItem={(field, { handle, moveButtons }) => (
+            <div
+              data-testid={`module-field-${field.clientId}`}
+              className={cn(
+                "flex items-center gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2",
+                // The row the inspector is open over. It was `border-primary
+                // bg-action-primary-muted` — the *primary action's* tint standing in for
+                // "selected", which is the same misuse `fields` carried (§1.2).
+                selectedFieldId === field.clientId && "border-line-strong bg-surface-raised",
+              )}
             >
-              <span className="flex items-center gap-2">
-                <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
-                {field.is_protected ? <LockKeyhole className="size-3.5 shrink-0 text-copy-muted" aria-label="Protected" /> : null}
-                {!field.serverId ? <Chip>Draft</Chip> : null}
-              </span>
-              <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
-            </button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} up`} onClick={() => moveField(field.clientId, -1)} disabled={disabled || index === 0}><ChevronUp /></Button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${field.label} down`} onClick={() => moveField(field.clientId, 1)} disabled={disabled || index === fields.length - 1}><ChevronDown /></Button>
-            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => void removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
-          </div>
-        )) : (
-          <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
-        )}
-      </div>
+              {handle}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFieldId(field.clientId);
+                  setInspectorOpen(true);
+                }}
+                className="min-w-0 flex-1 text-left"
+                aria-label={`Edit ${field.label || "untitled field"}`}
+              >
+                <span className="flex items-center gap-2">
+                  <span className="truncate text-sm font-medium text-copy-primary">{field.label || "Untitled field"}</span>
+                  {field.is_protected ? <LockKeyhole className="size-3.5 shrink-0 text-copy-muted" aria-label="Protected" /> : null}
+                  {!field.serverId ? <Chip>Draft</Chip> : null}
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-copy-muted">{field.key ?? fieldTypeLabel(field.field_type)}</span>
+              </button>
+              {moveButtons}
+              <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Delete ${field.label}`} onClick={() => void removeField(field)} disabled={disabled || field.is_protected}><Trash2 /></Button>
+            </div>
+          )}
+        />
+      ) : (
+        <EmptyState icon={Boxes} title="No fields configured" description="Add at least one field before using this module." />
+      )}
     </div>
   );
 

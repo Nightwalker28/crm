@@ -156,7 +156,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar . **5.7 batch 2** moved its seven boxed stage tiles onto one `StatGroup` |
+| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar. **5.7 batch 2** moved its seven boxed stage tiles onto one `StatGroup` |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | done |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -233,7 +233,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `custom/[moduleKey]/[recordId]/edit/page.tsx` | 10 | 5.3 | **new** | Shim. Added in batch 4: R2 sends the record's content fields to `/[id]/edit`, and this was the one module with no such route — the detail page *was* the form | done |
 | `client-portal/page.tsx` | 459 | 5.5 | rebuild | Calls `RecordTable` inline twice, no module table component | **done, batch 6** — both extracted to `components/client-portal/`; 456 → 330 lines; the missing `shellVariant="nested"` fixed on both |
 | `client-portal/pages/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
-| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5**; **footer corrected in 5.6 batch 2** — it kept a `sticky bottom-0` save bar that R3's count of ten had missed — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open |
+| `views/[moduleKey]/page.tsx` | 173 | 5.3 | rebuild | **Hand-rolled `role="tablist"` at `:162`** — no keyboard support | **done, batch 5**; **footer corrected in 5.6 batch 2** — it kept a `sticky bottom-0` save bar that R3's count of ten had missed — on `SectionTabs`; the three panels became named consts. Close-out added §7.9: it drops the condition editor for custom modules, whose list endpoint cannot receive conditions — fixing the list toolbar alone left this back door open. **5.7 batch 3** moved its column order onto `SortableList` |
 | `views/[moduleKey]/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `views/[moduleKey]/loading.tsx` | 5 | 5.1 | rebuild | | done |
 
@@ -265,7 +265,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/permissions/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/modules/page.tsx` | 361 | 5.6 | rebuild | Raw `Table` | **done, batches 4a + 7a** — `RecordTable`, the hand-rolled row gesture and `stopRowNavigation` deleted; then `EditorPanel`, and the Save became a submit |
 | `settings/modules/[moduleId]/page.tsx` | 331 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batch 4b** — both panels are lists, not matrices; two `colSpan` empty states retired |
-| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **done, batch 6c** — strip batch 5, booleans batch 1, and the rebuild here: `FieldInspector` stopped emitting its own sheet chrome, both `window.confirm` calls → `useConfirm`, the save row onto `ActionBar`, two A8 header links retired. **The drag-and-drop field list is 5.7's** (`SortableList`) |
+| `settings/module-builder/page.tsx` | 874 | 5.6 | rebuild | **Hand-rolled `role="tablist"` at `:479`** | **done, batch 6c** — strip batch 5, booleans batch 1, and the rebuild here: `FieldInspector` stopped emitting its own sheet chrome, both `window.confirm` calls → `useConfirm`, the save row onto `ActionBar`, two A8 header links retired. The drag-and-drop field list went onto `SortableList` in **5.7 batch 3** |
 | `settings/fields/page.tsx` | 788 | 5.6 | rebuild | **A10** — no deep link, selection is local state | **done, batch 6b** — error idiom batch 3, A10 batch 5, and the rebuild here: the catalogue onto `RecordTable`, two copies of the sheet recipe onto one `EditorPanel`, the fake menu retired, two lone `Checkbox` booleans onto `SegmentedBoolean` |
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
@@ -412,7 +412,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/DashboardOperationalWidgets.tsx` | 188 | 5.7 | rebuild | | batch 1 — states → `PanelStates`, `DashboardEmptyMessage` deleted, the activity capsule and the green unread dot retired (R5). **The rows are batch 6's** (`ListRow`) |
 | `dashboard/DashboardPersonalWidgets.tsx` | 161 | 5.7 | rebuild | Raw `Table` → `RecordTable` | **done, batch 1** — `RecordTable variant="readOnly"`; the module tile is `Card variant="interactive"` around a `StatTile` |
 | `dashboard/DashboardReportChartWidget.tsx` | 162 | 5.7 | rebuild | Load the `dataviz` skill | **done, batch 1** — states → `PanelStates`; the bar chart stopped painting each bar its own hue (rank as identity) |
-| `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | |
+| `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | **done, batches 1–3** — the header onto `PanelHeader` (1), the edit bar off `sticky top-2` onto an in-flow `ActionBar` (2), the grid onto `SortableList` (3) |
 | `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | |
 | `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | |
 | `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | |

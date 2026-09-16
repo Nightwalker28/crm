@@ -5275,6 +5275,72 @@ dialog now, so the Cancel flow needs a click on *Discard changes*. Any spec that
 **Next: batch 3** — `SortableList`, proved on `DashboardLayoutEditor` (its drag handle is still
 a bare icon in the header), then `views/[moduleKey]` and `module-builder`.
 
+### Status: batch 3 — `SortableList`, and focus that follows the moved item
+
+**Landed.** Ruling 4's first half: `components/ui/SortableList.tsx`, and all three
+single-list drag-and-drop implementations on it.
+
+**The API.** `items`, `getKey`, `getItemLabel`, `label`, `onMove(from, to)`, `disabled`, and a
+`renderItem(item, { index, count, handle, moveButtons })`. The primitive owns the `<ol>`, each
+`<li>`'s drag events, the grip, the two move buttons, and a polite live region; the call site
+owns what an item *looks* like, because a widget card and a divided column row share nothing
+visual. `className` is the list's layout and `itemClassName` an item's — the dashboard needs
+`col-span` on the grid item itself, and that is the only reason the second prop exists.
+
+**Rejected: a `SortableItem` compound component.** It would let a call site forget the move
+buttons, which is the one thing the primitive exists to make impossible. A render prop that
+*hands* the buttons over still lets a caller not render them, but it makes omitting them a
+visible act at the call site rather than an absence.
+
+**What the three originals disagreed on, and what won.**
+
+| | Dashboard | View manager | Module builder |
+|---|---|---|---|
+| Drag state | `useState` index | `useState` key | `dataTransfer` string |
+| Move buttons | `ArrowUp` / `ArrowDown` | `ArrowUp` / `ArrowDown` | `ChevronUp` / `ChevronDown` |
+| Announcement | none | its own live region | none |
+| Drop target marked | no | no | no |
+
+Arrows, state, one announcement — *"Email moved to position 1 of 3."* — and a drop target
+that is now visible: a 2px `outline-line-strong` on the item, whatever box the item draws. An
+outline because the primitive cannot know which element is the item's edge, and elevation or
+a tint would need it to. The item being dragged drops to 60% opacity.
+
+**Focus after a keyboard move — guarded, not yet observed.** React reorders keyed children by
+moving DOM nodes, and Chrome drops focus from a node that is removed and re-inserted. Which
+node moves depends on the direction: moving an item *up* usually moves its neighbour past it
+and leaves the focused node where it is, while moving it *down* moves the focused node itself.
+So the likely defect was **half** of the move buttons dropping the keyboard user back to
+`<body>` after one press — `view-manager-revamp:97` presses *Move up* once, which would pass
+either way. **This is reasoned from React's reconciliation, not seen in a browser.** The
+primitive restores focus after every move regardless — to the same control, or to its sibling
+when the item has reached the end and that button has just disabled itself — so the fix holds
+whichever half was broken. The browser pass confirms it; it is on the close-out's checklist
+below.
+
+- **`DashboardLayoutEditor`** — the shell lost its drag props, its `dragIndex` state and its own
+  move buttons; the header now takes `handle` and `moveButtons` from the list. The widget grid
+  is the `<ol>`, and the size class moved from the card to the `<li>` — the grid item.
+- **`views/[moduleKey]`** — `moveColumn` and `dropColumn` were the same splice written twice,
+  one per input method. They are one `moveColumnTo`, fed from the list, with indices mapped
+  back through `visibleColumns` — `selectedOptions` drops any saved key the definition no
+  longer has, so its indices are not `visibleColumns`' indices. Its own announcement stays for
+  add and remove; moves are the primitive's.
+- **`settings/module-builder`** — `moveField` swapped neighbours and `dropField` spliced; one
+  `moveFieldTo`. The census row's *"the drag-and-drop field list is 5.7's"* is now done.
+
+**Verification:** `tsc --noEmit`, lint, build green, one at a time. The first `tsc` caught a
+stray `</div>` from the view-manager splice; nothing else did.
+
+**For the close-out's browser pass** — this batch adds three checks no assertion covers:
+drag a widget and a column in both themes and see the outline; press *Move up* twice from the
+keyboard on each of the three pages and confirm the second press moves the item again; and
+confirm `view-manager-revamp:227`'s `dragTo` still lands, now that the `data-testid` is on the
+row inside the draggable `<li>` rather than on the draggable element itself.
+
+**Next: batch 4** — `Board`, on `TasksBoard` and `OpportunitiesPipelineBoard`, with `?display=`
+on both pages (ruling 7).
+
 ---
 
 ## 5.8 — Client portal, public, and auth
