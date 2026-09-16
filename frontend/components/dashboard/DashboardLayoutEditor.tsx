@@ -20,6 +20,7 @@ import {
   Table2,
   Trash2,
   X,
+  type LucideIcon,
 } from "lucide-react";
 
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
@@ -32,7 +33,9 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { isFlushCrmWidget } from "@/components/dashboard/DashboardCrmWidgets";
 import { Card } from "@/components/ui/Card";
+import { PanelHeader } from "@/components/ui/PanelStates";
 import { EmptyState } from "@/components/ui/EmptyState";
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -122,16 +125,16 @@ function widgetTitle(widget: DashboardWidget, modulesByName: Map<string, Accessi
   return dashboardModule ? getModuleDisplayName(dashboardModule.name, dashboardModule.description ?? undefined) : "Module Summary";
 }
 
-function widgetIcon(type: DashboardWidgetType) {
-  if (type === "note") return <NotebookText />;
-  if (type === "summary_table") return <Table2 />;
-  if (type === "pipeline_funnel") return <Filter />;
-  if (type === "weighted_forecast" || type === "report_chart") return <BarChart3 />;
-  if (type === "notifications") return <Bell />;
-  if (type === "recent_activity") return <ClipboardList />;
-  if (type === "quick_actions") return <Settings2 />;
-  if (type === "module_entry_points" || type === "module_summary") return <LayoutGrid />;
-  return <LayoutDashboard />;
+function widgetIcon(type: DashboardWidgetType): LucideIcon {
+  if (type === "note") return NotebookText;
+  if (type === "summary_table") return Table2;
+  if (type === "pipeline_funnel") return Filter;
+  if (type === "weighted_forecast" || type === "report_chart") return BarChart3;
+  if (type === "notifications") return Bell;
+  if (type === "recent_activity") return ClipboardList;
+  if (type === "quick_actions") return Settings2;
+  if (type === "module_entry_points" || type === "module_summary") return LayoutGrid;
+  return LayoutDashboard;
 }
 
 function DashboardWidgetShell({
@@ -177,39 +180,42 @@ function DashboardWidgetShell({
           if (isEditing) onDrop(index);
         }}
       >
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle px-4 py-3">
-        <div className="flex min-w-0 items-center gap-2">
-          {isEditing ? <GripVertical className="h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-label="Drag widget" /> : null}
-          <div className="text-copy-muted [&_svg]:h-4 [&_svg]:w-4">{widgetIcon(widget.type)}</div>
-          <h2 className="truncate text-sm font-semibold text-copy-primary">{title}</h2>
-        </div>
-        {isEditing ? (
-          <div className="flex flex-wrap items-center gap-1">
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} up`} disabled={index === 0} onClick={() => onMove(index, index - 1)}>
-              <ArrowUp />
-            </Button>
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
-              <ArrowDown />
-            </Button>
-            <SegmentedControl
-              aria-label={`Resize ${title}`}
-              value={widget.size}
-              onValueChange={(size) => onResize(widget.id, size as DashboardWidgetSize)}
-              className="mx-1"
-            >
-              {(Object.keys(SIZE_LABELS) as DashboardWidgetSize[]).map((size) => (
-                <SegmentedItem key={size} value={size} aria-label={`Resize ${title} to ${size}`}>
-                  {SIZE_LABELS[size]}
-                </SegmentedItem>
-              ))}
-            </SegmentedControl>
-            <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
-              <Trash2 />
-            </Button>
-          </div>
-        ) : null}
+      {/* R7: the widget's name is a section heading, one ink step quieter than the figures
+          under it. It was an `h2` in `text-copy-primary` — the same weight as the data. */}
+      <div className="border-b border-line-subtle px-4 py-3">
+        <PanelHeader
+          title={title}
+          icon={isEditing ? undefined : widgetIcon(widget.type)}
+          action={isEditing ? (
+            <div className="flex flex-wrap items-center gap-1">
+              <GripVertical className="size-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" />
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} up`} disabled={index === 0} onClick={() => onMove(index, index - 1)}>
+                <ArrowUp />
+              </Button>
+              <Button type="button" variant="ghost" size="icon-sm" aria-label={`Move ${title} down`} disabled={index === count - 1} onClick={() => onMove(index, index + 1)}>
+                <ArrowDown />
+              </Button>
+              <SegmentedControl
+                aria-label={`Resize ${title}`}
+                value={widget.size}
+                onValueChange={(size) => onResize(widget.id, size as DashboardWidgetSize)}
+                className="mx-1"
+              >
+                {(Object.keys(SIZE_LABELS) as DashboardWidgetSize[]).map((size) => (
+                  <SegmentedItem key={size} value={size} aria-label={`Resize ${title} to ${size}`}>
+                    {SIZE_LABELS[size]}
+                  </SegmentedItem>
+                ))}
+              </SegmentedControl>
+              <Button type="button" variant="destructiveGhost" size="icon-sm" aria-label={`Remove ${title}`} onClick={() => onRemove(widget.id)}>
+                <Trash2 />
+              </Button>
+            </div>
+          ) : undefined}
+        />
       </div>
-      <div className={cn("p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
+      {/* A stat group fills the panel edge to edge and carries its own cell padding (§4.7). */}
+      <div className={cn(!isFlushCrmWidget(widget.type) && "p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
       </section>
     </Card>
   );

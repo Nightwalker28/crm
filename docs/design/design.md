@@ -1267,6 +1267,26 @@ Contract: one `StatTile`, one stat-figure size (§3.3), metrics on
 `lib/chartColors.ts` and nowhere else (`tokens.md` §3.4). A metric is a **number plus its
 label** — a sparkline or a delta is allowed, a decorative gradient is not (§1.2).
 
+**`StatTile` is an ink group; `StatGroup` draws the rules** (rebuild 5.7 ruling 1). A tile
+is a field label, one figure at the stat size, and at most one line of metadata context. It
+has no border and no ground of its own, because every metric row sits inside a panel already
+and a bordered tile there is the third container level §1.3 forbids. A row of metrics is one
+`StatGroup`: a grid whose cells are separated by hairline rules drawn on the cells' own
+edges and clipped at the group's, so the rules survive any wrap and any ground. The group
+fills its container edge to edge — a panel that holds one draws no body padding around it.
+There is **no size prop**: a figure that needs to be smaller is a `Fact` (§7.12), not a
+stat. A tile that is also a link is `Card variant="interactive"` holding a `StatTile`;
+the primitive does not grow an `href`.
+
+The figure keeps `tabular-nums`, against the usual advice for a large standalone number: on
+a dashboard the figures re-render in place when the period changes, and proportional digits
+make the tile's width jitter under the operator's eye.
+
+**A widget is a panel.** `Card` + `PanelHeader`, and its four states are `PanelLoading` /
+`PanelError` / `PanelEmpty` (§7.4) — never a dashed box inside the card. A bucket bar or a
+funnel is a single-series chart: the bar takes `seriesColor(0)`, and its label and figure
+stay in ink. A pipeline value is not good news, so it is never `text-state-success` (R5).
+
 Load the `dataviz` skill before touching chart layout or stat-tile composition.
 
 ---

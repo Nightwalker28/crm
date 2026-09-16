@@ -7,6 +7,7 @@ import {
   CalendarDays,
   ClipboardList,
   FileText,
+  LayoutGrid,
   Mail,
   Pencil,
   Plus,
@@ -29,7 +30,6 @@ import {
   type CrmDashboardSummary,
 } from "@/components/dashboard/DashboardCrmWidgets";
 import {
-  DashboardEmptyMessage as EmptyMessage,
   DashboardModuleEntryPoints,
   DashboardNotifications,
   DashboardQuickActions,
@@ -53,6 +53,7 @@ import {
   type DashboardWidgetSize,
 } from "@/components/dashboard/DashboardLayoutEditor";
 import { PageShell } from "@/components/ui/PageShell";
+import { PanelEmpty } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -375,7 +376,9 @@ export default function DashboardHomePage() {
     }
     if (widget.type === "module_summary") {
       const dashboardModule = widget.module_key ? modulesByName.get(widget.module_key) : null;
-      if (!dashboardModule) return <EmptyMessage>This module is no longer available in your access scope.</EmptyMessage>;
+      if (!dashboardModule) {
+        return <PanelEmpty icon={LayoutGrid} title="This module is no longer available" description="Your role no longer has access to it. Remove this widget, or ask an administrator." />;
+      }
       return <DashboardModuleSummary module={dashboardModule} summary={summary} unreadCount={unreadCount} />;
     }
     return null;

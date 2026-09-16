@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Bell, ClipboardList, LayoutGrid, Zap } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import type { UserNotification } from "@/hooks/useNotifications";
 import { formatDateTime } from "@/lib/datetime";
@@ -29,14 +29,6 @@ function actionLabel(action: string) {
   return action.replace(/_/g, " ");
 }
 
-export function DashboardEmptyMessage({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-dashed border-line-default bg-surface-muted px-4 py-6 text-sm text-copy-muted">
-      {children}
-    </div>
-  );
-}
-
 export function DashboardModuleEntryPoints({
   modules,
   isLoading,
@@ -44,9 +36,9 @@ export function DashboardModuleEntryPoints({
   modules: AccessibleModule[];
   isLoading: boolean;
 }) {
-  if (isLoading) return <div className="text-sm text-copy-muted">Loading module access...</div>;
+  if (isLoading) return <PanelLoading label="Loading modules…" />;
   if (!modules.length) {
-    return <DashboardEmptyMessage>No operational modules are currently available.</DashboardEmptyMessage>;
+    return <PanelEmpty icon={LayoutGrid} title="No modules are available yet" description="Modules appear here once your role is given access to them." />;
   }
   return (
     <div className="grid gap-3 md:grid-cols-2">
@@ -78,7 +70,7 @@ export function DashboardModuleEntryPoints({
 
 export function DashboardQuickActions({ actions }: { actions: DashboardQuickAction[] }) {
   if (!actions.length) {
-    return <DashboardEmptyMessage>No quick actions are available until operational modules are enabled.</DashboardEmptyMessage>;
+    return <PanelEmpty icon={Zap} title="No quick actions yet" description="Quick actions appear once the modules they open are enabled for your role." />;
   }
   return (
     <div className="space-y-3">
@@ -112,26 +104,18 @@ export function DashboardRecentActivity({
   isError: boolean;
   onRetry: () => void;
 }) {
-  if (isLoading) return <div className="text-sm text-copy-muted">Loading activity...</div>;
-  if (isError) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
-        <span>Recent activity could not be loaded.</span>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>Retry</Button>
-      </div>
-    );
-  }
-  if (!items.length) return <DashboardEmptyMessage>No recent activity is available yet.</DashboardEmptyMessage>;
+  if (isLoading) return <PanelLoading label="Loading activity…" />;
+  if (isError) return <PanelError message="Recent activity could not be loaded." onRetry={onRetry} />;
+  if (!items.length) return <PanelEmpty icon={ClipboardList} title="No recent activity yet" />;
   return (
     <div className="divide-y divide-line-subtle">
       {items.map((item) => (
         <div key={item.id} className="py-4 first:pt-0 last:pb-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-line-default bg-surface-raised px-2 py-1 text-2xs font-medium text-copy-secondary">
-              {actionLabel(item.action)}
-            </span>
+          {/* The action was a bordered capsule — `Pill` under another name (R5). It is a word
+              in the row's metadata. */}
+          <div className="flex flex-wrap items-baseline gap-x-2">
             <span className="text-sm font-medium text-copy-primary">{getModuleDisplayName(item.module_key)}</span>
-            <span className="text-xs text-copy-muted">{item.entity_type} #{item.entity_id}</span>
+            <span className="text-xs text-copy-muted">{actionLabel(item.action)} · {item.entity_type} #{item.entity_id}</span>
           </div>
           <div className="mt-2 text-sm text-copy-secondary">{item.description || `${item.entity_type} ${item.entity_id}`}</div>
           <div className="mt-1 text-xs text-copy-muted">{formatDateTime(item.created_at)}</div>
@@ -154,16 +138,9 @@ export function DashboardNotifications({
   onRetry: () => void;
   onRead: (notificationId: number) => void;
 }) {
-  if (isLoading) return <div className="text-sm text-copy-muted">Loading notifications...</div>;
-  if (isError) {
-    return (
-      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
-        <span>Notifications could not be loaded.</span>
-        <Button type="button" variant="outline" size="sm" onClick={onRetry}>Try again</Button>
-      </div>
-    );
-  }
-  if (!notifications.length) return <DashboardEmptyMessage>No notifications yet.</DashboardEmptyMessage>;
+  if (isLoading) return <PanelLoading label="Loading notifications…" />;
+  if (isError) return <PanelError message="Notifications could not be loaded." onRetry={onRetry} />;
+  if (!notifications.length) return <PanelEmpty icon={Bell} title="No notifications yet" />;
   return (
     <div className="-mx-4 divide-y divide-line-subtle">
       {notifications.slice(0, 6).map((notification) => (
@@ -181,7 +158,8 @@ export function DashboardNotifications({
               <div className="mt-1 text-p-sm text-copy-secondary">{notification.message}</div>
               <div className="mt-2 text-xs text-copy-muted">{formatDateTime(notification.created_at)}</div>
             </div>
-            {notification.read_at ? null : <span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-state-success" />}
+            {/* Unread is not success (R5): the mark is ink, and it says what it means. */}
+            {notification.read_at ? null : <span className="mt-1.5 size-2 shrink-0 rounded-full bg-copy-primary" role="img" aria-label="Unread" />}
           </div>
         </Link>
       ))}

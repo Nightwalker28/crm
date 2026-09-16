@@ -4,7 +4,9 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
-import { DashboardEmptyMessage } from "@/components/dashboard/DashboardOperationalWidgets";
+import { BarChart3, Lock } from "lucide-react";
+
+import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { apiFetch } from "@/lib/api";
@@ -103,24 +105,21 @@ export function DashboardReportChartWidget({
     staleTime: 60000,
   });
 
-  if (!hasReportAccess) return <DashboardEmptyMessage>Reports access is required for saved report widgets.</DashboardEmptyMessage>;
+  if (!hasReportAccess) {
+    return <PanelEmpty icon={Lock} title="Reports access is required" description="Ask an administrator for access to reports to see this chart." />;
+  }
   if (!savedReport) {
     return (
-      <div className="space-y-3">
-        <DashboardEmptyMessage>This saved report is no longer available.</DashboardEmptyMessage>
-        <Button asChild variant="outline" size="sm"><Link href={DASHBOARD_ROUTES.reports}>Open Reports</Link></Button>
-      </div>
+      <PanelEmpty
+        icon={BarChart3}
+        title="This saved report is no longer available"
+        description="It may have been deleted. Remove this widget, or save the report again."
+        action={<Button asChild variant="outline" size="sm"><Link href={DASHBOARD_ROUTES.reports}>Open reports</Link></Button>}
+      />
     );
   }
-  if (reportQuery.isLoading) return <div className="text-sm text-copy-muted">Loading report chart...</div>;
-  if (reportQuery.isError) {
-    return (
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/30 bg-state-danger-muted p-3 text-sm text-copy-secondary">
-        <span>This saved report could not be loaded.</span>
-        <Button type="button" variant="outline" size="sm" onClick={() => void reportQuery.refetch()}>Retry</Button>
-      </div>
-    );
-  }
+  if (reportQuery.isLoading) return <PanelLoading label="Loading report…" />;
+  if (reportQuery.isError) return <PanelError message="This saved report could not be loaded." onRetry={() => void reportQuery.refetch()} />;
 
   const report = reportQuery.data;
   const rows = report?.rows ?? [];
@@ -129,9 +128,9 @@ export function DashboardReportChartWidget({
 
   return (
     <div className="space-y-3">
-      <div>
-        <div className="text-sm font-medium text-copy-primary">{savedReport.name}</div>
-        <div className="mt-1 text-xs text-copy-muted">{getModuleDisplayName(savedReport.module_key)} / {report?.dimension.label ?? savedReport.config.dimension}</div>
+      <div className="min-w-0">
+        <div className="truncate text-sm font-medium text-copy-primary">{savedReport.name}</div>
+        <div className="mt-1 truncate text-xs text-copy-muted">{getModuleDisplayName(savedReport.module_key)} by {report?.dimension.label ?? savedReport.config.dimension}</div>
       </div>
       {rows.length ? (
         <ChartContainer config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-64 w-full min-w-0">
@@ -149,14 +148,15 @@ export function DashboardReportChartWidget({
                 <XAxis dataKey="label" interval={0} tickLine={false} axisLine={false} stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-22} textAnchor="end" height={48} />
                 <YAxis tickLine={false} axisLine={false} stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} width={42} />
                 <Tooltip content={<ChartTooltipContent />} />
-                <Bar dataKey="value" radius={[5, 5, 0, 0]}>
-                  {rows.map((row, index) => <Cell key={row.key} fill={seriesColor(index)} />)}
-                </Bar>
+                {/* One measure is one series, so one colour. Painting each bar its own hue
+                    encoded rank as identity, and a filter that dropped a row repainted every
+                    bar after it. */}
+                <Bar dataKey="value" fill={seriesColor(0)} radius={[4, 4, 0, 0]} />
               </BarChart>
             )}
           </ResponsiveContainer>
         </ChartContainer>
-      ) : <DashboardEmptyMessage>No report rows match this saved report.</DashboardEmptyMessage>}
+      ) : <PanelEmpty icon={BarChart3} title="No rows match this report" description="The report's filters return nothing for the current data." />}
     </div>
   );
 }

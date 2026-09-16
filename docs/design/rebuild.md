@@ -6,6 +6,8 @@ the owner took the record spine on 14 Aug 2026. **5.1 is done** — batches A, B
 Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.2, 5.3 and
 5.4 are done.** **5.5 is done** — seven batches, `7cb268e` through `8577c87`. Its browser pass
 found a layout defect every automated check had passed over; that is written up at the end of
+the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
+**5.7 is in progress**; its measurement, rulings and batch order are written at the head of
 the sub-phase.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
@@ -4990,6 +4992,239 @@ The surfaces no phase has touched.
 - **A11** — reports costs 2 clicks because a single-item module became a collapsible
   sidebar group, and opening it collapses the group you were in.
 - ~~`finance/invoice-generator/page.tsx` is a 3-line `redirect()` still in the route list.~~ **Deleted in 5.3 close-out** — zero inbound links, and it was costing both rendered guards a route visit.
+
+### Decided before the first line — the measurement, the batch order, and seven rulings
+
+**Measured at the start of the sub-phase, 2026-09-16.** `check-design.sh` is at the known
+**2 of 14** (`LynkSplash` → 5.9, `ClientPageCreateForm` → 5.8). The surface is **8,314
+lines** across the five pages (`reports` 943, `mail` 752, `calendar` 631, `dashboard` 481,
+`tasks` 281) and their components. `Table.tsx` has **seven** importers: the three primitives
+that implement it, `reports`, `DashboardPersonalWidgets`, and two client-portal pages that
+are 5.8's.
+
+**Five claims in the plan above were re-measured, and four of them moved.**
+
+- **The metric implementations are four, not five, and the 28 big numbers are six.** 5.3–5.6
+  took most of them with their pages. What is left on this surface: `DashboardCrmWidgets`'
+  `Metric` and `DashboardModuleSummary` (both `text-3xl font-semibold`), `reports`'
+  `MetricCard` (`text-xl`) plus two inline `text-3xl` totals beside its chart, and the
+  pipeline stage tiles on `sales/opportunities` (`text-xl`) — a 5.5 page, but a metric row,
+  and it moves with the primitive that supplies it. Three sizes for one role, and none of
+  them the §3.3 stat figure. `support/cases`' `SupportMetric` is out of scope (decision 8).
+  `IntegrationProviderRegistry`'s `Metric` is a label over a value — a `Fact`, not a stat —
+  and `ImportControls`' `SummaryCard` is a result count inside a dialog; neither is a
+  dashboard metric, and neither is 5.7's.
+- **There are two calendar grids, not three.** `BookingForm` draws no month grid — it lists
+  slots. `TasksCalendar` and `calendar/page.tsx` are the whole set, and they are the same
+  42-cell grid written twice, each with its own mobile day-picker written twice more.
+- **`DropZone` has one consumer.** The only drag-to-upload target in the app is
+  `DocumentUploadFormPage`; every other `type="file"` is a button. A primitive with one call
+  site is a component moved into `ui/`, not a shared shape, so **`DropZone` is not built**.
+  It is filed back to documents with the reason.
+- **The five drag-and-drop implementations are two shapes, not one.** Three reorder a single
+  list — `DashboardLayoutEditor`, `settings/module-builder`, `views/[moduleKey]` — and two
+  move a card between columns — `TasksBoard`, `OpportunitiesPipelineBoard`. That is
+  `SortableList` and `Board`, as planned, but it means `SortableList` has three consumers
+  and `Board` two, and neither may be proven on one.
+- **The "11 row implementations" count has no source.** Nothing in `docs/` lists the eleven.
+  It is re-measured in the batch that builds `ListRow`, not trusted.
+
+And one thing nobody had counted: **`DashboardLayoutEditor`'s edit bar is `sticky top-2`**, a
+floating translucent `backdrop-blur` card. R3 counted ten `sticky bottom-0` and 5.4 and 5.6
+took all ten; this one is `top`, which is why the count missed it.
+
+#### Ruling 1 — `StatTile` is an ink group, and `StatGroup` is the box
+
+A metric is a label, one figure at the §3.3 stat size, and at most one line of context. It
+draws **no border of its own**. A row of metrics is one `StatGroup` — a grid whose cells are
+separated by rules, which is exactly the archetype 5 wireframe — and the group is the only
+container.
+
+Every call site proves why: `DashboardCrmWidgets`' metrics already sit inside a widget
+`Card`, and `reports`' `MetricCard` sits inside a `Card` inside the page. A bordered tile
+there is the third container level §1.3 forbids, and it is what both do today.
+
+**Rejected: a bordered tile, one box per metric.** It is what any CRM draws, and on a
+dashboard it produces a lattice of equal boxes in which nothing leads. The figure is what the
+eye lands on (§3.3); the box around it competes with it.
+
+**Rejected: a `size` prop.** Three sizes for one role is the drift being removed. A figure
+that needs to be smaller is not a stat, it is a `Fact`.
+
+`DashboardModuleSummary` is the one tile that is also a link. It stays interactive —
+`Card variant="interactive"` earns its box by being clickable (R8) — and holds a `StatTile`
+inside rather than growing a `href` prop on the primitive.
+
+#### Ruling 2 — a dashboard widget is a panel, and its states are `PanelStates`
+
+`DashboardWidgetShell` becomes `Card` + `PanelHeader` (R7 — its `h2` is `text-copy-primary`
+today, the same weight as the data under it). The widgets' own loading / error / empty — six
+hand-written loading lines, four tinted error boxes, and `DashboardEmptyMessage`, a **dashed
+box inside the widget card** — become `PanelLoading` / `PanelError` / `PanelEmpty`, and
+`DashboardEmptyMessage` is deleted.
+
+**Colour in the widgets (R5).** `BucketList`'s bars are `bg-state-success/70`, the funnel is
+`bg-state-success-muted` with green figures, and the forecast and owner rows print their
+amounts in `text-state-success`. None of it is an exception — a pipeline value is not *good
+news*, it is a number — so it is ink. The bars are a single-series chart and take
+`seriesColor(0)` from `lib/chartColors.ts`, the only legal source (`tokens.md` §3.4).
+
+#### Ruling 3 — the dashboard header carries the page's own actions, and nothing else
+
+The header draws up to **eight** controls: a period select, Refresh, Edit dashboard, Activity
+log, New work, and three links — Calendar, Mail, Documents. The three links duplicate the
+sidebar one inch to the left, and the `quick_actions` widget one inch below. R4 and §4.4 make
+it a row of one height; this ruling makes it a row of **the page's actions** — period,
+refresh, edit. The links go; `New work` (a link to the tasks *list*, named like a create
+action) goes; Activity log, admin-only since A9, stays in the sidebar's Settings where the
+other admin surfaces are.
+
+**Rejected: an overflow menu for the five.** It keeps five ways to leave the page on the one
+page that already has a sidebar and a launcher widget, and hides them one click deeper.
+
+Edit mode's bar is not sticky (R3). It becomes an `ActionBar` above the grid, in flow, and
+its two `window.confirm` calls become `useConfirm` — the same move 5.6 batch 6c made.
+
+#### Ruling 4 — `SortableList` and `Board` take no dependency, and the keyboard path is the contract
+
+No drag-and-drop library is in `package.json`, and §7.2 names shadcn and lucide as the only
+sources. **Neither primitive adds one.** Every one of the five call sites *already* ships a
+keyboard path beside the pointer one — move-up/move-down buttons on the three lists, a stage
+or status `Select` on every board card — because HTML5 drag has none. The primitives make
+that pairing the contract rather than a per-page courtesy: `SortableList` owns the drag
+handle, the drop indicator, the move buttons and a polite live-region announcement
+(`"Moved Pipeline funnel to position 3 of 11"`); `Board` owns the columns, the drop target
+state, the card's move control and the four §7.4 states the two boards currently each
+hand-write.
+
+**Rejected: `@dnd-kit`.** It is the usual answer and its keyboard sensor is good, but it is a
+new component source against §7.2 to solve a problem every call site has already solved
+with a control the operator can see. A hidden keyboard sensor is less discoverable than a
+visible move button, not more.
+
+**The drop target stops borrowing the action tint.** Both boards paint the hovered column
+`border-action-primary bg-action-primary-muted` — the fifth instance of the action tint
+carrying a state that 5.6 batch 7d retired three times and batch 8 found a fourth of. A drop
+target is `border-line-strong` on `bg-surface-raised`: elevation, not colour (§4.6).
+
+**R5 on the cards.** An overdue card keeps its warning mark — overdue *is* the exception.
+`OpportunitiesPipelineBoard`'s `border-state-info/50` "High-value deal" does not: a large
+deal is not an exception, and a quartile computed over whatever page happens to be loaded
+is not a fact about the deal.
+
+#### Ruling 5 — one `MonthGrid`, and the day picker is part of it
+
+`TasksCalendar` and `calendar/page.tsx` become one `MonthGrid`: the 42-cell grid, weekday
+header, month navigation, today marker, a per-day entry list with `+N more`, and the narrow
+day-picker both files write separately below `md`/`lg`. Entries are a render prop — a task
+and an event are different rows, and the grid does not know either.
+
+The today marker is `bg-action-primary` on one file and absent on the other; it becomes a
+weight and ink change on the date numeral, not a filled circle. Event tone by invite response
+(`pending` warning, `shared` info) stays — *pending your response* is an exception the
+operator must act on — but `shared` loses its tint: it is a property, not a state.
+
+**Rejected: a week or agenda view.** Neither page has one today, and adding a view is a
+feature, not a rebuild.
+
+#### Ruling 6 — A11: a group of one is a link
+
+`SidebarMenuItemCollapsible` wraps a single child in a disclosure, so Reports is a button
+that opens a list containing Reports. The fix is **generic, not reports-specific**: the
+sidebar renders any group whose resolved item count is one as a `SidebarMenuItemLink`, with
+the group's icon and the item's label. A tenant that disables all but one module in a group
+gets the same treatment, which is the point — the defect was never about reports.
+
+**Rejected: moving reports into the `workspace` group.** It fixes the one instance by
+editing the registry and leaves the mechanism that produced it.
+
+#### Ruling 7 — the tasks display is `?display=`, and so is the pipeline's
+
+`tasks` holds `list | board | calendar` and `sales/opportunities` holds `table | pipeline` in
+component state, so a reload or a shared link loses the view — A10's defect on the two pages
+5.6 did not reach. §4.7's address vocabulary has `?view=` (saved view id, 5.5) and `?tab=` (a
+workspace within one page). A display mode is neither: it re-renders the same data, which is
+exactly the §7.7 row *a value one region re-renders from*. It gets its own word,
+**`?display=`**, written into the vocabulary table before either page uses it.
+
+`CalendarEventDialog`'s Radix `switch.tsx` becomes `SegmentedBoolean`, as 5.6 ruling 4 filed.
+
+#### The batch order
+
+| | Batch | Why here |
+|---|---|---|
+| 1 | `StatTile` + `StatGroup`, and the dashboard's widgets onto `PanelStates` (rulings 1, 2) | Archetype 5's own primitive, proved on its own page first. **Load `dataviz` before it** |
+| 2 | The dashboard page — header (ruling 3), edit mode off sticky and off `window.confirm`, and the second and third `StatTile` consumers (`reports`' metrics, the pipeline stage tiles) | The second consumer is the API test (mitigation rule) |
+| 3 | `SortableList` — `DashboardLayoutEditor`, `views/[moduleKey]`, `module-builder` | Three consumers, and batch 2 has just rebuilt the first |
+| 4 | `Board` — both kanbans, with `?display=` on both pages (ruling 7) | |
+| 5 | `MonthGrid` — `TasksCalendar`, then `calendar/page.tsx` rebuilt around it; `CalendarEventDialog` onto `SegmentedBoolean` | |
+| 6 | `ListRow` — re-measure the set first, then the activity / notification / invite / message rows | Last of the primitives, because 1–5 each rebuild one of its consumers |
+| 7 | `reports` rebuilt — raw `Table` → `RecordTable`, which takes `Table.tsx` to the R10 importer count outside 5.8 | |
+| 8 | `mail` rebuilt, `RecordEmailComposer`, `TaskDialog`, and the shell `adopt` rows — sidebar with A11 (ruling 6), `ProfileMenu`, `GlobalCommandPalette`, `chart.tsx` | |
+| 9 | Close-out — the end-of-sub-phase pass and one correction commit | |
+
+### Status: batch 1 — `StatTile`, and a dashed box inside every widget
+
+**Landed.** Rulings 1 and 2, rule first: `design.md` archetype 5 now carries the `StatTile` /
+`StatGroup` contract, the `tabular-nums` decision, and *a widget is a panel*.
+
+- **`components/ui/StatTile.tsx`** — `StatTile` (label, figure, one line of context; no border,
+  no size prop) and `StatGroup` (the grid, and the rules). The rules are each cell's own
+  `before:` / `after:` hairline one pixel outside its leading and top edge, clipped by the
+  group's `overflow-hidden`, so a first-column cell loses its left rule wherever the grid
+  wraps. **Rejected: `gap-px` over a `bg-line-subtle` ground** — it only works if the tiles
+  paint the ground behind them, and a widget in edit mode was `bg-surface-raised` while the
+  tiles would have been `bg-surface`. **Rejected: `divide-x`** — it cannot follow a wrap
+  across a breakpoint.
+- **`DashboardCrmWidgets`** — `Metric` deleted. The snapshot and the weighted forecast are
+  `StatGroup`s, and both render **flush**: `isFlushCrmWidget` tells the shell not to pad them,
+  and the widget pads its own four states instead so a loading line is not jammed against the
+  card edge. The forecast's four tiles were two `sm:grid-cols-2` grids of boxed metrics; they
+  are one group over a `divide-y` stage list. `Best Case` / `New Leads` / `Pipeline Value`
+  went sentence case while their lines were being rewritten anyway.
+- **Colour (R5).** `BucketList`'s bars were `bg-state-success/70` — green for a count of lost
+  deals as much as won ones. They take `seriesColor(0)`. The funnel was
+  `bg-state-success-muted` boxes with green amounts, **indented by list index** — a stage's
+  left edge encoded its position and its width encoded its count, and the two read as one
+  quantity. It is baseline-anchored bars now, which is the only honest length comparison.
+  The forecast's and owner rows' amounts went from `text-state-success` to ink.
+- **`DashboardReportChartWidget`** — the bar chart painted every bar a different series hue,
+  `seriesColor(index)`. One measure is one series; colouring by position encodes rank as
+  identity, and a filter that drops a row repaints every bar after it (dataviz: colour follows
+  the entity, never its rank). One colour, 4px data-ends. The pie keeps its categorical hues
+  — there, each slice *is* an entity.
+- **States** — the six hand-written `Loading…` lines, four tinted error boxes (two labelled
+  `Retry`, two `Try again`) and **`DashboardEmptyMessage` — a dashed box inside the widget
+  card, the third container level** — are `PanelLoading` / `PanelError` / `PanelEmpty`.
+  `DashboardEmptyMessage` is deleted.
+- **`DashboardOperationalWidgets`** — the recent-activity row's action was a bordered
+  `rounded-full` capsule, `Pill` under another name; it is a word in the row's metadata. The
+  notifications widget's unread dot was `bg-state-success` — unread is not success — and it is
+  `bg-copy-primary` with `aria-label="Unread"`. The rows themselves wait for `ListRow`
+  (batch 6).
+- **`DashboardPersonalWidgets`** — the summary table was raw `Table` and is `RecordTable
+  variant="readOnly" shellVariant="nested"`, which takes `Table.tsx` from seven importers to
+  **six**. Its `View →` column went: the module name is the link. The module tile is `Card
+  variant="interactive"` around a `StatTile`, per ruling 1. The filter's icon was
+  hand-positioned `absolute` over a plain `Input`; it is `InputGroup`.
+- **The widget shell's header** is `PanelHeader` (R7): it was an `h2` in
+  `text-copy-primary`, the same weight as the figures under it.
+
+**Verification:** lint, `tsc --noEmit` and `npm run build` green, per the cadence. The build
+caught what `tsc` did not: `.next/dev/types/validator.ts` was a half-written generated file
+whose syntax error stopped `tsc` before it reached source, so a stale import of the deleted
+`DashboardEmptyMessage` in `app/dashboard/page.tsx` passed the typecheck. **If `tsc` reports
+only an error inside `.next/`, delete `.next/dev/types` and run it again** before believing it.
+
+**Left for later batches, knowingly.** The widget titles are still Title Case (`CRM Snapshot`,
+`Leads By Status`) in `widgetTitle` and the page's catalogue — copy, 5.9's, and
+`dashboard-edit-mode-revamp` asserts them. The edit-mode `Card` still turns
+`bg-surface-raised`, and the drag handle is still a bare icon in the header — batch 2 and
+batch 3.
+
+**Next: batch 2** — the dashboard page's header (ruling 3), edit mode off `sticky` and off
+`window.confirm`, the page-level error banners onto `PanelError`, and `reports`' metrics and
+the pipeline stage tiles onto `StatTile` as the API test.
 
 ---
 

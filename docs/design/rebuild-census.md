@@ -408,10 +408,10 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `dashboard/DashboardCrmWidgets.tsx` | 231 | 5.7 | rebuild | `StatTile` — 1 of 5 metric implementations | |
-| `dashboard/DashboardOperationalWidgets.tsx` | 188 | 5.7 | rebuild | | |
-| `dashboard/DashboardPersonalWidgets.tsx` | 161 | 5.7 | rebuild | Raw `Table` → `RecordTable` | |
-| `dashboard/DashboardReportChartWidget.tsx` | 162 | 5.7 | rebuild | Load the `dataviz` skill | |
+| `dashboard/DashboardCrmWidgets.tsx` | 231 | 5.7 | rebuild | `StatTile` — 1 of 5 metric implementations | **done, batch 1** — `Metric` → `StatGroup`/`StatTile`, states → `PanelStates`, bars and amounts off `state-success` onto `seriesColor(0)` and ink (R5), the index-indented funnel onto one baseline |
+| `dashboard/DashboardOperationalWidgets.tsx` | 188 | 5.7 | rebuild | | batch 1 — states → `PanelStates`, `DashboardEmptyMessage` deleted, the activity capsule and the green unread dot retired (R5). **The rows are batch 6's** (`ListRow`) |
+| `dashboard/DashboardPersonalWidgets.tsx` | 161 | 5.7 | rebuild | Raw `Table` → `RecordTable` | **done, batch 1** — `RecordTable variant="readOnly"`; the module tile is `Card variant="interactive"` around a `StatTile` |
+| `dashboard/DashboardReportChartWidget.tsx` | 162 | 5.7 | rebuild | Load the `dataviz` skill | **done, batch 1** — states → `PanelStates`; the bar chart stopped painting each bar its own hue (rank as identity) |
 | `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | |
 | `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | |
 | `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | |
