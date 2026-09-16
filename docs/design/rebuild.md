@@ -5597,6 +5597,63 @@ and they were not counted.
 **Next: batch 7** — `reports` rebuilt: raw `Table` → `RecordTable`, and `ForecastBucketList` onto
 `ListRow`.
 
+### Status: batch 7 — `reports`, and one failure that said so twice
+
+**Landed.** 943 → 918 lines. Batch 2 had taken the page's metrics; this is the rest of it.
+
+- **R10.** The display's *Table* was a raw `Table` in a `ModuleTableShell`; it is `RecordTable
+  variant="readOnly" shellVariant="nested"`, the dashboard summary's shape. **`Table.tsx`'s
+  importers outside the primitives are now the two client-portal pages, both 5.8's** — R10's
+  count is true for everything 5.7 owns. The saved-reports table went `nested` too, and lost its
+  per-row *Open* button: the row already opens the report and is labelled *Open saved report …*.
+- **`ForecastBucketList`** — the fourteenth row from batch 6's count, and a tinted, bordered box
+  inside the forecast card. It is a `SectionHeading` over a `RowList`.
+- **One message per failure.** The page had four tinted `role="alert"` boxes, and two of them
+  doubled another message:
+  - *The report could not be generated* was a banner between the filters and the report panel,
+    and the panel under it still drew *No report data yet*. It is the panel's `PanelError`.
+  - `actionError` was one string for seven failures, drawn as a banner on the page **and** inside
+    the save dialog — so a failed *Save as* printed its message twice, once behind the backdrop.
+    The name conflict is a `FieldError` under *Name* with `aria-invalid`, and says what to do
+    (*Choose another name*). The other six — update, delete, both exports, a preset the role cannot
+    reach — are toasts, as batch 2 made the dashboard's.
+  - The invalid forecast range is a `FieldError` under *End*, where `aria-describedby` already
+    pointed. The forecast's load failure is `PanelError`.
+- **R7.** Three `h2`s — `text-sm` twice and `text-base` once, all `text-copy-primary` — are
+  `PanelHeader`. The report panel's display switch is its header's action.
+- **States.** The chart's `Skeleton` box and its `EmptyState` are `PanelLoading` / `PanelEmpty`, and
+  the no-modules and forecast-unavailable cards use `PanelEmpty` too.
+- **Presets** were `bg-surface-muted` boxes that took `hover:border-action-primary/60` — the action
+  tint as hover. A preset is a control, so it keeps its box (R8), with `border-line-subtle` and no
+  ground, strengthening on hover, and a `focus-visible` outline in place of the ring.
+- **R4.** The header's four buttons passed `size="sm"` into a page header; they take the header's
+  height. *Clear* / *Delete* sat beside a default-height `Select` at `sm`; they are an `ActionBar`.
+- ***Top result*** was a hand-written label over a value, and is a `Fact` (§7.12).
+
+**Not `?display=`.** Table / Bar / Pie looks like ruling 7's case — one region, the same data — but
+here the display is one field of a report configuration (module, grouping, metric, filters) that
+is saved as a whole and that the address does not carry. Addressing only the display would reopen
+a link on the *default* report in the linked display. Written into the vocabulary row in
+`design.md` so the next reader does not "fix" it.
+
+**Verification:** `tsc --noEmit`, lint, build green, one at a time; `check-design.sh` at the known
+2 of 14.
+
+**Specs that will move at close-out.** `reports-revamp` keeps every string it asserts: *Forecast
+unavailable*, the `Bar` radio, *Insertion Orders report* as a heading (now `PanelHeader`'s `h2`),
+*The report could not be generated…*, *No records match these filters*, *Clear filters*, the
+saved-report row name, *Save changes*, *Delete saved report?*, and the date error with
+`aria-invalid`. None of its assertions name the removed *Retry* buttons, which `PanelError` replaces
+with *Try again*. No spec covers the *Save as* failure, which moved into the dialog — so nothing
+checks that move.
+
+**For the close-out's browser pass:** the forecast card at 1440 with the date range reversed (the
+error under *End*, and no empty band where the figures were); the report panel in Table display in
+both themes; a preset's hover and focus.
+
+**Next: batch 8** — `mail` rebuilt, `RecordEmailComposer`, `TaskDialog`, and the shell `adopt` rows:
+the sidebar with A11 (ruling 6), `ProfileMenu`, `GlobalCommandPalette`, `chart.tsx`.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

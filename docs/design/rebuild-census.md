@@ -244,7 +244,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `mail/page.tsx` | 760 | 5.7 | rebuild | | batch 6 — the message rows are `ListRow`s in an inset `RowList`; the selected row is elevation, not the action tint. **The rest of the page is batch 8's** |
 | `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | |
 | `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates`. Batch 6 — the invite and provider rows are `ListRow`s |
-| `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | |
+| `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | **done, batch 7** (A11 is the sidebar's, batch 8) — raw `Table` → `RecordTable variant="readOnly"`, `ForecastBucketList` → `ListRow`, four tinted error banners → `PanelError` / `FieldError` / toasts, headings → `PanelHeader`, the chart's `Skeleton` and `EmptyState` → `PanelStates`, *Top result* → `Fact`, presets off the action tint |
 
 ### 1.11 `app/dashboard/settings/**` (25)
 

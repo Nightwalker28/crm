@@ -1233,7 +1233,7 @@ settings needed it and it turned out nothing in it was about a list.
 | The module the page is configuring | `?module=<key>` | `fields`, `module-builder`, `automation` |
 | A workspace within one page | `?tab=` | the word the record archetype's strip already uses |
 | A saved view's id | `?view=` | lists, and nowhere else |
-| How one region renders the same data | `?display=` | `tasks` (`board`, `calendar`), `sales/opportunities` (`pipeline`) — §7.13. The default display is never written |
+| How one region renders the same data | `?display=` | `tasks` (`board`, `calendar`), `sales/opportunities` (`pipeline`) — §7.13. The default display is never written. **Not** `reports`' Table / Bar / Pie: there the display is one field of a report configuration the address does not carry, and is saved with it (rebuild 5.7 batch 7) |
 
 One word, one meaning, app-wide: `?view=` became *saved view id* on all sixteen lists in
 rebuild 5.5, so `settings/automation`'s `rules|runs` switch is `?tab=`, and the module scope

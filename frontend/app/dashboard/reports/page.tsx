@@ -3,12 +3,14 @@
 import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { BarChart3, BookmarkPlus, Download, FileDown, PieChart as PieChartIcon, RotateCcw, Save, Table2, Trash2 } from "lucide-react";
+import { BarChart3, BookmarkPlus, Download, FileDown, PieChart as PieChartIcon, Save, Table2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { Fact, FactList } from "@/components/ui/Fact";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ChartContainer, ChartTooltipContent } from "@/components/ui/chart";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
@@ -16,15 +18,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogFooter, DialogHeader, DialogPanel, DialogTitle } from "@/components/ui/dialog";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { Input } from "@/components/ui/input";
-import { ModuleTableShell } from "@/components/ui/ModuleTableShell";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
-import { PanelLoading } from "@/components/ui/PanelStates";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { PanelEmpty, PanelError, PanelHeader, PanelLoading } from "@/components/ui/PanelStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatGroup, StatTile } from "@/components/ui/StatTile";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -323,7 +324,7 @@ export default function ReportsPage() {
   const [savedReportSort, setSavedReportSort] = useState<SavedReportSortState>(null);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
   const [saveName, setSaveName] = useState("");
-  const [actionError, setActionError] = useState("");
+  const [saveError, setSaveError] = useState("");
   const [exporting, setExporting] = useState<"csv" | "svg" | null>(null);
   const [forecastStart, setForecastStart] = useState(() => isoDateOffset(0));
   const [forecastEnd, setForecastEnd] = useState(() => isoDateOffset(90));
@@ -389,10 +390,10 @@ export default function ReportsPage() {
       setSelectedSavedId(String(created.id));
       setSaveDialogOpen(false);
       setSaveName("");
-      setActionError("");
+      setSaveError("");
       toast.success("Report saved.");
     },
-    onError: (error) => setActionError(error instanceof Error && error.message === "name-conflict" ? "A saved report with this name already exists." : "The report could not be saved. Try again."),
+    onError: (error) => setSaveError(error instanceof Error && error.message === "name-conflict" ? "A saved report with this name already exists. Choose another name." : "The report could not be saved. Try again."),
   });
 
   const updateMutation = useMutation({
@@ -400,10 +401,9 @@ export default function ReportsPage() {
       updateSavedReport(reportId, payload),
     onSuccess: async (updated) => {
       await queryClient.invalidateQueries({ queryKey: ["saved-module-reports", updated.module_key] });
-      setActionError("");
       toast.success("Saved report updated.");
     },
-    onError: () => setActionError("The saved report could not be updated. Try again."),
+    onError: () => toast.error("The saved report could not be updated. Try again."),
   });
 
   const deleteMutation = useMutation({
@@ -411,10 +411,9 @@ export default function ReportsPage() {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["saved-module-reports", activeModuleKey] });
       setSelectedSavedId("");
-      setActionError("");
       toast.success("Saved report deleted.");
     },
-    onError: () => setActionError("The saved report could not be deleted. Try again."),
+    onError: () => toast.error("The saved report could not be deleted. Try again."),
   });
 
   function changeModule(nextModuleKey: string) {
@@ -426,7 +425,6 @@ export default function ReportsPage() {
     setFilters(cloneFilters());
     setViewMode("bar");
     setSelectedSavedId("");
-    setActionError("");
   }
 
   function applySavedReport(reportId: string) {
@@ -438,7 +436,6 @@ export default function ReportsPage() {
     setMetricField(saved.config.metric_field || "");
     setFilters(cloneFilters(saved.config.filters));
     setViewMode(saved.config.view_mode || "bar");
-    setActionError("");
   }
 
   function toggleSavedReportSort(column: SavedReportSortableColumn) {
@@ -453,7 +450,7 @@ export default function ReportsPage() {
   function applyReportPreset(preset: ReportPreset) {
     const nextModule = modules.find((item) => item.module_key === preset.module_key);
     if (!nextModule) {
-      setActionError("This CRM report is not available with your current module permissions.");
+      toast.error("This CRM report is not available with your current module permissions.");
       return;
     }
     const hasDimension = nextModule.dimensions.some((item) => item.key === preset.dimension);
@@ -466,7 +463,6 @@ export default function ReportsPage() {
     setFilters(cloneFilters(preset.filters));
     setViewMode(preset.view_mode);
     setSelectedSavedId("");
-    setActionError("");
   }
 
   function saveCurrentReport() {
@@ -484,7 +480,6 @@ export default function ReportsPage() {
     if (!activeModuleKey || !activeDimension) return;
     try {
       setExporting("csv");
-      setActionError("");
       const params = buildReportParams(activeDimension, metric, activeMetricField, filters, 50);
       const res = await apiFetch(`/reports/modules/${activeModuleKey}/export.csv?${params.toString()}`);
       if (!res.ok) throw new Error("export-failed");
@@ -492,7 +487,7 @@ export default function ReportsPage() {
       downloadBlob(blob, `${activeModuleKey}-report.csv`);
       toast.success("CSV export downloaded.");
     } catch {
-      setActionError("The CSV export could not be prepared. Check your export permission and try again.");
+      toast.error("The CSV export could not be prepared. Check your export permission and try again.");
     } finally {
       setExporting(null);
     }
@@ -503,13 +498,12 @@ export default function ReportsPage() {
     if (!svg || viewMode === "table") return;
     try {
       setExporting("svg");
-      setActionError("");
       const source = new XMLSerializer().serializeToString(svg);
       const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
       downloadBlob(blob, `${activeModuleKey || "module"}-chart.svg`);
       toast.success("Chart export downloaded.");
     } catch {
-      setActionError("The chart export could not be prepared. Try again.");
+      toast.error("The chart export could not be prepared. Try again.");
     } finally {
       setExporting(null);
     }
@@ -541,25 +535,24 @@ export default function ReportsPage() {
       context={selectedModule ? `Viewing ${selectedModule.label}` : undefined}
       actions={(
         <>
-          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
+          {canExportReport ? <Button type="button" variant="outline" onClick={() => void exportCsv()} disabled={!chartData.length || Boolean(exporting)}>
             <FileDown />{exporting === "csv" ? "Preparing…" : "Export CSV"}
           </Button> : null}
-          {canExportReport ? <Button type="button" variant="outline" size="sm" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
+          {canExportReport ? <Button type="button" variant="outline" onClick={exportChartSvg} disabled={viewMode === "table" || !chartData.length || Boolean(exporting)}>
             <Download />{exporting === "svg" ? "Preparing…" : "Export chart"}
           </Button> : null}
-          {canCreateReport ? <Button type="button" variant="outline" size="sm" onClick={() => { setSaveName(""); setActionError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
+          {canCreateReport ? <Button type="button" variant="outline" onClick={() => { setSaveName(""); setSaveError(""); setSaveDialogOpen(true); }} disabled={!activeModuleKey || createMutation.isPending}>
             <Save />Save as
           </Button> : null}
-          {canEditReport ? <Button type="button" size="sm" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
+          {canEditReport ? <Button type="button" onClick={() => void saveCurrentReport()} disabled={!isSavedReportDirty || updateMutation.isPending}>
             <Save />{updateMutation.isPending ? "Saving…" : "Save changes"}
           </Button> : null}
         </>
       )}
     >
-
       {!modules.length ? (
-        <Card>
-          <EmptyState
+        <Card className="p-4">
+          <PanelEmpty
             icon={BarChart3}
             title="No reportable modules available"
             description="Reports only include modules you can view. Ask an administrator to enable a module and grant its view permission."
@@ -567,84 +560,78 @@ export default function ReportsPage() {
         </Card>
       ) : null}
 
-      {modules.length ? <Card className="p-4">
-        <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-copy-primary">Report presets</h2>
-            <p className="mt-1 text-sm text-copy-secondary">Start from a common CRM question, then refine the module, measure, and filters.</p>
-          </div>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+      {modules.length ? <>
+      <Card className="p-4">
+        <PanelHeader title="Report presets" description="Start from a common CRM question, then refine the module, measure, and filters." />
+        {/* A preset is a box because it is a control (R8). It was a tinted box that took the
+            primary action's colour on hover; it is an edge that strengthens, like a board card. */}
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
           {CRM_REPORT_PRESETS.map((preset) => (
             <button
               key={preset.key}
               type="button"
               onClick={() => applyReportPreset(preset)}
-              className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3 text-left transition hover:border-action-primary/60 hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+              className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3 text-left transition-colors hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
             >
               <span className="block text-sm font-medium text-copy-primary">{preset.label}</span>
-              <span className="mt-1 block text-p-xs text-copy-secondary">{preset.description}</span>
+              <span className="mt-1 block text-p-xs text-copy-muted">{preset.description}</span>
             </button>
           ))}
         </div>
-      </Card> : null}
+      </Card>
 
-      {modules.length ? <>
       {hasForecastAccess ? <Card>
-        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
-          <div>
-            <h2 className="text-sm font-semibold text-copy-primary">Weighted forecast</h2>
-            <p className="mt-1 text-sm text-copy-secondary">Open deal value weighted by explicit probability or stage default.</p>
-          </div>
+        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
+          <PanelHeader title="Weighted forecast" description="Open deal value weighted by explicit probability or stage default." />
           <FieldGroup className="grid gap-3 sm:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="forecast-start">Start</FieldLabel>
               <Input id="forecast-start" type="date" value={forecastStart} onChange={(event) => setForecastStart(event.target.value)} />
             </Field>
-            <Field>
+            <Field data-invalid={!forecastDatesValid || undefined}>
               <FieldLabel htmlFor="forecast-end">End</FieldLabel>
               <Input id="forecast-end" type="date" value={forecastEnd} onChange={(event) => setForecastEnd(event.target.value)} aria-invalid={!forecastDatesValid} aria-describedby={!forecastDatesValid ? "forecast-date-error" : undefined} />
+              {/* A field error beside the field it names (§7.5), not a red banner under the
+                  whole card. */}
+              {!forecastDatesValid ? (
+                <FieldError id="forecast-date-error">Forecast end date must be on or after the start date.</FieldError>
+              ) : null}
             </Field>
           </FieldGroup>
         </div>
-        {!forecastDatesValid ? (
-          <div id="forecast-date-error" role="alert" className="mx-4 mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-            Forecast end date must be on or after the start date.
-          </div>
-        ) : forecastQuery.error ? (
-          <div role="alert" className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-            <span>The forecast could not be loaded. Try again.</span>
-            <Button type="button" variant="outline" size="sm" onClick={() => void forecastQuery.refetch()}><RotateCcw />Retry</Button>
+        {!forecastDatesValid ? null : forecastQuery.error ? (
+          <div className="px-4 pb-4">
+            <PanelError message="The forecast could not be loaded." onRetry={() => void forecastQuery.refetch()} />
           </div>
         ) : forecastQuery.isLoading ? (
-          <div className="mx-4 mb-4">
+          <div className="px-4 pb-4">
             <PanelLoading label="Loading forecast…" />
           </div>
         ) : (
-          // Batch 2 of 5.7: `MetricCard` was a bordered box inside this card, at `text-xl` — the
-          // third of three stat sizes. The group fills the card edge to edge (§4.7 archetype 5).
-          <StatGroup label="Forecast totals" className="border-y border-line-subtle">
-            <StatTile label="Weighted" value={formatCurrency(forecast?.weighted_pipeline_amount)} context={`${forecast?.open_opportunity_count ?? 0} open deals`} />
-            <StatTile label="Gross" value={formatCurrency(forecast?.gross_pipeline_amount)} context="Open pipeline" />
-            <StatTile label="Commit" value={formatCurrency(forecast?.commit_amount)} context="Probability 75%+" />
-            <StatTile label="Best case" value={formatCurrency(forecast?.best_case_amount)} context="Probability 50%+" />
-            <StatTile label="Actual" value={formatCurrency(forecast?.actual_revenue_amount)} context={`${forecast?.won_opportunity_count ?? 0} won deals`} />
-          </StatGroup>
+          <>
+            {/* Batch 2 of 5.7: `MetricCard` was a bordered box inside this card, at `text-xl` — the
+                third of three stat sizes. The group fills the card edge to edge (§4.7 archetype 5). */}
+            <StatGroup label="Forecast totals" className="border-y border-line-subtle">
+              <StatTile label="Weighted" value={formatCurrency(forecast?.weighted_pipeline_amount)} context={`${forecast?.open_opportunity_count ?? 0} open deals`} />
+              <StatTile label="Gross" value={formatCurrency(forecast?.gross_pipeline_amount)} context="Open pipeline" />
+              <StatTile label="Commit" value={formatCurrency(forecast?.commit_amount)} context="Probability 75%+" />
+              <StatTile label="Best case" value={formatCurrency(forecast?.best_case_amount)} context="Probability 50%+" />
+              <StatTile label="Actual" value={formatCurrency(forecast?.actual_revenue_amount)} context={`${forecast?.won_opportunity_count ?? 0} won deals`} />
+            </StatGroup>
+            <div className="grid gap-6 p-4 lg:grid-cols-2">
+              <ForecastBucketList title="By stage" rows={forecast?.by_stage ?? []} />
+              <ForecastBucketList title="By owner" rows={forecast?.by_owner ?? []} />
+            </div>
+          </>
         )}
-        {forecastDatesValid && !forecastQuery.isLoading && !forecastQuery.error ? (
-          <div className="grid gap-4 p-4 lg:grid-cols-2">
-            <ForecastBucketList title="By stage" rows={forecast?.by_stage ?? []} />
-            <ForecastBucketList title="By owner" rows={forecast?.by_owner ?? []} />
-          </div>
-        ) : null}
       </Card> : (
         <Card className="p-4">
-          <EmptyState icon={BarChart3} title="Forecast unavailable" description="Weighted forecasting appears when the Deals module is enabled and you have permission to view it." />
+          <PanelEmpty icon={BarChart3} title="Forecast unavailable" description="Weighted forecasting appears when the Deals module is enabled and you have permission to view it." />
         </Card>
       )}
 
       <Card id="report-builder" className="scroll-mt-6 p-4">
-        <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="mb-4 grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <Field>
             <FieldLabel>Saved report</FieldLabel>
             <Select value={selectedSavedId} onValueChange={applySavedReport} disabled={!savedReports.length}>
@@ -658,21 +645,24 @@ export default function ReportsPage() {
               </SelectContent>
             </Select>
           </Field>
-          <div className="flex flex-wrap items-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedSavedId("")} disabled={!selectedSavedId}>
+          {/* The select beside these is the row's height, so the buttons are too (R4). */}
+          <ActionBar align="start">
+            <Button type="button" variant="ghost" onClick={() => setSelectedSavedId("")} disabled={!selectedSavedId}>
               Clear
             </Button>
-            {canDeleteReport ? <Button type="button" variant="destructive" size="sm" onClick={() => void confirmDeleteSavedReport()} disabled={!selectedSavedReport || deleteMutation.isPending}>
+            {canDeleteReport ? <Button type="button" variant="destructive" onClick={() => void confirmDeleteSavedReport()} disabled={!selectedSavedReport || deleteMutation.isPending}>
               <Trash2 />{deleteMutation.isPending ? "Deleting…" : "Delete"}
             </Button> : null}
-          </div>
+          </ActionBar>
         </div>
 
         {/* No height cap: §4.5/§11.1 — a capped shell is a second scroll container inside
             an already-scrolling page. The list grows and the page scrolls, like every
-            other list on a document page. */}
+            other list on a document page. The row's own `Open` button went: the row already
+            opens the report, and its label says so. */}
         <RecordTable
           label="Saved reports"
+          shellVariant="nested"
           className="mb-4"
           columns={[
             { key: "name", label: "Name", size: "lg", sortable: true, render: (item) => <span className="font-medium text-copy-primary">{item.name}</span> },
@@ -695,11 +685,6 @@ export default function ReportsPage() {
             title: "No saved reports for this module",
             description: "Build a report below, then save it to reuse the same grouping and filters.",
           }}
-          rowActions={(item) => (
-            <Button type="button" variant="ghost" size="sm" onClick={() => applySavedReport(String(item.id))}>
-              Open
-            </Button>
-          )}
         />
 
         <FieldGroup className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
@@ -772,88 +757,79 @@ export default function ReportsPage() {
 
       <InlineSavedViewFilters filterFields={filterFields} filters={filters} onChange={setFilters} />
 
-      {reportQuery.error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>The report could not be generated. Adjust the configuration or try again.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void reportQuery.refetch()}><RotateCcw />Retry</Button>
-        </div>
-      ) : null}
-      {actionError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          {actionError}
-        </div>
-      ) : null}
-
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
         <Card className="min-h-[28rem] p-4">
-          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h2 className="text-base font-semibold text-copy-primary">{selectedModule?.label ?? "Module"} report</h2>
-              <FieldDescription className="mt-1">{report?.dimension.label ? `Grouped by ${report.dimension.label.toLowerCase()}.` : "Choose how to group and measure the authorized records."}</FieldDescription>
-            </div>
-            <SegmentedControl aria-label="Report display" value={viewMode} onValueChange={setViewMode}>
-              <SegmentedItem value="table"><Table2 />Table</SegmentedItem>
-              <SegmentedItem value="bar"><BarChart3 />Bar</SegmentedItem>
-              <SegmentedItem value="pie"><PieChartIcon />Pie</SegmentedItem>
-            </SegmentedControl>
+          <PanelHeader
+            title={`${selectedModule?.label ?? "Module"} report`}
+            description={report?.dimension.label ? `Grouped by ${report.dimension.label.toLowerCase()}.` : "Choose how to group and measure the authorized records."}
+            action={(
+              <SegmentedControl aria-label="Report display" value={viewMode} onValueChange={setViewMode}>
+                <SegmentedItem value="table"><Table2 />Table</SegmentedItem>
+                <SegmentedItem value="bar"><BarChart3 />Bar</SegmentedItem>
+                <SegmentedItem value="pie"><PieChartIcon />Pie</SegmentedItem>
+              </SegmentedControl>
+            )}
+          />
+          <div className="mt-4">
+            {/* The error was a red banner between the filters and this panel, and the panel
+                under it still drew its empty state — two messages for one failure. It is the
+                panel's state now (§7.4). */}
+            {reportQuery.error ? (
+              <PanelError message="The report could not be generated. Adjust the configuration or try again." onRetry={() => void reportQuery.refetch()} />
+            ) : reportQuery.isLoading ? (
+              <PanelLoading label="Generating the report…" />
+            ) : !chartData.length ? (
+              <PanelEmpty
+                icon={BarChart3}
+                title={hasActiveFilters ? "No records match these filters" : "No report data yet"}
+                description={hasActiveFilters ? "Clear the search and filters or choose a different grouping." : "Records will appear here when this module contains reportable data."}
+                action={hasActiveFilters ? <Button type="button" variant="outline" onClick={clearReportFilters}>Clear filters</Button> : undefined}
+              />
+            ) : viewMode === "table" ? (
+              // R10: this was the last raw `Table` outside the primitives on a dashboard page.
+              <RecordTable
+                variant="readOnly"
+                shellVariant="nested"
+                label={`${selectedModule?.label ?? "Module"} report`}
+                columns={[
+                  { key: "label", label: report?.dimension.label ?? "Group", render: (row) => <span className="font-medium text-copy-primary">{row.label}</span> },
+                  { key: "count", label: "Records", align: "right", render: (row) => <span className="tabular-nums">{formatNumber(row.count)}</span> },
+                  ...(metric === "sum"
+                    ? [{ key: "value", label: valueLabel, align: "right" as const, render: (row: ReportRow) => <span className="tabular-nums">{formatNumber(row.value)}</span> }]
+                    : []),
+                ]}
+                rows={chartData}
+                rowKey={(row) => row.key}
+                isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}
+                emptyState={{ icon: BarChart3, title: "No report data yet" }}
+              />
+            ) : (
+              <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
+                <ResponsiveContainer width="100%" height="100%">
+                  {viewMode === "pie" ? (
+                    <PieChart>
+                      <Tooltip content={<ChartTooltipContent />} />
+                      <Pie data={chartData} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="52%" paddingAngle={2}>
+                        {chartData.map((row, index) => (
+                          <Cell key={row.key} fill={seriesColor(index)} />
+                        ))}
+                      </Pie>
+                    </PieChart>
+                  ) : (
+                    <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 42 }}>
+                      <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
+                      <XAxis dataKey="label" stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
+                      <YAxis stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} />
+                      <Tooltip content={<ChartTooltipContent />} />
+                      {/* One measure, one series, one colour — colouring bars by position encoded
+                          rank as identity (5.7 batch 1, the same fix on the dashboard's chart). */}
+                      <Bar dataKey="value" fill={seriesColor(0)} radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </ChartContainer>
+            )}
           </div>
-          {reportQuery.isLoading ? (
-            <Skeleton className="h-[24rem] w-full rounded-[var(--radius-control)]" />
-          ) : !chartData.length && !reportQuery.error ? (
-            <EmptyState
-              icon={BarChart3}
-              className="min-h-[24rem]"
-              title={hasActiveFilters ? "No records match these filters" : "No report data yet"}
-              description={hasActiveFilters ? "Clear the search and filters or choose a different grouping." : "Records will appear here when this module contains reportable data."}
-              action={hasActiveFilters ? <Button type="button" variant="outline" onClick={clearReportFilters}>Clear filters</Button> : undefined}
-            />
-          ) : viewMode === "table" ? (
-            <ModuleTableShell isRefreshing={reportQuery.isFetching && !reportQuery.isLoading}>
-              <Table>
-                <TableHeader>
-                  <TableHeaderRow>
-                    <TableHead>{report?.dimension.label ?? "Group"}</TableHead>
-                    <TableHead className="text-right">Records</TableHead>
-                    {metric === "sum" ? <TableHead className="text-right">{valueLabel}</TableHead> : null}
-                  </TableHeaderRow>
-                </TableHeader>
-                <TableBody>
-                  {chartData.map((row) => (
-                    <TableRow key={row.key}>
-                      <TableCell className="font-medium text-copy-primary">{row.label}</TableCell>
-                      <TableCell className="text-right text-copy-secondary">{formatNumber(row.count)}</TableCell>
-                      {metric === "sum" ? <TableCell className="text-right text-copy-secondary">{formatNumber(row.value)}</TableCell> : null}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </ModuleTableShell>
-          ) : (
-            <ChartContainer ref={chartRef} config={{ value: { label: valueLabel, color: seriesColor(0) } }} className="h-[24rem] w-full" role="img" aria-label={`${selectedModule?.label ?? "Module"} report grouped by ${report?.dimension.label ?? "selected field"}`}>
-              <ResponsiveContainer width="100%" height="100%">
-                {viewMode === "pie" ? (
-                  <PieChart>
-                    <Tooltip content={<ChartTooltipContent />} />
-                    <Pie data={chartData} dataKey="value" nameKey="label" outerRadius="82%" innerRadius="52%" paddingAngle={2}>
-                      {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={seriesColor(index)} />
-                      ))}
-                    </Pie>
-                  </PieChart>
-                ) : (
-                  <BarChart data={chartData} margin={{ top: 8, right: 12, left: 0, bottom: 42 }}>
-                    <CartesianGrid stroke={CHART_GRID_STROKE} vertical={false} />
-                    <XAxis dataKey="label" stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
-                    <YAxis stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} />
-                    <Tooltip content={<ChartTooltipContent />} />
-                    {/* One measure, one series, one colour — colouring bars by position encoded
-                        rank as identity (5.7 batch 1, the same fix on the dashboard's chart). */}
-                    <Bar dataKey="value" fill={seriesColor(0)} radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                )}
-              </ResponsiveContainer>
-            </ChartContainer>
-          )}
         </Card>
 
         <Card>
@@ -861,13 +837,19 @@ export default function ReportsPage() {
             <StatTile label="Records matched" value={reportQuery.isLoading ? "—" : formatNumber(report?.total_count ?? 0)} />
             <StatTile label="Groups" value={reportQuery.isLoading ? "—" : formatNumber(chartData.length)} />
           </StatGroup>
-          <div className="border-t border-line-subtle p-4">
-            <div>
-              <div className="text-xs font-medium text-copy-label">Top result</div>
-              <div className="mt-2 text-sm font-medium text-copy-primary">{chartData[0]?.label ?? "No data"}</div>
-              <div className="mt-1 text-sm text-copy-secondary">{chartData[0] ? `${formatNumber(chartData[0].value)} ${valueLabel.toLowerCase()}` : "No grouped results"}</div>
-            </div>
-          </div>
+          {/* A label over a value is a `Fact` (§7.12). */}
+          <FactList className="border-t border-line-subtle p-4">
+            <Fact label="Top result">
+              {chartData[0] ? (
+                <>
+                  <span className="font-medium">{chartData[0].label}</span>
+                  <span className="mt-1 block text-copy-secondary">{`${formatNumber(chartData[0].value)} ${valueLabel.toLowerCase()}`}</span>
+                </>
+              ) : (
+                <EmptyValue context="field" />
+              )}
+            </Fact>
+          </FactList>
         </Card>
       </div>
       </> : null}
@@ -881,20 +863,20 @@ export default function ReportsPage() {
               <DialogIconClose />
             </DialogHeader>
             <div className="mt-4 space-y-4">
-              <Field>
+              {/* The failure is the name field's, so it sits under the name (§7.5). It was a
+                  red box here and the same red box on the page behind the dialog. */}
+              <Field data-invalid={Boolean(saveError) || undefined}>
                 <FieldLabel htmlFor="saved-report-name">Name</FieldLabel>
                 <Input
                   id="saved-report-name"
                   value={saveName}
-                  onChange={(event) => setSaveName(event.target.value)}
+                  onChange={(event) => { setSaveName(event.target.value); setSaveError(""); }}
                   placeholder="Monthly lead status"
+                  aria-invalid={Boolean(saveError)}
+                  aria-describedby={saveError ? "saved-report-name-error" : undefined}
                 />
+                {saveError ? <FieldError id="saved-report-name-error">{saveError}</FieldError> : null}
               </Field>
-              {actionError ? (
-                <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-3 py-2 text-sm text-copy-primary">
-                  {actionError}
-                </div>
-              ) : null}
             </div>
             <DialogFooter className="mt-5">
               <Button type="button" variant="ghost" onClick={() => setSaveDialogOpen(false)}>
@@ -911,22 +893,26 @@ export default function ReportsPage() {
   );
 }
 
+/** A forecast breakdown: an ink group under its heading, one `ListRow` per bucket (§7.15). */
 function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBucket[] }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
-      <div className="border-b border-line-subtle px-3 py-2 text-xs font-medium text-copy-label">{title}</div>
-      <div className="divide-y divide-line-subtle">
-        {rows.length ? rows.slice(0, 5).map((row) => (
-          <div key={row.key} className="flex items-center justify-between gap-3 px-3 py-3">
-            <div className="min-w-0">
-              <div className="truncate text-sm font-medium text-copy-primary">{row.label}</div>
-              <div className="mt-1 text-xs text-copy-muted">{row.count} opportunities</div>
-            </div>
-            {/* A weighted amount is a number, not good news (R5). */}
-            <div className="text-right text-sm font-medium tabular-nums text-copy-primary">{formatCurrency(row.weighted_pipeline_amount)}</div>
-          </div>
-        )) : <div className="px-3 py-5 text-sm text-copy-muted">No forecast data in this period.</div>}
-      </div>
-    </div>
+    <section>
+      <SectionHeading as="h3">{title}</SectionHeading>
+      {rows.length ? (
+        <RowList label={`Forecast ${title.toLowerCase()}`} className="mt-3">
+          {rows.slice(0, 5).map((row) => (
+            <ListRow
+              key={row.key}
+              title={row.label}
+              meta={`${row.count} opportunities`}
+              // A weighted amount is a number, not good news (R5).
+              trailing={<span className="text-sm font-medium text-copy-primary">{formatCurrency(row.weighted_pipeline_amount)}</span>}
+            />
+          ))}
+        </RowList>
+      ) : (
+        <p className="mt-3 text-sm text-copy-muted">No forecast data in this period.</p>
+      )}
+    </section>
   );
 }
