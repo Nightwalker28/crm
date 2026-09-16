@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Children, type ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -38,6 +38,21 @@ export function StatTile({
 }
 
 /**
+ * The row's columns follow its tile count, so a group of five does not wrap four-and-one at
+ * the width where it is shown in full. Static class names, because Tailwind cannot see a
+ * computed one. Past seven a row of figures stops being scannable, and it is a table.
+ */
+const ROW_COLUMNS: Record<number, string> = {
+  1: "grid-cols-1",
+  2: "md:grid-cols-2",
+  3: "md:grid-cols-3",
+  4: "md:grid-cols-2 xl:grid-cols-4",
+  5: "md:grid-cols-3 xl:grid-cols-5",
+  6: "md:grid-cols-3 xl:grid-cols-6",
+  7: "md:grid-cols-4 xl:grid-cols-7",
+};
+
+/**
  * A row of `StatTile`s, separated by hairline rules.
  *
  * The rules are drawn on each cell's own leading and top edge, one pixel outside it, and the
@@ -52,20 +67,28 @@ export function StatTile({
 export function StatGroup({
   children,
   label,
+  layout = "row",
   className,
 }: {
   children: ReactNode;
   /** Names the group for assistive tech when no visible heading does. */
   label?: string;
+  /**
+   * `row` is the dashboard metric row (§4.7 archetype 5). `stack` is one column, for a group
+   * that sits in a side rail beside the thing it summarises.
+   */
+  layout?: "row" | "stack";
   className?: string;
 }) {
+  const count = Math.min(Children.toArray(children).length, 7);
   return (
     <div
       data-slot="stat-group"
       role={label ? "group" : undefined}
       aria-label={label}
       className={cn(
-        "grid overflow-hidden md:grid-cols-2 xl:grid-cols-4",
+        "grid overflow-hidden",
+        layout === "stack" ? "grid-cols-1" : ROW_COLUMNS[Math.max(count, 1)],
         "[&>[data-slot=stat-tile]]:relative [&>[data-slot=stat-tile]]:p-4",
         "[&>[data-slot=stat-tile]]:before:absolute [&>[data-slot=stat-tile]]:before:inset-y-0 [&>[data-slot=stat-tile]]:before:-left-px [&>[data-slot=stat-tile]]:before:w-px [&>[data-slot=stat-tile]]:before:bg-line-subtle",
         "[&>[data-slot=stat-tile]]:after:absolute [&>[data-slot=stat-tile]]:after:inset-x-0 [&>[data-slot=stat-tile]]:after:-top-px [&>[data-slot=stat-tile]]:after:h-px [&>[data-slot=stat-tile]]:after:bg-line-subtle",

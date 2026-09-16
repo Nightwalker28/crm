@@ -23,6 +23,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { ActionBar } from "@/components/ui/ActionBar";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
@@ -166,7 +167,7 @@ function DashboardWidgetShell({
     <Card
       asChild
       data-testid={`dashboard-widget-${widget.id}`}
-      className={cn(isEditing && "border-line-strong bg-surface-raised", sizeClass(widget.size))}
+      className={cn(isEditing && "border-line-strong", sizeClass(widget.size))}
     >
       <section
         draggable={isEditing}
@@ -268,30 +269,32 @@ export function DashboardLayoutEditor({
 
   return (
     <>
+      {/* R3: this was `sticky top-2` — a translucent `backdrop-blur` card floating over the
+          grid, and the one sticky bar R3's count of `bottom-0` never saw. It is a row in flow,
+          and the unsaved line is ink: colour carrying *unsaved* is §1.2's defect. */}
       {isEditing ? (
-        <Card
-          variant="raised"
-          className="sticky top-2 z-20 flex flex-wrap items-center gap-2 border-line-strong bg-surface-raised/95 px-4 py-3 backdrop-blur"
-        >
-          <div className="mr-auto">
+        <ActionBar align="between" className="border-b border-line-subtle pb-4">
+          <div className="mr-auto min-w-0">
             <p className="text-sm font-semibold text-copy-primary">Dashboard edit mode</p>
-            <p className={cn("text-xs", isLayoutDirty ? "text-state-warning" : "text-copy-muted")}>
+            <p className="text-xs text-copy-muted">
               {isLayoutDirty ? "Unsaved layout changes" : "Move, resize, add, or remove widgets"}
             </p>
           </div>
-          <Button type="button" variant="outline" size="sm" onClick={() => onAddOpenChange(true)} disabled={widgets.length >= 24}>
-            <Plus />Add widget
-          </Button>
-          <Button type="button" variant="outline" size="sm" onClick={onReset}>
-            <RotateCcw />Reset
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={onCancel} disabled={isSaving}>
-            <X />Cancel
-          </Button>
-          <Button type="button" size="sm" onClick={() => onSave(draftWidgets)} disabled={isSaving || !isLayoutDirty}>
-            <Save />{isSaving ? "Saving…" : "Save layout"}
-          </Button>
-        </Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button type="button" variant="outline" onClick={() => onAddOpenChange(true)} disabled={widgets.length >= 24}>
+              <Plus />Add widget
+            </Button>
+            <Button type="button" variant="outline" onClick={onReset}>
+              <RotateCcw />Reset
+            </Button>
+            <Button type="button" variant="ghost" onClick={onCancel} disabled={isSaving}>
+              <X />Cancel
+            </Button>
+            <Button type="button" onClick={() => onSave(draftWidgets)} disabled={isSaving || !isLayoutDirty}>
+              <Save />{isSaving ? "Saving…" : "Save layout"}
+            </Button>
+          </div>
+        </ActionBar>
       ) : null}
 
       <div className="grid auto-rows-min gap-4 md:grid-cols-2 xl:grid-cols-4">

@@ -129,7 +129,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
 | `dashboard/layout.tsx` | 170 | 5.7 | adopt | The `h1` sequence is closed; the backdrop is §9 | |
-| `dashboard/page.tsx` | 475 | 5.7 | rebuild | Archetype 5. A9: an admin-only href with no `isAdmin` check at `:404` | |
+| `dashboard/page.tsx` | 475 | 5.7 | rebuild | Archetype 5. A9: an admin-only href with no `isAdmin` check at `:404` | batch 2 — header down to its own three actions (ruling 3; A9's link goes with the other four), both `window.confirm` → `useConfirm`, the duplicate save-error banner deleted. Edit mode's widgets wait for `SortableList` (batch 3) |
 | `dashboard/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `dashboard/loading.tsx` | 9 | 5.1 | rebuild | | done |
 | `dashboard/not-found.tsx` | 5 | 5.1 | rebuild | | done |
@@ -156,7 +156,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar |
+| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar . **5.7 batch 2** moved its seven boxed stage tiles onto one `StatGroup` |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | done |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |

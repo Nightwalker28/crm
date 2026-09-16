@@ -22,6 +22,8 @@ import { RecordTable } from "@/components/ui/RecordTable";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PanelLoading } from "@/components/ui/PanelStates";
+import { StatGroup, StatTile } from "@/components/ui/StatTile";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -588,8 +590,8 @@ export default function ReportsPage() {
       </Card> : null}
 
       {modules.length ? <>
-      {hasForecastAccess ? <Card className="p-4">
-        <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+      {hasForecastAccess ? <Card>
+        <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <h2 className="text-sm font-semibold text-copy-primary">Weighted forecast</h2>
             <p className="mt-1 text-sm text-copy-secondary">Open deal value weighted by explicit probability or stage default.</p>
@@ -606,29 +608,31 @@ export default function ReportsPage() {
           </FieldGroup>
         </div>
         {!forecastDatesValid ? (
-          <div id="forecast-date-error" role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <div id="forecast-date-error" role="alert" className="mx-4 mb-4 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
             Forecast end date must be on or after the start date.
           </div>
         ) : forecastQuery.error ? (
-          <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
+          <div role="alert" className="mx-4 mb-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
             <span>The forecast could not be loaded. Try again.</span>
             <Button type="button" variant="outline" size="sm" onClick={() => void forecastQuery.refetch()}><RotateCcw />Retry</Button>
           </div>
         ) : forecastQuery.isLoading ? (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5" aria-label="Loading forecast">
-            {Array.from({ length: 5 }).map((_, index) => <Skeleton key={index} className="h-24 rounded-[var(--radius-control)]" />)}
+          <div className="mx-4 mb-4">
+            <PanelLoading label="Loading forecast…" />
           </div>
         ) : (
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <MetricCard label="Weighted" value={formatCurrency(forecast?.weighted_pipeline_amount)} helper={`${forecast?.open_opportunity_count ?? 0} open deals`} />
-            <MetricCard label="Gross" value={formatCurrency(forecast?.gross_pipeline_amount)} helper="Open pipeline" />
-            <MetricCard label="Commit" value={formatCurrency(forecast?.commit_amount)} helper="Probability 75%+" />
-            <MetricCard label="Best Case" value={formatCurrency(forecast?.best_case_amount)} helper="Probability 50%+" />
-            <MetricCard label="Actual" value={formatCurrency(forecast?.actual_revenue_amount)} helper={`${forecast?.won_opportunity_count ?? 0} won deals`} />
-          </div>
+          // Batch 2 of 5.7: `MetricCard` was a bordered box inside this card, at `text-xl` — the
+          // third of three stat sizes. The group fills the card edge to edge (§4.7 archetype 5).
+          <StatGroup label="Forecast totals" className="border-y border-line-subtle">
+            <StatTile label="Weighted" value={formatCurrency(forecast?.weighted_pipeline_amount)} context={`${forecast?.open_opportunity_count ?? 0} open deals`} />
+            <StatTile label="Gross" value={formatCurrency(forecast?.gross_pipeline_amount)} context="Open pipeline" />
+            <StatTile label="Commit" value={formatCurrency(forecast?.commit_amount)} context="Probability 75%+" />
+            <StatTile label="Best case" value={formatCurrency(forecast?.best_case_amount)} context="Probability 50%+" />
+            <StatTile label="Actual" value={formatCurrency(forecast?.actual_revenue_amount)} context={`${forecast?.won_opportunity_count ?? 0} won deals`} />
+          </StatGroup>
         )}
         {forecastDatesValid && !forecastQuery.isLoading && !forecastQuery.error ? (
-          <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 p-4 lg:grid-cols-2">
             <ForecastBucketList title="By stage" rows={forecast?.by_stage ?? []} />
             <ForecastBucketList title="By owner" rows={forecast?.by_owner ?? []} />
           </div>
@@ -842,11 +846,9 @@ export default function ReportsPage() {
                     <XAxis dataKey="label" stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} angle={-28} textAnchor="end" interval={0} height={58} />
                     <YAxis stroke={CHART_AXIS_STROKE} tick={{ fill: CHART_TICK_FILL, fontSize: 11 }} />
                     <Tooltip content={<ChartTooltipContent />} />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {chartData.map((row, index) => (
-                        <Cell key={row.key} fill={seriesColor(index)} />
-                      ))}
-                    </Bar>
+                    {/* One measure, one series, one colour — colouring bars by position encoded
+                        rank as identity (5.7 batch 1, the same fix on the dashboard's chart). */}
+                    <Bar dataKey="value" fill={seriesColor(0)} radius={[4, 4, 0, 0]} />
                   </BarChart>
                 )}
               </ResponsiveContainer>
@@ -854,17 +856,13 @@ export default function ReportsPage() {
           )}
         </Card>
 
-        <Card className="p-4">
-          <div className="space-y-5">
+        <Card>
+          <StatGroup label="Report totals" layout="stack">
+            <StatTile label="Records matched" value={reportQuery.isLoading ? "—" : formatNumber(report?.total_count ?? 0)} />
+            <StatTile label="Groups" value={reportQuery.isLoading ? "—" : formatNumber(chartData.length)} />
+          </StatGroup>
+          <div className="border-t border-line-subtle p-4">
             <div>
-              <div className="text-xs font-medium text-copy-label">Records matched</div>
-              <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(report?.total_count ?? 0)}</div>
-            </div>
-            <div>
-              <div className="text-xs font-medium text-copy-label">Groups</div>
-              <div className="mt-2 text-3xl font-semibold text-copy-primary">{reportQuery.isLoading ? "—" : formatNumber(chartData.length)}</div>
-            </div>
-            <div className="border-t border-line-subtle pt-4">
               <div className="text-xs font-medium text-copy-label">Top result</div>
               <div className="mt-2 text-sm font-medium text-copy-primary">{chartData[0]?.label ?? "No data"}</div>
               <div className="mt-1 text-sm text-copy-secondary">{chartData[0] ? `${formatNumber(chartData[0].value)} ${valueLabel.toLowerCase()}` : "No grouped results"}</div>
@@ -913,16 +911,6 @@ export default function ReportsPage() {
   );
 }
 
-function MetricCard({ label, value, helper }: { label: string; value: string; helper: string }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
-      <div className="text-xs font-medium text-copy-label">{label}</div>
-      <div className="mt-2 text-xl font-semibold text-copy-primary">{value}</div>
-      <div className="mt-1 text-xs text-copy-muted">{helper}</div>
-    </div>
-  );
-}
-
 function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBucket[] }) {
   return (
     <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
@@ -934,7 +922,8 @@ function ForecastBucketList({ title, rows }: { title: string; rows: ForecastBuck
               <div className="truncate text-sm font-medium text-copy-primary">{row.label}</div>
               <div className="mt-1 text-xs text-copy-muted">{row.count} opportunities</div>
             </div>
-            <div className="text-right text-sm font-semibold text-state-success">{formatCurrency(row.weighted_pipeline_amount)}</div>
+            {/* A weighted amount is a number, not good news (R5). */}
+            <div className="text-right text-sm font-medium tabular-nums text-copy-primary">{formatCurrency(row.weighted_pipeline_amount)}</div>
           </div>
         )) : <div className="px-3 py-5 text-sm text-copy-muted">No forecast data in this period.</div>}
       </div>

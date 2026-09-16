@@ -5226,6 +5226,55 @@ batch 3.
 `window.confirm`, the page-level error banners onto `PanelError`, and `reports`' metrics and
 the pipeline stage tiles onto `StatTile` as the API test.
 
+### Status: batch 2 — the header, the fourteenth sticky, and the API test did its job
+
+**Landed.** Ruling 3 on the dashboard page, and `StatTile`'s second and third consumers.
+
+- **The second consumer changed the primitive, as the mitigation rule says it should.**
+  `StatGroup` was `md:grid-cols-2 xl:grid-cols-4`, the archetype's number. `reports`' forecast
+  has **five** figures and the pipeline has **seven** stages, so both would have wrapped
+  four-and-one and four-and-three at exactly the width where they fit on one row. The columns
+  now **derive from the tile count** (`ROW_COLUMNS`, static class names, capped at seven — past
+  that a row of figures is a table). `reports`' side rail stacks two figures beside its chart,
+  which is `layout="stack"`. Written into `design.md` archetype 5 before the call sites.
+  **Rejected: a `columns` prop.** A count the caller passes can disagree with the children it
+  passes; a count read from the children cannot.
+- **`reports`** — `MetricCard` deleted (a bordered box at `text-xl` inside a `Card`), and the
+  rail's two `text-3xl` totals. The forecast card lost its `p-4` so its `StatGroup` runs edge to
+  edge between two rules, with its own header and stage lists padded instead. The loading state
+  was five `Skeleton` boxes shaped like the deleted cards; it is `PanelLoading`. The bar chart
+  took batch 1's fix — one series, one colour — and the forecast lists' amounts went to ink.
+  **The rest of the page is batch 7's**; this batch touched only its metrics.
+- **`sales/opportunities`** — seven bordered `text-xl` stage boxes, a metric row under another
+  name, are one `Card` holding one `StatGroup`. The census row stays 5.5's; the change is noted
+  there.
+- **Ruling 3.** The header went from up to eight controls to three: period, Refresh, Edit
+  dashboard. `HeaderLink`, `useSidebarUser` and the `SETTINGS_ROUTES` import went with them.
+- **Edit mode (R3).** The bar was `sticky top-2 z-20` with `bg-surface-raised/95 backdrop-blur`
+  — a translucent floating card, and a sticky R3's count never included because every one it
+  counted was `bottom-0`. It is an `ActionBar` in flow, over a rule. Its dirty line was
+  `text-state-warning`: colour carrying *unsaved*, which 5.6's `EditorPanel` already ruled out
+  (§1.2), so it is ink. A widget in edit mode keeps `border-line-strong` and loses the raised
+  ground. The buttons lost their `size="sm"` — `ActionBar` sets the row's height (R4).
+- **Both `window.confirm` calls are `useConfirm`**, and each now says what happens: *reset*
+  names the default set and that nothing saves until Save; *discard* names what goes back.
+- **One message per failure.** A failed save produced a toast *and* a red banner under the
+  header saying the same thing. The banner is gone; the toast says the draft is still open.
+  The *layout could not be loaded* notice stays — it is the only place that says the default
+  layout is standing in, and it carries its retry.
+
+**Verification:** `tsc --noEmit`, lint, build green, each run on its own under the new CPU caps
+(`fd1076d`). The `StatGroup` rule selectors were checked in the built CSS rather than assumed —
+`[&>[data-slot=stat-tile]]:before:*` compiles with `content: var(--tw-content)`.
+
+**Specs that will move at close-out**, recorded so the attribution is quick:
+`dashboard-edit-mode-revamp` "cancel discards…" accepts a native `dialog` — it is a `useConfirm`
+dialog now, so the Cancel flow needs a click on *Discard changes*. Any spec that looked for
+`New work`, or the header's Calendar / Mail / Documents links, is asserting ruling 3's removals.
+
+**Next: batch 3** — `SortableList`, proved on `DashboardLayoutEditor` (its drag handle is still
+a bare icon in the header), then `views/[moduleKey]` and `module-builder`.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

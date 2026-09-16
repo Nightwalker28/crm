@@ -11,6 +11,8 @@ import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQu
 import OpportunitiesTable from "@/components/opportunities/OpportunitiesTable";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
+import { StatGroup, StatTile } from "@/components/ui/StatTile";
+import { Card } from "@/components/ui/Card";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
@@ -67,7 +69,9 @@ export default function OpportunitiesPage() {
         </Button>
       </div>
     ) : (
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-7">{stages.map((stage) => <div key={stage.stage_key} className="rounded-[var(--radius-card)] border border-line-default bg-surface px-4 py-3"><div className="text-xs font-medium text-copy-label">{stage.label}</div><div className="mt-2 flex items-end justify-between gap-2"><span className="text-xl font-semibold text-copy-primary">{summaryQuery.isLoading ? "—" : stage.count}</span><span className="text-xs text-copy-muted">{stage.total_value ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(stage.total_value) : "No value"}</span></div></div>)}</div>
+      // 5.7 batch 2: seven bordered boxes at `text-xl` were a metric row under another name. One
+      // panel, one group, the stat figure size (§4.7 archetype 5).
+      <Card><StatGroup label="Pipeline by stage">{stages.map((stage) => <StatTile key={stage.stage_key} label={stage.label} value={summaryQuery.isLoading ? "—" : stage.count} context={stage.total_value ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(stage.total_value) : "No value"} />)}</StatGroup></Card>
     )}
     {displayMode === "table" ? <OpportunitiesTable opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} selectedIds={selectedIds} onToggleRow={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onToggleCurrentPage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null} onSortChange={(sort) => setDraftConfig((current) => ({ ...current, sort: sort ? { key: sort.column, direction: sort.direction } : null }))} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={refresh} onClearFilters={clearFilters} onCreateOpportunity={canCreate ? () => setQuickCreateOpen(true) : undefined} /> : <div className="space-y-3"><p className="text-sm text-copy-muted">Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. Drag a card to another stage, or use its stage menu for keyboard access.</p><OpportunitiesPipelineBoard opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={refresh} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} onStageChange={(opportunity, stage) => changeStage(opportunity.opportunity_id, opportunity.sales_stage, stage)} /></div>}
     <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />

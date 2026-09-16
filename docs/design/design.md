@@ -1263,7 +1263,9 @@ local modes over an addressed page. What the address holds is what a colleague c
 ```
 
 Contract: one `StatTile`, one stat-figure size (§3.3), metrics on
-`md:grid-cols-2 xl:grid-cols-4`, panels on `xl:grid-cols-2`. Chart colour comes from
+`md:grid-cols-2 xl:grid-cols-4` for the usual four — `StatGroup` derives the columns from its
+tile count, up to seven, so a row of five does not wrap four-and-one — panels on
+`xl:grid-cols-2`. Chart colour comes from
 `lib/chartColors.ts` and nowhere else (`tokens.md` §3.4). A metric is a **number plus its
 label** — a sparkline or a delta is allowed, a decorative gradient is not (§1.2).
 

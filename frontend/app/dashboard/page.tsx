@@ -1,28 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  ClipboardList,
-  FileText,
-  LayoutGrid,
-  Mail,
-  Pencil,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
+import { LayoutGrid, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useNotifications } from "@/hooks/useNotifications";
-import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
+import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   DashboardCrmWidget,
@@ -110,6 +100,7 @@ function isCrmWidget(type: DashboardWidget["type"]) {
 
 export default function DashboardHomePage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const [addOpen, setAddOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftWidgets, setDraftWidgets] = useState<DashboardWidget[]>(DEFAULT_DASHBOARD_WIDGETS);
@@ -135,7 +126,6 @@ export default function DashboardHomePage() {
   const widgets = isEditing ? draftWidgets : persistedWidgets;
   const isLayoutDirty = isEditing && JSON.stringify(draftWidgets) !== JSON.stringify(persistedWidgets);
 
-  const { isAdmin } = useSidebarUser();
   const accessibleRoutes = useMemo(
     () => new Set(modules.map((module) => getModuleRoute(module.name, module.base_route)).filter(Boolean)),
     [modules],
@@ -176,7 +166,9 @@ export default function DashboardHomePage() {
       setAddOpen(false);
       toast.success("Dashboard layout saved.");
     },
-    onError: () => toast.error("The dashboard layout could not be saved."),
+    // The error banner that repeated this below the header is gone: one message, and it says
+    // what survived.
+    onError: () => toast.error("The dashboard layout could not be saved. Your draft is still open."),
   });
   useUnsavedChangesGuard(isLayoutDirty, saveMutation.isPending);
 
@@ -284,9 +276,13 @@ export default function DashboardHomePage() {
     saveMutation.mutate(nextWidgets);
   }
 
-  function resetLayout() {
-    if (!window.confirm("Reset this draft to the default dashboard widgets?")) return;
-    setDraftWidgets(DEFAULT_DASHBOARD_WIDGETS);
+  async function resetLayout() {
+    const confirmed = await confirm({
+      title: "Reset to the default layout?",
+      description: "Every widget in this draft is replaced with the default set. Nothing is saved until you save the layout.",
+      confirmLabel: "Reset draft",
+    });
+    if (confirmed) setDraftWidgets(DEFAULT_DASHBOARD_WIDGETS);
   }
 
   function beginEditing() {
@@ -294,8 +290,16 @@ export default function DashboardHomePage() {
     setIsEditing(true);
   }
 
-  function cancelEditing() {
-    if (isLayoutDirty && !window.confirm("Discard unsaved dashboard layout changes?")) return;
+  async function cancelEditing() {
+    if (isLayoutDirty) {
+      const confirmed = await confirm({
+        title: "Discard layout changes?",
+        description: "The widgets you added, moved, resized or removed go back to your saved dashboard.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
     setDraftWidgets(persistedWidgets);
     setAddOpen(false);
     setIsEditing(false);
@@ -387,9 +391,10 @@ export default function DashboardHomePage() {
   return (
     <PageShell
       title="Dashboard"
-      actions={(
-        <>
-        {isEditing ? null : (
+      // Ruling 3: the page's own actions and nothing else. Calendar, Mail and Documents repeated
+      // the sidebar and the quick-actions widget; `New work` was a link to the tasks list named
+      // like a create action; Activity log is an admin surface and lives in settings.
+      actions={isEditing ? null : (
           <>
             <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
               <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
@@ -407,30 +412,7 @@ export default function DashboardHomePage() {
               <Pencil />
               Edit dashboard
             </Button>
-            {/* A9: an admin-only settings route, offered to everyone from the one page
-                every role lands on. */}
-            {isAdmin ? (
-              <Button asChild variant="outline">
-                <Link href={SETTINGS_ROUTES.activityLog}>
-                  <ClipboardList />
-                  Activity log
-                </Link>
-              </Button>
-            ) : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
-              <Button asChild>
-                <Link href={DASHBOARD_ROUTES.tasks}>
-                  <Plus />
-                  New work
-                </Link>
-              </Button>
-            ) : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays />} label="Calendar" /> : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
-            {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
           </>
-        )}
-        </>
       )}
     >
 
@@ -438,11 +420,6 @@ export default function DashboardHomePage() {
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
           <span>Your saved dashboard layout could not be loaded. The default layout is shown.</span>
           <Button type="button" variant="outline" size="sm" onClick={() => void layoutQuery.refetch()}>Try again</Button>
-        </div>
-      ) : null}
-      {saveMutation.error ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-state-danger">
-          The dashboard layout could not be saved. Your draft is still available.
         </div>
       ) : null}
 
@@ -469,16 +446,5 @@ export default function DashboardHomePage() {
         renderWidget={renderWidget}
       />
     </PageShell>
-  );
-}
-
-function HeaderLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
-  return (
-    <Button asChild variant="outline">
-      <Link href={href}>
-        {icon}
-        {label}
-      </Link>
-    </Button>
   );
 }
