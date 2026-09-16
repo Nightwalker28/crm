@@ -1401,6 +1401,7 @@ exists. The list-and-record language in particular is not optional:
 | A kanban | `Board` — see §7.13. The same rows as the list, in `ModuleTableShell` |
 | A month calendar | `MonthGrid` — see §7.14. The grid and the narrow day picker are one component |
 | A feed, inbox or history line — activity, a notification, an invite, a message, a linked task | `ListRow` inside `RowList` — see §7.15. Not a table and not a card |
+| A navigation entry — the sidebar, the settings rail | `navItemClassName` from `SidebarNav` — see §7.16. The current page is elevation and a bar in ink |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
@@ -1929,6 +1930,38 @@ it into `RecordTable`.** A feed has no columns to sort, select or hide, and one 
 can be three lines of an email; a table row of variable height with one cell is not a table.
 **Rejected: `SettingsRow` as the base.** Its control is the point of the row and is always
 visible; a feed row's actions are secondary to what it says.
+
+### 7.16 Navigation marks where you are in ink, and a group of one is a link
+
+Two navs share the viewport on every settings page — the sidebar and the settings rail (§4.7) —
+and 5.6 made the rail copy the sidebar's current-page mark by hand so the two would read as one
+kind of thing. The copy was the mark: `bg-action-primary-muted text-primary` behind a
+`border-primary/20` box and a `bg-primary` bar. That is the primary action's tint carrying
+*you are here*, the state §7.13, §7.14 and §7.15 each took it off.
+
+**One class, `navItemClassName(active)`, exported from `SidebarNav`**, and both navs read it:
+
+- **Current** is `bg-surface-raised`, `text-copy-primary`, and a 2px `bg-copy-primary` bar on
+  the leading edge, with `aria-current="page"`. No border: the ground and the bar are two
+  signals already, and a box around one line of a nav is the lattice §1.3 removes.
+- **Hover** is `bg-surface-muted` and primary ink. No border either — the old hover drew
+  `border-line-subtle`, so pointing at an item boxed it.
+- **A group whose current item is showing does not mark itself.** It takes primary ink so the
+  eye can find the branch, and the ground and bar only when the item is hidden — the group is
+  closed, or the sidebar is collapsed to icons. Marking both was one position drawn twice.
+- **A closed group's links are `inert`.** They were `max-h-0 opacity-0` and still in the tab
+  order, so a keyboard user tabbed through every module in every closed group.
+
+**A group of one is a link** (A11). The sidebar renders any group whose resolved items number
+one as a single entry with the group's icon and the item's label. It is generic on purpose:
+Reports was a button that opened a list containing Reports, and a tenant that disables all
+but one module in a group met the same defect. **Rejected: moving reports into `workspace`** —
+it edits the registry for one instance and leaves the mechanism.
+
+**Not changed: the active option in a menu or listbox.** `DropdownMenuItem`, `select.tsx` and
+the command palette's `data-selected` row still take `--color-primary-muted`. That is 5.10's
+listbox finding, and its fix is a vocabulary decision held for the owner — a nav's current page
+is a position, which this section can rule on; an active option is the keyboard's cursor.
 
 ## 8. Accessibility floors
 

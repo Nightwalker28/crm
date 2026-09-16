@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
+import { navItemClassName } from "@/components/sidebar/SidebarNav";
 import { SETTINGS_NAV_GROUPS } from "@/lib/module-registry";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
@@ -15,9 +16,9 @@ import { cn } from "@/lib/utils";
  * hub → Permissions. The rail is the fix, and it renders `SETTINGS_NAV_GROUPS` — the same
  * single source the hub and the command palette read (rebuild.md 5.6, ruling 2).
  *
- * The active treatment is the sidebar's, deliberately: a left bar, the primary tint and
- * `aria-current="page"`. A second nav in the same viewport that marked its position a
- * different way would read as a different kind of thing.
+ * The active treatment is the sidebar's, and it is the same class rather than a copy of it
+ * (design.md §7.16): a second nav in the same viewport that marked its position a different
+ * way would read as a different kind of thing, and the copy is how the two would drift.
  */
 export function SettingsNavRail({ className }: { className?: string }) {
   const pathname = usePathname();
@@ -72,13 +73,7 @@ function SettingsNavLink({
     <Link
       href={href}
       aria-current={active ? "page" : undefined}
-      className={cn(
-        "relative flex min-w-0 items-center rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium",
-        "transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
-        active
-          ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
-          : "border-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary",
-      )}
+      className={navItemClassName(active)}
     >
       <span className="min-w-0 truncate">{label}</span>
     </Link>

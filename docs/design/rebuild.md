@@ -5654,6 +5654,78 @@ both themes; a preset's hover and focus.
 **Next: batch 8** — `mail` rebuilt, `RecordEmailComposer`, `TaskDialog`, and the shell `adopt` rows:
 the sidebar with A11 (ruling 6), `ProfileMenu`, `GlobalCommandPalette`, `chart.tsx`.
 
+### Status: batch 8a — the shell, and a nav that marked its place with the action tint
+
+**Landed.** Batch 8 is split: **8a** is the shell rows (sidebar with A11, `ProfileMenu`,
+`GlobalCommandPalette`, `chart.tsx`), **8b** is `mail`, `RecordEmailComposer` and `TaskDialog`.
+Rule first: `design.md` §7.16 and its §7.1 row.
+
+- **§7.16 — the current page is ink and elevation.** The sidebar marked it with
+  `bg-action-primary-muted text-primary` inside a `border-primary/20` box, and 5.6's
+  `SettingsNavRail` copied that string by hand so the two navs would match. It is the seventh
+  instance of the action tint carrying a state. **`navItemClassName(active)`** in `SidebarNav`
+  is the one treatment, and the rail imports it, so the copy cannot drift again: current is
+  `bg-surface-raised`, primary ink and a `bg-copy-primary` bar; hover is `bg-surface-muted` with
+  no border (pointing at an item used to box it).
+- **A group whose current item is showing does not mark itself.** The group button and the child
+  under it were both tinted: one position drawn twice. The group takes primary ink, and ground
+  plus bar only when the child is hidden — closed, or the sidebar collapsed to icons.
+- **Found: closed groups were in the tab order.** `max-h-0 opacity-0` hid the links and left every
+  one of them focusable, so a keyboard user tabbed through each module of each closed group
+  invisibly. The list is `inert` while hidden, and the button carries `aria-controls`. Child links
+  also lacked `aria-current`; they have it.
+- **A11 (ruling 6)** — `Sidebar` renders a group of one as `SidebarMenuItemLink`, the group's
+  icon and the item's label. Generic, as ruled.
+- **The sidebar's other two controls** — *Collapse sidebar* hovered in the action tint, *Log out*
+  in the danger pair. Logging out loses nothing, so it is not destructive (§7.3). Both hover
+  `bg-surface-muted`. The wordmark link's `focus:ring` is `focus-visible`.
+- **`ProfileMenu`** — a `Popover` holding three hand-styled rows is `DropdownMenu`: `role="menu"`,
+  arrow keys, typeahead, focus returned to the avatar. Its *Log out* lost the red too.
+- **`GlobalCommandPalette`** —
+  - **Found: every record group printed its module name twice.** The groups passed cmdk's
+    `heading` *and* drew their own label; cmdk renders `heading` visibly (and `aria-hidden`,
+    naming the listbox group from it). The other three groups drew only their own label, so their
+    groups had no name. All four use `heading` now, styled through `[&_[cmdk-group-heading]]` —
+    checked in the built CSS, as batches 2, 5 and 6 were.
+  - The item class was written four times and had drifted (the record results had lost the flex
+    row); it is one constant, and the label/subtitle pair one component. The recent rows' *Recent*
+    tag went — the group heading says it.
+  - *Searching records…* is `PanelLoading`; the tinted error box is `PanelError`.
+  - `DialogPanel` was handed back its own ground, edge, radius and a shadow the primitive already
+    sets (§4.6). `text-[11px]` ×2 is `text-2xs`; the ⌘K hint is a `kbd`. *Recent Pages* /
+    *Quick Links* went sentence case while the lines were rewritten.
+  - **Not changed: the selected item's `bg-action-primary-muted`.** It is the listbox
+    active-option token 5.10 measured and held for the owner, shared with `select.tsx` and
+    `DropdownMenuItem`. §7.16 records why a nav's current page could be ruled on and this could
+    not.
+- **`chart.tsx`** — read against the `dataviz` rules and already met them (values and labels in
+  ink, the swatch carrying identity). The swatch's fallback was a raw `var(--chart-1)`; it is
+  `seriesColor(0)`, the one legal source.
+
+**Verification:** lint, `tsc --noEmit`, build green, one at a time; `check-design.sh` at the known
+2 of 14. The host had rebooted and the frontend container was down, so each ran in a
+`docker compose run --rm --no-deps` container. That goes through `COMPOSE_FILE`, so it keeps the
+CPU cap and does not start the backend on frappe's port.
+
+**Specs that will move at close-out.** `command-palette-actions` "record-search failures…" asserts
+*Search is temporarily unavailable. Check your connection and try again.* as one string. `PanelError`
+prints the message and its *Check your connection…* line as two elements, so the text is the same
+but it is split across them. Its *Try again* button is kept. `application-shell-refactor:43` counts
+one *Log out* button, and that still holds: the profile menu's is a `menuitem` now, and closed. A
+spec that clicked the *Reports* group button in the sidebar will find a link.
+
+**For the close-out's browser pass:** the sidebar in both themes, expanded and collapsed: the
+current item's ground against the hive backdrop, and a collapsed group icon carrying the mark. Tab
+from the wordmark to *Log out* with one group open and confirm no focus stop disappears. Check the
+settings rail beside it, and open the profile menu from the keyboard. In the palette, look at a
+record search with two modules: one heading each.
+
+**Left knowingly.** The sidebar's *Log out* and the profile menu's are the same action in two
+places. `application-shell-refactor` asserts the sidebar's, so which one goes is the owner's call.
+
+**Next: batch 8b** — `mail/page.tsx` rebuilt (its message rows are batch 6's), `RecordEmailComposer`,
+`TaskDialog`.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

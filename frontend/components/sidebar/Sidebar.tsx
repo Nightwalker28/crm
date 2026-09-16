@@ -181,7 +181,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
     >
       <div className="relative z-10 flex h-full min-h-0 flex-col overflow-hidden px-2 py-3">
         <div className={`mb-4 flex items-center gap-2 px-1 ${collapsed ? "flex-col justify-center" : "justify-between"}`}>
-          <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus:outline-none focus:ring-2 focus:ring-focus">
+          <Link href={DASHBOARD_ROUTES.home} onClick={onNavigate} className="flex min-w-0 items-center gap-2 rounded-[var(--radius-control)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
             <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
               <span className="font-lynk text-xl leading-none text-copy-primary">L</span>
             </div>
@@ -192,7 +192,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
           {!mobile ? <button
             type="button"
             onClick={toggleCollapsed}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
             aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
           >
             {collapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
@@ -202,7 +202,19 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
         <SidebarNav>
           <SidebarGroup>
             <SidebarMenu>
-              {groups.map((group) => (
+              {groups.map((group) => group.items.length === 1 ? (
+                // A11 (design.md §7.16): a group of one is a link. Reports was a button that
+                // opened a list containing Reports — and so was any group a tenant had
+                // trimmed to one module.
+                <SidebarMenuItemLink
+                  key={group.key}
+                  href={group.items[0].href}
+                  label={group.items[0].label}
+                  icon={group.icon}
+                  collapsed={collapsed}
+                  onNavigate={onNavigate}
+                />
+              ) : (
                 <SidebarMenuItemCollapsible
                   key={group.key}
                   label={group.label}
@@ -235,7 +247,7 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
           <button
             onClick={logout}
             type="button"
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control)] border border-transparent px-2 py-1.5 text-sm font-medium text-copy-secondary transition-colors hover:border-state-danger/30 hover:bg-state-danger-muted hover:text-state-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-state-danger ${collapsed ? "justify-center" : ""}`}
+            className={`flex w-full items-center gap-2 rounded-[var(--radius-control)] px-2 py-1.5 text-sm font-medium text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${collapsed ? "justify-center" : ""}`}
             aria-label="Log out"
             title={collapsed ? "Log out" : undefined}
           >

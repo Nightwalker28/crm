@@ -6,8 +6,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Command } from "cmdk";
 import { CommandIcon, CornerDownLeft, Search } from "lucide-react";
 
-import { Button } from "@/components/ui/button";
 import { Dialog, DialogBackdrop, DialogPanel, DialogTitle } from "@/components/ui/dialog";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import { useAccessibleModules, type AccessibleModuleActions } from "@/hooks/useAccessibleModules";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { apiFetch } from "@/lib/api";
@@ -17,6 +17,30 @@ import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, 
 import { canonicalizeDashboardHref } from "@/lib/routes";
 
 const SEARCH_LABEL = "Search records and modules";
+
+// One item box for every group. It was written out four times and had begun to drift — the
+// record results had lost the flex row the other three kept. The selected ground is the
+// listbox's active-option token, held for the owner with `select.tsx` and `DropdownMenuItem`
+// (design.md §7.16); it is not this file's to change.
+const ITEM_CLASS =
+  "flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] px-3 py-2.5 text-sm outline-none data-[selected=true]:bg-action-primary-muted";
+
+// cmdk renders `heading` itself, `aria-hidden`, and names the group's listbox from it. The
+// record groups passed `heading` *and* drew their own label, so every module printed twice;
+// the other groups drew only their own, so their listboxes had no name.
+const GROUP_CLASS =
+  "mb-3 [&_[cmdk-group-heading]]:px-2 [&_[cmdk-group-heading]]:pb-2 [&_[cmdk-group-heading]]:pt-1 [&_[cmdk-group-heading]]:text-2xs [&_[cmdk-group-heading]]:font-semibold [&_[cmdk-group-heading]]:text-copy-label";
+
+const NOTE_CLASS = "px-3 py-8 text-center text-sm text-copy-muted";
+
+function PaletteItemText({ label, subtitle }: { label: string; subtitle?: string | null }) {
+  return (
+    <div className="min-w-0">
+      <div className="truncate font-medium text-copy-primary">{label}</div>
+      {subtitle ? <div className="mt-0.5 truncate text-xs text-copy-muted">{subtitle}</div> : null}
+    </div>
+  );
+}
 
 type PaletteLink = {
   label: string;
@@ -122,7 +146,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
 
   const quickLinks = useMemo(() => {
     const items = [
-      { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick Links" },
+      { label: "Dashboard", subtitle: "Go to the home dashboard", href: "/dashboard", group: "Quick links" },
       ...modules.flatMap((module) => {
         if (module.name.startsWith("custom_")) {
           if (!module.actions?.can_create) return [];
@@ -238,28 +262,30 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
         type="button"
         onClick={() => setOpen(true)}
         className={responsive
-          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-action-primary-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
+          ? "flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] text-copy-muted transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus xl:h-auto xl:w-full xl:justify-between xl:gap-3 xl:rounded-[var(--radius-control)] xl:border xl:border-line-default xl:bg-surface-muted xl:px-3 xl:py-2 xl:text-left xl:hover:border-line-strong xl:hover:bg-surface-raised"
           : "flex w-full items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-left transition-colors hover:border-line-strong hover:bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"}
         aria-label="Open command palette"
       >
         {responsive ? <Search className="h-4 w-4 xl:hidden" /> : null}
         <div className={responsive ? "hidden items-center gap-3 xl:flex" : "flex items-center gap-3"}>
           <Search className="h-4 w-4 text-copy-muted" />
-            <div>
-              <div className="text-sm font-medium text-copy-primary">Search records</div>
-              <div className="text-xs text-copy-muted">Jump across modules and workspace records.</div>
-            </div>
+          <div>
+            <div className="text-sm font-medium text-copy-primary">Search records</div>
+            <div className="text-xs text-copy-muted">Jump across modules and workspace records.</div>
+          </div>
         </div>
-        <div className={responsive ? "hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted xl:flex" : "hidden items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 text-[11px] text-copy-muted sm:flex"}>
-          <CommandIcon className="h-3 w-3" />
+        <kbd className={(responsive ? "hidden xl:flex" : "hidden sm:flex") + " items-center gap-1 rounded-[var(--radius-control-sm)] border border-line-default bg-app px-2 py-1 font-sans text-2xs text-copy-muted"}>
+          <CommandIcon className="h-3 w-3" aria-hidden="true" />
           <span>K</span>
-        </div>
+        </kbd>
       </button>
 
       <Dialog open={open} onClose={handleClose} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 flex items-start justify-center px-4 pt-[12vh]">
-          <DialogPanel aria-describedby={undefined} className="w-full max-w-2xl overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-0 shadow-[var(--shadow-panel)]">
+          {/* The ground, edge, radius and elevation are `DialogPanel`'s own (§4.6); this passed
+              all four back in, one of them as a hand-written shadow. */}
+          <DialogPanel aria-describedby={undefined} className="w-full max-w-2xl overflow-hidden p-0">
             {/* Distinct from SEARCH_LABEL, which already names the combobox below — sharing
                 text would give the dialog and its input the same accessible name. */}
             <DialogTitle className="sr-only">Command palette</DialogTitle>
@@ -277,8 +303,8 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   className="h-10 w-full bg-transparent text-sm text-copy-primary outline-none placeholder:text-copy-muted"
                   aria-label={SEARCH_LABEL}
                 />
-                <div className="hidden items-center gap-1 text-[11px] text-copy-muted sm:flex">
-                  <CornerDownLeft className="h-3 w-3" />
+                <div className="hidden items-center gap-1 text-2xs text-copy-muted sm:flex">
+                  <CornerDownLeft className="h-3 w-3" aria-hidden="true" />
                   <span>Open</span>
                 </div>
               </div>
@@ -287,53 +313,39 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                 {!deferredQuery.length ? (
                   <>
                     {recentPages.length ? (
-                      <Command.Group className="mb-3" data-testid="recent-pages">
-                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
-                          Recent Pages
-                        </div>
+                      <Command.Group heading="Recent pages" className={GROUP_CLASS} data-testid="recent-pages">
                         {recentPages.map((item) => (
                           <Command.Item
                             key={`recent-${item.href}`}
                             value={`recent-${item.href}`}
                             onSelect={() => handleNavigate(item.href)}
-                            className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
+                            className={ITEM_CLASS}
                           >
-                            <div>
-                              <div className="font-medium text-copy-primary">{item.label}</div>
-                              <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
-                            </div>
-                            <div className="text-2xs font-medium text-copy-label">Recent</div>
+                            <PaletteItemText label={item.label} subtitle={item.subtitle} />
                           </Command.Item>
                         ))}
                       </Command.Group>
                     ) : null}
-                    <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
-                      Quick Links
-                    </div>
-                    {quickLinks.map((item) => (
-                          <Command.Item
-                            key={item.href}
-                            value={item.href}
-                            data-testid="palette-link"
-                            data-href={item.href}
-                            onSelect={() => handleNavigate(item.href)}
-                        className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
-                      >
-                        <div>
-                          <div className="font-medium text-copy-primary">{item.label}</div>
-                          <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
-                        </div>
-                        <div className="text-2xs font-medium text-copy-label">{item.group}</div>
-                      </Command.Item>
-                    ))}
+                    <Command.Group heading="Quick links" className={GROUP_CLASS}>
+                      {quickLinks.map((item) => (
+                        <Command.Item
+                          key={item.href}
+                          value={item.href}
+                          data-testid="palette-link"
+                          data-href={item.href}
+                          onSelect={() => handleNavigate(item.href)}
+                          className={ITEM_CLASS}
+                        >
+                          <PaletteItemText label={item.label} subtitle={item.subtitle} />
+                          <div className="shrink-0 text-2xs font-medium text-copy-label">{item.group}</div>
+                        </Command.Item>
+                      ))}
+                    </Command.Group>
                   </>
                 ) : (
                   <>
                     {matchingQuickLinks.length ? (
-                      <Command.Group className="mb-3">
-                        <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
-                          Modules
-                        </div>
+                      <Command.Group heading="Modules" className={GROUP_CLASS}>
                         {matchingQuickLinks.map((item) => (
                           <Command.Item
                             key={`module-${item.href}`}
@@ -341,53 +353,37 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                             data-testid="palette-link"
                             data-href={item.href}
                             onSelect={() => handleNavigate(item.href)}
-                            className="flex cursor-pointer items-center justify-between rounded-[var(--radius-control)] px-3 py-3 text-sm text-copy-secondary outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:text-copy-primary"
+                            className={ITEM_CLASS}
                           >
-                            <div>
-                              <div className="font-medium text-copy-primary">{item.label}</div>
-                              <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div>
-                            </div>
-                            <div className="text-2xs font-medium text-copy-label">{item.group}</div>
+                            <PaletteItemText label={item.label} subtitle={item.subtitle} />
+                            <div className="shrink-0 text-2xs font-medium text-copy-label">{item.group}</div>
                           </Command.Item>
                         ))}
                       </Command.Group>
                     ) : null}
                     {deferredQuery.length < 2 ? (
-                      <div className="px-3 py-8 text-center text-sm text-copy-muted">
-                        Type at least 2 characters to search workspace records.
-                      </div>
+                      <div className={NOTE_CLASS}>Type at least 2 characters to search workspace records.</div>
                     ) : isSearchPending ? (
-                      <div className="px-3 py-8 text-center text-sm text-copy-muted">Searching records…</div>
+                      <PanelLoading label="Searching records…" />
                     ) : searchQuery.error ? (
-                      <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-                        <p>Search is temporarily unavailable. Check your connection and try again.</p>
-                        <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void searchQuery.refetch()}>
-                          Try again
-                        </Button>
-                      </div>
+                      <PanelError message="Search is temporarily unavailable." onRetry={() => void searchQuery.refetch()} />
                     ) : groupedResults.length ? (
                       groupedResults.map(([group, items]) => (
-                        <Command.Group key={group} heading={group} className="mb-3">
-                          <div className="px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
-                            {group}
-                          </div>
+                        <Command.Group key={group} heading={group} className={GROUP_CLASS}>
                           {items.map((item) => (
                             <Command.Item
                               key={`${item.module_key}-${item.record_id}`}
                               value={`${item.module_key}-${item.record_id}-${item.title}`}
                               onSelect={() => handleNavigate(item.href)}
-                              className="cursor-pointer rounded-[var(--radius-control)] px-3 py-3 outline-none data-[selected=true]:bg-action-primary-muted"
+                              className={ITEM_CLASS}
                             >
-                              <div className="text-sm font-medium text-copy-primary">{item.title}</div>
-                              {item.subtitle ? <div className="mt-1 text-xs text-copy-muted">{item.subtitle}</div> : null}
+                              <PaletteItemText label={item.title} subtitle={item.subtitle} />
                             </Command.Item>
                           ))}
                         </Command.Group>
                       ))
                     ) : hasCompletedEmptySearch ? (
-                      <Command.Empty className="px-3 py-8 text-center text-sm text-copy-muted">
-                        No matching modules or records found.
-                      </Command.Empty>
+                      <Command.Empty className={NOTE_CLASS}>No matching modules or records found.</Command.Empty>
                     ) : null}
                   </>
                 )}

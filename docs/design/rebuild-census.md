@@ -431,10 +431,10 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `sidebar/Sidebar.tsx` | 249 | 5.7 | adopt | Wordmark is a `span` now (§8) | |
-| `sidebar/SidebarNav.tsx` | 220 | 5.7 | rebuild | `text-[13px]` at `:166`. **A11** — reports as a collapsible group of one | |
-| `header/ProfileMenu.tsx` | 64 | 5.7 | adopt | | |
-| `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | |
+| `sidebar/Sidebar.tsx` | 249 | 5.7 | adopt | Wordmark is a `span` now (§8) | batch 8a — A11: a group of one renders as a link. Collapse and log-out hovers lost the action and danger tints; the wordmark link's focus is `focus-visible` |
+| `sidebar/SidebarNav.tsx` | 220 | 5.7 | rebuild | `text-[13px]` at `:166`. **A11** — reports as a collapsible group of one | batch 8a — `navItemClassName` (§7.16), shared with `SettingsNavRail`: current is elevation and an ink bar, not the action tint in a box. A closed group's links are `inert`; the group marks itself only while its current item is hidden. `GlassItemWrapper` deleted |
+| `header/ProfileMenu.tsx` | 64 | 5.7 | adopt | | batch 8a — `DropdownMenu`, so `role="menu"` and arrow keys; *Log out* is not red |
+| `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | batch 8a — one item class; group labels through cmdk's `heading` (record groups printed theirs twice); `PanelLoading` / `PanelError`; `DialogPanel` owns its own ground and shadow |
 | `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times. **Row done, 5.7 batch 6** — `ListRow` in an inset `RowList`, unread is weight and an ink dot, and the hand-written loading / error / empty are `PanelStates` |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
@@ -546,7 +546,7 @@ taken. Counted here so the denominator stays honest.
 | `TimezonePicker.tsx` | 93 → 59 | 5.4 | adopt | Collapsed into `SearchableSelect` — the file now holds only what is about timezones, and its `slice(0, 100)` over ~400 zones (a live §7.9 defect) went with the hand-rolled list | **done** (5.4 batch 1) |
 | `UserTeamPicker.tsx` | 214 | 5.6 | adopt | | **done, batch 7d** — the selected-row `Check` was `text-primary`, the action's ink marking membership (§5) |
 | `DataTransferJobProgress.tsx` | 86 | 5.6 | **unchanged** | | **done, batch 7d** — audited clean; already on `Card variant="muted"` with no hand-rolled heading or state |
-| `chart.tsx` | 78 | 5.7 | adopt | Load the `dataviz` skill | |
+| `chart.tsx` | 78 | 5.7 | adopt | Load the `dataviz` skill | batch 8a — the tooltip swatch's fallback reads `seriesColor(0)`, not a raw `var(--chart-1)`; the rest already met the dataviz text-in-ink rule |
 | `importExportUtils.ts` | 54 | — | unchanged | Data | |
 | `HexagonBackground.tsx` | 109 | — | unchanged | **§9 identity.** Verify it still renders as a honeycomb after 5.8 | done |
 | `AnimatedShinyText.tsx` | 39 | — | unchanged | §9 identity | done |
