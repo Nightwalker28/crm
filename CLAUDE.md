@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+## ⚠ CPU ceiling — read first, applies to every task
+
+**Never use more than 65% of the host's CPU, at any stage.** The owner runs other live projects
+on this machine. This outranks speed: a slower check is acceptable, a saturated machine is not.
+
+- **Every Lynk container is hard-capped** by `docker-compose.limits.yml` (caps sum to 5.0 of 8
+  cores = 62.5%). The local `.env` sets `COMPOSE_FILE=docker-compose.yml:docker-compose.limits.yml`,
+  so plain `docker compose …` applies it. **Any command that passes `-f` must also pass
+  `-f docker-compose.limits.yml`**, or the caps silently disappear. Verify with
+  `docker inspect <container> --format '{{.HostConfig.NanoCpus}}'` (non-zero = capped).
+- **One heavy job at a time.** Never run `npm run build`, `tsc`, `lint`, a Playwright run, the
+  backend test suite, or `verify_migrations` concurrently with each other, and never start
+  parallel subagents that each run them.
+- **Playwright always `--workers=1`.**
+- **Host-side work runs under `nice -n 19`** (scripts, greps over the tree, Python helpers).
+- **Check before starting something heavy:** `docker stats --no-stream` and `uptime`. If the host
+  is already above ~65% from the owner's other work, wait or say so — do not add load.
+- A cap is not raised, and the limits file is not bypassed, without the owner's say-so.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
