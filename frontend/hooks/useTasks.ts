@@ -198,9 +198,9 @@ export async function fetchRecordTasks(moduleKey: string, entityId: string | num
   return body as TaskListResponse;
 }
 
-export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null) {
+export function useTasks(filters?: SavedViewFilters, sort: TaskSortState = null, initialPageSize = 10) {
   const queryClient = useQueryClient();
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const filtersKey = useMemo(() => canonicalSavedViewFiltersKey(filters), [filters]);
   const sortKey = useMemo(() => JSON.stringify(sort), [sort]);
   const [pageState, setPageState] = useState({ page: 1, filtersKey, sortKey });

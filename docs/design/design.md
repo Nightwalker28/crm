@@ -1233,6 +1233,7 @@ settings needed it and it turned out nothing in it was about a list.
 | The module the page is configuring | `?module=<key>` | `fields`, `module-builder`, `automation` |
 | A workspace within one page | `?tab=` | the word the record archetype's strip already uses |
 | A saved view's id | `?view=` | lists, and nowhere else |
+| How one region renders the same data | `?display=` | `tasks` (`board`, `calendar`), `sales/opportunities` (`pipeline`) — §7.13. The default display is never written |
 
 One word, one meaning, app-wide: `?view=` became *saved view id* on all sixteen lists in
 rebuild 5.5, so `settings/automation`'s `rules|runs` switch is `?tab=`, and the module scope
@@ -1396,6 +1397,8 @@ exists. The list-and-record language in particular is not optional:
 | A tag, a count, a "System" marker | `Chip`. **Not** `StatusValue` — see below |
 | Panels inside a card | `SectionTabs`. Never a hand-written `role="tablist"` — see §7.7 |
 | Pick one of a small set | `SegmentedControl` / `SegmentedBoolean` — a view switcher, an Active/Inactive toggle. **Not** a tab strip (§7.7) |
+| A list the operator reorders | `SortableList` — see §7.13 |
+| A kanban | `Board` — see §7.13. The same rows as the list, in `ModuleTableShell` |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
@@ -1796,6 +1799,52 @@ decision, not a component one.
 
 A page-local `SummaryTile` / `DetailField` / `Fact` is a review failure — it is the renderer
 `rebuild.md` 5.10 checks for.
+
+### 7.13 A reordered list is `SortableList`, a kanban is `Board`, and the keyboard path is visible
+
+Drag-and-drop came in two shapes, written by hand five times (`rebuild.md` 5.7 ruling 4):
+**reorder one list** — the dashboard's widgets, the view manager's columns, the module
+builder's fields — and **move a card between columns** — the task board and the deal
+pipeline. One primitive each. **No drag library is added** (§7.2): every call site already
+paired the pointer drag with a control the operator can see, and a visible button or select
+is more discoverable than a hidden keyboard sensor. The primitives make that pairing the
+contract.
+
+**`SortableList`** owns the `<ol>`, the grip, *Move up* / *Move down* named for the item, a
+polite announcement of the new position, and focus — which stays on the moved item's control
+after a keyboard move, because React moves the focused DOM node and a moved node loses focus.
+The call site renders what an item looks like, and places the handle and buttons it is given.
+
+**`Board`** is **the other half of a list, not a second page.** It renders the same loaded
+rows the table does, so it sits in the same `ModuleTableShell` (one scroll region, the same
+*Refreshing* badge) and draws the same four §7.4 states in the same order and words as
+`RecordTable`. It owns:
+
+- **The columns**, as ink groups side by side with space between them: a `StatusValue` and a
+  count over a stack. Never a tinted box — a column inside the shell was the third container
+  level §1.3 forbids. A column draws an edge only while it is the drop target.
+- **The card box.** A card is a row (§1.3): `border-line-subtle`, `--radius-control`, no ground
+  of its own, `border-line-strong` on hover. Grip, then the title — the card's one open
+  gesture, a link when the record has a page and a button when it opens a dialog — then the
+  call site's body, then the move control. The call site supplies only the body.
+- **The move control**: a `Select` of the columns that accept a card, named for the field
+  and the card — *Change stage for Northwind renewal*. A column that only collects what fits nowhere else
+  (*Unstaged*) shows its cards but is neither a drop target nor an option.
+- **Focus follows the card.** A card that changes column is a different DOM node, so after a
+  keyboard move focus goes to the move control on the card's new position, not to `<body>`.
+- **The drop target is elevation, not colour** (§4.6): `border-line-strong` on
+  `bg-surface-raised`. Both originals painted it with the primary action's tint.
+
+**No announcement of its own.** Both pages already confirm a move with a toast, which is a
+live region; a second message for the same change is noise (one message per change).
+
+**Colour on a card is exception only (R5).** An overdue card carries the warning mark — icon
+and the word, in `text-state-warning` — and nothing else about the card changes. A value
+quartile computed over the loaded page is not a fact about the deal, and is not drawn.
+
+**The display is addressed.** A list that can render as a table, a board or a calendar holds
+the choice in `?display=` (§4.7 archetype 4's vocabulary table), so a reload or a shared link
+opens the same view. The default display is never written.
 
 ## 8. Accessibility floors
 

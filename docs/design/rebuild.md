@@ -5341,6 +5341,79 @@ row inside the draggable `<li>` rather than on the draggable element itself.
 **Next: batch 4** — `Board`, on `TasksBoard` and `OpportunitiesPipelineBoard`, with `?display=`
 on both pages (ruling 7).
 
+### Status: batch 4 — `Board`, and a dialog that wiped the address
+
+**Landed.** Ruling 4's second half and ruling 7, rule first: `design.md` §7.13 (*a reordered
+list is `SortableList`, a kanban is `Board`*) — which also gives batch 3's primitive the §7
+entry it shipped without — two §7.1 rows, and `?display=` in the address vocabulary table.
+
+- **`components/ui/Board.tsx`** — the columns, the card box, the move `Select`, the drag, and
+  the four states. **It is the other half of a list, so it sits in `ModuleTableShell`**: one
+  scroll region, the same *Refreshing* badge and `aria-busy`, and `RecordTable`'s states in
+  its order and words — the call site passes the table's own `emptyState` /
+  `filteredEmptyState`, so switching display does not change what an empty list says. The
+  call site supplies `renderCardBody` and nothing else about the card.
+  **Rejected: a `renderCard` that hands over `handle` and `moveControl`**, `SortableList`'s
+  shape. That fits a list whose items share nothing visual; the two boards' cards were the
+  same box written twice, and handing the box back to the call site is how they drifted.
+- **Containers (§1.3).** Both boards were panel → tinted `bg-surface-muted` column box →
+  bordered card: three levels. Columns are ink groups now, drawing an edge only as a drop
+  target, and a card is a row — `border-line-subtle`, no ground.
+- **The drop target** was `border-action-primary bg-action-primary-muted` on both — the action
+  tint carrying a state, the fifth instance. It is `border-line-strong bg-surface-raised`.
+- **R5.** The deal card's `border-state-info/50` "High-value deal" — a 75th percentile over
+  whatever page was loaded — is gone. Overdue keeps its icon and word in `text-state-warning`;
+  the warning-tinted *border* went with it, one signal per exception. The pipeline's own
+  "Pipeline View" heading and description went too: the segmented control above it already
+  says which display this is.
+- **The card title is the open gesture**: a link to the deal page (it was a `button` calling
+  `router.push`, so it could not be opened in a new tab), a button for a task, which opens a
+  dialog. Both got a visible `focus-visible` outline.
+- **Focus follows the card.** A keyboard move re-parents the card into another column, which
+  is a new DOM node, so focus fell to `<body>` — reasoned, like batch 3's, not yet seen. The
+  board focuses the move control where the card lands, and drops the request when the move
+  settles without landing (a failed save leaves the card where it was).
+- **No announcement of its own.** Both pages toast every move; a second live message for the
+  same change is noise.
+- **The unstaged column** is `acceptsCards: false`: its cards show, it is not a drop target, and
+  it is not in the move menu. The old menu had no *Unstaged* option either, but showed a
+  deal with no stage as *Lead*, which it was not; it shows *Choose stage* now.
+- **`?display=`** — `hooks/useListDisplay.ts`, over `usePageAddress`, with `display` added to
+  `LIST_ADDRESS_KEYS`. The first mode is the default and is never written; an unknown value
+  reads as the default. `tasks` holds `board | calendar`, `sales/opportunities` holds
+  `pipeline`. A reload onto `?display=board` starts `useTasks` at the board's 100-row page
+  size (a new `initialPageSize` argument) instead of fetching ten and then a hundred.
+- **Found on the way: the task dialog wiped the address.** Opening, closing and creating a task
+  called `router.replace("/dashboard/tasks")` or `…?taskId=N` — the *whole* query string — so
+  every card opened dropped `?display=` and every saved-view param `useSavedViews` had written.
+  It predates this batch; `?display=` only made it visible, because the board flipped back to
+  the list the moment a card opened. The three writes go through `updateAddress` now.
+- **The deal value is not `<Money>`.** `total_cost_of_project` is a `Text` column, and
+  `formatMoney("12,000")` is `NaN`, so the card prints the value as written with its currency
+  code. The type is a backend question, not this batch's.
+
+**Verification:** `tsc --noEmit`, lint, build green, one at a time; `check-design.sh` at the
+known 2 of 14.
+
+**Specs that will move at close-out.** `tasks-revamp:76` asserts `?taskId=N$` and `:81` asserts
+`/dashboard/tasks$` after the Board radio is clicked — the address is `?display=board&taskId=N`
+and `?display=board` now, which is ruling 7 working. Nothing else in the three specs that touch
+the boards names a removed string: *Change status for …*, the column regions (*To do tasks*)
+and the page hints are unchanged.
+
+**For the close-out's browser pass:** drag a card in both themes and see the raised column; pick
+a new stage from the keyboard and confirm focus lands on the card's move control in its new
+column; reload on `?display=board` and `?display=pipeline`; and look at the board in
+`ModuleTableShell` at 768px — its right-edge fade is an `after:` float written for a `<table>`
+child, and a flex child has not been seen under it.
+
+**Left knowingly.** `OpportunitiesTable`'s value cell is `text-state-success` — ruling 2's *a
+pipeline value is not good news*, on a 5.5 page this batch did not otherwise touch. Filed for
+the close-out's correction commit. `Add Task` on the tasks toolbar is 5.9's Title Case.
+
+**Next: batch 5** — `MonthGrid`: `TasksCalendar`, then `calendar/page.tsx` rebuilt around it, and
+`CalendarEventDialog` onto `SegmentedBoolean`.
+
 ---
 
 ## 5.8 — Client portal, public, and auth

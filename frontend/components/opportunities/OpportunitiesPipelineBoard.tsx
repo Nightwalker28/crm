@@ -1,16 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { AlertTriangle, GripVertical, Handshake, TriangleAlert } from "lucide-react";
-import { StatusValue } from "@/components/ui/StatusValue";
+import { AlertTriangle, BriefcaseBusiness } from "lucide-react";
+
+import { Board, type BoardColumn } from "@/components/ui/Board";
 import { Button } from "@/components/ui/button";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import { formatDateOnly } from "@/lib/datetime";
 import {
-  getOpportunityStageLabel,
   getOpportunityStage,
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
@@ -20,22 +17,31 @@ type Props = {
   opportunities: Opportunity[];
   isLoading: boolean;
   isRefreshing?: boolean;
-  /** §7.4 — the board is a data view, so it owes the same states the table does. */
   hasError?: boolean;
   onRetry?: () => void;
   hasActiveFilters?: boolean;
   onClearFilters?: () => void;
   onCreate?: () => void;
-  onEdit: (opportunity: Opportunity) => void;
   onStageChange: (opportunity: Opportunity, salesStage: string) => Promise<void> | void;
 };
 
-function formatValue(value?: string | null) {
-  return value && value.trim() ? value : "—";
+const STAGE_KEYS = new Set<string>(OPPORTUNITY_STAGE_ORDER);
+
+// *Unstaged* collects a deal whose stage is empty or unknown. A deal is never moved into it.
+const COLUMNS: BoardColumn[] = [...OPPORTUNITY_STAGE_ORDER, "unstaged"].map((key) => {
+  const status = getOpportunityStage(key);
+  return { key, label: status.label, status, acceptsCards: key !== "unstaged" };
+});
+
+function stageOf(opportunity: Opportunity) {
+  const stage = normalizeOpportunityStage(opportunity.sales_stage);
+  return STAGE_KEYS.has(stage) ? stage : "unstaged";
 }
 
-function parseDealValue(value?: string | null) { const parsed = Number((value ?? "").replace(/,/g, "")); return Number.isFinite(parsed) ? parsed : 0; }
-function isOverdue(opportunity: Opportunity) { if (!opportunity.expected_close_date || ["closed_won", "closed_lost"].includes(normalizeOpportunityStage(opportunity.sales_stage))) return false; return new Date(`${opportunity.expected_close_date}T23:59:59`).getTime() < Date.now(); }
+function isOverdue(opportunity: Opportunity) {
+  if (!opportunity.expected_close_date || ["closed_won", "closed_lost"].includes(stageOf(opportunity))) return false;
+  return new Date(`${opportunity.expected_close_date}T23:59:59`).getTime() < Date.now();
+}
 
 export default function OpportunitiesPipelineBoard({
   opportunities,
@@ -46,181 +52,53 @@ export default function OpportunitiesPipelineBoard({
   hasActiveFilters = false,
   onClearFilters,
   onCreate,
-  onEdit,
   onStageChange,
 }: Props) {
-  const [draggedId, setDraggedId] = useState<number | null>(null);
-  const [dropStage, setDropStage] = useState<string | null>(null);
-  const largeDealFloor = useMemo(() => { const values = opportunities.map((item) => parseDealValue(item.total_cost_of_project)).filter((value) => value > 0).sort((a, b) => a - b); return values.length >= 4 ? values[Math.floor(values.length * 0.75)] : Number.POSITIVE_INFINITY; }, [opportunities]);
-  const grouped = new Map<string, Opportunity[]>();
-
-  for (const stage of OPPORTUNITY_STAGE_ORDER) {
-    grouped.set(stage, []);
-  }
-  grouped.set("unstaged", []);
-
-  for (const opportunity of opportunities) {
-    const key = normalizeOpportunityStage(opportunity.sales_stage);
-    if (grouped.has(key)) {
-      grouped.get(key)?.push(opportunity);
-    } else {
-      grouped.get("unstaged")?.push(opportunity);
-    }
-  }
-
-  const stageEntries = [...OPPORTUNITY_STAGE_ORDER, "unstaged"].map((stage) => ({
-    stage,
-    label: stage === "unstaged" ? "Unstaged" : getOpportunityStageLabel(stage),
-    items: grouped.get(stage) ?? [],
-    style: getOpportunityStage(stage),
-  }));
-
   return (
-    <div className="flex min-h-56 flex-1 flex-col overflow-auto rounded-[var(--radius-panel)] border border-line-default bg-surface">
-      <div className="border-b border-line-subtle px-5 py-4">
-        <h2 className="text-base font-semibold text-copy-primary">Pipeline View</h2>
-        <p className="mt-1 text-sm text-copy-muted">
-          Review the currently loaded deal set in a stage-based board while keeping edits in the same flow.
-        </p>
-      </div>
-
-      {hasError ? (
-        // Same four states as `RecordTable`, in the same order and the same shape — the
-        // board is the other half of this list, and an operator switching display should
-        // not meet a different vocabulary (§7.4).
-        <div role="alert" className="px-4 py-12">
-          <EmptyState
-            icon={TriangleAlert}
-            title="Deals could not be loaded"
-            description="Check your connection and try again."
-            action={onRetry ? <Button type="button" variant="outline" onClick={onRetry}>Try again</Button> : undefined}
-          />
-        </div>
-      ) : isLoading ? (
-        <div className="overflow-x-auto px-4 py-4">
-          <div className="flex gap-4 overflow-x-auto">
-            {Array.from({ length: 7 }).map((_, index) => (
-              <div key={`pipeline-skeleton-${index}`} className="min-w-[220px] flex-shrink-0 rounded-[var(--radius-control)] bg-surface-muted">
-                <div className="border-b border-line-subtle px-4 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <Skeleton className="h-6 w-24" />
-                    <Skeleton className="h-4 w-6" />
-                  </div>
-                </div>
-                <div className="flex min-h-[12rem] flex-col gap-3 p-3">
-                  {Array.from({ length: 3 }).map((__, cardIndex) => (
-                    <div key={`pipeline-card-${index}-${cardIndex}`} className="rounded-[var(--radius-control)] border border-line-subtle bg-surface p-3">
-                      <Skeleton className="h-4 w-32" />
-                      <Skeleton className="mt-2 h-3 w-24" />
-                      <Skeleton className="mt-4 h-3 w-20" />
-                      <Skeleton className="mt-2 h-3 w-24" />
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
+    <Board
+      label="Deals"
+      moveFieldLabel="stage"
+      columns={COLUMNS}
+      items={opportunities}
+      getKey={(opportunity) => opportunity.opportunity_id}
+      getColumn={stageOf}
+      getItemLabel={(opportunity) => opportunity.opportunity_name}
+      getItemHref={(opportunity) => `/dashboard/sales/opportunities/${opportunity.opportunity_id}`}
+      onMove={onStageChange}
+      renderCardBody={(opportunity) => (
+        <>
+          <div className="truncate">{opportunity.organization_name || opportunity.client || <EmptyValue />}</div>
+          <div className="truncate">{opportunity.assigned_to_name ? `Owner ${opportunity.assigned_to_name}` : "Unassigned"}</div>
+          <div>Close {opportunity.expected_close_date ? formatDateOnly(opportunity.expected_close_date) : "not set"}</div>
+          {/* Free text in the schema (`Text`, not a number), so it is printed as written, not through `<Money>`. */}
+          <div className="tabular-nums text-copy-secondary">
+            {opportunity.total_cost_of_project?.trim() ? `${opportunity.total_cost_of_project} ${opportunity.currency_type || ""}`.trim() : "No value"}
           </div>
-        </div>
-      ) : !opportunities.length ? (
-        <div className="px-4 py-12">
-          <EmptyState
-            icon={Handshake}
-            title={hasActiveFilters ? "No deals match these filters" : "No deals yet"}
-            description={hasActiveFilters ? "Clear one or more filters and try again." : "Create your first deal to see it move through the pipeline."}
-            action={
-              hasActiveFilters
-                ? onClearFilters ? <Button type="button" variant="outline" onClick={onClearFilters}>Clear filters</Button> : undefined
-                : onCreate ? <Button type="button" onClick={onCreate}>Create deal</Button> : undefined
-            }
-          />
-        </div>
-      ) : (
-        <div className="overflow-x-auto px-4 py-4">
-          {isRefreshing ? (
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-line-subtle bg-surface-muted px-3 py-1 text-2xs font-medium text-copy-label">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-copy-muted motion-reduce:animate-none" />
-              Refreshing
+          {isOverdue(opportunity) ? (
+            <div className="inline-flex items-center gap-1 text-state-warning">
+              <AlertTriangle className="size-3.5" aria-hidden="true" />
+              Overdue
             </div>
           ) : null}
-          <div className="flex gap-4 overflow-x-auto">
-            {stageEntries.map((entry) => (
-              <div
-                key={entry.stage}
-                onDragOver={(event) => { event.preventDefault(); setDropStage(entry.stage); }}
-                onDragLeave={() => setDropStage((current) => current === entry.stage ? null : current)}
-                onDrop={() => { const opportunity = opportunities.find((item) => item.opportunity_id === draggedId); setDropStage(null); setDraggedId(null); if (opportunity && entry.stage !== "unstaged" && normalizeOpportunityStage(opportunity.sales_stage) !== entry.stage) void onStageChange(opportunity, entry.stage); }}
-                className={`min-w-[240px] flex-shrink-0 rounded-[var(--radius-control)] border bg-surface-muted transition-colors motion-reduce:transition-none ${dropStage === entry.stage ? "border-action-primary bg-action-primary-muted/30" : "border-transparent"}`}
-              >
-                <div className="border-b border-line-subtle px-4 py-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <StatusValue status={entry.style} context="record" />
-                    <span className="text-xs text-copy-muted">{entry.items.length}</span>
-                  </div>
-                </div>
-
-                <div className="flex min-h-[12rem] flex-col gap-3 p-3">
-                  {entry.items.length ? (
-                    entry.items.map((opportunity) => (
-                      <div
-                        key={opportunity.opportunity_id}
-                        draggable
-                        onDragStart={() => setDraggedId(opportunity.opportunity_id)}
-                        onDragEnd={() => { setDraggedId(null); setDropStage(null); }}
-                        className={`rounded-[var(--radius-control)] border bg-surface p-3 text-left transition-colors hover:border-line-strong hover:bg-surface-raised motion-reduce:transition-none ${isOverdue(opportunity) ? "border-state-warning/50" : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? "border-state-info/50" : "border-line-subtle"}`}
-                      >
-                        <div className="flex items-start gap-2"><GripVertical className="mt-0.5 h-4 w-4 shrink-0 cursor-grab text-copy-muted" aria-hidden="true" /><button
-                          type="button"
-                          onClick={() => onEdit(opportunity)}
-                          className="w-full text-left text-sm font-medium text-copy-primary hover:text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
-                        >
-                          {opportunity.opportunity_name}
-                        </button></div>
-                        <div className="mt-1 text-sm text-copy-muted">
-                          {formatValue(opportunity.organization_name || opportunity.client)}
-                        </div>
-                        <div className="mt-2 text-xs text-copy-muted">Owner {opportunity.assigned_to_name || "Unassigned"}</div>
-                        <div className="mt-3 text-xs text-copy-muted">
-                          Close {opportunity.expected_close_date ? formatDateOnly(opportunity.expected_close_date) : "not set"}
-                        </div>
-                        <div className="mt-1 text-xs text-copy-muted">
-                          Value {formatValue(opportunity.total_cost_of_project)}
-                        </div>
-                        {isOverdue(opportunity) ? <div className="mt-2 flex items-center gap-1 text-xs text-state-warning"><AlertTriangle className="h-3.5 w-3.5" />Overdue</div> : parseDealValue(opportunity.total_cost_of_project) >= largeDealFloor ? <div className="mt-2 text-xs text-state-info">High-value deal</div> : null}
-                        <div className="mt-3">
-                          <Select
-                            value={normalizeOpportunityStage(opportunity.sales_stage) || "lead"}
-                            onValueChange={(value) => onStageChange(opportunity, value)}
-                          >
-                            <SelectTrigger size="sm" className="w-full text-xs">
-                              <SelectValue placeholder="Move stage" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {OPPORTUNITY_STAGE_ORDER.map((stage) => (
-                                <SelectItem key={stage} value={stage}>
-                                  {getOpportunityStageLabel(stage)}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-2">
-                          <span className="text-2xs font-medium text-copy-label">
-                            {opportunity.currency_type || "USD"}
-                          </span>
-                        </div>
-                      </div>
-                    ))
-                  ) : (
-                    <div className="px-3 py-6 text-center text-sm text-copy-muted">
-                      No opportunities in this stage.
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </>
       )}
-    </div>
+      isLoading={isLoading}
+      isRefreshing={isRefreshing}
+      hasError={hasError}
+      onRetry={onRetry}
+      hasActiveFilters={hasActiveFilters}
+      onClearFilters={onClearFilters}
+      // The table's words, so switching display does not change what the empty list says.
+      emptyState={{
+        icon: BriefcaseBusiness,
+        title: "No deals yet",
+        description: "Create your first deal to start tracking the pipeline.",
+        action: onCreate ? <Button type="button" onClick={onCreate}>Create deal</Button> : undefined,
+      }}
+      filteredEmptyState={{
+        title: "No matching deals",
+        description: "Try changing or clearing the current search and filters.",
+      }}
+    />
   );
 }

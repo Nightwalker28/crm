@@ -156,7 +156,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `sales/organizations/error.tsx` | 3 | 5.1 | rebuild | | done |
 | `sales/organizations/loading.tsx` | 2 | 5.1 | rebuild | | done |
 | `sales/organizations/not-found.tsx` | 2 | 5.1 | rebuild | | done |
-| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar. **5.7 batch 2** moved its seven boxed stage tiles onto one `StatGroup` |
+| `sales/opportunities/page.tsx` | 69 | 5.5 | rebuild | 5.4 batch 6 wired the shared Deal Quick Create; 5.5 still owns the final list shape | **done, batches 2–3** — addressable state (A1), the search debounce (A5) and the column picker (A2), all from the shared hooks and the toolbar. **5.7 batch 2** moved its seven boxed stage tiles onto one `StatGroup`. **5.7 batch 4** addressed the table/pipeline switch as `?display=` and moved the pipeline onto `Board` |
 | `sales/opportunities/new/page.tsx` | 3 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `sales/opportunities/[opportunityId]/page.tsx` | 565 | 5.3 | rebuild | **Nested tabs at `:507`** | done |
 | `sales/opportunities/[opportunityId]/edit/page.tsx` | 6 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
@@ -224,7 +224,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `support/cases/page.tsx` | 117 | 5.5 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed|
 | `support/cases/new/page.tsx` | 5 | 5.4 | unchanged | Shim | **out of scope** (scoping decision 8) — the module may be removed|
 | `support/cases/[caseId]/page.tsx` | 272 | 5.3 | rebuild | **Two comment systems and two histories on one screen.** Title-caser at `:269` | done; **out of scope** (scoping decision 8) — the module may be removed |
-| `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | |
+| `tasks/page.tsx` | 277 | 5.7 | rebuild | List + board + calendar in one route | **batch 4** — the display is `?display=`, and the task dialog writes `?taskId=` through `usePageAddress` instead of replacing the whole query. The calendar is batch 5's |
 | `documents/page.tsx` | 147 | 5.5 | rebuild | **No `ModuleListToolbar`, no pagination.** The only list with addressable state (A1) | **done, batch 5** — the toolbar, real pagination on a new `page`/`page_size` backend param, `variant="list"`, and both draft fields written to the address |
 | `documents/upload/page.tsx` | 5 | 5.4 | unchanged | Shim | **done, close-out** — audited delegation only |
 | `custom/[moduleKey]/page.tsx` | 263 | 5.5 | rebuild | **B.2** — filters collected and silently discarded. Filed, not fixed here | **done, batch 3** — the hand-placed `ColumnPicker` moved into the toolbar slot. **B.2 is still open and still filed**: `useCustomModuleRecords` sends search and sort only, so the filter group stays undrawn (§7.9) |
@@ -413,8 +413,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `dashboard/DashboardPersonalWidgets.tsx` | 161 | 5.7 | rebuild | Raw `Table` → `RecordTable` | **done, batch 1** — `RecordTable variant="readOnly"`; the module tile is `Card variant="interactive"` around a `StatTile` |
 | `dashboard/DashboardReportChartWidget.tsx` | 162 | 5.7 | rebuild | Load the `dataviz` skill | **done, batch 1** — states → `PanelStates`; the bar chart stopped painting each bar its own hue (rank as identity) |
 | `dashboard/DashboardLayoutEditor.tsx` | 366 | 5.7 | rebuild | Raw HTML5 DnD → `SortableList` | **done, batches 1–3** — the header onto `PanelHeader` (1), the edit bar off `sticky top-2` onto an in-flow `ActionBar` (2), the grid onto `SortableList` (3) |
-| `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | |
-| `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | |
+| `opportunities/OpportunitiesPipelineBoard.tsx` | 232 | 5.7 | rebuild | 1 of 2 unshared kanbans → `Board` | **done, batch 4** — 232 → 104 lines, a body renderer over `Board`. The card title is a link to the deal; the "High-value deal" quartile tint is gone (R5) |
+| `tasks/TasksBoard.tsx` | 138 | 5.7 | rebuild | 2 of 2 kanbans | **done, batch 4** — 138 → 80 lines, a body renderer over `Board` |
 | `tasks/TasksCalendar.tsx` | 178 | 5.7 | rebuild | 1 of 3 calendar grids | |
 | `tasks/TaskDialog.tsx` | 395 | 5.7 | rebuild | | |
 | `tasks/TaskAssigneePicker.tsx` | 104 | 5.7 | adopt | | |

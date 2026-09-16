@@ -168,6 +168,8 @@ export const LIST_ADDRESS_KEYS = {
   columns: "cols",
   page: "page",
   pageSize: "page_size",
+  /** How the region renders the rows — a table, a board, a calendar (design.md §7.13). */
+  display: "display",
 } as const;
 
 export type ListAddressSort = { key: string; direction: "asc" | "desc" } | null;

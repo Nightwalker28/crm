@@ -20,9 +20,19 @@ import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedContro
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
+import { useListDisplay } from "@/hooks/useListDisplay";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+
+/** A board or a calendar of ten cards is not a board. A reload onto `?display=board` starts here too. */
+const BOARD_PAGE_SIZE = 100;
+
+function clearDialogAddress(address: URLSearchParams) {
+  address.delete("taskId");
+  address.delete("action");
+}
 
 export default function TasksPage() {
   const router = useRouter();
@@ -31,7 +41,8 @@ export default function TasksPage() {
   const taskId = taskIdParam && /^\d+$/.test(taskIdParam) ? Number(taskIdParam) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [displayMode, setDisplayMode] = useState<"list" | "board" | "calendar">("list");
+  const { updateAddress } = usePageAddress();
+  const [displayMode, setDisplayMode] = useListDisplay(["list", "board", "calendar"]);
   const [sort, setSort] = useState<TaskSortState>(null);
   const { fields: moduleFields } = useModuleFieldConfigs("tasks");
   const definition = useMemo(() => buildModuleViewDefinition("tasks", [], moduleFields), [moduleFields]);
@@ -65,7 +76,7 @@ export default function TasksPage() {
     deleteTask,
     isSaving,
     isDeleting,
-  } = useTasks(activeFilters, sort);
+  } = useTasks(activeFilters, sort, displayMode === "list" ? undefined : BOARD_PAGE_SIZE);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters);
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = activeFilterCount > 0 || Boolean(
@@ -94,27 +105,32 @@ export default function TasksPage() {
   useEffect(() => {
     if (!taskId || !taskDetailQuery.error) return;
     toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "Failed to load task.");
-    router.replace("/dashboard/tasks");
-  }, [taskDetailQuery.error, taskId, router]);
+    updateAddress(clearDialogAddress);
+  }, [taskDetailQuery.error, taskId, updateAddress]);
 
   const createRequested = searchParams.get("action") === "create";
   const isDialogOpen = createRequested || (taskId ? Boolean(activeTask) : dialogOpen);
   function openCreateDialog() {
     setSelectedTask(null);
     setDialogOpen(true);
-    router.replace("/dashboard/tasks");
+    updateAddress(clearDialogAddress);
   }
 
   function openEditDialog(task: Task) {
     setSelectedTask(task);
     setDialogOpen(true);
-    router.replace(`/dashboard/tasks?taskId=${task.id}`);
+    // Through the page's one address writer, so opening a card on the board keeps
+    // `?display=board` and the saved view's params rather than replacing the whole query.
+    updateAddress((address) => {
+      address.delete("action");
+      address.set("taskId", String(task.id));
+    });
   }
 
   function closeDialog() {
     setDialogOpen(false);
     setSelectedTask(null);
-    router.replace("/dashboard/tasks");
+    updateAddress(clearDialogAddress);
   }
 
   async function handleSubmit(payload: TaskPayload) {
@@ -158,7 +174,7 @@ export default function TasksPage() {
 
   function changeDisplayMode(mode: "list" | "board" | "calendar") {
     setDisplayMode(mode);
-    if (mode !== "list" && pageSize < 100) onPageSizeChange(100);
+    if (mode !== "list" && pageSize < BOARD_PAGE_SIZE) onPageSizeChange(BOARD_PAGE_SIZE);
   }
 
   async function handleAddToCalendar() {
@@ -243,7 +259,7 @@ export default function TasksPage() {
           onSortChange={setSort}
         />
       ) : displayMode === "board" ? (
-        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
+        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={openCreateDialog} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
       ) : (
         <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} onOpen={openEditDialog} />
       )}
