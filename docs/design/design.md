@@ -1056,10 +1056,16 @@ So a record page with no editable field renders **without the spine**:
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Contract: the record's identity, status and headline figure move to `PageShell`'s `eyebrow` /
-`title` / `context`; created and updated become one meta line under the header; the content
-region takes the full width and stays the only scroller. `PageShell variant="record"` still
-applies — what is dropped is `RecordSpine`, not the archetype.
+Contract: **it is `RecordWorkspace` with no `spine`, and nothing else changes.** The record's
+name stays in the header where `RecordWorkspaceHeader` draws it, the status stays beside it,
+the identifying line and the created/updated stamps go to `subtitle`, and the content region
+keeps the tab strip and stays the page's only scroller. `PageShell variant="record"` still
+applies: the two-column row simply becomes one column, so the geometry the primitive already
+owns needs no second implementation.
+
+`spine` is optional on the primitive for exactly this reason. Five portal pages hand-rolling
+a spineless record page is the failure §0 names — a new visual pattern is a signal to extend
+a primitive, not to style a div.
 
 **The test is "does this record have a state field that edits in place", not "is this page
 small" and not "does this page have any control at all".** R2's boundary is about

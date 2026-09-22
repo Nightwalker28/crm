@@ -1,16 +1,14 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRight, ShoppingCart } from "lucide-react";
-
-import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { Money } from "@/components/ui/Money";
+import { PageShell } from "@/components/ui/PageShell";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientOrders, type ClientPortalOrder } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-
-function money(value: string | number, currency: string) {
-  const amount = Number(value);
-  return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
-}
+import { getOrderStatus } from "@/lib/statusStyles";
 
 function firstLine(order: ClientPortalOrder) {
   const line = order.line_items[0];
@@ -23,54 +21,39 @@ export default function ClientOrdersPage() {
   const orders = ordersQuery.data?.results ?? [];
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client/catalog">Catalog</Link>
-          </Button>
-        </header>
-
-        <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-copy-secondary">
-            <ShoppingCart className="h-4 w-4" />
-            Client orders
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Order history</h1>
-        </section>
-
-        {ordersQuery.isLoading ? (
-          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading orders...</div>
-        ) : ordersQuery.error ? (
-          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {ordersQuery.error instanceof Error ? ordersQuery.error.message : "Failed to load orders."}
-          </div>
-        ) : orders.length === 0 ? (
-          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No orders submitted yet.</div>
-        ) : (
-          <div className="grid gap-3">
+    <PageShell
+      title="Order history"
+      isLoading={ordersQuery.isLoading}
+      hasError={Boolean(ordersQuery.error)}
+      backHref="/client"
+      backLabel="Return to the portal"
+      onRetry={() => ordersQuery.refetch()}
+    >
+      {orders.length === 0 ? (
+        <EmptyState
+          title="No orders yet"
+          description="Orders placed against your account will appear here, with their line items and totals."
+        />
+      ) : (
+        <Card className="p-0">
+          <RowList label="Orders" inset>
             {orders.map((order) => (
-              <Link key={order.id} href={`/client/orders/${order.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <div className="text-xs font-medium text-copy-label">{order.external_reference}</div>
-                    <h2 className="mt-1 font-semibold text-copy-primary">{firstLine(order)}</h2>
-                    <p className="mt-1 text-xs text-copy-muted">{formatDateTime(order.created_at)}</p>
-                  </div>
-                  <div className="flex items-center gap-4">
-                    <div className="text-right">
-                      <div className="capitalize text-copy-secondary">{order.status.replaceAll("_", " ")}</div>
-                      <div className="text-sm font-semibold text-copy-primary">{money(order.subtotal_amount, order.currency)}</div>
-                    </div>
-                    <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                </div>
-              </Link>
+              <ListRow
+                key={order.id}
+                title={firstLine(order)}
+                href={`/client/orders/${order.id}`}
+                meta={`${order.external_reference} · ${formatDateTime(order.created_at)}`}
+                trailing={
+                  <span className="flex items-center gap-3">
+                    <StatusValue status={getOrderStatus(order.status)} />
+                    <Money amount={order.subtotal_amount} currency={order.currency} className="font-medium text-copy-primary" />
+                  </span>
+                }
+              />
             ))}
-          </div>
-        )}
-      </div>
-    </main>
+          </RowList>
+        </Card>
+      )}
+    </PageShell>
   );
 }

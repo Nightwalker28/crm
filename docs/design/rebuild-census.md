@@ -94,16 +94,16 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `client/page.tsx` | 120 | 5.8 | rebuild | | batch 1 — `PageShell`, `StatTile` in an interactive `Card`, `ListRow`, `EmptyState` |
 | `client/login/page.tsx` | 113 | 5.8 | rebuild | Decide vs `/auth/login` and write the choice into §9 | batch 2 — ruling 3: it matches. §9 widened, `AuthAtmosphere` shared |
 | `client/setup/page.tsx` | 149 | 5.8 | rebuild | | batch 2 — the second door, onto `AuthAtmosphere` |
-| `client/bookings/page.tsx` | 76 | 5.8 | rebuild | | |
+| `client/bookings/page.tsx` | 58 | 5.8 | rebuild | | batch 3 — `PageShell` + `RowList` + `EmptyState` |
 | `client/bookings/[bookingId]/page.tsx` | 115 | 5.8 | rebuild | Archetype 2, rail collapsed | |
-| `client/catalog/page.tsx` | 80 | 5.8 | rebuild | | |
+| `client/catalog/page.tsx` | 73 | 5.8 | rebuild | | batch 3 — the card grid became rows (§1.5); `SearchBar`, `Money`, `StatusValue` |
 | `client/catalog/[kind]/[itemId]/page.tsx` | 108 | 5.8 | rebuild | Archetype 2 | |
-| `client/documents/page.tsx` | 73 | 5.8 | rebuild | | |
-| `client/messages/page.tsx` | 116 | 5.8 | rebuild | | |
+| `client/documents/page.tsx` | 64 | 5.8 | rebuild | | batch 3 — `ListRow`'s `actions` slot carries `DocumentReferenceActions` |
+| `client/messages/page.tsx` | 109 | 5.8 | rebuild | | batch 3 — `PanelHeader`, labelled fields, `RowList` |
 | `client/messages/[messageId]/page.tsx` | 103 | 5.8 | rebuild | Archetype 2 | |
-| `client/orders/page.tsx` | 76 | 5.8 | rebuild | | |
+| `client/orders/page.tsx` | 59 | 5.8 | rebuild | | batch 3 — `Money` and `StatusValue` in place of the local `money()` |
 | `client/orders/[orderId]/page.tsx` | 88 | 5.8 | rebuild | `RecordTable variant="readOnly"` (R10) | |
-| `client/quotes/page.tsx` | 81 | 5.8 | rebuild | | |
+| `client/quotes/page.tsx` | 62 | 5.8 | rebuild | | batch 3 — same |
 | `client/quotes/[quoteId]/page.tsx` | 154 | 5.8 | rebuild | Archetype 2 | |
 | `client/support/page.tsx` | 155 | 5.8 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed |
 | `client/support/[caseId]/page.tsx` | 126 | 5.8 | rebuild | Archetype 2 | **out of scope** (scoping decision 8) — the module may be removed |

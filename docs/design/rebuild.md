@@ -6177,6 +6177,46 @@ sub-phase closes rather than leaving the row unexamined.
 **Next.** Batch 3 — the six in-scope list pages onto `PageShell` + `ListRow` + `EmptyState` +
 `Money`.
 
+### Status: batch 3 — six lists, and 462 lines became 425 with four more states in them
+
+**Landed.** The six in-scope list pages — quotes, orders, documents, bookings, catalog,
+messages — onto `PageShell` + `RowList` / `ListRow` + `EmptyState` + `Money` + `StatusValue`.
+`client/support` is untouched (scoping decision 8) and renders inside the new chrome
+unchanged.
+
+**Every page lost the same seven lines** and gained the states it never had: the
+`min-h-screen bg-app` root, the `mx-auto max-w-*` container (ruling 4 — the layout owns it),
+the wordmark header, the ad-hoc "Overview"/"Catalog" button that was the page's only
+navigation, the eyebrow that repeated what the rail now says, the loading line, the error
+card. What replaced the last two is `PageShell`'s `isLoading` / `hasError` with
+`backHref="/client"` and a working **Try again** — none of the six had a retry before, so a
+failed load was a dead end with no way out but the browser's back button.
+
+**`money()` is down from eight copies to two.** Six went here; `pages/[token]` and
+`public/quotes/proposal/[token]` are batch 5's. `Money` was already taking
+`string | number | null | undefined`, so no call site needed the null-tolerant variant that
+had been written by hand.
+
+**The catalog stopped being a card grid.** Three columns of bordered cards, one box per
+product, each saying what a row says in a line — §1.5 is explicit that density is a feature
+and a row beats a card. It is a `RowList` now, with the price and availability as trailing
+ink and the description as the row's own line. Its search moved to `SearchBar` in
+`PageShell`'s `actions`, which also removed a hand-positioned magnifier and its
+`absolute left-3 top-1/2 -translate-y-1/2`.
+
+**A service has no stock state, and now says so honestly.** The catalog's availability was
+`item.kind === "service" ? "Available" : status.replaceAll("_", " ")` — a string either way.
+It resolves through `getCatalogStockStatus` for products and `getGenericStatus` for services,
+so a service carries no tone it has not earned rather than borrowing a product's.
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | Clean |
+| `npm run lint` | Clean |
+
+**Next.** Batch 4 — the five in-scope detail pages, on ruling 2.
+
+
 
 
 ---
