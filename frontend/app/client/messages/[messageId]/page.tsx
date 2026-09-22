@@ -1,20 +1,21 @@
 "use client";
 
 import type { FormEvent } from "react";
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { ArrowLeft, MessageSquare } from "lucide-react";
 import { useState } from "react";
+import { useParams } from "next/navigation";
 import { toast } from "sonner";
 
+import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { PanelHeader } from "@/components/ui/PanelStates";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
 import { useClientMessage, useClientMessageActions } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-
-function statusLabel(value: string) {
-  return value.replaceAll("_", " ");
-}
+import { getSupportCaseStatus } from "@/lib/statusStyles";
 
 export default function ClientMessageDetailPage() {
   const params = useParams();
@@ -32,72 +33,77 @@ export default function ClientMessageDetailPage() {
       setReply("");
       toast.success("Reply sent.");
     } catch {
-      toast.error("Failed to send reply.");
+      toast.error("The reply could not be sent. Check your connection and try again.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client/messages">
-              <ArrowLeft className="h-4 w-4" />
-              Messages
-            </Link>
-          </Button>
-        </header>
+    // Archetype 2, read-only (§4.7): no `spine`. A reply creates a comment — a row pointing
+    // at this record, which §4.7 keeps in the content region in any case.
+    <RecordWorkspace
+      title={item?.subject ?? "Question"}
+      description="Read the thread and reply to the team."
+      backHref="/client/messages"
+      backLabel="Messages"
+      isLoading={messageQuery.isLoading}
+      hasError={Boolean(messageQuery.error) || (!messageQuery.isLoading && !item)}
+      onRetry={() => void messageQuery.refetch()}
+      status={item ? <StatusValue status={getSupportCaseStatus(item.status)} context="record" /> : null}
+      subtitle={
+        item ? (
+          <>
+            <span>{item.case_number}</span>
+            <span>Asked {formatDateTime(item.created_at)}</span>
+          </>
+        ) : null
+      }
+      details={
+        item ? (
+          <div className="flex min-w-0 flex-col gap-6">
+            {item.description ? (
+              <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+                <PanelHeader title="Your question" />
+                <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p>
+              </Card>
+            ) : null}
 
-        {messageQuery.isLoading ? (
-          <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading message...</div>
-        ) : messageQuery.error ? (
-          <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {messageQuery.error instanceof Error ? messageQuery.error.message : "Message unavailable."}
-          </div>
-        ) : item ? (
-          <div className="grid gap-5">
-            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
-              <div className="text-xs font-medium text-copy-label">{item.case_number}</div>
-              <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{item.subject}</h1>
-                  <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(item.created_at)}</p>
-                </div>
-                <div className="text-right">
-                  <div className="capitalize text-copy-secondary">{statusLabel(item.status)}</div>
-                  <div className="text-xs text-copy-muted">Quick question</div>
-                </div>
-              </div>
-              {item.description ? <p className="mt-5 whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p> : null}
-            </section>
+            <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+              <PanelHeader title="Conversation" />
+              {item.comments.length === 0 ? (
+                <EmptyState
+                  title="No replies yet"
+                  description="The team's replies will appear here, newest at the bottom."
+                />
+              ) : (
+                <RowList label="Replies" ordered>
+                  {item.comments.map((comment) => (
+                    <ListRow
+                      key={comment.id}
+                      title={comment.author_display_name || (comment.author_type === "team" ? "Support team" : "You")}
+                      trailing={formatDateTime(comment.created_at)}
+                    >
+                      <span className="whitespace-pre-wrap">{comment.body}</span>
+                    </ListRow>
+                  ))}
+                </RowList>
+              )}
 
-            <section className="rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
-              <div className="flex items-center gap-2">
-                <MessageSquare className="h-4 w-4 text-copy-secondary" />
-                <h2 className="text-base font-semibold text-copy-primary">Conversation</h2>
-              </div>
-              <div className="mt-4 grid gap-3">
-                {item.comments.length ? item.comments.map((comment) => (
-                  <div key={comment.id} className="rounded-[var(--radius-control)] border border-line-subtle bg-app p-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-copy-muted">
-                      <span>{comment.author_display_name || (comment.author_type === "team" ? "Support team" : "You")}</span>
-                      <span>{formatDateTime(comment.created_at)}</span>
-                    </div>
-                    <div className="mt-2 whitespace-pre-wrap text-p-sm text-copy-secondary">{comment.body}</div>
-                  </div>
-                )) : <div className="text-sm text-copy-muted">No replies yet.</div>}
-              </div>
-              <form className="mt-4 grid gap-3" onSubmit={(event) => void submitReply(event)}>
-                <Textarea value={reply} onChange={(event) => setReply(event.target.value)} rows={4} placeholder="Write a reply" />
+              <form className="grid gap-3" onSubmit={(event) => void submitReply(event)}>
+                <Textarea
+                  aria-label="Your reply"
+                  value={reply}
+                  onChange={(event) => setReply(event.target.value)}
+                  rows={4}
+                  placeholder="Write a reply"
+                />
                 <Button type="submit" className="w-fit" disabled={!reply.trim() || isAddingMessageComment}>
-                  {isAddingMessageComment ? "Sending..." : "Send Reply"}
+                  {isAddingMessageComment ? "Sending…" : "Send reply"}
                 </Button>
               </form>
-            </section>
+            </Card>
           </div>
-        ) : null}
-      </div>
-    </main>
+        ) : null
+      }
+    />
   );
 }

@@ -60,8 +60,19 @@ type RecordWorkspaceProps = {
    */
   overflowActions?: ReactNode;
 
-  /** `RecordSpine` and its blocks. The page's only editable region (R9). */
-  spine: ReactNode;
+  /**
+   * `RecordSpine` and its blocks. The page's only editable region (R9).
+   *
+   * **Omitted for archetype 2's read-only variant** (§4.7): a record with no state field
+   * that edits in place has nothing for the rail to hold, and 20rem of read-only fields
+   * spends the signature on nothing — worse, it teaches that the left column is where you
+   * change things, on a surface where nothing changes. The row then becomes one column and
+   * the content region takes the full width. The whole client portal is this case.
+   *
+   * The test is the field, not the page: a record whose state is merely *short* still gets
+   * the rail, and an action — Approve, Download — has never belonged in it.
+   */
+  spine?: ReactNode;
 
   details: ReactNode;
   timeline?: ReactNode;
@@ -137,8 +148,14 @@ export function RecordWorkspace({
         overflowActions={overflowActions}
       />
       {/* Below `lg` this is a plain stack and the page scrolls as a document; from `lg` it
-          is the two-column split where only the content region scrolls (R9). */}
-      <div className="flex min-w-0 flex-col gap-6 lg:min-h-0 lg:flex-1 lg:flex-row lg:gap-8">
+          is the two-column split where only the content region scrolls (R9). With no spine
+          it stays one column at every width — there is no second column to place. */}
+      <div
+        className={cn(
+          "flex min-w-0 flex-col gap-6 lg:min-h-0 lg:flex-1",
+          spine ? "lg:flex-row lg:gap-8" : null,
+        )}
+      >
         {spine}
         {state ? null : <RecordContent tabs={tabs} />}
       </div>

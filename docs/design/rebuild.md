@@ -6216,6 +6216,52 @@ so a service carries no tone it has not earned rather than borrowing a product's
 
 **Next.** Batch 4 — the five in-scope detail pages, on ruling 2.
 
+### Status: batch 4 — five records with no rail, and the primitive that had to allow it
+
+**Landed.** The five in-scope detail pages on ruling 2. `client/support/[caseId]` is
+untouched (scoping decision 8); `client/pages/[token]` is batch 5's, being a public surface
+rather than a portal record.
+
+**The variant is a prop on the primitive, not a shape five pages draw.** `RecordWorkspace`
+required a `spine`; it is optional now, and with it absent the row stays one column at every
+width instead of splitting at `lg`. That is the whole implementation — ten lines. Five pages
+each hand-rolling a spineless record page is the failure §0 names, and it is what would have
+happened if the ruling had been written as guidance instead of as a default.
+
+**Two corrections to the ruling, both found by reading the pages before writing them.**
+
+- **The test is the field, not the control.** The quote page carries Approve, Reject and
+  Download. An earlier wording — "does any control here write a column on this row" — would
+  have sent it back to a spine, because Approve writes `status`. R2's boundary is about
+  *dropdown-shaped fields that commit on change*, and R1 already routes an approval through
+  an explicit confirm rather than a silent commit. `design.md` says so now, with the quote
+  page named as the worked example.
+- **It is `RecordWorkspace` without a `spine`, not `PageShell variant="document"`.** The
+  first draft of the rule sent these pages to `PageShell` directly — which would have lost
+  the back link, the record name, the status beside it and the tab strip, because
+  **`PageHeader`'s h1 is deliberately `sr-only`** (§8) and `RecordWorkspaceHeader` is what
+  actually draws a record's name. A rule written from the wireframe rather than from the
+  primitive would have produced five pages with no visible heading.
+
+**The order page stopped drawing its own table.** Its line items are
+`TransactionLineItemsTable` — the component quote, order and POS invoice already share (R10)
+— with `showAdjustments={false}`, because a portal order line carries no per-line discount or
+tax. That removes the last raw `Table` importer in `app/client`.
+
+**Every page gained a `Try again` and a real back link.** The five had `Loading order...` /
+`Order not found.` and a header button; they have `PageShell`'s states through
+`RecordWorkspace`, and `backHref` / `backLabel` pointing at the list they came from rather
+than at `/client`.
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | Clean |
+| `npm run lint` | Clean |
+
+**Next.** Batch 5 — the public surfaces, `app/page.tsx`, and the `size-6` guard failure,
+which turns out to be three hand-written chips rather than one call site.
+
+
 
 
 
