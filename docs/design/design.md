@@ -1028,6 +1028,53 @@ three-column one does not. The three line-item documents (quote, order, invoice)
 this bites, and the answer is that `RecordTable variant="lineItems"` scrolls sideways inside
 the content region — the archetype does not bend for them.
 
+**The read-only variant: a record with no editable field collapses its spine.**
+
+The rail exists to answer R2's question. R2 draws a categorical boundary — dropdown-shaped
+fields hold *state* and edit in place, everything else is *content* and is read-only until
+`/[id]/edit` — and then names its own risk: a half-editable page where nothing signals what
+is clickable is worse than either pure model. R9 answers that with **position**, because a
+control that drifts out of the rail is visibly in the wrong place.
+
+Where nothing on the record is editable, that question has no content, and a 20rem rail of
+read-only fields spends the signature on nothing. Worse, it teaches the wrong lesson: the
+left column is where you change things, on a surface where nothing changes.
+
+So a record page with no editable field renders **without the spine**:
+
+```
+┌──────────────────────────────────────────────────────────────────────────┐
+│ ‹ Orders    ORD-1042                                                     │  eyebrow
+│             Acme retainer                             Paid  $4,200.00    │  title + context
+│ Created 2 Sep 2026 · Updated 2h ago                                      │  meta line
+├──────────────────────────────────────────────────────────────────────────┤
+│ CONTENT — full width, the only scroller                                  │
+│                                                                          │
+│  Item                              Qty       Unit          Total         │
+│  Retainer — September                1   4,200.00      4,200.00          │
+│  …                                                                       │
+└──────────────────────────────────────────────────────────────────────────┘
+```
+
+Contract: the record's identity, status and headline figure move to `PageShell`'s `eyebrow` /
+`title` / `context`; created and updated become one meta line under the header; the content
+region takes the full width and stays the only scroller. `PageShell variant="record"` still
+applies — what is dropped is `RecordSpine`, not the archetype.
+
+**The test is "does this record have a state field that edits in place", not "is this page
+small" and not "does this page have any control at all".** R2's boundary is about
+*dropdown-shaped fields that commit on change*; an action is a different thing and has never
+belonged in the rail. The portal's quote page is the worked example: it carries Approve,
+Reject and Download, and it still takes this variant, because none of the three is a field —
+Approve is a decision with a comment, which R1 already routes through an explicit confirm,
+not a silent commit.
+
+A record whose state happens to be *short* still gets the rail: the spine's blocks collapse
+to what exists, and that is normal. This variant is for a surface where the answer is
+categorically none — today the client portal's seven detail pages, which R10 already gives
+`RecordTable variant="readOnly"`. A page that reaches for this because its rail looked empty
+has misread it, and the fix there is that the record's state fields were never wired.
+
 ---
 
 #### Archetype 3 — Form
@@ -2007,11 +2054,26 @@ used to bound an input, checkbox, or select.
 Lynk's identity is a hexagonal lattice — a hive, everything connected. It is a
 **brand** device, not a UI texture.
 
-It belongs on: the auth background, the splash, and the dashboard's ambient
-backdrop, at the opacities already set in `HexagonBackground`.
+It belongs on: the auth background, the splash, the dashboard's ambient backdrop,
+and **the client portal's sign-in page**, at the opacities already set in
+`HexagonBackground`.
 
 It does not belong on: tables, forms, dialogs, cards, empty states, or anything an
-operator works inside.
+operator works inside — **including the portal's interior.** Only `/client/login`
+carries it; `/client/**` past the door is a surface a customer works inside and the
+prohibition stands there unchanged.
+
+**A sign-in page is the product's door wherever it stands** (rebuild 5.8, ruling 3).
+`/client/login` and `/auth/login` were two different products — one a glass card on a
+hive, the other a form on a flat ground — and the portal's door now reads as the same
+product as the operator's. The mechanism is shared (`AuthAtmosphere`), not copied: the
+two doors drift the moment the atmosphere is written twice.
+
+The argument that lost is worth keeping, because it is the one to revisit if Lynk ever
+white-labels the portal: the portal is the *tenant's* customer area, and Lynk's
+atmosphere at full strength there is Lynk advertising itself to someone who is not its
+user. That is a branding decision, not a design-language one, and it would be answered
+by making the whole portal's identity configurable — not by making its door plain.
 
 If you touch the hive, verify it actually renders. A previous attempt replaced it
 with three linear-gradients at 150°/30°/90° — which draws a *triangular* lattice, not

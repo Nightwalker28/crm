@@ -90,8 +90,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `client/layout.tsx` | — | 5.8 | **new** | Does not exist. The root cause of Layer 6 | |
-| `client/page.tsx` | 145 | 5.8 | rebuild | | |
+| `client/layout.tsx` | 82 | 5.8 | **new** | Does not exist. The root cause of Layer 6 | batch 1 — the rail, the section header, and ruling 4's one container width |
+| `client/page.tsx` | 120 | 5.8 | rebuild | | batch 1 — `PageShell`, `StatTile` in an interactive `Card`, `ListRow`, `EmptyState` |
 | `client/login/page.tsx` | 94 | 5.8 | rebuild | Decide vs `/auth/login` and write the choice into §9 | |
 | `client/setup/page.tsx` | 146 | 5.8 | rebuild | | |
 | `client/bookings/page.tsx` | 76 | 5.8 | rebuild | | |

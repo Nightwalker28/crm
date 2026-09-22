@@ -5904,10 +5904,12 @@ Themes proved distinct by measurement, as 5.6 prescribed: body ground `rgb(11, 1
 ## 5.8 — Client portal, public, and auth
 
 Was consistency-pass Phase 7. The portal is a second app, not a second theme: **no
-`app/client/layout.tsx`**, 20 repeats of `min-h-screen bg-app`, 21 of the `font-lynk`
-wordmark, container width drifting `max-w-6xl` / `5xl` / `4xl` / `md`, exactly one
-dashboard primitive imported (`Button`), and 18 hand-written loading / empty / error
-blocks. Its 7 detail pages are archetype 7 from 5.3 and land on that archetype.
+`app/client/layout.tsx`**, 25 repeats of `min-h-screen bg-app`, 21 of the `font-lynk`
+wordmark, container width drifting six ways, **not one layout or state primitive imported
+anywhere under `app/client`**, and 35 hand-written loading / empty / error branches. Its 7
+detail pages are archetype 2 from 5.3 and land on that archetype, with the rail collapsed
+(ruling 2). Every count in this paragraph is the re-measured one — the four the plan
+originally carried are recorded with their corrections below.
 
 - Add the layout, real lateral navigation, and adopt `PageShell` / `Card` / `EmptyState` /
   `RouteStates` / `StatusValue` (**not** `Pill` — R5 deletes it) /
@@ -5925,6 +5927,212 @@ blocks. Its 7 detail pages are archetype 7 from 5.3 and land on that archetype.
   invisible — and nothing caught it. **Screenshot `/auth` in both themes before and after
   and confirm the honeycomb is still a honeycomb.** On the exit criteria, because no
   assertion in the suite can tell the two outcomes apart.
+
+### Decided before the first line — the measurement, the batch order, and seven rulings
+
+**Measured at the start of the sub-phase, 2026-09-23.** `check-design.sh` is at the known
+**2 of 14** (`LynkSplash` → 5.9, `ClientPageCreateForm` → 5.8's own). The surface is **2,856
+lines** across `app/client` (21 files), `app/public` (1) and `app/auth` (4), plus
+`app/page.tsx`, `BookingForm` (502), `PublicBookingPage` (23) and `ClientPageCreateForm`
+(371). 26 files in scope; `client/support` and `client/support/[caseId]` are out of the
+programme (scoping decision 8) and are carried by the layout without being rebuilt.
+
+**Four claims in the plan above were re-measured, and all four moved.**
+
+- **`min-h-screen bg-app` is 25 repeats, not 20**, and `font-lynk` is 21 — that one held.
+- **The container width drifts six ways, not four**: `max-w-6xl` (9), `5xl` (7), `md` (6),
+  `sm` (1), `4xl` (1), `3xl` (1).
+- **"Exactly one dashboard primitive imported (`Button`)" is wrong, and the true statement is
+  worse.** `app/client/**` imports seven — `button` (17), `textarea` (7), `input` (6),
+  `Table` (2), `RequiredMark` (2), `field` (2), `select` (1). Every one is a *form control or
+  a table*. **Not one layout or state primitive is imported anywhere under `app/client`**: no
+  `PageShell`, no `Card`, no `EmptyState`, no `RouteStates`, no `ListRow`, no `StatusValue`,
+  no `Money`. The controls arrived because a form needs an input. The shell is hand-written
+  in full, 16 times.
+- **The hand-written state blocks are 35, not 18**: 15 `isLoading ?` chains, 13 error
+  branches, 7 `length === 0` empties — and 18 distinct *"Loading …"* strings, which is where
+  the original count came from. It counted the loading arm and missed the other two.
+
+And two nobody had counted:
+
+- **`money()` is written eight times** — `catalog`, `catalog/[kind]/[itemId]`, `orders`,
+  `orders/[orderId]`, `quotes`, `quotes/[quoteId]`, `pages/[token]`, and
+  `public/quotes/proposal/[token]`, the last with a widened null-tolerant signature. `Money`
+  has existed since 5.4.
+- **The type is entirely off the §3.3 ramp.** 22 `text-3xl`, 14 `text-2xl`, 8 `text-xl`,
+  against **one** `text-lg` on the whole surface. §3.3 caps product UI at `text-lg`.
+
+**`tokens.md` §3.5 names four ambient tokens and `globals.css` defines one.**
+`--noise-texture` is there; `--ambient-grid`, `--ambient-vignette` and `--ambient-card-glow`
+are specified and do not exist. The rule landed without the value behind it — §12's repeated
+lesson, and the reason `auth/layout.tsx` is still raw `rgba()`.
+
+**The plan above says the 7 detail pages are "archetype 7".** There is no archetype 7. There
+are exactly seven detail pages and the census marks each one archetype 2; read as archetype 2
+throughout. Corrected in the line above.
+
+#### Ruling 1 — the portal gets a left rail, not a top nav
+
+**The owner's call, 2026-09-23.** The portal's defect is A8's exactly: with no
+`app/client/layout.tsx` the hub is the only index, so Orders → Quotes round-trips through
+`/client`. Settings had the same defect and `SettingsNavRail` fixed it.
+
+`ClientPortalRail` is **built from the sidebar's own parts** — `SidebarNav`, `SidebarMenu`,
+`SidebarMenuItemLink` — not a copy of them, so the active treatment is `navItemClassName`
+itself and the portal marks its place the way the rest of the app does (§7.16). It carries
+the same `w-60` / `w-[4.5rem]` collapse on its own storage key, and, like the dashboard, it
+has **no "Home" entry**: the wordmark is the way back. That is not a style choice —
+`useIsActive` matches on `startsWith(href + "/")`, so a `/client` entry would light up on
+every page in the portal.
+
+**Rejected: a horizontal section nav under the identity bar.** Seven flat peers are what a
+top nav is for, it leaves the full width to the line-item tables, and it reads as the
+vendor's customer area rather than as a seat in the vendor's CRM. It was rejected because
+one shell language across both apps is worth more than the width, and because ruling 2
+removes the cost that argued for it.
+
+#### Ruling 2 — archetype 2's rail collapses when nothing on the record is editable
+
+Ruling 1 buys a 16rem rail. Archetype 2's signature is a 20rem spine (R9). Stacked, that is
+**36rem of rail before any content** on all seven portal detail pages — the pages a customer
+actually opens, and the ones carrying line-item tables.
+
+The resolution is not a narrower rail. It is that **the spine has nothing to hold here.** R2
+draws its boundary between *state that edits in place* and *content that is read-only*, and
+R9 chose position to answer "what is clickable" where a convention could not. A portal
+record is read-only in full (R10 gives it `RecordTable variant="readOnly"`). A 20rem rail
+whose every field is read-only is the signature spent on nothing — it teaches the customer
+that the left column is where you change things, on a surface where nothing changes.
+
+So: **archetype 2 with no editable field collapses its spine.** The record's identity, status
+and money go to `PageShell`'s `eyebrow` / `title` / `context`, its meta goes to a single
+`RecordSpineMeta`-shaped line under the header, and the content region takes the full width.
+This is written into `design.md` §4.7 before any page adopts it. The census already called
+this "archetype 2, rail collapsed" on all seven rows; this ruling is what that phrase means.
+
+#### Ruling 3 — `/client/login` takes `/auth/login`'s treatment, and §9 widens
+
+**The owner's call, 2026-09-23**, on the question the plan left open. One front door for the
+product: `/client/login` gets the hive, the grid shimmer, the vignette and the glass card.
+
+§9 currently licenses the hive on "the auth background, the splash, and the dashboard's
+ambient backdrop". It widens to name the client portal's login, and only its login — the
+portal's *interior* is a surface a customer works inside, where §9's prohibition stands
+unchanged.
+
+**Rejected: keeping them different.** The portal is the tenant's customer area and Lynk's
+atmosphere at full strength there advertises Lynk to someone who is not its user. Overruled:
+a sign-in page is the product's door wherever it stands, and two doors that are recognisably
+the same product is worth more than the distinction.
+
+The mechanism is `app/auth/layout.tsx`'s, so it moves to a shared `AuthAtmosphere` rather
+than being written twice — `/client/login` is not under `app/auth`, and a copy is how the two
+would drift.
+
+#### Ruling 4 — the layout owns the width, the page never sets one
+
+Six container widths exist because every page set its own. `app/client/layout.tsx` sets one
+and no page under it carries a `max-w-*` on its root. `max-w-6xl` is the value: it is already
+the most common (9), and the order and quote detail pages are line-item tables that need it.
+
+#### Ruling 5 — the portal's states come from `PageShell`, with `backHref="/client"`
+
+All 35 hand-written branches go. `PageShell`'s `isLoading` / `hasError` already supply the
+route-level cases and `EmptyState` supplies the fourth; the portal's only addition is that
+its error and permission states must send the customer back to `/client`, not to
+`/dashboard`, which is `PageShell`'s default. A portal page that renders a state pointing at
+the dashboard is a customer looking at a login wall.
+
+#### Ruling 6 — `Money` replaces the eight `money()`
+
+Including `public/quotes/proposal/[token]`'s null-tolerant variant — `Money` already takes
+`amount: number | string | null | undefined` and an `EmptyValueContext`.
+
+#### Ruling 7 — the ambient tokens are defined before `/auth` is touched, and the hive is screenshotted
+
+`--ambient-grid`, `--ambient-vignette` and `--ambient-card-glow` are added to `globals.css`
+in both themes, per `tokens.md` §3.5's existing specification, and `auth/layout.tsx` then
+consumes them. The light theme gets its own values — a vignette tuned for a dark ground
+reads as dirt on a light one (§3.5).
+
+**`/auth` is screenshotted in both themes before and after, and the honeycomb is confirmed to
+still be a honeycomb.** This is on the exit criteria and cannot be delegated to an assertion:
+§9 records a previous attempt that replaced the hive with a *triangular* lattice at invisible
+contrast and passed every grep and every guard in this repo.
+
+### The batch order
+
+| Batch | What |
+|---|---|
+| 1 | The rules into `design.md` / `tokens.md`, the three ambient tokens, `ClientPortalRail`, `app/client/layout.tsx`, and `client/page.tsx` as the shell's first consumer |
+| 2 | `AuthAtmosphere` + the tokenised `auth/layout.tsx`; `/client/login` onto it (ruling 3); `auth/setup-password`, `AuthCallbackClient`, `client/setup` |
+| 3 | The seven list pages onto `PageShell` + `ListRow` / `RecordTable` + `EmptyState` + `Money` |
+| 4 | The seven detail pages onto archetype 2, rail collapsed (ruling 2) |
+| 5 | The public surfaces — `public/quotes/proposal/[token]`, `client/pages/[token]`, `BookingForm`, `PublicBookingPage`, `app/page.tsx` — and `ClientPageCreateForm`'s `size-6` |
+| 6 | Close-out: the guards, the in-scope suite with its attribution baseline, and the browser pass including the hive |
+
+### Status: batch 1 — the file that was missing, and seven links that were never navigation
+
+**Landed.** The rules first (§12), then the values, then the shell, then its first consumer.
+
+**`design.md` §9 widened and archetype 2 gained a variant, before any page moved.** §9 now
+licenses the hive on `/client/login` and names the portal's *interior* as still out — the
+prohibition it already carried for "anything an operator works inside" needed saying for a
+surface a *customer* works inside. Archetype 2 gained **the read-only variant**: a record
+with no in-place state field renders without the spine, its identity and status in
+`PageShell`'s `eyebrow` / `title` / `context` and its content region at full width.
+
+The variant's test was sharpened while batch 4's pages were being read, and it matters: it is
+**"does this record have a state field that edits in place"**, not "does this page have any
+control". The portal's quote page carries Approve, Reject and Download and still takes the
+variant, because none of the three is a field — R1 already routes an approval through an
+explicit confirm rather than a silent commit, and actions have never belonged in the rail.
+
+**The three ambient tokens exist now.** `tokens.md` §3.5 has named `--ambient-grid`,
+`--ambient-vignette` and `--ambient-card-glow` for a sub-phase, and `globals.css` defined
+**one** of the four (`--noise-texture`). That is the §12 lesson in its purest form — the rule
+landed, nothing supplied the value, and `auth/layout.tsx` went on carrying raw `rgba()`
+because there was nothing else to write. Both themes get their own: light inverts the grid to
+ink, drops the vignette to a quarter of its dark strength, and earns the card's depth from a
+faint ink shade at the bottom right, because a white shimmer on a white ground is invisible
+and a black vignette reads as dirt.
+
+**`ClientPortalRail` is built from the sidebar's parts, not styled to match them.** It
+renders `SidebarNav` / `SidebarMenu` / `SidebarMenuItemLink`, so the active treatment *is*
+`navItemClassName` (§7.16) — the third consumer of the one class, after the sidebar and
+`SettingsNavRail`. It carries the sidebar's `w-60` / `w-[4.5rem]` collapse on its own storage
+key, because a customer's portal and an operator's dashboard are different sessions.
+
+**`lib/client-portal-nav.ts` is the portal's `SETTINGS_NAV_GROUPS`.** The seven sections were
+a private array inside `client/page.tsx`; the rail would have been a second copy of it. `key`
+is the metric key the overview endpoint returns, so the hub pairs a count to a section
+without a second mapping. Two section labels shortened to fit one value per role — *Support
+tickets* → *Support*, *Catalog items* → *Catalog*.
+
+**`app/client/layout.tsx`, 82 lines, and three routes deliberately excluded.**
+`isPortalChromeRoute` keeps the chrome off `/client/login` and `/client/setup` — pre-auth
+doors, where a rail of destinations you cannot reach yet is a wall with handles drawn on it —
+and off `/client/pages/[token]`, which renders in the **tenant's** branding, with the
+tenant's logo, accent and company name. Lynk's own rail across the top of that is the wrong
+company's chrome.
+
+**The hub, and what came off it.** `client/page.tsx` 145 → 120 lines, and every one of the
+chrome lines went: `min-h-screen bg-app`, `mx-auto max-w-6xl`, the `font-lynk text-3xl`
+header, the sign-out button (now the rail's), the loading line, the error card, the
+hand-rolled metric tiles and the hand-rolled action rows. What replaced them: `PageShell`
+with `isLoading` / `hasError` and `backHref="/client"` (ruling 5 — its default is
+`/dashboard`, which for a customer is a login wall), seven `Card variant="interactive"` tiles
+each holding a `StatTile` (R8, and 5.7 ruling 1's one exception for a tile that is also a
+link), a `FactList` for the pricing group, and `RowList` / `ListRow` for next actions with an
+`EmptyState` behind them.
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | Clean |
+| `npm run lint` | Clean |
+
+**Next.** Batch 2 — `AuthAtmosphere`, the tokenised door, and `/client/login` onto it.
+
 
 ---
 
