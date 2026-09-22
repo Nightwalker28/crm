@@ -6133,6 +6133,51 @@ link), a `FactList` for the pricing group, and `RowList` / `ListRow` for next ac
 
 **Next.** Batch 2 — `AuthAtmosphere`, the tokenised door, and `/client/login` onto it.
 
+### Status: batch 2 — one door, written once, and a raster that inverted the wrong way
+
+**Landed.** Ruling 3 in code: `/client/login` and `/client/setup` now open on the same
+surface as `/auth/login` — the hive, the grid shimmer, the vignette and the glass card.
+
+**`AuthAtmosphere` is shared, not copied.** `/client/**` is not under `app/auth`, so a route
+layout could not reach it and the only other option was writing the atmosphere a second time,
+which is how the two doors would have drifted apart. `app/auth/layout.tsx` is 40 → **14
+lines** and is now a one-line consumer.
+
+**The raw `rgba()` is gone and the layers are not.** Three arbitrary values became
+`--ambient-grid`, `--ambient-vignette` and `--ambient-card-glow`, which batch 1 defined. The
+composition is unchanged — same z-order, same opacities, same `mix-blend-soft-light` on the
+shimmer — because §9's instruction is to tokenise them, not to delete them, and the failure it
+records is a "cleanup" that left a login form indistinguishable from a template. **The hive
+is on the exit criteria and is confirmed in batch 6's browser pass, in both themes.** No
+assertion in the suite can tell the two outcomes apart.
+
+**Two defects found while adopting, neither of them in the plan.**
+
+- **`auth/setup-password`'s h1 was `font-lynk text-5xl` reading "Set Password".** The brand
+  face doing a page heading's job — §3.1 is explicit that `.font-lynk` is the wordmark and
+  never product UI. It is the wordmark at the door's one size now, with the task named on the
+  line beneath, which is where `/auth/login` has always put it.
+- **`AuthCallbackClient` drew a 240px `/error.png` under a blanket `invert`.** `invert` is
+  theme-blind: it is tuned for the dark ground and flips the wrong way in light, and nothing
+  asserts on it. The raster carried no information the line beneath it did not, so it is an
+  `AlertTriangle` at `text-state-danger` — which is themed, and a twentieth of the weight.
+  The block also gained `role="alert"`, which it never had.
+
+| Check | Result |
+|---|---|
+| `tsc --noEmit` | Clean |
+| `npm run lint` | Clean |
+
+**Deferred inside the sub-phase:** `auth/login/page.tsx` (426) is marked `rebuild` and keeps
+its content for now — it is already on `Label` / `Input` / `Button`, its hand-authored
+Google and Microsoft marks stay by §5, and what is actually wrong with it is copy
+(*"Redirecting..."*, *"Authenticator Code"*), which is 5.9's. Batch 6 re-reads it before the
+sub-phase closes rather than leaving the row unexamined.
+
+**Next.** Batch 3 — the six in-scope list pages onto `PageShell` + `ListRow` + `EmptyState` +
+`Money`.
+
+
 
 ---
 

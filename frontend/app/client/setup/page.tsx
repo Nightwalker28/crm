@@ -5,8 +5,10 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 
+import { AuthAtmosphere } from "@/components/auth/AuthAtmosphere";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { setupClientPassword } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
 
@@ -92,55 +94,56 @@ function ClientSetupContent() {
   }
 
   return (
-    <main className="min-h-screen bg-app px-4 py-10 text-copy-primary">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center">
-        <div className="mb-8">
-          <div className="mb-3 font-lynk text-4xl text-copy-primary">Lynk</div>
-          <h1 className="text-2xl font-semibold">Set client password</h1>
-          <p className="mt-2 text-sm text-copy-secondary">Create the password for your client portal access.</p>
-        </div>
+    <>
+      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text font-lynk text-7xl text-transparent">
+        Lynk
+      </h1>
 
-        {status === "done" ? (
-          <div className="rounded-[var(--radius-card)] border border-state-success/40 bg-state-success-muted p-4">
-            <div className="text-sm text-state-success">Password set. You can now sign in from any shared client page.</div>
-            <Button asChild className="mt-4">
-              <Link href={loginHref(tenantSlug)}>Go to client login</Link>
-            </Button>
+      <p className="mb-6 text-sm text-copy-secondary">Create the password for your client portal access.</p>
+
+      {status === "done" ? (
+        <div className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-3 py-3 text-left">
+          <p className="text-sm text-state-success">Password set. You can now sign in from any shared client page.</p>
+          <Button asChild className="mt-4 w-full">
+            <Link href={loginHref(tenantSlug)}>Go to client sign in</Link>
+          </Button>
+        </div>
+      ) : (
+        <form className="space-y-4 text-left" onSubmit={handleSubmit}>
+          <div className="space-y-2">
+            <Label htmlFor="client-setup-password">Password</Label>
+            <Input id="client-setup-password" type="password" autoComplete="new-password" value={password} onChange={(event) => setPassword(event.target.value)} required />
+            {passwordPolicy ? (
+              <ul className="space-y-1 text-xs text-copy-secondary">
+                {passwordPolicy.requirements.map((requirement) => (
+                  <li key={requirement}>{requirement}</li>
+                ))}
+              </ul>
+            ) : (
+              <p className="text-xs text-copy-secondary">Password must meet the current security policy.</p>
+            )}
           </div>
-        ) : (
-          <form className="space-y-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="client-setup-password" className="mb-2 block text-sm font-medium">Password</label>
-              <Input id="client-setup-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-              {passwordPolicy ? (
-                <ul className="mt-2 space-y-1 text-xs text-copy-secondary">
-                  {passwordPolicy.requirements.map((requirement) => (
-                    <li key={requirement}>{requirement}</li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="mt-2 text-xs text-copy-secondary">Password must meet the current security policy.</p>
-              )}
-            </div>
-            <div>
-              <label htmlFor="client-setup-confirm" className="mb-2 block text-sm font-medium">Confirm password</label>
-              <Input id="client-setup-confirm" type="password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
-            </div>
-            <Button type="submit" className="w-full" disabled={status === "saving"}>
-              {status === "saving" ? "Saving..." : "Set Password"}
-            </Button>
-            {error ? <p className="text-sm text-state-danger">{error}</p> : null}
-          </form>
-        )}
-      </div>
-    </main>
+          <div className="space-y-2">
+            <Label htmlFor="client-setup-confirm">Confirm password</Label>
+            <Input id="client-setup-confirm" type="password" autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} required />
+          </div>
+          <Button type="submit" className="w-full" disabled={status === "saving"}>
+            {status === "saving" ? "Saving…" : "Set password"}
+          </Button>
+        </form>
+      )}
+
+      {error ? <p className="mt-3 text-xs text-state-danger">{error}</p> : null}
+    </>
   );
 }
 
 export default function ClientSetupPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-app p-8 text-sm text-copy-secondary">Loading setup link...</main>}>
-      <ClientSetupContent />
-    </Suspense>
+    <AuthAtmosphere>
+      <Suspense fallback={<p className="text-sm text-copy-secondary">Loading setup link…</p>}>
+        <ClientSetupContent />
+      </Suspense>
+    </AuthAtmosphere>
   );
 }

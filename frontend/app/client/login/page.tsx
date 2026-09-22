@@ -4,8 +4,10 @@ import type { FormEvent } from "react";
 import { Suspense, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
+import { AuthAtmosphere } from "@/components/auth/AuthAtmosphere";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { CLIENT_TOKEN_STORAGE_KEY, clientLogin } from "@/hooks/useClientPortal";
 
 function getError() {
@@ -58,37 +60,54 @@ function ClientLoginContent() {
   }
 
   return (
-    <main className="min-h-screen bg-app px-4 py-10 text-copy-primary">
-      <div className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-md flex-col justify-center">
-        <div className="mb-8">
-          <div className="mb-3 font-lynk text-4xl text-copy-primary">Lynk</div>
-          <h1 className="text-2xl font-semibold">Client sign in</h1>
-          <p className="mt-2 text-sm text-copy-secondary">Sign in to view personalized pricing for shared pages.</p>
-        </div>
+    <>
+      {/* The same mark as `/auth/login`, and a subtitle that names which door this is —
+          ruling 3: one front door for the product, not one indistinguishable page. */}
+      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text font-lynk text-7xl text-transparent">
+        Lynk
+      </h1>
 
-        <form className="space-y-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-5" onSubmit={handleSubmit}>
-          <div>
-            <label htmlFor="client-login-email" className="mb-2 block text-sm font-medium">Email</label>
-            <Input id="client-login-email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
-          </div>
-          <div>
-            <label htmlFor="client-login-password" className="mb-2 block text-sm font-medium">Password</label>
-            <Input id="client-login-password" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
-          </div>
-          <Button type="submit" className="w-full" disabled={isSubmitting}>
-            {isSubmitting ? "Signing in..." : "Sign In"}
-          </Button>
-          {error ? <p className="text-sm text-state-danger">{error}</p> : null}
-        </form>
-      </div>
-    </main>
+      <p className="mb-6 text-sm text-copy-secondary">Sign in to your client portal.</p>
+
+      <form className="space-y-4 text-left" onSubmit={handleSubmit}>
+        <div className="space-y-2">
+          <Label htmlFor="client-login-email">Email</Label>
+          <Input
+            id="client-login-email"
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+            autoComplete="email"
+            required
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="client-login-password">Password</Label>
+          <Input
+            id="client-login-password"
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+            autoComplete="current-password"
+            required
+          />
+        </div>
+        <Button type="submit" className="w-full" disabled={isSubmitting}>
+          {isSubmitting ? "Signing in…" : "Sign in"}
+        </Button>
+      </form>
+
+      {error ? <p className="mt-3 text-xs text-state-danger">{error}</p> : null}
+    </>
   );
 }
 
 export default function ClientLoginPage() {
   return (
-    <Suspense fallback={<main className="min-h-screen bg-app p-8 text-sm text-copy-secondary">Loading sign in...</main>}>
-      <ClientLoginContent />
-    </Suspense>
+    <AuthAtmosphere>
+      <Suspense fallback={<p className="text-sm text-copy-secondary">Loading sign in…</p>}>
+        <ClientLoginContent />
+      </Suspense>
+    </AuthAtmosphere>
   );
 }

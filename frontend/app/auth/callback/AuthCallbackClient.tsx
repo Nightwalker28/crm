@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
+import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { publishAuthSessionChange } from "@/lib/authSessionEvents";
@@ -35,17 +35,13 @@ export default function AuthCallbackClient() {
 
   if (message === null) return null;
 
-  // Error UI (wrapped by app/auth/layout.tsx)
+  // Error UI, wrapped by app/auth/layout.tsx — the door's atmosphere is `AuthAtmosphere`'s.
   return (
-    <>
-      <Image
-        src="/error.png"
-        alt="error"
-        width={240}
-        height={240}
-        className="mx-auto mb-3 w-60 invert"
-        priority
-      />
+    <div role="alert">
+      {/* A 240px `/error.png` under a blanket `invert` stood here. `invert` is theme-blind:
+          it is tuned for the dark ground and flips the wrong way in light, and the raster
+          was carrying no information the line beneath it did not. */}
+      <AlertTriangle className="mx-auto mb-4 size-8 text-state-danger" aria-hidden="true" />
 
       <p className="mb-5 text-sm text-copy-secondary">{message}</p>
 
@@ -54,8 +50,8 @@ export default function AuthCallbackClient() {
         onClick={() => router.push("/auth/login")}
         className="mt-2 w-full"
       >
-        Back to Login
+        Back to sign in
       </Button>
-    </>
+    </div>
   );
 }

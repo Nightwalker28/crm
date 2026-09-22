@@ -94,11 +94,15 @@ function SetupPasswordPageContent() {
 
   return (
     <>
-      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text text-5xl font-lynk text-transparent">
-        Set Password
+      {/* The wordmark, at the door's one size — it was `font-lynk text-5xl` reading "Set
+          Password", which is the brand face doing a page heading's job (§3.1: `.font-lynk`
+          is the wordmark, never product UI). The task's name moves to the line under it,
+          which is where `/auth/login` has always put it. */}
+      <h1 className="mb-3 bg-linear-to-b from-copy-primary to-copy-secondary bg-clip-text font-lynk text-7xl text-transparent">
+        Lynk
       </h1>
 
-      <p className="mb-6 text-sm text-copy-secondary">Create a password for your account to finish setup.</p>
+      <p className="mb-6 text-sm text-copy-secondary">Set a password to finish setting up your account.</p>
 
       <form className="space-y-4 text-left" onSubmit={handleSubmit}>
         <div className="space-y-2">
@@ -151,7 +155,7 @@ function SetupPasswordPageContent() {
 
 export default function SetupPasswordPage() {
   return (
-    <Suspense fallback={<p className="text-sm text-copy-secondary">Loading setup link...</p>}>
+    <Suspense fallback={<p className="text-sm text-copy-secondary">Loading setup link…</p>}>
       <SetupPasswordPageContent />
     </Suspense>
   );

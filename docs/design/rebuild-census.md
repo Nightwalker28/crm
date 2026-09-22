@@ -77,11 +77,11 @@ ones any sub-phase touches for design reasons.
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `auth/layout.tsx` | 40 | 5.8 | rebuild | **Tokenise the raw `rgba()`, do not delete it.** §9 identity | |
+| `auth/layout.tsx` | 14 | 5.8 | rebuild | **Tokenise the raw `rgba()`, do not delete it.** §9 identity | batch 2 — the atmosphere moved to `AuthAtmosphere` and tokenised; hive verified in the browser pass |
 | `auth/login/page.tsx` | 426 | 5.8 | rebuild | Keeps its hand-authored Google/Microsoft marks (§5) | |
-| `auth/setup-password/page.tsx` | 158 | 5.8 | rebuild | | |
+| `auth/setup-password/page.tsx` | 161 | 5.8 | rebuild | | batch 2 — the wordmark stopped doing a page heading's job (§3.1) |
 | `auth/callback/page.tsx` | 10 | 5.8 | unchanged | Shim | |
-| `auth/callback/AuthCallbackClient.tsx` | 61 | 5.8 | adopt | | |
+| `auth/callback/AuthCallbackClient.tsx` | 58 | 5.8 | adopt | | batch 2 — a theme-blind `invert`ed raster replaced by a toned icon |
 
 ### 1.3 `app/client/**` — the portal (17)
 
@@ -92,8 +92,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 |---|---|---|---|---|---|
 | `client/layout.tsx` | 82 | 5.8 | **new** | Does not exist. The root cause of Layer 6 | batch 1 — the rail, the section header, and ruling 4's one container width |
 | `client/page.tsx` | 120 | 5.8 | rebuild | | batch 1 — `PageShell`, `StatTile` in an interactive `Card`, `ListRow`, `EmptyState` |
-| `client/login/page.tsx` | 94 | 5.8 | rebuild | Decide vs `/auth/login` and write the choice into §9 | |
-| `client/setup/page.tsx` | 146 | 5.8 | rebuild | | |
+| `client/login/page.tsx` | 113 | 5.8 | rebuild | Decide vs `/auth/login` and write the choice into §9 | batch 2 — ruling 3: it matches. §9 widened, `AuthAtmosphere` shared |
+| `client/setup/page.tsx` | 149 | 5.8 | rebuild | | batch 2 — the second door, onto `AuthAtmosphere` |
 | `client/bookings/page.tsx` | 76 | 5.8 | rebuild | | |
 | `client/bookings/[bookingId]/page.tsx` | 115 | 5.8 | rebuild | Archetype 2, rail collapsed | |
 | `client/catalog/page.tsx` | 80 | 5.8 | rebuild | | |
