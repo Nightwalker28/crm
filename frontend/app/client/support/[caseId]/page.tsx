@@ -47,17 +47,16 @@ export default function ClientSupportDetailPage() {
   }
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client/support">
-              <ArrowLeft className="h-4 w-4" />
-              Support
-            </Link>
-          </Button>
-        </header>
+    // Out of the rebuild programme (scoping decision 8). Chrome removed only — see the
+    // list page for the reasoning.
+    <>
+      <div>
+        <Button asChild variant="ghost" size="sm" className="mb-4 -ml-2">
+          <Link href="/client/support">
+            <ArrowLeft />
+            Support
+          </Link>
+        </Button>
 
         {caseQuery.isLoading ? (
           <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading ticket...</div>
@@ -71,7 +70,7 @@ export default function ClientSupportDetailPage() {
               <div className="text-xs font-medium text-copy-label">{item.case_number}</div>
               <div className="mt-2 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{item.subject}</h1>
+                  <h1 className="text-lg font-semibold text-copy-primary">{item.subject}</h1>
                   <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(item.created_at)}</p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -121,6 +120,6 @@ export default function ClientSupportDetailPage() {
           </div>
         ) : null}
       </div>
-    </main>
+    </>
   );
 }

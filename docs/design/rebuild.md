@@ -6261,6 +6261,69 @@ than at `/client`.
 **Next.** Batch 5 — the public surfaces, `app/page.tsx`, and the `size-6` guard failure,
 which turns out to be three hand-written chips rather than one call site.
 
+### Status: batch 5 — the public surfaces, a guard failure that was three files, and a second portal inside the first
+
+**Landed.** The five public/entry surfaces, `ClientPageCreateForm`, and the sub-phase's own
+standing guard failure.
+
+**`check-design.sh` is 2 of 14 → 1 of 14.** The §4.2 failure had been listed for three
+sub-phases as one line — `ClientPageCreateForm.tsx:335`'s `size-6`. It was **three files**:
+the same removable chip written by hand in `ClientPageCreateForm`, `UserTeamPicker` and
+`DocumentUploadFormPage`, no two agreeing on padding (`px-3 py-1` / `px-3 py-1.5` /
+`px-2.5 py-1`), icon size (`h-3` / `h-3.5`), ink (`text-copy-secondary` /
+`text-copy-primary`), and one of the three with **no hover state at all**. `RemovableChip`
+takes all three, and the guard failure goes with them rather than being patched at one call
+site. The remaining failure is `LynkSplash.tsx:58`'s `pl-[0.2em]`, which is 5.9's.
+
+**It is not `Pill` returning.** R5 deleted `Pill` because a capsule carrying a *status* said
+nothing ink could not, hundreds of times per table. This is §1.3's other case — a box earned
+by interactivity: the capsule marks where one removable unit ends and the next begins, and
+the `×` is a control. No tint, no blur, no noise overlay.
+
+**A second portal was rendering inside the first.** `client/support` and
+`client/support/[caseId]` are out of the programme (scoping decision 8) and batch 3's status
+said they "render inside the new chrome unchanged" — which was wrong. Unchanged meant they
+still drew their own `min-h-screen bg-app` root, their own centred container and their own
+wordmark header, *inside* the layout that now supplies all three. They are still not on the
+archetypes and still not rebuilt; the chrome is simply removed, which is a consequence of
+batch 1's layout rather than a rebuild of a module that may be deleted.
+
+**Three more found on the public surfaces, none of them in the plan.**
+
+- **`app/page.tsx` returned `null`.** The entry route rendered a bare ground for as long as
+  `/users/me` took — seconds on a cold backend, and the first thing a new session sees. It
+  shows `LynkSplash`, which is what `app/loading.tsx` already shows for the same wait.
+- **`client/pages/[token]` rendered the *tenant's* company name in `font-lynk`.** §3.1 is
+  explicit that the face is Lynk's wordmark and never product UI; using it for another
+  company's name made the tenant's brand read as Lynk's logo, on the one surface in the app
+  that is deliberately not Lynk-branded. It is the product face at the header size now.
+- **`LynkSplash` carried the same raw `rgba()` the auth door just lost.** `tokens.md` §3.5
+  names three licensed surfaces for the ambient set and this is one of them, so tokenising
+  the door and leaving the splash would have left the rule half-landed across its own set.
+
+**The chrome count, re-measured.** `min-h-screen` 25 → **4**, and all four are genuinely
+standalone roots: the two public document pages, the public booking page, and the splash
+wrapper. `font-lynk` 21 → **6**: the two doors at `text-7xl`, the two Lynk-branded public
+headers at `text-2xl`, and the rail's mark and wordmark. **No `text-3xl` or `text-2xl`
+heading remains anywhere in scope** — the three that show in a grep are `client/support`'s,
+which is out of scope, and the two wordmarks.
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **1 of 14** — down from the 2 of 14 that has been the baseline since 5.1 |
+| `tsc --noEmit` | Clean |
+| `npm run lint` | Clean |
+
+**`auth/login` is examined and left as it is.** Batch 2 deferred the row; read against the
+diff it is already on `Label` / `Input` / `Button`, its hand-authored Google and Microsoft
+marks stay by §5, and the wordmark is the door's. What is wrong with it is copy —
+*"Redirecting..."*, *"Authenticator Code"*, *"Enabling..."* — which is 5.9's, and moving it
+here would only mean touching the file twice.
+
+**Next.** Batch 6 — close-out: the rendered guards, the in-scope suite against its
+attribution baseline, and the browser pass, with the honeycomb on the exit criteria.
+
+
 
 
 

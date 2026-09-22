@@ -290,7 +290,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
     return (
       <Card role="alert" className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center">
         <CalendarDays className="h-9 w-9 text-state-danger" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+        <h1 className="mt-4 text-lg font-semibold text-copy-primary">
           {loadError === "unavailable" ? "This booking link is unavailable" : "The booking page could not be loaded"}
         </h1>
         <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
@@ -312,7 +312,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
     return (
       <Card className="px-6 py-10 text-center" role="status">
         <CheckCircle2 className="mx-auto h-11 w-11 text-state-success" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-semibold text-copy-primary">Meeting booked</h1>
+        <h1 className="mt-4 text-lg font-semibold text-copy-primary">Meeting booked</h1>
         <p className="mt-2 text-sm text-copy-secondary">Your time is confirmed with {bookingType.owner_name || "the team"}.</p>
         {selectedSlot ? (
           <p className="mt-3 font-medium text-copy-primary">
@@ -337,7 +337,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
             <CalendarDays className="h-5 w-5 text-copy-secondary" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-copy-primary">{bookingType.name}</h1>
+            <h1 className="text-lg font-semibold text-copy-primary">{bookingType.name}</h1>
             <p className="mt-1 text-sm text-copy-muted">{bookingType.owner_name || "Lynk"}</p>
           </div>
         </div>

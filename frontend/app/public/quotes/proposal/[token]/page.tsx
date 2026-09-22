@@ -7,10 +7,10 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Money } from "@/components/ui/Money";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateOnly } from "@/lib/datetime";
 import { apiUrl } from "@/lib/runtime-config";
-import { formatMoney } from "@/lib/currency";
 
 type PublicQuoteProposal = {
   quote_number: string;
@@ -30,10 +30,6 @@ async function readJsonSafely(res: Response): Promise<unknown> {
   } catch {
     return null;
   }
-}
-
-function money(value: string | number | null | undefined, currency: string | null | undefined) {
-  return formatMoney(value, currency) ?? formatMoney(0, currency) ?? "";
 }
 
 function isPublicQuoteProposal(value: unknown): value is PublicQuoteProposal {
@@ -139,7 +135,7 @@ export default function PublicQuoteProposalPage() {
     <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-6 sm:px-6 sm:py-8">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle pb-4">
-          <div className="font-lynk text-3xl text-copy-primary">Lynk</div>
+          <div className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</div>
           <div className="flex items-center gap-2 text-xs text-copy-muted">
             <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
             Time-limited proposal link
@@ -155,9 +151,9 @@ export default function PublicQuoteProposalPage() {
           ) : error || !proposal ? (
             <Card className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center" role="alert">
               <Link2Off className="h-9 w-9 text-state-danger" aria-hidden="true" />
-              <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+              <p className="mt-4 text-lg font-semibold text-copy-primary">
                 {error === "unavailable" ? "This proposal link is unavailable" : "The proposal could not be loaded"}
-              </h1>
+              </p>
               <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
                 {error === "unavailable"
                   ? "The link may have expired or been replaced. Ask the sender for a new proposal link."
@@ -179,11 +175,11 @@ export default function PublicQuoteProposalPage() {
                       <FileText className="h-4 w-4" aria-hidden="true" />
                       {proposal.quote_number}
                     </div>
-                    <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{proposal.title}</h1>
+                    <h1 className="mt-2 text-lg font-semibold text-copy-primary">{proposal.title}</h1>
                     <p className="mt-1 text-sm text-copy-secondary">Prepared for {proposal.customer_name}</p>
                   </div>
                   <div className="text-left sm:text-right">
-                    <div className="text-xl font-semibold tabular-nums text-copy-primary">{money(proposal.total_amount, proposal.currency)}</div>
+                    <Money amount={proposal.total_amount} currency={proposal.currency} className="text-lg font-semibold text-copy-primary" />
                     {proposal.expiry_date ? (
                       <div className="mt-1 text-sm text-copy-muted">
                         Quote valid until <time dateTime={proposal.expiry_date}>{formatDateOnly(proposal.expiry_date)}</time>

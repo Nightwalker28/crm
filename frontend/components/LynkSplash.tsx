@@ -14,8 +14,11 @@ export default function LynkSplash() {
         hexagonSize={70}
         className="pointer-events-none absolute inset-0 z-0 text-copy-muted/40"
       />
-      <div className="pointer-events-none absolute inset-0 z-1 mix-blend-soft-light opacity-[0.5] bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[2.5px_2.5px]" />
-      <div className="pointer-events-none absolute inset-0 z-2 bg-[radial-gradient(circle_at_center,transparent_55%,rgba(0,0,0,0.40))]" />
+      {/* The ambient set (tokens.md §3.5), which names this file as one of the three licensed
+          surfaces. It carried the same raw `rgba()` the auth door did, and tokenising one
+          while leaving the others would have left the rule half-landed. */}
+      <div className="pointer-events-none absolute inset-0 z-1 bg-[image:var(--ambient-grid)] bg-size-[2.5px_2.5px] opacity-50 mix-blend-soft-light" />
+      <div className="pointer-events-none absolute inset-0 z-2 bg-[image:var(--ambient-vignette)]" />
 
       {/* three hexes stack */}
       <div className="relative z-10 flex h-72 w-72 items-center justify-center">

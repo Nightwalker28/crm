@@ -66,7 +66,7 @@ ones any sub-phase touches for design reasons.
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
 | `layout.tsx` | 49 | 5.1 | adopt | Font and theme wiring | |
-| `page.tsx` | 36 | 5.8 | rebuild | The marketing/entry surface | |
+| `page.tsx` | 44 | 5.8 | rebuild | The marketing/entry surface | batch 5 — it returned `null`, so the entry route was a blank ground; it shows the splash |
 | `loading.tsx` | 11 | 5.1 | rebuild | One route-boundary shape — the cold-boot splash, kept distinct from `RouteLoadingState` per dashboard/loading.tsx's own comment | done |
 | `providers.tsx` | 60 | 5.1 | adopt | `MotionConfig` lives here | |
 | `ClientLayout.tsx` | 16 | 5.1 | adopt | | |
@@ -107,13 +107,13 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `client/quotes/[quoteId]/page.tsx` | 156 | 5.8 | rebuild | Archetype 2 | batch 4 — same; Approve/Reject stay actions, not spine fields |
 | `client/support/page.tsx` | 155 | 5.8 | rebuild | | **out of scope** (scoping decision 8) — the module may be removed |
 | `client/support/[caseId]/page.tsx` | 126 | 5.8 | rebuild | Archetype 2 | **out of scope** (scoping decision 8) — the module may be removed |
-| `client/pages/[token]/page.tsx` | 209 | 5.8 | rebuild | `variant="readOnly"`. Unwalked by the guard today | |
+| `client/pages/[token]/page.tsx` | 209 | 5.8 | rebuild | `variant="readOnly"`. Unwalked by the guard today | batch 5 — `RecordTable variant="readOnly"`, `RowList`, `Money`; the tenant's name left `font-lynk` |
 
 ### 1.4 `app/public/**` and `app/book/**` (2)
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `public/quotes/proposal/[token]/page.tsx` | 233 | 5.8 | rebuild | Unwalked by the guard today | |
+| `public/quotes/proposal/[token]/page.tsx` | 223 | 5.8 | rebuild | Unwalked by the guard today | batch 5 — `Money`, the type ramp, and the page's second h1 demoted |
 | `book/[...bookingPath]/page.tsx` | 18 | 5.7 | unchanged | Shim to `PublicBookingPage`; the calendar grid is 5.7 | close-out — unchanged. The grid claim was re-measured at the head of 5.7: `BookingForm` lists slots and draws no month grid, so `MonthGrid` has two consumers, not three |
 
 ### 1.5 `app/e2e/**` (3)
@@ -421,8 +421,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `calendar/CalendarEventDialog.tsx` | 346 | 5.7 | rebuild | | **done, batch 5** — the Radix `Switch` is `SegmentedBoolean` in a `Field`; the owner notice is ink, not a box. Its Title Case (`Create Event`, `Move To Recycle Bin`) is 5.9's |
 | `calendar/CalendarParticipantPicker.tsx` | 110 | 5.7 | adopt | | close-out — already on `UserTeamPicker`. Its *User Invite* / *Team Share* type labels are 5.9's Title Case |
 | `calendar/CalendarSyncBridge.tsx` | 85 | — | unchanged | No UI | |
-| `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | |
-| `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | |
+| `calendar/BookingForm.tsx` | 502 | 5.8 | rebuild | Public surface | batch 5 — three `text-xl` headings onto the ramp; states were already sound |
+| `calendar/PublicBookingPage.tsx` | 23 | 5.8 | rebuild | 3 of 3 calendar grids | batch 5 — the wordmark at the one size |
 | `mail/MailComposePage.tsx` | 239 | 5.7 | rebuild | On `RecordFormLayout`, so 5.4 batch 3 moved it with the other 15 | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.7 still owns its final shape |
 | `mail/RecordEmailComposer.tsx` | 498 | 5.7 | rebuild | | batch 8b — local `formatBytes` → `lib/format`; attachments were a box per file and are a divided list; Cc and Bcc are two `Field`s; the no-mailbox actions are an `ActionBar` |
 | `mail/RecordEmailAction.tsx` | 103 | 5.3 | adopt | A record-page action | **done, close-out** — returns `null` without an address instead of a disabled `Email` / `Email Opt Out` (§4.7). Opt-out is already drawn in `Details` as `Opted out` |
@@ -438,7 +438,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times. **Row done, 5.7 batch 6** — `ListRow` in an inset `RowList`, unread is weight and an ink dot, and the hand-written loading / error / empty are `PanelStates` |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
 | `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
-| `client-portal/ClientPageCreateForm.tsx` | 371 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | batch 3 — archetype 3 adopted (title, `FormFooter`, `FieldGroup columns={2}`); 5.8 still owns its final shape and the `size-6` |
+| `client-portal/ClientPageCreateForm.tsx` | 374 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | **done** — 5.8 batch 5: the `size-6` was one of three hand-written chips; `RemovableChip` took all three and `check-design.sh` went 2 of 14 → **1 of 14** |
 
 ### 2.7 Shared field and picker components (7)
 
@@ -548,7 +548,7 @@ taken. Counted here so the denominator stays honest.
 | `DataTransferJobProgress.tsx` | 86 | 5.6 | **unchanged** | | **done, batch 7d** — audited clean; already on `Card variant="muted"` with no hand-rolled heading or state |
 | `chart.tsx` | 78 | 5.7 | adopt | Load the `dataviz` skill | batch 8a — the tooltip swatch's fallback reads `seriesColor(0)`, not a raw `var(--chart-1)`; the rest already met the dataviz text-in-ink rule |
 | `importExportUtils.ts` | 54 | — | unchanged | Data | |
-| `HexagonBackground.tsx` | 109 | — | unchanged | **§9 identity.** Verify it still renders as a honeycomb after 5.8 | done |
+| `HexagonBackground.tsx` | 109 | — | unchanged | **§9 identity.** Verify it still renders as a honeycomb after 5.8 | done — untouched by 5.8; the atmosphere around it was tokenised, it was not |
 | `AnimatedShinyText.tsx` | 39 | — | unchanged | §9 identity | done |
 
 ---

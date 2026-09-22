@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, HelpCircle, Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -64,22 +64,13 @@ export default function ClientSupportPage() {
   }
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client">Overview</Link>
-          </Button>
-        </header>
-
-        <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-copy-secondary">
-            <HelpCircle className="h-4 w-4" />
-            Client support
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Support tickets</h1>
-        </section>
+    // Out of the rebuild programme (scoping decision 8) — this module may be removed, so it
+    // is NOT on the archetypes. What it did need is the chrome taken off: `app/client/layout.tsx`
+    // now supplies the ground, the container and the header, and leaving this page's own
+    // `min-h-screen` wrapper and wordmark in place drew a second portal inside the first.
+    <>
+      <div>
+        <h1 className="mb-5 text-lg font-semibold text-copy-primary">Support tickets</h1>
 
         <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
           <section className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
@@ -150,6 +141,6 @@ export default function ClientSupportPage() {
           </section>
         </div>
       </div>
-    </main>
+    </>
   );
 }

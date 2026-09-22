@@ -9,16 +9,13 @@ import { Check, Download, FileText, LogIn, MessageSquare, RefreshCw } from "luci
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { Money } from "@/components/ui/Money";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_TOKEN_STORAGE_KEY, downloadPublicClientPageDocument, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatBytes } from "@/lib/format";
-
-function money(value: string | number, currency: string) {
-  const amount = Number(value);
-  return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
-}
 
 function getError() {
   return "The response could not be submitted. Try again.";
@@ -76,7 +73,11 @@ export default function PublicClientPage() {
             ) : (
               <span className="h-9 w-9 rounded-[var(--radius-control)]" style={{ backgroundColor: accentColor }} />
             )}
-            <span className="font-lynk text-3xl">{brandName}</span>
+            {/* The *tenant's* name, in the product face. It was `font-lynk`, which is Lynk's
+                wordmark and nobody else's (§3.1) — rendering another company's name in it
+                made the tenant's brand read as Lynk's logo, on the one surface in the app
+                that is deliberately not Lynk-branded. */}
+            <span className="truncate text-base font-semibold text-copy-primary">{brandName}</span>
           </Link>
           <div className="flex items-center gap-2">
             {page?.pricing_mode === "personalized" ? (
@@ -103,7 +104,7 @@ export default function PublicClientPage() {
           <div className="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1.4fr)_360px]">
             <section>
               <div className="mb-6 border-l-4 pl-4" style={{ borderColor: accentColor }}>
-                <h1 className="text-3xl font-semibold tracking-normal text-copy-primary">{page.title}</h1>
+                <h1 className="text-lg font-semibold text-copy-primary">{page.title}</h1>
                 {page.summary ? <p className="mt-3 max-w-3xl text-p-sm text-copy-secondary">{page.summary}</p> : null}
               </div>
 
@@ -118,53 +119,58 @@ export default function PublicClientPage() {
                 </div>
               ) : null}
 
-              <div className="overflow-hidden rounded-[var(--radius-card)] border border-line-default bg-surface">
-                <Table>
-                  <TableHeader>
-                    <TableHeaderRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead className="text-right">Qty</TableHead>
-                      <TableHead className="text-right">Public</TableHead>
-                      <TableHead className="text-right">Your Price</TableHead>
-                    </TableHeaderRow>
-                  </TableHeader>
-                  <TableBody>
-                    {page.pricing_items.map((item, index) => (
-                      <TableRow key={`${item.name}-${index}`}>
-                        <TableCell>
-                          <div className="font-medium text-copy-primary">{item.name}</div>
-                          {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
-                        </TableCell>
-                        <TableCell className="text-right text-copy-secondary">{item.quantity}</TableCell>
-                        <TableCell className="text-right text-copy-secondary">{money(item.public_unit_price, item.currency)}</TableCell>
-                        <TableCell className="text-right font-semibold text-copy-primary">{money(item.resolved_total, item.currency)}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
+              {/* R10: a read-only list is `RecordTable variant="readOnly"`. This was one of the
+                  two raw `Table` importers left outside the primitives. */}
+              <RecordTable
+                variant="readOnly"
+                label="Pricing"
+                rows={page.pricing_items.map((item, index) => ({ ...item, rowId: `${item.name}-${index}` }))}
+                rowKey={(item) => item.rowId}
+                emptyState={{ title: "No pricing has been shared on this page" }}
+                columns={[
+                  {
+                    key: "name",
+                    label: "Item",
+                    size: "lg",
+                    render: (item) => (
+                      <>
+                        <div className="font-medium text-copy-primary">{item.name}</div>
+                        {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
+                      </>
+                    ),
+                  },
+                  { key: "quantity", label: "Quantity", align: "right", size: "sm", render: (item) => <span className="tabular-nums">{item.quantity}</span> },
+                  { key: "public", label: "Public price", align: "right", size: "sm", render: (item) => <Money amount={item.public_unit_price} currency={item.currency} /> },
+                  {
+                    key: "resolved",
+                    label: "Your price",
+                    align: "right",
+                    size: "sm",
+                    render: (item) => <Money amount={item.resolved_total} currency={item.currency} className="font-medium text-copy-primary" />,
+                  },
+                ]}
+              />
 
               {page.documents.length ? (
                 <div className="mt-4 rounded-[var(--radius-card)] border border-line-default bg-surface p-4">
                   <h2 className="text-sm font-semibold text-copy-primary">Documents</h2>
-                  <div className="mt-3 grid gap-2">
-                    {page.documents.map((document) => (
-                      <div key={document.id} className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-subtle bg-app px-3 py-3">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 text-sm font-medium text-copy-primary">
-                            <FileText className="h-4 w-4 text-copy-muted" />
-                            <span className="truncate">{document.title || document.original_filename}</span>
-                          </div>
-                          <div className="mt-1 text-xs text-copy-muted">
-                            {document.original_filename} · {document.extension.toUpperCase()} · {formatBytes(document.file_size_bytes) ?? "Unknown size"}
-                          </div>
-                        </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => void openDocument(document)} disabled={openingDocumentId === document.id}>
-                          {openingDocumentId === document.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                          {openingDocumentId === document.id ? "Opening..." : "Open"}
-                        </Button>
-                      </div>
-                    ))}
+                  <div className="mt-3">
+                    <RowList label="Documents">
+                      {page.documents.map((document) => (
+                        <ListRow
+                          key={document.id}
+                          title={document.title || document.original_filename}
+                          leading={<FileText className="size-4 text-copy-muted" aria-hidden="true" />}
+                          meta={`${document.original_filename} · ${document.extension.toUpperCase()} · ${formatBytes(document.file_size_bytes) ?? "Unknown size"}`}
+                          actions={
+                            <Button type="button" variant="outline" size="sm" onClick={() => void openDocument(document)} disabled={openingDocumentId === document.id}>
+                              {openingDocumentId === document.id ? <RefreshCw className="animate-spin" /> : <Download />}
+                              {openingDocumentId === document.id ? "Opening…" : "Open"}
+                            </Button>
+                          }
+                        />
+                      ))}
+                    </RowList>
                   </div>
                 </div>
               ) : null}

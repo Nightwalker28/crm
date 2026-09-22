@@ -27,6 +27,7 @@ import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { PageShell } from "@/components/ui/PageShell";
+import { RemovableChip } from "@/components/ui/RemovableChip";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
@@ -196,10 +197,13 @@ function TagsInput({ value, onChange, disabled = false, inputId }: { value: stri
   return (
     <div className="space-y-2">
       {value.length ? <div className="flex flex-wrap gap-2" aria-label="Document tags">{value.map((tag) => (
-        <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
-          {tag}
-          <button type="button" disabled={disabled} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" onClick={() => onChange(value.filter((item) => item !== tag))} aria-label={`Remove ${tag} tag`}><X className="h-3 w-3" /></button>
-        </span>
+        <RemovableChip
+          key={tag.toLocaleLowerCase()}
+          label={tag}
+          disabled={disabled}
+          removeLabel={`Remove ${tag} tag`}
+          onRemove={() => onChange(value.filter((item) => item !== tag))}
+        />
       ))}</div> : null}
       <Input id={inputId} value={draft} disabled={disabled || value.length >= 20} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} onBlur={addTag} placeholder="Type a tag and press Enter" />
     </div>

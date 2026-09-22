@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
@@ -14,6 +14,7 @@ import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
+import { RemovableChip } from "@/components/ui/RemovableChip";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -330,10 +331,12 @@ export default function ClientPageCreateForm() {
               {documents.length ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {documents.map((document) => (
-                    <span key={document.id} className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-3 py-1 text-xs text-copy-secondary">
-                      {document.label}
-                      <Button type="button" variant="ghost" size="icon-sm" className="-mr-2 size-6 rounded-full" onClick={() => setDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.label}`}><X className="h-3 w-3" /></Button>
-                    </span>
+                    <RemovableChip
+                      key={document.id}
+                      label={document.label}
+                      removeLabel={`Remove ${document.label}`}
+                      onRemove={() => setDocuments((current) => current.filter((item) => item.id !== document.id))}
+                    />
                   ))}
                 </div>
               ) : null}
