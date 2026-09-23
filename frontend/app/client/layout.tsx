@@ -72,8 +72,15 @@ export default function ClientPortalLayout({ children }: { children: ReactNode }
           </header>
           <div className="scrollbar-hide h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
             {/* Ruling 4 — the layout owns the width. Six of them drifted because every page
-                set its own. */}
-            <div className="mx-auto w-full max-w-6xl">{children}</div>
+                set its own.
+
+                `flex h-full flex-col` is load-bearing, not cosmetic: `PageShell
+                variant="record"` asks for `lg:h-full`, and `height: 100%` against an
+                auto-height parent resolves to `auto`. Without it every portal record page
+                silently reverted to a document scroll — the archetype's contract is that the
+                content region is the only scroller (R9), and the wrapper is what carries the
+                height down to it. */}
+            <div className="mx-auto flex h-full w-full max-w-6xl flex-col">{children}</div>
           </div>
         </div>
       </main>
