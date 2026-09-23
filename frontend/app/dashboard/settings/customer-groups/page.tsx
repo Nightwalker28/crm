@@ -254,7 +254,7 @@ export default function CustomerGroupsSettingsPage() {
       variant="settings"
       title="Customer groups"
       description="Segments used by contacts, accounts, and the client portal."
-      actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
+      actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />Create customer group</Button>}
       isPermissionDenied={isForbiddenError(groups.error)}
       backHref={SETTINGS_ROUTES.root}
       backLabel="Back to settings"
@@ -392,7 +392,7 @@ export default function CustomerGroupsSettingsPage() {
         <SearchBar value={search} onChange={setSearch} placeholder="Search customer groups" className="sm:max-w-sm" />
         <ActionBar size="sm">
           <span className="text-sm text-copy-muted">{groups.isLoading ? "Loading…" : `${visibleGroups.length} of ${groups.data?.length ?? 0} groups`}</span>
-          <Button type="button" onClick={() => void startNewGroup()}><Plus />New group</Button>
+          <Button type="button" onClick={() => void startNewGroup()}><Plus />Create group</Button>
         </ActionBar>
       </div>
       <RecordTable
@@ -450,7 +450,7 @@ export default function CustomerGroupsSettingsPage() {
           icon: BadgePercent,
           title: "No customer groups",
           description: "Customer groups will appear here once the backend provides them.",
-          action: <Button type="button" onClick={() => void startNewGroup()}><Plus />New group</Button>,
+          action: <Button type="button" onClick={() => void startNewGroup()}><Plus />Create group</Button>,
         }}
         rowActions={(group) => (
           <Button type="button" size="sm" variant="outline" onClick={() => void editGroup(group)}>Edit</Button>

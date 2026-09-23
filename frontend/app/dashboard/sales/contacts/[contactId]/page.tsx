@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -283,12 +284,9 @@ export default function ContactDetailPage() {
           <>
             {summary.organization ? (
               canViewOrganizations ? (
-                <Link
-                  href={`/dashboard/sales/organizations/${summary.organization.org_id}`}
-                  className="text-action-primary hover:underline"
-                >
+                <TextLink href={`/dashboard/sales/organizations/${summary.organization.org_id}`}>
                   {summary.organization.org_name}
-                </Link>
+                </TextLink>
               ) : (
                 <span>{summary.organization.org_name}</span>
               )
@@ -558,9 +556,9 @@ function ContactOverview({
           const href = safeExternalUrl(typeof value === "string" ? value : null);
           if (!href) return undefined;
           return (
-            <Link href={href} target="_blank" rel="noopener noreferrer" className="text-action-primary hover:underline">
+            <TextLink href={href} external>
               {String(value)}
-            </Link>
+            </TextLink>
           );
         }
         if (field.field_key === "email_opt_out") {

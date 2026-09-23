@@ -107,7 +107,7 @@ export default function RecordPaymentPage() {
       actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
     >
       <RecordFormLayout
-        title="New payment"
+        title="Record payment"
         sidebar={
           <Card className="p-5">
             <SectionHeading>Selected invoice</SectionHeading>

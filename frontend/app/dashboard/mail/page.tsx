@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import type { StatusTone } from "@/lib/statusStyles";
 import { useDeferredValue, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -402,9 +403,9 @@ export default function MailPage() {
       // and *New Mail*. The middle two were the IMAP row's own actions a second time; the first is
       // the connections panel's empty state. The page's action is writing mail (5.7 ruling 3).
       actions={hasSendProvider ? (
-        <Button asChild><Link href="/dashboard/mail/compose">New mail</Link></Button>
+        <Button asChild><Link href="/dashboard/mail/compose">Compose email</Link></Button>
       ) : (
-        <Button type="button" disabled>New mail</Button>
+        <Button type="button" disabled>Compose email</Button>
       )}
     >
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
@@ -488,9 +489,9 @@ export default function MailPage() {
                     {selectedMessage.source_label ? (
                       <Fact label="Linked record">
                         {linkedHref ? (
-                          <Link href={linkedHref} className="underline underline-offset-4 hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
+                          <TextLink href={linkedHref}>
                             {selectedMessage.source_label}
-                          </Link>
+                          </TextLink>
                         ) : selectedMessage.source_label}
                       </Fact>
                     ) : null}

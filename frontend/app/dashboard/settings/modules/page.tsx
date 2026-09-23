@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Boxes, RefreshCw, Repeat2, Save, Settings2, ShieldCheck } from "lucide-react";
@@ -151,7 +152,7 @@ export default function ModulesPage() {
     >
       <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
         Module availability applies tenant-wide. Department and team access is managed separately, while action access remains in{" "}
-        <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & permissions</Link>.
+        <TextLink href={SETTINGS_ROUTES.permissions}>Roles & permissions</TextLink>.
       </Card>
 
       {tabsError ? (

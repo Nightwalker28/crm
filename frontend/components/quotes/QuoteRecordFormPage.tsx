@@ -371,7 +371,7 @@ function QuoteRecordFormEditor({
         <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this quote.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
-        title={mode === "edit" ? form.quote_number : "New quote"}
+        title={mode === "edit" ? form.quote_number : "Create quote"}
         sidebar={
           <QuoteSummary
             form={form}

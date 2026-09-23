@@ -595,7 +595,7 @@ test("Lead workspace gates mutation regions without hiding view-only context", a
   await page.getByRole("tab", { name: "Timeline" }).click();
   await expect(page.getByLabel("Add internal note")).toHaveCount(0);
   await expect(page.getByLabel("Follow-up note")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Add task" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create task" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Files" }).click();
   await expect(page.getByRole("button", { name: "Upload document" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
@@ -770,7 +770,7 @@ test("Lead workspace fails optional fields closed and excludes disabled names fr
   await expect(page.locator('a[href^="tel:"]')).toHaveCount(0);
 
   await page.getByRole("tab", { name: "Tasks" }).click();
-  await page.getByRole("button", { name: "Add task" }).click();
+  await page.getByRole("button", { name: "Create task" }).click();
   await page.getByLabel("Task title").fill("Safe linked task");
   await page.getByRole("button", { name: "Create linked task" }).click();
   await expect.poll(() => createdTaskPayload).not.toBeNull();

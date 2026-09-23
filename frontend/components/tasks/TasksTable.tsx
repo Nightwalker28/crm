@@ -160,7 +160,7 @@ export default function TasksTable({
         icon: ClipboardList,
         title: "No tasks yet",
         description: "Create a task to start coordinating team work.",
-        action: onCreateTask ? <Button type="button" onClick={onCreateTask}>Add task</Button> : undefined,
+        action: onCreateTask ? <Button type="button" onClick={onCreateTask}>Create task</Button> : undefined,
       }}
       filteredEmptyState={{
         icon: ClipboardList,

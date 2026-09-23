@@ -159,7 +159,7 @@ export const SETTINGS_NAV_ITEMS: readonly SettingsNavItem[] = SETTINGS_NAV_GROUP
 
 export const ADMIN_QUICK_ACTIONS = [
   {
-    label: "Add user",
+    label: "Create user",
     description: "Provision a user and assign their role and team",
     href: `${SETTINGS_ROUTES.users}?action=create-user`,
   },

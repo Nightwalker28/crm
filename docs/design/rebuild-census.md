@@ -500,6 +500,7 @@ taken. Counted here so the denominator stays honest.
 | `SearchableSelect.tsx` | **new** | §7.8's primitive, built in **5.4** batch 1. `Popover` + listbox at every count, with the search input rendered only at or above `SEARCHABLE_SELECT_MIN_OPTIONS`; no call site passes a flag. `selectTriggerVariants` is exported from `select.tsx` so the two forms of a select are one class source | **done** (5.4 b1) — `InlineFieldEdit`'s 17 call sites and `TimezonePicker` |
 | `recordWorkspace/RecordOwnerField.tsx` | **new** | The record's owner, in the spine's State block, on all **nine** record types (§4.7). Built in **5.4** batch 2, with every one of its call sites in the same commit | **done** (5.4 b2) |
 | `hooks/useUserOptions.ts` | **new** | The tenant's active users for a select that filters in memory, one cached request per module key. Carries `has_more` so a capped list can say so (§7.8) | **done** (5.4 b2) |
+| `TextLink.tsx` | **new** | §2.2's link in text, built in **5.9** batch 3. Five recipes → one; the underline drawn at rest. Not the row's open gesture, which stays in `ListRow` / `Board` | **done** — nine call sites, plus `FieldDescription`'s `[&>a]` rule onto the same ink |
 
 ### 3.2 Existing primitives
 

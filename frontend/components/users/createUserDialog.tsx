@@ -125,7 +125,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
         <DialogPanel size="xl">
           <DialogHeader>
             <div>
-              <DialogTitle>{setupLink ? "User created" : "Add user"}</DialogTitle>
+              <DialogTitle>{setupLink ? "User created" : "Create user"}</DialogTitle>
               <DialogDescription className="mt-1 text-copy-muted">
                 {setupLink
                   ? "Share this one-time setup link through a trusted channel."

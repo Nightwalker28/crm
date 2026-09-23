@@ -9,7 +9,7 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-in progress** — batches 1 and 2 landed; see its status blocks for the batch plan.
+in progress** — batches 1–3 landed; see its status blocks for the batch plan.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6606,6 +6606,50 @@ cannot see them and neither can the scanner; the browser pass reads them.
 **Next: batch 3** — one create verb (*New X* / *Add X* → *Create X* where it makes a record, per
 §3.7), and one link treatment: four `text-action-primary hover:underline` links are coloured
 links (§2.2), and five other recipes are in use.
+
+### Status: batch 3 — one create verb, one link
+
+**The verb.** §3.7 sorts every *New X* / *Add X* into one of two jobs. **Making a record is
+*Create X***: the buttons for views, users, teams, tasks, modules, fields, events, customer
+groups, booking links, custom records, insertion orders and webhooks; and **the create-form page
+titles** — *New lead* is now *Create lead*, so the quick action, the page and the toast name one
+action (*Create lead* → *Lead created.*), which is exactly what the task and event dialogs
+already did. Payment is *Record payment* and mail is *Compose email*, matching the quick actions
+the registry already carried. **Putting something into a container stays *Add*** — a widget on a
+dashboard, a section on a layout, a line item, a note or reply on a timeline, a field or group in
+a module still being edited, *Add to calendar*. Those are not records made from nothing, and
+calling them *Create* would claim they were.
+
+The webhook's toast said *Notification channel added.* for a button now reading *Create webhook*;
+it is *Webhook created.*
+
+**The link.** Five recipes, and the four `text-action-primary hover:underline` ones were **not
+coloured**, which is what the brief assumed: `action-primary` resolves to the same ink as
+`copy-primary` in both themes. The defect was the other half — **the underline only on hover**,
+so the link was the same ink as the sentence around it and invisible to someone reading.
+`TextLink` (`components/ui/`) is the one treatment: `copy-primary`, underlined at rest in
+`line-strong`, full ink on hover, the standard focus outline, and an `external` flag that owns
+`noopener noreferrer`. Nine call sites moved, and `FieldDescription`'s `[&>a]` rule left
+shadcn's `text-primary` for the same ink. **Not moved, deliberately:** a record's name that opens
+it from a row (`ListRow`, `Board`, the dashboard's module table) — §7.15's open gesture, which is
+not text. §2.2 records both.
+
+The `ExternalLink` icon beside *Manage cloud connections* went: the link is an internal route.
+
+**Specs.** Eleven moved with the verbs. `getByRole` names are case-insensitive substrings, so a
+panel toggle renamed *Create task* beside a submit reading *Create linked task* is not a
+collision; a toolbar and an empty-state action both reading *Create task* on an empty list was
+already a two-match pair as *Add Task* / *Add task*, and nothing changes there.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run build` | Green |
+
+**Next: batch 4** — voice. Toasts that name a generic *Record* when the page knows the noun;
+error copy that names the failure (*Failed to …*, *Something went wrong*) in route and panel
+states; empty states that describe without offering the create action; the five dialogs with no
+description (5.1 batch D); the seeded *Notes* section holding a *Notes* field (5.3).
 
 ---
 

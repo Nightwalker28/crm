@@ -405,7 +405,7 @@ function PosInvoiceRecordFormEditor({
         <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this invoice.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
-        title={mode === "edit" ? form.invoice_number : "New invoice"}
+        title={mode === "edit" ? form.invoice_number : "Create invoice"}
         sidebar={
           <InvoiceSidebar
             form={form}

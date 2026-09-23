@@ -162,7 +162,7 @@ test("filters fields, explains protected controls, and saves inspector changes o
 
 test("creates a required custom field and opens it in the inspector", async ({ page }) => {
   await page.goto("/dashboard/settings/fields");
-  await page.getByRole("button", { name: "New field" }).click();
+  await page.getByRole("button", { name: "Create field" }).click();
   await expect(page.getByRole("dialog", { name: "Create custom field" })).toBeVisible();
   await page.getByLabel("Label", { exact: true }).fill("Renewal Window");
   await expect(page.getByLabel("Field key")).toHaveValue("renewal_window");

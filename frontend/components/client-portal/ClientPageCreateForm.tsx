@@ -179,7 +179,7 @@ export default function ClientPageCreateForm() {
     >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
-          title="New client page"
+          title="Create client page"
           sidebar={
             <>
               <Card className="p-5">

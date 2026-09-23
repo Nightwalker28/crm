@@ -98,7 +98,7 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
 test("protects an unsaved new booking link when the drawer closes", async ({ page }) => {
   await page.goto("/dashboard/settings/calendar-booking");
 
-  await page.getByRole("button", { name: "New booking link" }).click();
+  await page.getByRole("button", { name: "Create booking link" }).click();
   await expect(page.getByRole("dialog", { name: "Create booking link" })).toBeVisible();
   await page.getByLabel("Name", { exact: true }).fill("Onboarding call");
   await page.getByRole("button", { name: "Close booking link editor" }).click();

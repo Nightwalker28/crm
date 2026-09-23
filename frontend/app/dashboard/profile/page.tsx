@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import { useEffect, useState } from "react";
 import { ShieldCheck, UserRound } from "lucide-react";
 import { toast } from "sonner";
@@ -422,9 +423,9 @@ export default function ProfilePage() {
                     <p className="mt-2 text-xs text-copy-secondary">Treat this secret like a password. Add it to your authenticator before continuing.</p>
                   </div>
                   {mfaOtpAuthUri ? (
-                    <a href={mfaOtpAuthUri} className="w-fit rounded-[var(--radius-control-sm)] text-sm text-copy-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
+                    <TextLink href={mfaOtpAuthUri} className="w-fit text-sm">
                       Open authenticator setup link
-                    </a>
+                    </TextLink>
                   ) : null}
                   <Field className="max-w-sm">
                     <FieldLabel htmlFor="profile-mfa-enable-code">Authenticator code</FieldLabel>

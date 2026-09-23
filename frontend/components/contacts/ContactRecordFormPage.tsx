@@ -150,7 +150,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     >
       {submitError ? <FormErrorBanner title="We could not save this contact.">{submitError}</FormErrorBanner> : null}
       <RecordFormLayout
-        title={mode === "edit" ? recordName : "New contact"}
+        title={mode === "edit" ? recordName : "Create contact"}
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
         status={isDirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : "Complete the required fields to create this contact."}
         actions={<><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contact"}</Button></>}

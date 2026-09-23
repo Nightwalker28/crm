@@ -109,7 +109,7 @@ export function IntegrationWebhookWorkspace() {
       setDraft(emptyDraft);
       setEditorOpen(false);
       await queryClient.invalidateQueries({ queryKey: ["integrations", "notification-channels"] });
-      toast.success("Notification channel added.");
+      toast.success("Webhook created.");
     } catch {
       toast.error("The notification channel could not be added. Check the URL and try again.");
     } finally {
@@ -177,7 +177,7 @@ export function IntegrationWebhookWorkspace() {
           <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Notification webhooks</h2>
           <p className="mt-1 text-sm text-copy-muted">Manage Slack or Microsoft Teams incoming webhook destinations.</p>
         </div>
-        <Button type="button" size="sm" onClick={openEditor}><Plus />New webhook</Button>
+        <Button type="button" size="sm" onClick={openEditor}><Plus />Create webhook</Button>
       </div>
 
       <EditorPanel
@@ -190,7 +190,7 @@ export function IntegrationWebhookWorkspace() {
         footer={(
           <>
             <Button type="button" variant="outline" disabled={saving} onClick={() => void closeEditor()}>Cancel</Button>
-            <Button type="submit" disabled={saving || !draft.webhook_url.trim()}>{saving ? "Adding\u2026" : "Add webhook"}</Button>
+            <Button type="submit" disabled={saving || !draft.webhook_url.trim()}>{saving ? "Creating\u2026" : "Create webhook"}</Button>
           </>
         )}
       >

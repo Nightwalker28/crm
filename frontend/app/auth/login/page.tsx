@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -332,9 +333,9 @@ export default function LoginPage() {
                 <div className="mt-2 break-all font-mono text-sm text-copy-primary">{mfaSecret}</div>
               </div>
               {mfaOtpAuthUri ? (
-                <a className="block break-all text-xs text-copy-secondary underline-offset-4 hover:underline" href={mfaOtpAuthUri}>
+                <TextLink className="block break-all text-xs" href={mfaOtpAuthUri}>
                   Open authenticator setup link
-                </a>
+                </TextLink>
               ) : null}
               <div className="space-y-2">
                 <Label htmlFor="setup-mfa-code">Authenticator code</Label>

@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import Link from "next/link";
 import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
@@ -600,9 +601,9 @@ function AccountOverview({
         const href = safeExternalUrl(typeof value === "string" ? value : null);
         if (!href) return undefined;
         return (
-          <Link href={href} target="_blank" rel="noopener noreferrer" className="text-action-primary hover:underline">
+          <TextLink href={href} external>
             {String(value)}
-          </Link>
+          </TextLink>
         );
       }}
     />

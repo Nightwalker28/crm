@@ -216,7 +216,7 @@ export default function OrganizationRecordFormPage({
         <FormErrorBanner title="We could not save this account.">{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
-        title={mode === "edit" ? (form.org_name.trim() || "Account") : "New account"}
+        title={mode === "edit" ? (form.org_name.trim() || "Account") : "Create account"}
         sidebar={
           <OrganizationFormSidebarFields
             value={form}

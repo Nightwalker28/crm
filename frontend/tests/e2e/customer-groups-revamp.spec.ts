@@ -69,7 +69,7 @@ test("validates percentage pricing and confirms a new tenant default on mobile",
   });
 
   await page.goto("/dashboard/settings/customer-groups");
-  await page.getByRole("button", { name: "New customer group" }).click();
+  await page.getByRole("button", { name: "Create customer group" }).click();
   await expect(page.getByRole("dialog", { name: "Create customer group" })).toBeVisible();
   await page.getByLabel("Name").fill("VIP Clients");
   await page.getByLabel("Key").fill("vip clients");

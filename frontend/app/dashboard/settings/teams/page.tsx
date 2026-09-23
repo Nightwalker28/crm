@@ -350,7 +350,7 @@ export default function TeamsAndDepartmentsPage() {
                   description={department.description || undefined}
                   action={department.id !== -1 ? (
                     <ActionBar size="sm">
-                      <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}><Plus />Add team</Button>
+                      <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}><Plus />Create team</Button>
                       <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil /></Button>
                       {/* R5: `destructive` is a solid red fill, and one per row put twenty
                           of them on this page — the only file in the app that draws a row

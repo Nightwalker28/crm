@@ -208,7 +208,7 @@ test("shows only permitted module actions and opens routed create workflows", as
   await expect(page.getByText("Build report", { exact: true })).toBeVisible();
   await expect(page.getByText("Create message template", { exact: true })).toBeVisible();
   await expect(page.getByText("Configure integration", { exact: true })).toBeVisible();
-  await expect(page.getByText("Add user", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create user", { exact: true })).toBeVisible();
   await expect(page.getByText("Create team", { exact: true })).toBeVisible();
   await expect(page.getByText("Create department", { exact: true })).toBeVisible();
   await expect(page.getByText("Create role", { exact: true })).toBeVisible();
@@ -286,7 +286,7 @@ test("record-search failures stay recoverable without exposing backend details",
 
 test("routes administrator actions to their addressable create workflows", async ({ page }) => {
   const workflows = [
-    { label: "Add user", path: "/dashboard/settings/users?action=create-user" },
+    { label: "Create user", path: "/dashboard/settings/users?action=create-user" },
     { label: "Create team", path: "/dashboard/settings/teams?action=create-team" },
     { label: "Create department", path: "/dashboard/settings/teams?action=create-department" },
     { label: "Create role", path: "/dashboard/settings/permissions?action=create-role" },
@@ -590,7 +590,7 @@ test("hides admin-only actions from non-admin users even with module actions", a
   const palette = page.getByRole("dialog");
   await expect(palette.getByText("Configure integration", { exact: true })).toBeHidden();
   await expect(palette.getByText("Integrations", { exact: true })).toBeHidden();
-  await expect(palette.getByText("Add user", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Create user", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create team", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create department", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create role", { exact: true })).toBeHidden();

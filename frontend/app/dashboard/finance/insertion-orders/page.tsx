@@ -191,7 +191,7 @@ export default function InsertionOrdersPage() {
               />
             </>
           }
-          primaryAction={canCreate ? <Button asChild><Link href="/dashboard/finance/insertion-orders/new"><Plus />New order</Link></Button> : undefined}
+          primaryAction={canCreate ? <Button asChild><Link href="/dashboard/finance/insertion-orders/new"><Plus />Create insertion order</Link></Button> : undefined}
         />
 
         <InlineSavedViewFilters

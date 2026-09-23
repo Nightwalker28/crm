@@ -319,7 +319,7 @@ export default function CalendarBookingSettingsPage() {
       isPermissionDenied={isForbiddenError(bookingTypesQuery.error)}
       backHref={SETTINGS_ROUTES.root}
       backLabel="Back to settings"
-      actions={<Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>}
+      actions={<Button type="button" onClick={() => void startNewBookingLink()}><Plus />Create booking link</Button>}
     >
       {/* A configuration record (R1): one field, but saving it moves every canonical public
           link this workspace has handed out, so it commits deliberately. */}

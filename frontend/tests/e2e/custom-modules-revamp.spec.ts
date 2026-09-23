@@ -272,7 +272,7 @@ test("custom-module list uses permission-aware actions and recoverable deletion"
     "href",
     "/dashboard/custom/custom_projects/91",
   );
-  await expect(page.getByRole("link", { name: "New record" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Create record" })).toBeVisible();
   await page.getByRole("button", { name: "Delete Renewal rollout" }).click();
   await expect(page.getByRole("dialog")).toContainText("An administrator can restore it later.");
   await page.getByRole("button", { name: "Move to recycle bin" }).click();
@@ -310,7 +310,7 @@ test("custom-module viewers receive read-only list and detail routes", async ({ 
   );
 
   await page.goto("/dashboard/custom/custom_projects");
-  await expect(page.getByRole("link", { name: "New record" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Create record" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Import CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Export CSV" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Delete Renewal rollout" })).toHaveCount(0);

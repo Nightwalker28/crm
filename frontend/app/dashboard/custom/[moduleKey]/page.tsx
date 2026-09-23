@@ -177,7 +177,7 @@ export default function CustomModulePage() {
             }}
           />
         ) : undefined}
-        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}><Plus />New record</Link></Button> : undefined}
+        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/custom/${moduleKey}/new`}><Plus />Create record</Link></Button> : undefined}
         actionControls={
           <>
             {canCreate || canExport ? (

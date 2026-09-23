@@ -550,7 +550,7 @@ export default function FieldsPage() {
             </SelectContent>
           </Select>
           <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in the module builder."}>
-            <Plus />New field
+            <Plus />Create field
           </Button>
         </div>
       )}

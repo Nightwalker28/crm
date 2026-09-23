@@ -139,7 +139,7 @@ export default function MailComposePage() {
     >
       {sendError ? <FormErrorBanner title="We could not send this email.">{sendError}</FormErrorBanner> : null}
       <RecordFormLayout
-        title="New message"
+        title="Compose email"
         sidebar={
           <>
             <Card className="p-5">

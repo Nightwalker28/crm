@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
@@ -230,13 +231,13 @@ export default function RecordEmailComposer({
     <div className="grid gap-2">
       <p>{sendError.message}</p>
       {sendError.reconnectRequired ? (
-        <Link
+        <TextLink
           href="/dashboard/mail"
-          className="w-fit underline underline-offset-4"
+          className="w-fit"
           onClick={() => onOpenChange(false)}
         >
           Reconnect a mailbox
-        </Link>
+        </TextLink>
       ) : null}
       {sendError.retryable ? (
         <p className="text-p-xs text-copy-muted">

@@ -482,7 +482,7 @@ test("The record archetype's Timeline, Tasks and Files tabs replace the nested a
 
   await page.getByRole("tab", { name: "Tasks" }).click();
   await expect(page.getByText("No linked tasks yet")).toBeVisible();
-  await page.getByRole("button", { name: "Add task" }).click();
+  await page.getByRole("button", { name: "Create task" }).click();
   await expect(page.getByLabel("Task title")).toBeVisible();
   await expect(page.getByLabel("Due")).toBeVisible();
   await expect(page.getByLabel("Priority")).toBeVisible();

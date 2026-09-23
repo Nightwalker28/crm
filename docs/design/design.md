@@ -242,6 +242,14 @@ Links inside body copy are `text-copy-primary` with an underline offset — not 
 coloured link. A coloured link inside a gray page is the loudest pixel on screen for
 the least important reason.
 
+**A link in text is `TextLink`** (rebuild 5.9): `text-copy-primary`, underlined at rest with
+`underline-offset-4`, the underline in `line-strong` until hover. Five recipes were in use and
+none matched. Four were `text-action-primary hover:underline` — the same ink as the text around
+them, so the link was invisible until a pointer crossed it. The underline is drawn at rest
+because ink cannot mark a link without colour, and colour is ruled out above. There is one
+other link treatment and it is not this one: **a record's name that opens it** from a row or a
+card is the row's open gesture (§7.15) and takes `hover:underline` from `ListRow` / `Board`.
+
 ### 2.3 Focus is its own token
 
 Focus rings use `--color-focus-ring`, never the action colour. A near-white focus

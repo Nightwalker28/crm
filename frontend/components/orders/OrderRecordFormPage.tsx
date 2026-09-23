@@ -293,7 +293,7 @@ function OrderRecordFormEditor({
         <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this order.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
-        title={mode === "edit" ? form.order_number : "New order"}
+        title={mode === "edit" ? form.order_number : "Create order"}
         sidebar={
           <OrderSidebar
             form={form}

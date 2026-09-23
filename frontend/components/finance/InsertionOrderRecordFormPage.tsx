@@ -280,7 +280,7 @@ function InsertionOrderFormEditor({
       ) : null}
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
-          title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "New insertion order"}
+          title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "Create insertion order"}
           sidebar={
             <>
               <Card className="p-5">

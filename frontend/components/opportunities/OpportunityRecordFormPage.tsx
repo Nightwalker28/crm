@@ -199,7 +199,7 @@ export default function OpportunityRecordFormPage({
         <FormErrorBanner title="We could not save this deal.">{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
-        title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "New deal"}
+        title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "Create deal"}
         sidebar={
           <OpportunityFormSidebarFields
             value={form}

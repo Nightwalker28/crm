@@ -649,7 +649,7 @@ function CreateModulePanel({
       <form onSubmit={submit}>
         <CardHeader>
           <div>
-            <h2 className="text-lg font-semibold text-copy-primary">New module</h2>
+            <h2 className="text-lg font-semibold text-copy-primary">Create module</h2>
             <p className="mt-1 text-sm text-copy-secondary">Create the module shell first, then configure its fields in the inspector.</p>
           </div>
         </CardHeader>
@@ -793,7 +793,7 @@ export default function ModuleBuilderPage() {
                 </SelectContent>
               </Select>
             ) : null}
-            <Button type="button" onClick={() => void startCreating()}><Plus />New module</Button>
+            <Button type="button" onClick={() => void startCreating()}><Plus />Create module</Button>
             {/* Permissions and Automation were here as A8 workarounds and the rail carries
                 both now. Saved views stays: `/dashboard/views/<key>` is not a settings route,
                 so nothing else on this page reaches it. */}

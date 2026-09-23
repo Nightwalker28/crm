@@ -212,7 +212,7 @@ export default function RecordTasksPanel({
         <div className="flex justify-end">
           <Button type="button" variant="outline" size="sm" onClick={() => setIsCreating((current) => !current)}>
             <Plus />
-            {isCreating ? "Close" : "Add task"}
+            {isCreating ? "Close" : "Create task"}
           </Button>
         </div>
       ) : null}

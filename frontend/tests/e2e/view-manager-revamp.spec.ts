@@ -127,7 +127,7 @@ test("system views are read-only and user views support create, default, and del
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Duplicate" })).toBeVisible();
 
-  await page.getByRole("button", { name: "New view" }).click();
+  await page.getByRole("button", { name: "Create view" }).click();
   await page.getByLabel("View name").fill("Fresh Contacts");
   await page.getByRole("button", { name: "Create view" }).click();
   await expect(page).toHaveURL(/viewId=73/);

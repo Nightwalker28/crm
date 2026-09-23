@@ -69,7 +69,7 @@ export default function TasksBoard({ tasks, isLoading, isRefreshing = false, has
         icon: ClipboardList,
         title: "No tasks yet",
         description: "Create a task to start coordinating team work.",
-        action: onCreate ? <Button type="button" onClick={onCreate}>Add task</Button> : undefined,
+        action: onCreate ? <Button type="button" onClick={onCreate}>Create task</Button> : undefined,
       }}
       filteredEmptyState={{
         title: "No tasks match this view",

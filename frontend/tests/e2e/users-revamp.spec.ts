@@ -290,7 +290,7 @@ test("Users supports responsive bulk role and status updates", async ({
 test("opens Add User from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/users?action=create-user");
 
-  await expect(page.getByRole("heading", { name: "Add user" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create user" })).toBeVisible();
 });
 
 test("Add user validates labeled fields and redacts create failures", async ({

@@ -199,9 +199,9 @@ export default function CalendarPage() {
             <RefreshCw className={isCalendarSyncActive ? "animate-spin" : undefined} />
             <span className="hidden sm:inline">{isCalendarSyncActive ? "Syncing" : "Sync now"}</span>
           </Button>
-          <Button aria-label="New event" onClick={() => openCreateDialog(selectedDay)}>
+          <Button aria-label="Create event" onClick={() => openCreateDialog(selectedDay)}>
             <Plus />
-            <span className="hidden sm:inline">New event</span>
+            <span className="hidden sm:inline">Create event</span>
           </Button>
         </>
       )}

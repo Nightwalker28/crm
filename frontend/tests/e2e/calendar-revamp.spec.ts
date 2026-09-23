@@ -91,7 +91,7 @@ test("Calendar keeps core scheduling usable on mobile", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Next month" })).toBeVisible();
   await expect(page.getByText("Customer renewal review").first()).toBeVisible();
 
-  await page.getByRole("button", { name: "New event" }).click();
+  await page.getByRole("button", { name: "Create event" }).click();
   await expect(page.getByRole("heading", { name: "Create event" })).toBeVisible();
   await page.getByLabel("Event title").fill("Mobile follow-up");
   await page.getByLabel("All-day event").click();

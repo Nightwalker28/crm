@@ -1,5 +1,6 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
@@ -8,7 +9,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Cloud,
-  ExternalLink,
   FileText,
   FileUp,
   HardDrive,
@@ -485,7 +485,7 @@ export default function DocumentUploadFormPage() {
             </Field>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-4 py-3 text-xs md:px-5">
-            <Link className="text-action-primary hover:underline" href="/dashboard/settings/integrations">Manage cloud connections <ExternalLink className="inline h-3 w-3" /></Link>
+            <TextLink href="/dashboard/settings/integrations">Manage cloud connections</TextLink>
             {connectionsQuery.isError ? <Button variant="ghost" size="sm" onClick={() => void connectionsQuery.refetch()}><RefreshCw />Retry connection check</Button> : null}
           </div>
           {connectionsQuery.isError ? <p role="alert" className="border-t border-line-subtle px-4 py-3 text-xs text-state-warning md:px-5">Cloud connections could not be checked. Local storage remains available.</p> : null}
