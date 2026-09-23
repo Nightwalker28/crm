@@ -111,14 +111,14 @@ export default function CustomModulePage() {
     const confirmed = await confirm({
       title: "Delete record?",
       description: `Move "${record.title}" to the Recycle Bin? An administrator can restore it later.`,
-      confirmLabel: "Move to Recycle Bin",
+      confirmLabel: "Move to recycle bin",
       variant: "destructive",
     });
     if (!confirmed) return;
     try {
       await records.deleteRecord(record.id);
       if (records.records.length === 1 && page > 1) setPage((current) => current - 1);
-      toast.success("Record moved to the Recycle Bin.");
+      toast.success("Record moved to the recycle bin.");
     } catch {
       toast.error("We could not delete this record. Try again.");
     }

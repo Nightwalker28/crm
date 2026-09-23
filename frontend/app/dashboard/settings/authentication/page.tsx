@@ -73,7 +73,7 @@ export default function AuthenticationSettingsPage() {
       description="Set the MFA policy and connect an external identity provider."
       isPermissionDenied={isForbiddenError(settings.loadError)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <FormSection title="Multi-factor" description="Applies to manual CRM sign-in.">
         <SettingsRow
@@ -129,7 +129,7 @@ export default function AuthenticationSettingsPage() {
           <div className="grid gap-3 md:grid-cols-2">
             <Field><FieldLabel>Issuer URL</FieldLabel><Input value={draft.draft.issuer_url} onChange={(event) => draft.update("issuer_url", event.target.value)} placeholder="https://idp.example.com" /></Field>
             <Field><FieldLabel>Client ID</FieldLabel><Input value={draft.draft.client_id} onChange={(event) => draft.update("client_id", event.target.value)} /></Field>
-            <Field><FieldLabel>Client Secret</FieldLabel><Input type="password" value={draft.draft.client_secret} onChange={(event) => draft.update("client_secret", event.target.value)} placeholder={settings.ssoSettings?.has_client_secret ? "Stored secret" : ""} /><FieldDescription>Leave blank to keep the stored secret.</FieldDescription></Field>
+            <Field><FieldLabel>Client secret</FieldLabel><Input type="password" value={draft.draft.client_secret} onChange={(event) => draft.update("client_secret", event.target.value)} placeholder={settings.ssoSettings?.has_client_secret ? "Stored secret" : ""} /><FieldDescription>Leave blank to keep the stored secret.</FieldDescription></Field>
             <Field><FieldLabel>Verified login domains</FieldLabel><Input value={settings.ssoSettings?.allowed_email_domains.join(", ") ?? ""} readOnly placeholder="Verify a custom domain first" /></Field>
             <Field><FieldLabel>Authorization endpoint</FieldLabel><Input value={draft.draft.authorization_endpoint} onChange={(event) => draft.update("authorization_endpoint", event.target.value)} /><FieldDescription>Optional when discovery is available.</FieldDescription></Field>
             <Field><FieldLabel>Token endpoint</FieldLabel><Input value={draft.draft.token_endpoint} onChange={(event) => draft.update("token_endpoint", event.target.value)} /></Field>

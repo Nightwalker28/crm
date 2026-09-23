@@ -66,7 +66,7 @@ export function ClientAccountsTable({
               onValueChange={(value) => onStatusChange(account.id, value as ClientAccountStatus)}
               disabled={isUpdatingStatus}
             >
-              <SelectTrigger size="sm" className="w-[132px] capitalize" aria-label={`Access status for ${account.email}`}>
+              <SelectTrigger size="sm" className="w-[132px]" aria-label={`Access status for ${account.email}`}>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

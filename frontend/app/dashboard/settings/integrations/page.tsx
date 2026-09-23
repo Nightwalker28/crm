@@ -49,7 +49,7 @@ export default function IntegrationsPage() {
       description="Connect storage, mail, and messaging providers."
       isPermissionDenied={isForbiddenError(registryQuery.error)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <IntegrationProviderRegistry
         items={registryHealth}

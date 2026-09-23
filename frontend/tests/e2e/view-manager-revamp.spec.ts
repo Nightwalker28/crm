@@ -93,7 +93,7 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
 
   await page.getByRole("button", { name: "Edit view" }).click();
-  await page.getByRole("button", { name: "Add Last Name" }).click();
+  await page.getByRole("button", { name: "Add Last name" }).click();
   await page.getByRole("button", { name: "Move Email up" }).focus();
   await page.keyboard.press("Enter");
   await page.getByRole("tab", { name: "Filters" }).click();
@@ -134,7 +134,7 @@ test("system views are read-only and user views support create, default, and del
   await page.getByRole("button", { name: "Set default" }).click();
   await expect(page.getByText("Default view updated.")).toBeVisible();
   await page.getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Delete View" }).click();
+  await page.getByRole("button", { name: "Delete view" }).click();
   await expect(page).toHaveURL(/viewId=system-default/);
 });
 
@@ -170,7 +170,7 @@ test("failed delete keeps the selected user view", async ({ page }) => {
   );
   await page.goto("/dashboard/views/sales_contacts?viewId=72");
   await page.getByRole("button", { name: "Delete" }).click();
-  await page.getByRole("button", { name: "Delete View" }).click();
+  await page.getByRole("button", { name: "Delete view" }).click();
 
   await expect(page.getByText("The saved view could not be deleted. Please try again.")).toBeVisible();
   await expect(page).toHaveURL(/viewId=72/);

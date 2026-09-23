@@ -112,7 +112,7 @@ function FieldRow({
           <StatusValue status={{ tone: "neutral", label: "Hidden" }} />
         ) : null}
         {catalogField && !catalogField.enabled ? (
-          <StatusValue status={{ tone: "critical", label: "Off in Field Config" }} />
+          <StatusValue status={{ tone: "critical", label: "Off in field config" }} />
         ) : null}
         {isUnknown ? (
           <StatusValue status={{ tone: "critical", label: "Unknown field" }} />
@@ -425,7 +425,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
     <PageShell
       variant="settings"
       title="Record layouts"
-      description="Arrange the fields on the Lead Quick Create surface."
+      description="Arrange the fields on the lead quick create form."
       context={
         <span>
           Leads · Quick Create ·{" "}
@@ -533,7 +533,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
                         <span className="text-sm font-medium text-copy-primary">{field.label}</span>
                         {field.field_source === "custom_field" ? <Chip>Custom</Chip> : null}
                         {!field.enabled ? (
-                          <StatusValue status={{ tone: "critical", label: "Off in Field Config" }} />
+                          <StatusValue status={{ tone: "critical", label: "Off in field config" }} />
                         ) : null}
                       </div>
                       <div className="mt-0.5 text-p-xs text-copy-muted">{friendlyFieldType(field.field_type)}</div>

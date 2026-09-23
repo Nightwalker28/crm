@@ -44,7 +44,7 @@ export default function DomainsSettingsPage() {
       description="Verify a custom hostname before using tenant SSO."
       isPermissionDenied={isForbiddenError(settings.loadError)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <Card className="px-4 py-4">
         <div className="flex flex-col gap-4">

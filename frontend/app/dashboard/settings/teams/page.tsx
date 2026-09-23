@@ -249,7 +249,7 @@ export default function TeamsAndDepartmentsPage() {
       const confirmed = await confirm({
         title: "Discard team changes?",
         description: "Your unsaved team changes will be lost.",
-        confirmLabel: "Discard Changes",
+        confirmLabel: "Discard changes",
         variant: "destructive",
       });
       if (!confirmed) return;
@@ -266,7 +266,7 @@ export default function TeamsAndDepartmentsPage() {
       const confirmed = await confirm({
         title: "Discard department changes?",
         description: "Your unsaved department changes will be lost.",
-        confirmLabel: "Discard Changes",
+        confirmLabel: "Discard changes",
         variant: "destructive",
       });
       if (!confirmed) return;
@@ -313,7 +313,7 @@ export default function TeamsAndDepartmentsPage() {
       errorDescription="The organization structure could not be loaded. Try again or return to Settings."
       onRetry={() => void retryLoad()}
       backHref="/dashboard/settings"
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       {error && !departmentEditorOpen && !teamEditorOpen && !isCreateDepartmentAction && !isCreateTeamAction ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">

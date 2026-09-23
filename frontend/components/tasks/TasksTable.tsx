@@ -41,7 +41,7 @@ function columnLabel(column: string) {
     : column === "start_at"
       ? "Start"
       : column === "assigned_by_name"
-        ? "Assigned By"
+        ? "Assigned by"
         : column === "assigned_at"
           ? "Assigned"
           : column === "updated_at"

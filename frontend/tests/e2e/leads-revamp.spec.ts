@@ -435,7 +435,7 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   await filtersButton.focus();
   await expect(filtersButton).toBeFocused();
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Filter Conditions")).toBeVisible();
+  await expect(page.getByText("Filter conditions")).toBeVisible();
 });
 
 test("Leads routed workflow exposes create, detail, edit, conversion, and deep-linked tabs", async ({ page }) => {
@@ -601,8 +601,8 @@ test("Lead workspace gates mutation regions without hiding view-only context", a
   await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "View" })).toBeVisible();
   await page.getByRole("button", { name: "Versions" }).click();
-  await expect(page.getByRole("button", { name: "New Version" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Mark Template" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Upload version" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Mark as template" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Share", exact: true })).toHaveCount(0);
 });
 

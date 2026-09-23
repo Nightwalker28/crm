@@ -313,12 +313,12 @@ export default function CalendarBookingSettingsPage() {
   return (
     <PageShell
       variant="settings"
-      title="Booking Links"
+      title="Booking links"
       description="Public scheduling links and booking availability."
       context={isDirty || isHandleDirty ? "Unsaved booking-link changes" : undefined}
       isPermissionDenied={isForbiddenError(bookingTypesQuery.error)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
       actions={<Button type="button" onClick={() => void startNewBookingLink()}><Plus />New booking link</Button>}
     >
       {/* A configuration record (R1): one field, but saving it moves every canonical public

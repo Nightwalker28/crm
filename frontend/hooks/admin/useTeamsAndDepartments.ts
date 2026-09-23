@@ -108,7 +108,7 @@ export function useTeamsAndDepartments() {
       grouped.push({
         department: {
           id: -1,
-          name: "Unassigned Department",
+          name: "Unassigned department",
           description: "Teams with missing department links",
         },
         teams: orphanedTeams,
@@ -278,7 +278,7 @@ export function useTeamsAndDepartments() {
     const confirmed = await confirm({
       title: "Delete department?",
       description: `Permanently delete "${department.name}"? Departments with assigned teams cannot be deleted.`,
-      confirmLabel: "Delete Department",
+      confirmLabel: "Delete department",
       variant: "destructive",
     });
     if (!confirmed) return;
@@ -306,7 +306,7 @@ export function useTeamsAndDepartments() {
     const confirmed = await confirm({
       title: "Delete team?",
       description: `Delete team "${team.name}"? Users assigned to it will become unassigned.`,
-      confirmLabel: "Delete Team",
+      confirmLabel: "Delete team",
       variant: "destructive",
     });
     if (!confirmed) return;

@@ -38,7 +38,7 @@ const LINK_TARGET_MODULES = [
   { key: "sales_contacts", label: "Contact", searchPath: "/sales/contacts/search", idField: "contact_id", labelFields: ["first_name", "last_name", "primary_email"] },
   { key: "sales_opportunities", label: "Opportunity", searchPath: "/sales/opportunities/search", idField: "opportunity_id", labelFields: ["opportunity_name", "client"] },
   { key: "sales_quotes", label: "Quote", searchPath: "/sales/quotes/search", idField: "quote_id", labelFields: ["quote_number", "customer_name"] },
-  { key: "finance_io", label: "Insertion Order", searchPath: "/finance/insertion-orders", idField: "id", labelFields: ["io_number", "customer_name"] },
+  { key: "finance_io", label: "Insertion order", searchPath: "/finance/insertion-orders", idField: "id", labelFields: ["io_number", "customer_name"] },
   { key: "finance_pos", label: "POS Invoice", searchPath: "/finance/pos-invoices", idField: "id", labelFields: ["invoice_number", "customer_name"] },
 ] as const;
 

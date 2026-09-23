@@ -43,10 +43,10 @@ const HEADERS: Record<string, string> = {
   invoice_number: "Invoice",
   customer_name: "Customer",
   payment_status: "Status",
-  total_amount: "Invoice Total",
+  total_amount: "Invoice total",
   amount_paid: "Paid",
   balance_due: "Balance",
-  due_date: "Due Date",
+  due_date: "Due date",
   payment_method: "Method",
   updated_at: "Updated",
 };

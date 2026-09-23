@@ -106,22 +106,22 @@ function sizeClass(size: DashboardWidgetSize) {
 }
 
 function widgetTitle(widget: DashboardWidget, modulesByName: Map<string, AccessibleModule>) {
-  if (widget.type === "crm_snapshot") return "CRM Snapshot";
-  if (widget.type === "module_entry_points") return "Module Entry Points";
-  if (widget.type === "quick_actions") return "Quick Actions";
-  if (widget.type === "recent_activity") return "Recent Activity";
+  if (widget.type === "crm_snapshot") return "CRM snapshot";
+  if (widget.type === "module_entry_points") return "Module entry points";
+  if (widget.type === "quick_actions") return "Quick actions";
+  if (widget.type === "recent_activity") return "Recent activity";
   if (widget.type === "notifications") return "Notifications";
-  if (widget.type === "lead_status") return "Leads By Status";
-  if (widget.type === "deal_stages") return "Deals By Stage";
-  if (widget.type === "quote_status") return "Quotes By Status";
-  if (widget.type === "owner_performance") return "Owner Performance";
-  if (widget.type === "note") return "Quick Note";
-  if (widget.type === "summary_table") return "Summary Table";
-  if (widget.type === "pipeline_funnel") return "Pipeline Funnel";
-  if (widget.type === "weighted_forecast") return "Weighted Forecast";
-  if (widget.type === "report_chart") return "Saved Report Chart";
+  if (widget.type === "lead_status") return "Leads by status";
+  if (widget.type === "deal_stages") return "Deals by stage";
+  if (widget.type === "quote_status") return "Quotes by status";
+  if (widget.type === "owner_performance") return "Owner performance";
+  if (widget.type === "note") return "Quick note";
+  if (widget.type === "summary_table") return "Summary table";
+  if (widget.type === "pipeline_funnel") return "Pipeline funnel";
+  if (widget.type === "weighted_forecast") return "Weighted forecast";
+  if (widget.type === "report_chart") return "Saved report chart";
   const dashboardModule = widget.module_key ? modulesByName.get(widget.module_key) : null;
-  return dashboardModule ? getModuleDisplayName(dashboardModule.name, dashboardModule.description ?? undefined) : "Module Summary";
+  return dashboardModule ? getModuleDisplayName(dashboardModule.name, dashboardModule.description ?? undefined) : "Module summary";
 }
 
 function widgetIcon(type: DashboardWidgetType): LucideIcon {
@@ -336,7 +336,7 @@ export function DashboardLayoutEditor({
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
                 <span>{savedReportsLoading ? "Loading saved reports…" : savedReportsCount ? "Saved reports can be added as dashboard charts." : "Create saved reports to add them here as charts."}</span>
                 <Button asChild variant="outline" size="sm">
-                  <Link href={DASHBOARD_ROUTES.reports}>Open Reports</Link>
+                  <Link href={DASHBOARD_ROUTES.reports}>Open reports</Link>
                 </Button>
               </div>
             ) : null}

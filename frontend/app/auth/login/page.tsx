@@ -273,7 +273,7 @@ export default function LoginPage() {
             Enter your authenticator code or one recovery code to finish signing in.
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mfa-code">Authenticator Code</Label>
+            <Label htmlFor="mfa-code">Authenticator code</Label>
             <Input
               id="mfa-code"
               inputMode="numeric"
@@ -283,7 +283,7 @@ export default function LoginPage() {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="mfa-backup-code">Recovery Code</Label>
+            <Label htmlFor="mfa-backup-code">Recovery code</Label>
             <Input
               id="mfa-backup-code"
               value={mfaBackupCode}
@@ -337,7 +337,7 @@ export default function LoginPage() {
                 </a>
               ) : null}
               <div className="space-y-2">
-                <Label htmlFor="setup-mfa-code">Authenticator Code</Label>
+                <Label htmlFor="setup-mfa-code">Authenticator code</Label>
                 <Input
                   id="setup-mfa-code"
                   inputMode="numeric"

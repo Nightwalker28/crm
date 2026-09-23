@@ -36,7 +36,7 @@ export function RecordLayoutPreview({
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-p-xs text-copy-muted">
-          Live preview of Quick Create. Nothing typed here is saved.
+          Live preview of quick create. Nothing typed here is saved.
         </p>
         <SegmentedControl aria-label="Preview viewport" value={viewport} onValueChange={setViewport}>
           <SegmentedItem value="desktop"><Monitor />Desktop</SegmentedItem>

@@ -48,7 +48,7 @@ const SYSTEM_GROUPS: Record<string, Omit<SidebarGroupConfig, "items">> = {
   workspace: { key: "workspace", label: "Workspace", icon: CalendarDays, sortOrder: 5 },
   sales: { key: "sales", label: "Sales", icon: BriefcaseBusiness, sortOrder: 10 },
   finance: { key: "finance", label: "Finance", icon: Landmark, sortOrder: 20 },
-  catalog: { key: "catalog", label: "Products & Services", icon: Boxes, sortOrder: 30 },
+  catalog: { key: "catalog", label: "Products & services", icon: Boxes, sortOrder: 30 },
   support: { key: "support", label: "Support", icon: LifeBuoy, sortOrder: 40 },
   reports: { key: "reports", label: "Reports", icon: BarChart3, sortOrder: 80 },
   settings: { key: "settings", label: "Settings", icon: Settings2, sortOrder: 90 },

@@ -268,7 +268,7 @@ test("Users supports responsive bulk role and status updates", async ({
   await page.goto("/dashboard/settings/users");
 
   await expect(
-    page.getByRole("heading", { name: "User Management" }),
+    page.getByRole("heading", { name: "User management" }),
   ).toBeVisible();
   await expect(page.getByPlaceholder("Search users…")).toBeVisible();
   await page.getByRole("checkbox", { name: "Select Amina Silva" }).click();

@@ -395,7 +395,7 @@ export function UserManagementTable({
     team_name: "Team",
     role_name: "Role",
     email: "Email",
-    auth_mode: "Sign-in Mode",
+    auth_mode: "Sign-in mode",
     mfa_enabled: "MFA",
     is_active: "Status",
   };
@@ -631,7 +631,7 @@ export function UserManagementTable({
           emptyState={{
             icon: UsersRound,
             title: "No users yet",
-            description: "Use Add User to provision the first user in this workspace.",
+            description: "Use Create user to add the first person to this workspace.",
           }}
           hasActiveFilters={hasActiveFilters}
           onClearFilters={clearAllFilters}

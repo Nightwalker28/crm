@@ -181,7 +181,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               moduleKey="sales_leads"
               action={mode}
             />
-            <FieldDescription>Use existing workspace tags or create a new one while saving the Lead.</FieldDescription>
+            <FieldDescription>Use existing workspace tags or create a new one while saving the lead.</FieldDescription>
           </Field>
         ) : null}
       </FieldGroup>

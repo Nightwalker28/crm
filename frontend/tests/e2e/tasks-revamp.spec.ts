@@ -72,7 +72,7 @@ test("Tasks expose list, board, and calendar views with quick review", async ({ 
   await expect(page.getByRole("region", { name: "To do tasks" })).toContainText("Prepare renewal brief");
   await expect(page.getByRole("region", { name: "To do tasks" }).locator('[data-slot="status-value"]', { hasText: "To do" })).toBeVisible();
   await page.getByRole("button", { name: "Prepare renewal brief" }).click();
-  await expect(page.getByRole("heading", { name: "Edit Task" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Edit task" })).toBeVisible();
   // The display is addressed (rebuild 5.7 ruling 7), so opening a card keeps ?display=board.
   await expect(page).toHaveURL(new RegExp(`/dashboard/tasks\\?display=board&taskId=${taskId}$`));
   await page.getByRole("button", { name: "Cancel" }).click();
@@ -102,14 +102,14 @@ test("Task creation labels required fields and validates the schedule", async ({
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/tasks");
 
-  await page.getByRole("button", { name: "Add Task" }).click();
-  await expect(page.getByRole("heading", { name: "Create Task" })).toBeVisible();
+  await page.getByRole("button", { name: "Create task" }).click();
+  await expect(page.getByRole("heading", { name: "Create task" })).toBeVisible();
   await page.getByLabel("Task title").fill("Schedule customer follow-up");
   await page.getByLabel("Start").fill("2026-07-25T15:00");
   await page.getByLabel("Due").fill("2026-07-25T14:00");
 
   await expect(page.getByText("Due time must be after the start time.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create Task" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create task" })).toBeDisabled();
 });
 
 test("Task assignees use the shared accessible user and team picker", async ({ page }) => {

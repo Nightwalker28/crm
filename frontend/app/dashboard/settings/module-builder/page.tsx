@@ -657,7 +657,7 @@ function CreateModulePanel({
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="new-module-name">Module name <RequiredMark /></FieldLabel>
-              <Input id="new-module-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Service Requests" disabled={disabled} required />
+              <Input id="new-module-name" value={name} onChange={(event) => setName(event.target.value)} placeholder="Service requests" disabled={disabled} required />
             </Field>
             <Field>
               <FieldLabel htmlFor="new-module-display">Display name</FieldLabel>
@@ -769,7 +769,7 @@ export default function ModuleBuilderPage() {
   return (
     <PageShell
       variant="settings"
-      title="Module Builder"
+      title="Module builder"
       description="Create custom modules and shape the fields their records carry."
       isLoading={isLoading}
       isPermissionDenied={isForbiddenError(queryError)}

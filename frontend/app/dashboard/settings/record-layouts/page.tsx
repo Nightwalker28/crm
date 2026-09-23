@@ -34,14 +34,14 @@ export default function RecordLayoutsSettingsPage() {
       <PageShell
         variant="settings"
         title="Record layouts"
-        description="Arrange the fields on the Lead Quick Create surface."
+        description="Arrange the fields on the lead quick create form."
         isPermissionDenied={isForbidden}
         isLoading={isPending}
         hasError={hasError}
         errorDescription="Nothing has been changed. Try the request again."
         onRetry={() => void layoutQuery.refetch()}
         backHref="/dashboard/settings"
-        backLabel="Back to Settings"
+        backLabel="Back to settings"
       >
         {null}
       </PageShell>

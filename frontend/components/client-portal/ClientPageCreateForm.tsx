@@ -175,7 +175,7 @@ export default function ClientPageCreateForm() {
     <PageShell
       title="Create client page"
       description="Prepare a customer-specific pricing snapshot, proposal, and document package."
-      actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
+      actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to client portal</Link></Button>}
     >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout

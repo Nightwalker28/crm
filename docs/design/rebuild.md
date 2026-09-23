@@ -9,7 +9,7 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-in progress** — batch 1 landed; see its status block for the batch plan.
+in progress** — batches 1 and 2 landed; see its status blocks for the batch plan.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6557,6 +6557,55 @@ support and `lib/countries.ts`, and from the lists filed under 5.6, 5.7 and 5.8'
 open* tables. That regex misses mixed forms (*Move To Recycle Bin* matches, *Move to Recycle
 Bin* does not), so also grep for `[a-z] [A-Z][a-z]+` inside button and heading text.
 Every string that moves is grepped in `tests/e2e` first.
+
+### Status: batch 2 — the Title Case sweep
+
+**About 200 strings across 64 files**, applied as one explicit old → new mapping rather than a
+regex, so every move is a reviewed line: the settings rail and hub (one file since 5.6, as
+filed), the route-title map in `lib/routes.ts`, the module registry, 87 column and filter labels
+in `moduleViewConfigs`, the dashboard's widget catalogue (*CRM snapshot*, *Leads by status*, and
+`${module} summary`), and the dialog, button and label strings filed by 5.6, 5.7 and 5.8 —
+*Create task* / *Save task* / *Move to recycle bin*, *Create event*, *User invite* / *Team
+share*, *Switch account* / *Client sign-in*, *Authenticator code*, *Recovery code*, *Set
+password*.
+
+**Three verbs moved with their case, because the line was being rewritten anyway:** *Add Task*
+→ *Create task*, *Add User* → *Create user* (§3.7 — both open a create form), and *New Version*
+→ *Upload version* (it opens a file picker). The rest of the create-verb sweep is batch 3's.
+
+**`capitalize` is a title-caser too** (§3.5 names it). Seven uses rendered a raw key through CSS;
+six now go through `formatSnakeCaseLabel`, which matters for the portal's `action.status` —
+`changes_requested` had been rendering *Changes Requested*. The seventh was a `SelectTrigger`
+whose items were already authored in sentence case, so the class was deleted.
+
+**Deliberately not moved:**
+
+| String | Why |
+|---|---|
+| *Support Cases*, *Case Number*, *Contract Number* | Scoping decision 8. The rows in `moduleViewConfigs` lines 144–180 and 586–668 were skipped by range |
+| *Platform Admins*, *Revenue Operations*, *Operations Manager*, *Acme Inc.* | What the operator typed, or a placeholder showing an example of it (§3.5's last row) |
+| *More details*, *Edit view*, *Mail*, *Settings* mid-sentence | The name of a control or page, quoted as it appears |
+| `components/testing/**`, the invoice print page | The e2e harness, and a census `unchanged` row |
+| Strings a spec supplies as **mock API data** (`fields-revamp` *Contract Term*, `reports-revamp` *Insertion Orders*, `command-palette-actions` descriptions) | The page renders what the API returns; the mock is not UI copy |
+
+**Specs.** Nineteen files moved with the copy — every hit of every old string in `tests/e2e` was
+read, and test titles and mocks were left alone. `view-manager-revamp:96` asserted *Add Last
+Name*, an `aria-label` built as `` `Add ${label}` ``; it is *Add Last name* now. An interpolated
+field name keeps its own first capital mid-label, which reads correctly in a screen reader and
+is not worth a second formatter.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run build` | Green |
+
+**Not in this batch, filed for the close-out's read:** labels the **backend** supplies — report
+dimension labels, automation trigger labels, notification types rendered from the API. A spec
+cannot see them and neither can the scanner; the browser pass reads them.
+
+**Next: batch 3** — one create verb (*New X* / *Add X* → *Create X* where it makes a record, per
+§3.7), and one link treatment: four `text-action-primary hover:underline` links are coloured
+links (§2.2), and five other recipes are in use.
 
 ---
 

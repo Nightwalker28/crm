@@ -38,16 +38,16 @@ type EventFilters = {
 };
 
 const eventTypeOptions = [
-  { value: "all", label: "All Events" },
-  { value: "lead.created", label: "Lead Created" },
-  { value: "deal.assigned", label: "Deal Assigned" },
-  { value: "invoice.overdue", label: "Invoice Overdue" },
-  { value: "task.assigned", label: "Task Assigned" },
-  { value: "task.due_today", label: "Task Due Today" },
+  { value: "all", label: "All events" },
+  { value: "lead.created", label: "Lead created" },
+  { value: "deal.assigned", label: "Deal assigned" },
+  { value: "invoice.overdue", label: "Invoice overdue" },
+  { value: "task.assigned", label: "Task assigned" },
+  { value: "task.due_today", label: "Task due today" },
 ];
 
 const deliveryStatusOptions = [
-  { value: "all", label: "All Deliveries" },
+  { value: "all", label: "All deliveries" },
   { value: "delivered", label: "Delivered" },
   { value: "failed", label: "Failed" },
   { value: "pending", label: "Pending" },

@@ -91,7 +91,7 @@ export default function ActivityLogPage() {
   return (
     <PageShell
       variant="settings"
-      title="Activity Log"
+      title="Activity log"
       description="Review who changed what, and when."
       actions={(
         <>

@@ -42,7 +42,7 @@ export default function ProvisioningSettingsPage() {
       description="Choose how verified identities map to users, roles, and teams."
       isPermissionDenied={isForbiddenError(settings.loadError)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <FormSection title="User provisioning" description="These apply together on the next verified sign-in, so they save as a set.">

@@ -433,7 +433,7 @@ export function IntegrationWebsiteWorkspace() {
           },
           {
             key: "last_used",
-            label: "Last Used",
+            label: "Last used",
             render: (key) => <span className="whitespace-nowrap text-copy-muted">{key.last_used_at ? formatDateTime(key.last_used_at) : "-"}</span>,
           },
         ]}
@@ -452,7 +452,7 @@ export function IntegrationWebsiteWorkspace() {
       />
 
       <div>
-        <h3 className="text-base font-semibold text-copy-primary">Published Catalog</h3>
+        <h3 className="text-base font-semibold text-copy-primary">Published catalog</h3>
         <p className="mt-1 text-sm text-copy-muted">Only active public products and services with slugs are exposed to integration API consumers.</p>
       </div>
 
@@ -540,7 +540,7 @@ export function IntegrationWebsiteWorkspace() {
       </div>
 
       <div>
-        <h3 className="text-base font-semibold text-copy-primary">Website and Client Orders</h3>
+        <h3 className="text-base font-semibold text-copy-primary">Website and client orders</h3>
         <p className="mt-1 text-sm text-copy-muted">Incoming website orders stay separate from internal POS invoices until reviewed or converted.</p>
       </div>
 
@@ -643,7 +643,7 @@ export function IntegrationWebsiteWorkspace() {
               disabled={saving || Boolean(order.pos_invoice_id)}
               onClick={() => createPosInvoice(order)}
             >
-              Create POS Invoice
+              Create POS invoice
             </Button>
           </div>
         )}

@@ -252,12 +252,12 @@ export default function CustomerGroupsSettingsPage() {
   return (
     <PageShell
       variant="settings"
-      title="Customer Groups"
+      title="Customer groups"
       description="Segments used by contacts, accounts, and the client portal."
       actions={<Button type="button" onClick={() => void startNewGroup()}><Plus />New customer group</Button>}
       isPermissionDenied={isForbiddenError(groups.error)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <EditorPanel
         open={editorOpen}

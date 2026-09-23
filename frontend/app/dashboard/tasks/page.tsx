@@ -221,13 +221,13 @@ export default function TasksPage() {
             </SegmentedControl>
           </>
         }
-        primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}
+        primaryAction={<Button aria-label="Create task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Create task</span></Button>}
       />
 
       <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
         <div className="flex items-center gap-2 text-copy-secondary">
           <CheckSquare className="h-4 w-4" />
-          Default task views hide completed work. Use Manage View to include a completed-task queue.
+          Default task views hide completed work. Use Manage views to include a completed-task queue.
         </div>
       </div>
 

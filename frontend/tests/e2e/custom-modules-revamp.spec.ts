@@ -275,7 +275,7 @@ test("custom-module list uses permission-aware actions and recoverable deletion"
   await expect(page.getByRole("link", { name: "New record" })).toBeVisible();
   await page.getByRole("button", { name: "Delete Renewal rollout" }).click();
   await expect(page.getByRole("dialog")).toContainText("An administrator can restore it later.");
-  await page.getByRole("button", { name: "Move to Recycle Bin" }).click();
+  await page.getByRole("button", { name: "Move to recycle bin" }).click();
 
   await expect(page.getByText("We could not delete this record. Try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);

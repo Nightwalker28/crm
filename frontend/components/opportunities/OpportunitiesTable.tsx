@@ -40,9 +40,9 @@ const HEADERS: Record<string, string> = {
   organization_name: "Account",
   assigned_to_name: "Owner",
   sales_stage: "Stage",
-  expected_close_date: "Expected Close",
+  expected_close_date: "Expected close",
   probability_percent: "Probability",
-  total_cost_of_project: "Project Cost",
+  total_cost_of_project: "Project cost",
   currency_type: "Currency",
   created_time: "Created",
 };

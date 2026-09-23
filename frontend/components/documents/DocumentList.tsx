@@ -219,7 +219,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
             disabled={isUpdatingDocumentTemplate}
           >
             <Tag />
-            {document.is_template ? "Remove Template" : "Mark Template"}
+            {document.is_template ? "Remove template" : "Mark as template"}
           </Button>
           <div>
             <Input
@@ -231,7 +231,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
             />
             <Button type="button" variant="outline" onClick={() => versionInputRef.current?.click()} disabled={isUploadingDocumentVersion}>
               <Upload className="h-4 w-4" />
-              New Version
+              Upload version
             </Button>
           </div>
         </div>

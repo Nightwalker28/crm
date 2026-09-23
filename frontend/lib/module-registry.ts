@@ -67,8 +67,8 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "mail", label: "Mail", route: DASHBOARD_ROUTES.mail, group: "workspace", status: "tier1", enabled: true, sortOrder: 30, quickAction: { label: "Compose email", description: "Write a CRM email", href: `${DASHBOARD_ROUTES.mail}/compose` } },
   { key: "tasks", label: "Tasks", route: DASHBOARD_ROUTES.tasks, group: "workspace", status: "tier2", enabled: true, sortOrder: 40, quickAction: { label: "Create task", description: "Add a workspace task", href: `${DASHBOARD_ROUTES.tasks}?action=create` } },
   { key: "support_cases", label: "Support Cases", route: DASHBOARD_ROUTES.supportCases, group: "support", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Create support case", description: "Open a customer support case", href: `${DASHBOARD_ROUTES.supportCases}/new` } },
-  { key: "client_portal", label: "Client Portal", route: DASHBOARD_ROUTES.clientPortal, group: "support", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create client page", description: "Prepare a client-facing page", href: `${DASHBOARD_ROUTES.clientPortal}/pages/new` } },
-  { key: "finance_io", label: "Insertion Orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10, quickAction: { label: "Create insertion order", description: "Add a finance insertion order", href: `${DASHBOARD_ROUTES.insertionOrders}/new` } },
+  { key: "client_portal", label: "Client portal", route: DASHBOARD_ROUTES.clientPortal, group: "support", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create client page", description: "Prepare a client-facing page", href: `${DASHBOARD_ROUTES.clientPortal}/pages/new` } },
+  { key: "finance_io", label: "Insertion orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10, quickAction: { label: "Create insertion order", description: "Add a finance insertion order", href: `${DASHBOARD_ROUTES.insertionOrders}/new` } },
   { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20, quickAction: { label: "Create invoice", description: "Add an itemized invoice", href: `${DASHBOARD_ROUTES.financePos}/new` } },
   { key: "finance_payments", label: "Payments", route: DASHBOARD_ROUTES.payments, group: "finance", status: "tier2", enabled: true, sortOrder: 30, requiredModuleKey: "finance_pos", quickAction: { label: "Record payment", description: "Apply a payment to an outstanding invoice", href: `${DASHBOARD_ROUTES.payments}/record`, requiredAction: "edit" } },
   { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90, quickAction: { label: "Build report", description: "Configure a tenant-authorized report", href: `${DASHBOARD_ROUTES.reports}#report-builder` } },
@@ -94,7 +94,7 @@ export const SETTINGS_NAV_GROUPS = [
     title: "Workspace",
     items: [
       { href: SETTINGS_ROUTES.general, label: "General", description: "Manage company profile and tenant setup.", icon: Building2, sortOrder: 10 },
-      { href: SETTINGS_ROUTES.calendarBooking, label: "Booking Links", description: "Manage public scheduling links and booking availability.", icon: CalendarDays, sortOrder: 100 },
+      { href: SETTINGS_ROUTES.calendarBooking, label: "Booking links", description: "Manage public scheduling links and booking availability.", icon: CalendarDays, sortOrder: 100 },
     ],
   },
   {
@@ -103,7 +103,7 @@ export const SETTINGS_NAV_GROUPS = [
     items: [
       { href: SETTINGS_ROUTES.users, label: "Users", description: "Invite users, manage accounts, and keep access current.", icon: UsersRound, sortOrder: 20 },
       { href: SETTINGS_ROUTES.teams, label: "Teams", description: "Organize departments and team membership.", icon: Blocks, sortOrder: 30 },
-      { href: SETTINGS_ROUTES.customerGroups, label: "Customer Groups", description: "Review customer segmentation used by contacts, accounts, and client portal context.", icon: BadgePercent, sortOrder: 40 },
+      { href: SETTINGS_ROUTES.customerGroups, label: "Customer groups", description: "Review customer segmentation used by contacts, accounts, and client portal context.", icon: BadgePercent, sortOrder: 40 },
     ],
   },
   {
@@ -111,7 +111,7 @@ export const SETTINGS_NAV_GROUPS = [
     title: "Security and access",
     items: [
       { href: SETTINGS_ROUTES.permissions, label: "Permissions", description: "Control role actions across enabled modules.", icon: ShieldCheck, sortOrder: 50 },
-      { href: SETTINGS_ROUTES.modules, label: "Module Settings", description: "Enable modules and assign department or team access.", icon: KeyRound, sortOrder: 60 },
+      { href: SETTINGS_ROUTES.modules, label: "Module settings", description: "Enable modules and assign department or team access.", icon: KeyRound, sortOrder: 60 },
       { href: SETTINGS_ROUTES.authentication, label: "Authentication", description: "Configure MFA, password policy, and tenant SSO.", icon: Fingerprint, sortOrder: 21 },
       { href: SETTINGS_ROUTES.domains, label: "Domains", description: "Verify workspace domains for tenant sign-in.", icon: Globe, sortOrder: 22 },
       { href: SETTINGS_ROUTES.provisioning, label: "Provisioning", description: "Map verified identities to roles and teams.", icon: UserCog, sortOrder: 23 },
@@ -121,9 +121,9 @@ export const SETTINGS_NAV_GROUPS = [
     key: "customization",
     title: "Customization",
     items: [
-      { href: SETTINGS_ROUTES.moduleBuilder, label: "Module Builder", description: "Create and maintain custom module definitions.", icon: Wrench, sortOrder: 70 },
-      { href: SETTINGS_ROUTES.fields, label: "Field Config", description: "Add configurable fields to supported modules.", icon: Settings2, sortOrder: 80 },
-      { href: SETTINGS_ROUTES.recordLayouts, label: "Record Layouts", description: "Arrange and preview the Lead Quick Create form.", icon: LayoutTemplate, sortOrder: 85 },
+      { href: SETTINGS_ROUTES.moduleBuilder, label: "Module builder", description: "Create and maintain custom module definitions.", icon: Wrench, sortOrder: 70 },
+      { href: SETTINGS_ROUTES.fields, label: "Field config", description: "Add configurable fields to supported modules.", icon: Settings2, sortOrder: 80 },
+      { href: SETTINGS_ROUTES.recordLayouts, label: "Record layouts", description: "Arrange and preview the lead quick create form.", icon: LayoutTemplate, sortOrder: 85 },
       { href: SETTINGS_ROUTES.templates, label: "Templates", description: "Manage reusable message templates.", icon: FileText, sortOrder: 130 },
       { href: SETTINGS_ROUTES.automation, label: "Automation", description: "Configure event-based workflow rules and review run history.", icon: Repeat2, sortOrder: 90 },
     ],
@@ -140,8 +140,8 @@ export const SETTINGS_NAV_GROUPS = [
     title: "Data and maintenance",
     items: [
       { href: SETTINGS_ROUTES.backups, label: "Backups", description: "Configure tenant-scoped backup exports and retention.", icon: Database, sortOrder: 110 },
-      { href: SETTINGS_ROUTES.activityLog, label: "Activity Log", description: "Review audited writes, restores, and configuration events.", icon: Activity, sortOrder: 140 },
-      { href: SETTINGS_ROUTES.recycleBin, label: "Recycle Bin", description: "Restore recoverable records from one place.", icon: Recycle, sortOrder: 150 },
+      { href: SETTINGS_ROUTES.activityLog, label: "Activity log", description: "Review audited writes, restores, and configuration events.", icon: Activity, sortOrder: 140 },
+      { href: SETTINGS_ROUTES.recycleBin, label: "Recycle bin", description: "Restore recoverable records from one place.", icon: Recycle, sortOrder: 150 },
     ],
   },
 ] as const;

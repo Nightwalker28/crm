@@ -665,7 +665,7 @@ function ProposalPanel({
 
       <dl className="mt-5 grid gap-4 sm:grid-cols-3">
         {/* Only the status is a raw enum, so only the status is title-cased. Applying
-            `capitalize` to all three turned "Not sent" into "Not Sent" — §3.5. */}
+            `capitalize` to all three turned "Not sent" into "Not sent" — §3.5. */}
         <ProposalFact label="Status" value={proposalStatusLabel(proposal)} />
         <ProposalFact
           label="Generated"

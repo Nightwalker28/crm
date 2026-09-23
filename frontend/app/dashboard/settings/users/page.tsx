@@ -75,11 +75,11 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
       description="Invite users, manage accounts, and keep access current."
       isPermissionDenied={isForbiddenError(admin.loadError)}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
       actions={(
         <>
         <SavedViewSelector moduleKey="admin_users" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
-        <Button onClick={admin.openCreateModal}><Plus />Add User</Button>
+        <Button onClick={admin.openCreateModal}><Plus />Create user</Button>
         </>
       )}
     >

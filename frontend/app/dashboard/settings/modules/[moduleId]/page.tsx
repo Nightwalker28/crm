@@ -129,7 +129,7 @@ function ModuleAccessEditor({
           },
           {
             key: "allow",
-            label: "Allow Module",
+            label: "Allow module",
             align: "right",
             interactive: true,
             render: (department) => (
@@ -204,7 +204,7 @@ function ModuleAccessEditor({
           },
           {
             key: "allow",
-            label: "Allow Team",
+            label: "Allow team",
             align: "right",
             size: "lg",
             interactive: true,
@@ -240,12 +240,12 @@ function ModuleAccessEditor({
   return (
     <PageShell
       variant="settings"
-      title="Access Settings"
+      title="Access settings"
       description={`Choose which departments and teams can reach ${moduleDisplayName}.`}
       context={`${moduleDisplayName} access`}
       actions={(
         <>
-          <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module Settings</Button>
+          <Button type="button" variant="outline" onClick={() => void navigateAway(SETTINGS_ROUTES.modules)}><ArrowLeft />Module settings</Button>
           <Button type="button" variant="outline" onClick={() => void navigateAway(`${SETTINGS_ROUTES.automation}?module=${encodeURIComponent(access.module.name)}`)}><Repeat2 />Automation</Button>
         </>
       )}
@@ -297,7 +297,7 @@ function ModuleAccessEditor({
           </p>
           <ActionBar size="default">
             <Button type="button" onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>
-              <Save />{isSaving ? "Saving…" : "Save Access"}
+              <Save />{isSaving ? "Saving…" : "Save access"}
             </Button>
           </ActionBar>
         </CardFooter>
@@ -315,7 +315,7 @@ export default function ModuleAccessPage() {
     return (
       <PageShell
         variant="settings"
-        title="Access Settings"
+        title="Access settings"
         isLoading={isLoading}
         isPermissionDenied={isForbiddenError(error)}
         hasError={Boolean(error) || moduleId === null || !access}

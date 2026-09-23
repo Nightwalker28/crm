@@ -537,7 +537,7 @@ export default function FieldsPage() {
   return (
     <PageShell
       variant="settings"
-      title="Field Config"
+      title="Field config"
       description="Choose which fields each module shows, and add your own."
       actions={(
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
@@ -549,7 +549,7 @@ export default function FieldsPage() {
               {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
+          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in the module builder."}>
             <Plus />New field
           </Button>
         </div>
@@ -562,7 +562,7 @@ export default function FieldsPage() {
       errorDescription="Try the request again. Existing field settings have not been changed."
       onRetry={() => void retryAll()}
       backHref={SETTINGS_ROUTES.root}
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
@@ -684,7 +684,7 @@ export default function FieldsPage() {
           <FieldGroup>
             <Field>
               <FieldLabel htmlFor="create-field-label">Label <RequiredMark /></FieldLabel>
-              <Input id="create-field-label" value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract Term" disabled={createMutation.isPending} required />
+              <Input id="create-field-label" value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract term" disabled={createMutation.isPending} required />
             </Field>
             <Field>
               <FieldLabel htmlFor="create-field-key">Field key <RequiredMark /></FieldLabel>

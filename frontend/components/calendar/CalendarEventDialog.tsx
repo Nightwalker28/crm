@@ -187,7 +187,7 @@ export default function CalendarEventDialog({
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>{event ? (canManage ? "Edit Event" : "Event details") : "Create Event"}</DialogTitle>
+            <DialogTitle>{event ? (canManage ? "Edit event" : "Event details") : "Create event"}</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
@@ -319,7 +319,7 @@ export default function CalendarEventDialog({
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >
-                Move To Recycle Bin
+                Move to recycle bin
               </Button>
             ) : null}
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -327,7 +327,7 @@ export default function CalendarEventDialog({
             </Button>
             {canManage ? (
               <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !canSubmit}>
-                {event ? "Save Event" : "Create Event"}
+                {event ? "Save event" : "Create event"}
               </Button>
             ) : null}
           </DialogFooter>

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useMemo } from "react";
 import Link from "next/link";
 import { FileText, Printer } from "lucide-react";
@@ -101,7 +102,7 @@ function renderCell(invoice: PosInvoice, column: string) {
     case "payment_method":
       return <span className="text-sm text-copy-secondary">{invoice.payment_method || "—"}</span>;
     case "template_id":
-      return <span className="text-sm capitalize text-copy-secondary">{invoice.template_id}</span>;
+      return <span className="text-sm text-copy-secondary">{formatSnakeCaseLabel(invoice.template_id)}</span>;
     case "updated_at":
       return <span className="text-sm text-copy-muted">{invoice.updated_at ? formatDateTime(invoice.updated_at) : "—"}</span>;
     default:

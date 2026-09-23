@@ -67,7 +67,7 @@ function singularize(label: string) {
   const irregular: Record<string, string> = {
     Accounts: "account",
     "Support Cases": "support case",
-    "Insertion Orders": "insertion order",
+    "Insertion orders": "insertion order",
   };
   if (irregular[label]) return irregular[label];
   return label.endsWith("s") ? label.slice(0, -1).toLowerCase() : label.toLowerCase();

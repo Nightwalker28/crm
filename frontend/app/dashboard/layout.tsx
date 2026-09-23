@@ -52,7 +52,7 @@ function settingsPageTitle(pathname: string) {
   const leaf = segments[segments.length - 1];
   if (!leaf) return "Settings";
   if (segments.length > 1 && segments[segments.length - 2] === "modules" && /^\d+$/.test(leaf)) {
-    return "Access Settings";
+    return "Access settings";
   }
 
   const navItem = [...SETTINGS_NAV_ITEMS]
@@ -84,7 +84,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       : pathname === "/dashboard/profile"
         ? "Profile"
         : viewModuleKey
-          ? getModuleRegistryLabel(viewModuleKey) ?? "View Manager"
+          ? getModuleRegistryLabel(viewModuleKey) ?? "View manager"
           : registryModuleTitle(pathname) ?? (customModule
             ? customModule.display_name?.trim() || getModuleDisplayName(customModule.name, customModule.description ?? undefined)
             : null);

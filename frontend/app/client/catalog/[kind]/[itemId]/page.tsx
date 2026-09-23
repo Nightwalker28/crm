@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import type { FormEvent } from "react";
 import { useState } from "react";
 import { useParams } from "next/navigation";
@@ -72,7 +73,7 @@ export default function ClientCatalogItemPage() {
       subtitle={
         item ? (
           <>
-            <span className="capitalize">{item.kind}</span>
+            <span>{formatSnakeCaseLabel(item.kind)}</span>
             <Money amount={item.resolved_unit_price} currency={item.currency} />
           </>
         ) : null

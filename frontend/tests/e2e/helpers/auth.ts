@@ -35,7 +35,7 @@ export async function loginAsAdmin(page: Page) {
   await page.getByLabel("Password").fill(adminPassword);
   await page.getByRole("button", { name: "Sign in with email" }).click();
 
-  const authenticatorInput = page.getByLabel("Authenticator Code");
+  const authenticatorInput = page.getByLabel("Authenticator code");
   await expect
     .poll(
       async () => page.url().endsWith("/dashboard") || await authenticatorInput.isVisible().catch(() => false),
@@ -50,7 +50,7 @@ export async function loginAsAdmin(page: Page) {
     } else if (adminMfaCode) {
       await authenticatorInput.fill(adminMfaCode);
     } else if (adminRecoveryCode) {
-      await page.getByLabel("Recovery Code").fill(adminRecoveryCode);
+      await page.getByLabel("Recovery code").fill(adminRecoveryCode);
     } else {
       throw new Error(
         "Admin MFA is enabled. Set E2E_ADMIN_TOTP_SECRET (the authenticator setup key) to generate codes automatically, or E2E_ADMIN_RECOVERY_CODE for a single run.",

@@ -141,7 +141,7 @@ export default function RecycleBinPage() {
   return (
     <PageShell
       variant="settings"
-      title="Recycle Bin"
+      title="Recycle bin"
       description="Restore records deleted in the last retention window."
       actions={(
         <>

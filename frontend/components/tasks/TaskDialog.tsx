@@ -190,7 +190,7 @@ export default function TaskDialog({
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
         <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>{task ? "Edit Task" : "Create Task"}</DialogTitle>
+            <DialogTitle>{task ? "Edit task" : "Create task"}</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
@@ -248,8 +248,8 @@ export default function TaskDialog({
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="todo">To Do</SelectItem>
-                    <SelectItem value="in_progress">In Progress</SelectItem>
+                    <SelectItem value="todo">To do</SelectItem>
+                    <SelectItem value="in_progress">In progress</SelectItem>
                     <SelectItem value="blocked">Blocked</SelectItem>
                     <SelectItem value="completed">Completed</SelectItem>
                   </SelectContent>
@@ -393,7 +393,7 @@ export default function TaskDialog({
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >
-                Move To Recycle Bin
+                Move to recycle bin
               </Button>
             ) : null}
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -404,7 +404,7 @@ export default function TaskDialog({
               onClick={() => void handleSubmit()}
               disabled={isSubmitting || isDeleting || Boolean(validationError)}
             >
-              {task ? "Save Task" : "Create Task"}
+              {task ? "Save task" : "Create task"}
             </Button>
           </DialogFooter>
         </DialogPanel>

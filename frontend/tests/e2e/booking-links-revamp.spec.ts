@@ -68,7 +68,7 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/calendar-booking");
 
-  await expect(page.getByRole("heading", { name: "Booking Links" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Booking links" })).toBeVisible();
   await expect(page.getByText("Discovery call", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Discovery call" }).click();
   await expect(page.getByRole("dialog", { name: "Edit booking link" })).toBeVisible();

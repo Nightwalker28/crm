@@ -12,7 +12,7 @@ import { SETTINGS_NAV_GROUPS } from "@/lib/module-registry";
  * read, so the two lists cannot drift again (rebuild.md 5.6, ruling 2).
  *
  * It survives the rail rather than redirecting to `general`: it is where the sidebar's one
- * `Settings` entry lands, where every route state's "Back to Settings" goes, and where the
+ * `Settings` entry lands, where every route state's "Back to settings" goes, and where the
  * one-line descriptions live that a 16rem rail has no room for. Below `lg`, where the rail
  * is not drawn, it is the only index.
  */

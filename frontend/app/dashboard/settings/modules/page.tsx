@@ -140,18 +140,18 @@ export default function ModulesPage() {
   return (
     <PageShell
       variant="settings"
-      title="Module Settings"
+      title="Module settings"
       description="Enable modules and assign department or team access."
       isPermissionDenied={isForbiddenError(error)}
       hasError={Boolean(error)}
       errorDescription="Check your connection and try again. No module settings were changed."
       onRetry={() => void refetch()}
       backHref="/dashboard/settings"
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       <Card variant="status" className="px-4 py-3 text-sm text-copy-secondary">
         Module availability applies tenant-wide. Department and team access is managed separately, while action access remains in{" "}
-        <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & Permissions</Link>.
+        <Link href={SETTINGS_ROUTES.permissions} className="font-medium text-copy-primary underline-offset-4 hover:underline">Roles & permissions</Link>.
       </Card>
 
       {tabsError ? (

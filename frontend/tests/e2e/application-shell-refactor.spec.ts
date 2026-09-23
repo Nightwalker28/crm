@@ -69,7 +69,7 @@ test("renders neither breadcrumb trails nor visible page-title headers across da
     ["/dashboard/calendar", "Calendar"],
     ["/dashboard/mail", "Mail"],
     ["/dashboard/reports", "Reports"],
-    ["/dashboard/client-portal", "Client Portal"],
+    ["/dashboard/client-portal", "Client portal"],
     // The sidebar has one flat Settings entry, so the landing page is named for the section.
     // An open settings page names itself in the header.
     ["/dashboard/settings", "Settings"],

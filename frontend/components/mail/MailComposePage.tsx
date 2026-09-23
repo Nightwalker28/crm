@@ -70,7 +70,7 @@ export default function MailComposePage() {
         description="We could not load your available mail connections. Try again or return to Mail."
         reset={() => void contextQuery.refetch()}
         backHref="/dashboard/mail"
-        backLabel="Back to Mail"
+        backLabel="Back to mail"
       />
     );
   }
@@ -115,7 +115,7 @@ export default function MailComposePage() {
       <PageShell
         title="Compose email"
         description="Write and send an email through a connected mailbox."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
+        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to mail</Link></Button>}
       >
         <Card className="p-6">
           <SectionHeading>No sending mailbox available</SectionHeading>
@@ -135,7 +135,7 @@ export default function MailComposePage() {
     <PageShell
       title="Compose email"
       description="Send an email through a connected mailbox and use CRM variables where record context is available."
-      actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
+      actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to mail</Link></Button>}
     >
       {sendError ? <FormErrorBanner title="We could not send this email.">{sendError}</FormErrorBanner> : null}
       <RecordFormLayout

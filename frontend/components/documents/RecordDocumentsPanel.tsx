@@ -67,7 +67,7 @@ export default function RecordDocumentsPanel({
     const confirmed = await confirm({
       title: "Delete document?",
       description: `Move "${document.title}" to the Recycle Bin? An administrator can restore it later.`,
-      confirmLabel: "Move to Recycle Bin",
+      confirmLabel: "Move to recycle bin",
       variant: "destructive",
     });
     if (!confirmed) return;

@@ -16,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { apiFetch, isForbiddenError } from "@/lib/api";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import { CHANNEL_OPTIONS, fetchMessageTemplates, MODULE_OPTIONS, type MessageTemplate, variablesToText } from "@/lib/message-templates";
 
 type TemplateSortState = { key: "name" | "channel" | "module_key" | "is_active"; direction: "asc" | "desc" };
@@ -124,7 +124,7 @@ export default function MessageTemplatesPage() {
               </div>
             ),
           },
-          { key: "channel", label: "Channel", size: "sm", sortable: true, render: (template) => <span className="capitalize text-copy-secondary">{template.channel}</span> },
+          { key: "channel", label: "Channel", size: "sm", sortable: true, render: (template) => <span className="text-copy-secondary">{formatSnakeCaseLabel(template.channel)}</span> },
           { key: "module_key", label: "Module", sortable: true, render: (template) => <span className="text-copy-secondary">{template.module_key ? getModuleDisplayName(template.module_key) : "Not set"}</span> },
           {
             key: "is_active",

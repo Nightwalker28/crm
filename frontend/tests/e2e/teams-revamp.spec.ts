@@ -53,7 +53,7 @@ test("department Add Team actions preserve their exact context", async ({ page }
   await editor.getByLabel("Name").fill("Revenue Enablement");
   await expect(editor.getByLabel("Department")).toContainText("Operations");
   await editor.getByRole("button", { name: "Cancel" }).click();
-  await page.getByRole("button", { name: "Discard Changes" }).click();
+  await page.getByRole("button", { name: "Discard changes" }).click();
 
   await expect(customerSuccess.getByText("No teams in this department yet.")).toBeVisible();
   await customerSuccess.getByRole("button", { name: "Add Team" }).click();
@@ -159,7 +159,7 @@ test("Teams and Departments uses labeled workflows and guards dirty dismissal", 
   await departmentDialog.getByRole("button", { name: "Cancel" }).click();
 
   await expect(page.getByRole("heading", { name: "Discard department changes?" })).toBeVisible();
-  await page.getByRole("button", { name: "Discard Changes" }).click();
+  await page.getByRole("button", { name: "Discard changes" }).click();
   await expect(page.getByRole("heading", { name: "Create Department" })).toHaveCount(0);
 });
 
@@ -190,7 +190,7 @@ test("Teams and Departments confirms consequences and redacts mutation failures"
   await page.goto("/dashboard/settings/teams");
   await page.getByRole("button", { name: "Delete Operations" }).click();
   await expect(page.getByRole("dialog")).toContainText("Departments with assigned teams cannot be deleted.");
-  await page.getByRole("button", { name: "Delete Department" }).click();
+  await page.getByRole("button", { name: "Delete department" }).click();
 
   await expect(page.getByText("Move or delete this department's teams before deleting it.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 has protected team rows")).toHaveCount(0);

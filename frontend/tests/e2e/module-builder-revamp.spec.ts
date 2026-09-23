@@ -133,7 +133,7 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/module-builder");
 
-  await expect(page.getByRole("heading", { name: "Module Builder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Module builder" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Module" })).toContainText("Requests");
   await expect(page.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Edit Priority" }).click();

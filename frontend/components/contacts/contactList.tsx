@@ -31,17 +31,17 @@ interface ContactListProps {
 }
 
 const HEADERS: Record<string, string> = {
-  first_name: "First Name",
-  last_name: "Last Name",
+  first_name: "First name",
+  last_name: "Last name",
   primary_email: "Email",
   contact_telephone: "Phone",
-  current_title: "Job Title",
+  current_title: "Job title",
   organization_name: "Account",
   region: "Region",
   country: "Country",
   linkedin_url: "LinkedIn",
   assigned_to_name: "Owner",
-  last_contacted_at: "Last Activity",
+  last_contacted_at: "Last activity",
   created_time: "Created",
 };
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Plus, Send, Trash2 } from "lucide-react";
@@ -173,7 +174,7 @@ export function IntegrationWebhookWorkspace() {
     <section id="webhooks" aria-labelledby="webhooks-heading" className="flex scroll-mt-5 flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Notification Webhooks</h2>
+          <h2 id="webhooks-heading" className="text-lg font-semibold text-copy-primary">Notification webhooks</h2>
           <p className="mt-1 text-sm text-copy-muted">Manage Slack or Microsoft Teams incoming webhook destinations.</p>
         </div>
         <Button type="button" size="sm" onClick={openEditor}><Plus />New webhook</Button>
@@ -245,7 +246,7 @@ export function IntegrationWebhookWorkspace() {
           {
             key: "provider",
             label: "Provider",
-            render: (channel) => <span className="capitalize text-copy-primary">{channel.provider}</span>,
+            render: (channel) => <span className="text-copy-primary">{formatSnakeCaseLabel(channel.provider)}</span>,
           },
           {
             key: "channel_name",

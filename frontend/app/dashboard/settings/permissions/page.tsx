@@ -320,14 +320,14 @@ export default function RolesPermissionsPage() {
       variant="list"
       title="Permissions"
       description="Control role actions across enabled modules."
-      actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create Role</Button>}
+      actions={<Button onClick={() => setDialogOpen(true)}><Plus />Create role</Button>}
       isLoading={isOverviewLoading}
       isPermissionDenied={isForbiddenError(overviewError)}
       hasError={Boolean(overviewError)}
       errorDescription="Try the request again. No permissions have been changed."
       onRetry={() => void retryOverview()}
       backHref="/dashboard/settings"
-      backLabel="Back to Settings"
+      backLabel="Back to settings"
     >
       {(
         <Card className="flex min-h-0 flex-1 flex-col">
@@ -335,7 +335,7 @@ export default function RolesPermissionsPage() {
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
                   <h2 className="text-lg font-semibold text-copy-primary">
-                    {selectedRole ? `${selectedRole.name} Permissions` : "Role Permissions"}
+                    {selectedRole ? `${selectedRole.name} Permissions` : "Role permissions"}
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm text-copy-secondary">
                     Changes apply only to this role. Module availability is managed separately by workspace, department, and team settings.
@@ -458,7 +458,7 @@ export default function RolesPermissionsPage() {
                     Discard
                   </Button>
                   <Button type="button" disabled={!isDirty || isSaving} onClick={() => void handleSave()}>
-                    {isSaving ? "Saving…" : "Save Permissions"}
+                    {isSaving ? "Saving…" : "Save permissions"}
                   </Button>
                 </FormFooter>
               </>

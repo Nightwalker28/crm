@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useState } from "react";
 
 import { Card } from "@/components/ui/Card";
@@ -54,7 +55,7 @@ export default function ClientCatalogPage() {
                 key={`${item.kind}-${item.id}`}
                 title={item.name}
                 href={`/client/catalog/${item.kind}/${item.id}`}
-                meta={<span className="capitalize">{item.kind}</span>}
+                meta={<span>{formatSnakeCaseLabel(item.kind)}</span>}
                 trailing={
                   <span className="flex items-center gap-3">
                     <StatusValue status={availability(item)} />

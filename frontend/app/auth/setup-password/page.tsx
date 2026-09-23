@@ -127,7 +127,7 @@ function SetupPasswordPageContent() {
         </div>
 
         <div className="space-y-2">
-          <Label htmlFor="setup-confirm-password">Confirm Password</Label>
+          <Label htmlFor="setup-confirm-password">Confirm password</Label>
           <Input
             id="setup-confirm-password"
             type="password"
@@ -143,7 +143,7 @@ function SetupPasswordPageContent() {
           disabled={isSubmitting}
           className="w-full"
         >
-          {isSubmitting ? "Saving…" : "Set Password"}
+          {isSubmitting ? "Saving…" : "Set password"}
         </Button>
       </form>
 

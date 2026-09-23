@@ -90,7 +90,7 @@ export default function PublicClientPage() {
             <Button asChild variant="outline" size="sm">
               <Link href={signInHref}>
                 <LogIn className="h-4 w-4" />
-                {hasClientToken ? "Switch Account" : "Client Sign In"}
+                {hasClientToken ? "Switch account" : "Client sign-in"}
               </Link>
             </Button>
           </div>
@@ -206,7 +206,7 @@ export default function PublicClientPage() {
                   </Button>
                   <Button type="submit" variant="outline" disabled={Boolean(isSubmitting)}>
                     <MessageSquare className="h-4 w-4" />
-                    {isSubmitting === "request-changes" ? "Sending…" : "Request Changes"}
+                    {isSubmitting === "request-changes" ? "Sending…" : "Request changes"}
                   </Button>
                   <Button type="button" variant="ghost" onClick={() => pageQuery.refetch()} disabled={pageQuery.isFetching}>
                     <RefreshCw className="h-4 w-4" />

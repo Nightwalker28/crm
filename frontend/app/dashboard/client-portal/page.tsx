@@ -251,7 +251,7 @@ export default function ClientPortalDashboardPage() {
       <div className="grid gap-4">
         <Card className="px-5 py-5">
           <div className="mb-4">
-            <h2 className="text-base font-semibold text-copy-primary">Client Login Access</h2>
+            <h2 className="text-base font-semibold text-copy-primary">Client login access</h2>
             <FieldDescription className="mt-1">Create a setup link manually linked to a contact or organization.</FieldDescription>
           </div>
           <form className="grid gap-4" onSubmit={handleCreateAccount}>
@@ -272,7 +272,7 @@ export default function ClientPortalDashboardPage() {
             </FieldGroup>
             <Button type="submit" disabled={isCreatingAccount}>
               <Send className="h-4 w-4" />
-              {isCreatingAccount ? "Creating…" : "Create Setup Link"}
+              {isCreatingAccount ? "Creating…" : "Create setup link"}
             </Button>
           </form>
           {lastSetupLink ? (

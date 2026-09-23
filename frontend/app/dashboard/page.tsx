@@ -188,22 +188,22 @@ export default function DashboardHomePage() {
 
   const catalog = useMemo<DashboardWidgetCatalogItem[]>(() => {
     const items: DashboardWidgetCatalogItem[] = [
-      { type: "note", title: "Quick Note", description: "A personal scratchpad that stays on your dashboard.", defaultSize: "medium", config: { body: "" } },
-      { type: "summary_table", title: "Summary Table", description: "A searchable table of available modules and key CRM totals.", defaultSize: "large" },
-      { type: "module_entry_points", title: "Module Entry Points", description: "A compact launcher for every module you can access.", defaultSize: "large" },
-      { type: "quick_actions", title: "Quick Actions", description: "Fast links into common work areas.", defaultSize: "medium" },
-      { type: "recent_activity", title: "Recent Activity", description: "Latest audited platform writes.", defaultSize: "large" },
+      { type: "note", title: "Quick note", description: "A personal scratchpad that stays on your dashboard.", defaultSize: "medium", config: { body: "" } },
+      { type: "summary_table", title: "Summary table", description: "A searchable table of available modules and key CRM totals.", defaultSize: "large" },
+      { type: "module_entry_points", title: "Module entry points", description: "A compact launcher for every module you can access.", defaultSize: "large" },
+      { type: "quick_actions", title: "Quick actions", description: "Fast links into common work areas.", defaultSize: "medium" },
+      { type: "recent_activity", title: "Recent activity", description: "Latest audited platform writes.", defaultSize: "large" },
       { type: "notifications", title: "Notifications", description: "Recent per-user operational updates.", defaultSize: "medium" },
     ];
     if (hasReportAccess) {
       items.unshift(
-        { type: "crm_snapshot", title: "CRM Snapshot", description: "Pipeline, leads, closed deals, and follow-ups.", defaultSize: "wide" },
-        { type: "weighted_forecast", title: "Weighted Forecast", description: "Weighted pipeline forecast for the next reporting period.", defaultSize: "large" },
-        { type: "pipeline_funnel", title: "Pipeline Funnel", description: "A funnel view of deal stages and pipeline value.", defaultSize: "large" },
-        { type: "lead_status", title: "Leads By Status", description: "Lead distribution by current status.", defaultSize: "medium" },
-        { type: "deal_stages", title: "Deals By Stage", description: "Opportunity counts and value by stage.", defaultSize: "medium" },
-        { type: "quote_status", title: "Quotes By Status", description: "Quote distribution by status.", defaultSize: "medium" },
-        { type: "owner_performance", title: "Owner Performance", description: "Assigned CRM workload and won deals.", defaultSize: "large" },
+        { type: "crm_snapshot", title: "CRM snapshot", description: "Pipeline, leads, closed deals, and follow-ups.", defaultSize: "wide" },
+        { type: "weighted_forecast", title: "Weighted forecast", description: "Weighted pipeline forecast for the next reporting period.", defaultSize: "large" },
+        { type: "pipeline_funnel", title: "Pipeline funnel", description: "A funnel view of deal stages and pipeline value.", defaultSize: "large" },
+        { type: "lead_status", title: "Leads by status", description: "Lead distribution by current status.", defaultSize: "medium" },
+        { type: "deal_stages", title: "Deals by stage", description: "Opportunity counts and value by stage.", defaultSize: "medium" },
+        { type: "quote_status", title: "Quotes by status", description: "Quote distribution by status.", defaultSize: "medium" },
+        { type: "owner_performance", title: "Owner performance", description: "Assigned CRM workload and won deals.", defaultSize: "large" },
       );
       savedReports.forEach((report) => {
         items.push({
@@ -219,7 +219,7 @@ export default function DashboardHomePage() {
       if (!module.base_route) return;
       items.push({
         type: "module_summary",
-        title: `${getModuleDisplayName(module.name, module.description ?? undefined)} Summary`,
+        title: `${getModuleDisplayName(module.name, module.description ?? undefined)} summary`,
         description: module.description || "Quick access and module context.",
         defaultSize: "small",
         module_key: module.name,

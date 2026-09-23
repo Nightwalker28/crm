@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 
@@ -104,7 +105,7 @@ export default function ClientPortalHomePage() {
                 href={action.href}
                 meta={
                   <>
-                    {action.status ? <span className="capitalize">{action.status.replace(/_/g, " ")}</span> : null}
+                    {action.status ? <span>{formatSnakeCaseLabel(action.status)}</span> : null}
                     {action.created_at ? <span>{formatDateTime(action.created_at)}</span> : null}
                   </>
                 }

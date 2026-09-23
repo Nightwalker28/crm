@@ -207,7 +207,7 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
   const saveRequest = page.waitForRequest((request) =>
     request.method() === "PUT" && request.url().endsWith("/admin/users/roles/21/permissions"),
   );
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
   const request = await saveRequest;
   const payload = request.postDataJSON() as { permissions: Array<{ module_id: number; actions: Record<string, boolean> }> };
   const accounts = payload.permissions.find((permission) => permission.module_id === 102);
@@ -254,7 +254,7 @@ test("save success adopts the returned permissions as the new baseline", async (
   await page.getByRole("checkbox", { name: "Delete Leads" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
 
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Export Leads" })).toBeChecked();
@@ -272,25 +272,25 @@ test("save failure retains the editable draft", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions");
   await page.getByRole("checkbox", { name: "Delete Leads" }).click();
 
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
 
   await expect(page.getByText("Permissions could not be saved. Please try again.")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save Permissions" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save permissions" })).toBeEnabled();
 });
 
 test("opens Create Role from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions?action=create-role");
 
-  await expect(page.getByRole("dialog", { name: "Create Role" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create role" })).toBeVisible();
 });
 
 test("guards a dirty role draft before closing the drawer", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions");
-  await page.getByRole("button", { name: "Create Role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
 
-  const roleDrawer = page.getByRole("dialog", { name: "Create Role" });
+  const roleDrawer = page.getByRole("dialog", { name: "Create role" });
   await roleDrawer.getByLabel("Role Name").fill("Support Lead");
   await roleDrawer.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Discard role draft?" })).toBeVisible();
