@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Fact, FactList } from "@/components/ui/Fact";
 import { Money } from "@/components/ui/Money";
 import { PanelHeader } from "@/components/ui/PanelStates";
@@ -87,8 +88,8 @@ export default function ClientQuoteDetailPage() {
           <div className="flex min-w-0 flex-col gap-6">
             <Card className="px-5 py-5">
               <FactList>
-                <Fact label="Issued">{quote.issue_date ? formatDateOnly(quote.issue_date) : null}</Fact>
-                <Fact label="Expires">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : null}</Fact>
+                <Fact label="Issued">{quote.issue_date ? formatDateOnly(quote.issue_date) : <EmptyValue context="field" />}</Fact>
+                <Fact label="Expires">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : <EmptyValue context="field" />}</Fact>
                 <Fact label="Updated">{formatDateTime(quote.updated_at ?? quote.created_time)}</Fact>
               </FactList>
             </Card>
@@ -103,9 +104,11 @@ export default function ClientQuoteDetailPage() {
                 }
               />
               {quote.proposal_content_text ? (
-                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-app p-4 text-p-sm text-copy-secondary">
-                  {quote.proposal_content_text}
-                </pre>
+                // Prose a customer reads, so the product face and no box of its own. It was a
+                // `<pre>` — monospace (§3.2 keeps that for secrets and raw payloads), a bordered
+                // box inside the card (§1.3's third level), and a `max-h` scroller nested in the
+                // record's content region (§4.5), hidden only while the text stayed short.
+                <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{quote.proposal_content_text}</p>
               ) : (
                 <p className="text-sm text-copy-muted">No proposal has been attached to this quote yet.</p>
               )}

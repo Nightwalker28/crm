@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ListRow, RowList } from "@/components/ui/ListRow";
 import { Money } from "@/components/ui/Money";
 import { RecordTable } from "@/components/ui/RecordTable";
+import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { Textarea } from "@/components/ui/textarea";
 import { CLIENT_TOKEN_STORAGE_KEY, downloadPublicClientPageDocument, recordClientPageAction, usePublicClientPage } from "@/hooks/useClientPortal";
 import { resolveMediaUrl } from "@/lib/media";
@@ -37,6 +38,7 @@ export default function PublicClientPage() {
   const accentColor = brandAccent(page?.brand_settings?.accent_color);
   const brandName = page?.brand_settings?.company_name || "Lynk";
   const logoUrl = resolveMediaUrl(page?.brand_settings?.logo_url);
+  const signInHref = `/client/login?redirect=${encodeURIComponent(`/client/pages/${token}`)}`;
 
   async function submitAction(action: "accept" | "request-changes", event?: FormEvent<HTMLFormElement>) {
     event?.preventDefault();
@@ -86,7 +88,7 @@ export default function PublicClientPage() {
               </span>
             ) : null}
             <Button asChild variant="outline" size="sm">
-              <Link href={`/client/login?redirect=${encodeURIComponent(`/client/pages/${token}`)}`}>
+              <Link href={signInHref}>
                 <LogIn className="h-4 w-4" />
                 {hasClientToken ? "Switch Account" : "Client Sign In"}
               </Link>
@@ -94,11 +96,23 @@ export default function PublicClientPage() {
           </div>
         </header>
 
+        {/* Ruling 5, on the one portal surface batch 5 left hand-written: the failure was a
+            bare line with no heading and no way out. The state's title is the page's h1 here —
+            there is no shell above it — and the exit is the portal's door with a redirect back
+            to this page, the only other destination someone holding this link has. */}
         {pageQuery.isLoading ? (
-          <div className="flex flex-1 items-center justify-center text-sm text-copy-muted">Loading client page...</div>
+          <div className="py-8">
+            <RouteLoadingState label="client page" />
+          </div>
         ) : pageQuery.error ? (
-          <div className="my-8 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {pageQuery.error instanceof Error ? pageQuery.error.message : "Client page unavailable."}
+          <div className="py-8">
+            <RouteErrorState
+              title="This page could not be loaded"
+              description="The link may have expired or been replaced. Try again, or ask the sender for a new link."
+              reset={() => void pageQuery.refetch()}
+              backHref={signInHref}
+              backLabel="Sign in to the client portal"
+            />
           </div>
         ) : page ? (
           <div className="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1.4fr)_360px]">

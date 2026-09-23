@@ -8,7 +8,8 @@ Headless UI → Radix dialog migration, and `InlineFieldEdit`) have landed. **5.
 found a layout defect every automated check had passed over; that is written up at the end of
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
-commits. **5.8 is next.**
+commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
+next.**
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6069,7 +6070,7 @@ contrast and passed every grep and every guard in this repo.
 | 3 | The seven list pages onto `PageShell` + `ListRow` / `RecordTable` + `EmptyState` + `Money` |
 | 4 | The seven detail pages onto archetype 2, rail collapsed (ruling 2) |
 | 5 | The public surfaces — `public/quotes/proposal/[token]`, `client/pages/[token]`, `BookingForm`, `PublicBookingPage`, `app/page.tsx` — and `ClientPageCreateForm`'s `size-6` |
-| 6 | Close-out: the guards, the in-scope suite with its attribution baseline, and the browser pass including the hive |
+| 6 | Close-out: the guards, the in-scope suite with its attribution baseline, and the browser pass including the hive — **done**, see *Status: batch 6* |
 
 ### Status: batch 1 — the file that was missing, and seven links that were never navigation
 
@@ -6322,6 +6323,115 @@ here would only mean touching the file twice.
 
 **Next.** Batch 6 — close-out: the rendered guards, the in-scope suite against its
 attribution baseline, and the browser pass, with the honeycomb on the exit criteria.
+
+### Status: batch 6 — close-out, a heading that was the only one, and a script that waited on nothing
+
+**5.8 is complete.** Every census row it owns is marked, both guards are green, the hive is a
+honeycomb in both themes, and the pass found five things — all five fixed in the close-out's
+correction commit.
+
+**What ran.**
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **1 of 14** — `LynkSplash.tsx`'s `pl-[0.2em]`, 5.9's. The baseline batch 5 set |
+| `tsc --noEmit`, `lint`, `build` | Green, after the last correction |
+| `design-rules.spec.ts` | Green, **`Audited 94 routes. Unreachable: none`** (8.0m) |
+| `scroll-containers.spec.ts` | Green (3.1m) |
+| `public-surfaces-design.spec.ts` | Green, **15 public/client routes** — the only guard that walks the portal behind its own login. Re-run after the corrections |
+| The in-scope suite — 43 tests in 10 files (portal, public, auth, booking, and the three `RemovableChip` consumers: documents, tasks, calendar; plus the shell) | **29 passed / 14 failed** at `2ec61a5` |
+| The attribution | **2 were 5.8's**, both fixed in the app. The other 12 read against the diff — see below |
+| The browser pass — 4 doors, 3 public pages, the hub, 7 portal lists and the 2 seeded records, both themes at 1440, the same at 768 | Five findings, fixed |
+
+**The layout carried the record archetype's height, and did not before this batch.**
+`PageShell variant="record"` asks for `lg:h-full`, and `height: 100%` against the layout's
+auto-height wrapper resolves to `auto` — so every portal record page had silently fallen back to a
+document scroll, the thing R9 exists to prevent. The wrapper is a full-height flex column now
+(`2ec61a5`), and the pass measured it: on all 15 portal routes the document is `900/900` and the
+only scroller is the layout's content region, present only when the content is taller than it.
+
+#### The attribution — how, and why it is not a baseline run this time
+
+The scoped-baseline recipe swaps the pre-sub-phase source into the running dev server and re-runs
+only the failing specs. **This session's permission policy refused the swap** (a `git checkout` of
+four source trees, and the reset back) as destructive to the working tree, so it was not run. The
+12 were attributed by reading each failure against the 5.8 diff instead — which is weaker than a
+run, and is recorded as such. None of the 12 touches a file 5.8 changed:
+
+| Spec | What it is | Owner |
+|---|---|---|
+| `application-shell-refactor:10`, `auth-dashboard:44` | `link /^Permissions/` and `/^Teams/` match the settings rail *and* the hub row — 5.6's rail | 5.6's spec, not 5.8 |
+| `application-shell-refactor:51`, `:66` | assert a visible module-name heading in the global header, which 5.7 moved | 5.7's spec |
+| `booking-links-revamp:67`, `calendar-revamp:84` | `heading "Booking Links"` / `"Calendar"` match the `sr-only` h1 and a sibling h2 — strict mode | Neither page is 5.8's |
+| `booking-links-revamp:98`, `:115` | the booking-link drawer's fields not found | `booking-links` is untouched by 5.8 |
+| `client-portal-revamp:47` | `getByLabel("Customer")` matches `Customer type` too — a label on `ClientPageCreateForm` 5.8 did not change (its diff is the chip only) | pre-existing |
+| `client-portal-revamp:155` | the dashboard's client-pages list error copy | untouched by 5.8 |
+| `documents-revamp:294`, `tasks-revamp:147` | `PanelError` prints the failure and *Check your connection…* as two elements — the same contract 5.7 recorded at `command-palette-actions:268` | 5.7's |
+
+**If the permission is granted in a later session, the swap is still worth running once** over these
+12 — it is the only thing that turns "read against the diff" into "measured".
+
+**The two that were 5.8's — and the defect was in the app, not the spec.**
+`public-quote-proposal-revamp:55` and `:72` could not find the error card's heading. Batch 5 wrote
+that it had "demoted the page's second h1" — but the two `h1`s were in **mutually exclusive
+branches**, the error card and the proposal. Demoting the error card's left an expired or failed
+link with **no heading at all**. It is the branch's `h1` again, at the ramp's `text-lg`; both specs
+pass. The lesson generalises: count headings on the *rendered* page, never by grepping a file with
+branches in it.
+
+#### The browser pass — five findings
+
+Themes proved distinct by measurement: body ground `rgb(11, 13, 16)` dark, `rgb(247, 248, 250)`
+light, on every screenshot. Screenshots under `frontend/test-results/browser-pass-58/` (not
+committed).
+
+- **The hive is a honeycomb, in both themes — the exit criterion.** `/auth/login`,
+  `/client/login`, `/auth/setup-password` and `/client/setup`: a hexagonal lattice in dark, and in
+  light the same lattice inverted to ink rather than washed out. Not a triangle, not invisible.
+  The two doors are the same door (ruling 3).
+- **The shared client page's failure was a bare red line** — no heading, no retry, no way out.
+  Batch 5 took the page onto `RecordTable` / `Money` and left its loading and error branches
+  hand-written, the one portal surface ruling 5 had not reached. It is `RouteLoadingState` /
+  `RouteErrorState` now, with a refetch and the portal's door (with a redirect back) as the exit —
+  the only other destination someone holding the link has.
+- **The quote record's *Issued* and *Expires* rendered as labels over nothing**, and the booking
+  record's *Host* and *Location* could. `Fact` takes what it is given; the four call sites passed
+  `null`. They pass `EmptyValue context="field"` — *Not set* (§3.6).
+- **The quote's proposal was a `<pre>`** — monospace for prose a customer reads (§3.2), a bordered
+  box inside the card (§1.3's third level), and a `max-h-[32rem] overflow-auto` scroller nested in
+  the record's content region (§4.5), invisible only because the sample text is one line. It is a
+  `whitespace-pre-wrap` paragraph.
+- **The proposal page's missing heading**, above.
+
+**What the pass cleared rather than found:** the rail moves Orders → Quotes directly, marks the
+current section `aria-current="page"` on all seven lists and both records, and carries no entry on
+the hub (there is no Home — by design); nothing scrolls sideways at 1440 or 768; every portal page's
+`h1` is `PageHeader`'s `sr-only` one with the name drawn by the shell, except `client/support`, which
+is out of scope.
+
+**What the pass could not see.** The seed gives this client account one quote and twelve catalog
+items and **no orders, bookings, documents or messages** — so the order, booking and message
+records were not opened in a browser, by this pass or by `public-surfaces-design`. They are on the
+same `RecordWorkspace` path as the two that were, and their line-item table is the shared one.
+
+#### An environment note, for whoever runs this next
+
+The first portal pass sat for twenty minutes and looked like cold compiles under the capped
+frontend. **It was not** — a warm-up curl showed every list route already compiled in 0.2s. The
+script called `locator.getAttribute()` on a list with no detail links, and Playwright's default
+action timeout is none, so it waited for the test timeout. Guard it with `count()` first, as
+`public-surfaces-design` does. The run then took 55s. And: fill a login form only after
+`networkidle`; filled at `domcontentloaded`, hydration resets the controlled input to `""`.
+
+### What 5.8 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| *Client Sign In*, *Switch Account* on the shared page — Title Case | 5.9 |
+| The portal hub's section header bar is empty on `/client` — there is no section to name. Harmless; a question of whether the hub wants a label there | The owner |
+| `client/support` and `client/support/[caseId]` — chrome removed, not rebuilt | Scoping decision 8 |
+| The portal's routes are unwalked by `design-rules` — only `public-surfaces-design` reaches them | 5.10's route widening |
+| 12 in-scope suite failures attributed by reading rather than by a baseline run | See above |
 
 
 

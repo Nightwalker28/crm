@@ -7,6 +7,7 @@ import { ExternalLink } from "lucide-react";
 import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Fact, FactList } from "@/components/ui/Fact";
 import { PanelHeader } from "@/components/ui/PanelStates";
 import { StatusValue } from "@/components/ui/StatusValue";
@@ -67,9 +68,9 @@ export default function ClientBookingDetailPage() {
             <Card className="px-5 py-5">
               <FactList>
                 <Fact label="Duration">{durationLabel(booking)}</Fact>
-                <Fact label="Host">{booking.owner_name || null}</Fact>
+                <Fact label="Host">{booking.owner_name || <EmptyValue context="field" />}</Fact>
                 <Fact label="Location">
-                  {booking.location || (booking.meeting_url ? "Online meeting" : null)}
+                  {booking.location || (booking.meeting_url ? "Online meeting" : <EmptyValue context="field" />)}
                 </Fact>
               </FactList>
             </Card>

@@ -151,9 +151,11 @@ export default function PublicQuoteProposalPage() {
           ) : error || !proposal ? (
             <Card className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center" role="alert">
               <Link2Off className="h-9 w-9 text-state-danger" aria-hidden="true" />
-              <p className="mt-4 text-lg font-semibold text-copy-primary">
+              {/* The h1 of this branch, not a second one: the error card and the proposal are
+                  alternatives, so demoting this left a failed link with no heading at all. */}
+              <h1 className="mt-4 text-lg font-semibold text-copy-primary">
                 {error === "unavailable" ? "This proposal link is unavailable" : "The proposal could not be loaded"}
-              </p>
+              </h1>
               <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
                 {error === "unavailable"
                   ? "The link may have expired or been replaced. Ask the sender for a new proposal link."
