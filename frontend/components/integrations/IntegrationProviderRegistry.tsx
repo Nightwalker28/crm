@@ -71,7 +71,7 @@ function ProviderAction({
     const isConnecting = connectingProvider === provider.key;
     return (
       <Button type="button" variant="outline" size="sm" className="mt-4" disabled={Boolean(connectingProvider)} onClick={() => onConnectDocumentProvider(provider.key)}>
-        {isConnecting ? "Connecting..." : connection.status === "connected" ? "Reconnect" : connection.reconnect_action || "Connect"}
+        {isConnecting ? "Connecting…" : connection.status === "connected" ? "Reconnect" : connection.reconnect_action || "Connect"}
       </Button>
     );
   }

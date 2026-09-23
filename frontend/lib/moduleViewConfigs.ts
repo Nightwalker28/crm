@@ -8,7 +8,7 @@ import type { ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { isProtectedFieldKey } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export type ModuleFilterFieldType = "text" | "number" | "date" | "select" | "relation";
@@ -357,8 +357,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
-          { value: "todo", label: "To Do" },
-          { value: "in_progress", label: "In Progress" },
+          { value: "todo", label: "To do" },
+          { value: "in_progress", label: "In progress" },
           { value: "blocked", label: "Blocked" },
           { value: "completed", label: "Completed" },
         ],
@@ -505,8 +505,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "qualified", label: "Qualified" },
           { value: "proposal", label: "Proposal" },
           { value: "negotiation", label: "Negotiation" },
-          { value: "closed_won", label: "Closed Won" },
-          { value: "closed_lost", label: "Closed Lost" },
+          { value: "closed_won", label: "Closed won" },
+          { value: "closed_lost", label: "Closed lost" },
         ],
       },
       { key: "expected_close_date", label: "Expected Close", type: "date", operators: DATE_OPERATORS },
@@ -600,7 +600,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "draft", label: "Draft" },
           { value: "review", label: "Review" },
           { value: "sent", label: "Sent" },
-          { value: "partially_signed", label: "Partially Signed" },
+          { value: "partially_signed", label: "Partially signed" },
           { value: "signed", label: "Signed" },
           { value: "active", label: "Active" },
           { value: "expired", label: "Expired" },
@@ -738,7 +738,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         operators: SELECT_OPERATORS,
         options: [
           { value: "unpaid", label: "Unpaid" },
-          { value: "partial", label: "Partially Paid" },
+          { value: "partial", label: "Partially paid" },
           { value: "paid", label: "Paid" },
           { value: "refunded", label: "Refunded" },
         ],
@@ -793,7 +793,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         operators: SELECT_OPERATORS,
         options: [
           { value: "unpaid", label: "Unpaid" },
-          { value: "partial", label: "Partially Paid" },
+          { value: "partial", label: "Partially paid" },
           { value: "paid", label: "Paid" },
           { value: "refunded", label: "Refunded" },
         ],
@@ -941,12 +941,7 @@ export function getReadableColumnLabel(columnKey: string, columnOptions: TableCo
     return explicit.label;
   }
 
-  const rawKey = getCustomFieldKeyFromColumn(columnKey);
-  return rawKey
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatSnakeCaseLabel(getCustomFieldKeyFromColumn(columnKey));
 }
 
 export function resolveVisibleColumns(

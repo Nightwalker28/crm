@@ -76,7 +76,7 @@ export default function RecordDeleteButton({ endpoint, label, recordName, redire
   return (
     <Button type="button" variant="destructive" onClick={() => void handleDelete()} disabled={isDeleting}>
       <Trash2 className="h-4 w-4" />
-      {isDeleting ? "Deleting..." : "Delete"}
+      {isDeleting ? "Deleting…" : "Delete"}
     </Button>
   );
 }

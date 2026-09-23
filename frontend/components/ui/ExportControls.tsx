@@ -169,7 +169,7 @@ export function ExportControls({
         onSelect={() => setIsExportDialogOpen(true)}
       >
         <Download aria-hidden="true" />
-        {isExporting ? "Preparing export..." : exportLabel}
+        {isExporting ? "Preparing export…" : exportLabel}
       </DropdownMenuItem>
 
       <Dialog open={isExportDialogOpen} onClose={() => { if (!isExporting) resetExportState(); }}>
@@ -254,7 +254,7 @@ export function ExportControls({
                   </Button>
                   <Button type="button" onClick={() => void handleExportSubmit()} disabled={isExporting || modeInvalid}>
                     <Download />
-                    {isExporting ? "Preparing..." : supportsScopedExport ? "Run export" : "Download CSV"}
+                    {isExporting ? "Preparing…" : supportsScopedExport ? "Run export" : "Download CSV"}
                   </Button>
                 </>
               )}

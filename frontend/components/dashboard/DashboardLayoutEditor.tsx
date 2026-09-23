@@ -334,7 +334,7 @@ export function DashboardLayoutEditor({
             </div>
             {hasReportAccess ? (
               <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
-                <span>{savedReportsLoading ? "Loading saved reports..." : savedReportsCount ? "Saved reports can be added as dashboard charts." : "Create saved reports to add them here as charts."}</span>
+                <span>{savedReportsLoading ? "Loading saved reports…" : savedReportsCount ? "Saved reports can be added as dashboard charts." : "Create saved reports to add them here as charts."}</span>
                 <Button asChild variant="outline" size="sm">
                   <Link href={DASHBOARD_ROUTES.reports}>Open Reports</Link>
                 </Button>

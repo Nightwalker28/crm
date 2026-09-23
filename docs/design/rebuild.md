@@ -9,7 +9,7 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-next.**
+in progress** — batch 1 landed; see its status block for the batch plan.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6482,6 +6482,82 @@ what the newly standardised states render.
 - **Destructive confirmations name the record and the consequence** (§7.5). An "Are you
   sure?" that names nothing is the same defect as an error that says "Invalid".
 
+### Measured at the start, 2026-09-23
+
+`check-design.sh` **1 of 14** (`LynkSplash`). Counts exclude contracts and support
+(scoping decision 8) and the e2e harness.
+
+| Item | Count at HEAD `61d5e69` |
+|---|---|
+| Open-coded `charAt(0).toUpperCase()` label builders | **12** — the brief's 17 less five 5.1–5.8 removed in passing |
+| Three-dot `...` in rendered strings | **30** |
+| Quoted literals that are all-words Title Case | **264** — 96 in `moduleViewConfigs.ts`, 30 country names (correct as they are) |
+| `gap-5` / `p-5` family | **150** |
+| `toast.success` calls | 149 — almost all already noun + past tense. The voice is closer than the brief feared |
+| `"Are you sure"` | **0** — `useConfirm` call sites already name the record |
+| `Something went wrong` / `Failed to …` / `Unable to …` literals | 118 |
+
+The voice items were written before 5.1–5.8 standardised the states and the dialogs, and
+much of what they describe is already fixed: no confirmation says *Are you sure?*, and one
+toast in 149 says *successfully*. What is actually left is **capitalisation**, **three
+verbs for one action**, and **error copy that names the failure**.
+
+### The batch plan
+
+| Batch | Scope |
+|---|---|
+| 1 | The rules (§3.5's capitals table, §3.7), `LynkSplash`, `…`, the title-casers onto `formatSnakeCaseLabel`, the enum labels |
+| 2 | Title Case sweep — registries (`moduleViewConfigs`, `module-registry`, `routes`, the settings rail), dashboard widgets, dialogs, auth and portal buttons. Specs move with it |
+| 3 | One create verb, one link treatment |
+| 4 | Voice — toasts that say *Record saved* when the page knows the noun, route and panel errors that name the fix, empty states, the five dialogs with no description (5.1 batch D), the seeded *Notes* in *Notes* (5.3) |
+| 5 | `gap-5` / `p-5` onto the ladder; one two-column ratio; one grid breakpoint |
+| 6 | Close-out — the guards, the specs for every touched surface, a browser pass |
+
+### Status: batch 1 — the rules and the mechanics
+
+**The rule first.** `design.md` §3.5 gains a table of what keeps its capitals, and it
+settles the question the old `statusStyles.ts` comment had answered the other way: **a
+module name is not a proper name.** That comment kept `formatSnakeCaseLabel` title-casing
+"because a module name is a proper name", and that is exactly how *Module Settings* came to
+sit beside *All settings* on one rail. Other people's names, acronyms, places, and **what
+the operator typed** keep their capitals; everything Lynk authors is sentence case. §3.7 is
+new: an action keeps its name from button to toast, *Create X* makes a record, and the
+destructive-confirmation and empty-state voice from §7.4 / §7.5 in one place.
+
+**`formatSnakeCaseLabel` is sentence case now**, and splits on `_`, `.` and `-`, so
+`lead.created` is *Lead created*. That let it absorb the two humanisers that split on dots
+and dashes (`IntegrationEventHistory`, `activity-log`). The twelve open-coded title-casers
+are gone; `labelize` and `formatModuleLabel` call through it, and `formatModuleLabel` now
+asks the registry first, so an automation rule on `sales_leads` reads *Leads*, not *Sales
+Leads*. **One spec moved with it**: `automation-builder-revamp:137` expected *Sales Leads
+automation*, which the page stopped rendering before this batch — it was already on
+`e2e-suite-status.md`'s list. It now expects *Leads automation*.
+
+**Enum labels** — *Closed won*, *In progress*, *To do*, *Partially paid*, *Under review*,
+*Partially signed* — in `moduleViewConfigs`, the lead conversion form, the deal stages and
+the website integration. No spec asserted the Title Case forms.
+
+**`…`** — 29 rendered strings (pending labels and placeholders) moved off three periods;
+two code comments quoting the old strings stay as they are. `users-revamp` asserted
+*Search users...* and moved.
+
+**`LynkSplash`** — the `pl-[0.2em]` was compensating a `tracking-[0.25em]` the loader lost
+in the consistency pass (`git show 2ba4912`). With no tracking it was pushing the word off
+centre. **`check-design.sh` passes all 14 rules** for the first time in the programme.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run build` | Green |
+| `check-design.sh` | **14 of 14** |
+
+**Next: batch 2** — the Title Case sweep. Start from
+`rg -noE '"([A-Z][a-z]+ )+[A-Z][a-z]+"'` over `app components lib hooks` less contracts,
+support and `lib/countries.ts`, and from the lists filed under 5.6, 5.7 and 5.8's *leaves
+open* tables. That regex misses mixed forms (*Move To Recycle Bin* matches, *Move to Recycle
+Bin* does not), so also grep for `[a-z] [A-Z][a-z]+` inside button and heading text.
+Every string that moves is grepped in `tests/e2e` first.
+
 ---
 
 ## 5.10 — Guard the composition
@@ -6550,11 +6626,11 @@ stops at the portal's list pages.
 
 ## Baseline
 
-`./scripts/check-design.sh` fails **3 of 14 rules at HEAD**, before this programme
-touches anything. "Green" means *no new failures and the sub-phase's own rules cleared*,
-not a clean run, until each owner closes theirs.
+`./scripts/check-design.sh` failed **3 of 14 rules at HEAD**, before this programme
+touched anything. **All three are closed** — §7.2 in 5.1 batch D, §4.2 in 5.8 batch 5, §4.1 in
+5.9 batch 1 — so "green" is now a clean run.
 
-| Failing rule | Site | Owner |
+| Failing rule (closed) | Site | Owner |
 |---|---|---|
 | §4.1 spacing stays on the 4px grid | `LynkSplash.tsx:58` — `pl-[0.2em]` | 5.9 |
 | §4.2 no call-site control heights | `ClientPageCreateForm.tsx:335` — `size-6` | 5.8 |

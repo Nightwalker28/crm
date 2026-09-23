@@ -32,7 +32,7 @@ import { appendSavedViewFilterParams, buildSavedViewExportPayload, canonicalSave
 
 type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string; label: string; count: number; total_value: number }> };
 const EMPTY_STAGES: PipelineSummary["stages"] = [
-  ["lead", "Lead"], ["qualified", "Qualified"], ["proposal", "Proposal"], ["negotiation", "Negotiation"], ["closed_won", "Closed Won"], ["closed_lost", "Closed Lost"], ["unstaged", "Unstaged"],
+  ["lead", "Lead"], ["qualified", "Qualified"], ["proposal", "Proposal"], ["negotiation", "Negotiation"], ["closed_won", "Closed won"], ["closed_lost", "Closed lost"], ["unstaged", "Unstaged"],
 ].map(([stage_key, label]) => ({ stage_key, label, count: 0, total_value: 0 }));
 
 async function fetchPipelineSummary(filters: SavedViewFilters) {

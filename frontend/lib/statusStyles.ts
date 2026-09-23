@@ -1,3 +1,5 @@
+import { formatSnakeCaseLabel } from "@/lib/module-display";
+
 /**
  * What an enum value *means*, never how it looks.
  *
@@ -44,14 +46,11 @@ export type StatusDescriptor = { tone: StatusTone | null; label: string };
  * "In Progress" and "To Do" — so sentence case was broken on strings that reach every list
  * page in the app, by a helper rather than by a designer.
  *
- * `lib/module-display.ts#formatSnakeCaseLabel` is not reused here: it title-cases on purpose,
- * because a module name ("Sales Leads") is a proper name and an enum value ("Closed won") is
- * not.
+ * The raw value is lowercased first because a status can arrive shouted ("IN_PROGRESS");
+ * the label itself comes from `formatSnakeCaseLabel`, the one key-to-label function.
  */
 function labelize(value: string): string {
-  const words = value.replace(/_/g, " ").trim();
-  if (!words) return "Unknown";
-  return words.charAt(0).toUpperCase() + words.slice(1).toLowerCase();
+  return formatSnakeCaseLabel(value.toLowerCase()) || "Unknown";
 }
 
 function descriptorFrom(

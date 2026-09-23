@@ -36,8 +36,8 @@ const DEAL_STAGES = [
   { value: "qualified", label: "Qualified" },
   { value: "proposal", label: "Proposal" },
   { value: "negotiation", label: "Negotiation" },
-  { value: "closed_won", label: "Closed Won" },
-  { value: "closed_lost", label: "Closed Lost" },
+  { value: "closed_won", label: "Closed won" },
+  { value: "closed_lost", label: "Closed lost" },
 ];
 
 export default function LeadConversionForm({

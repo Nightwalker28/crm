@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
@@ -93,7 +94,7 @@ function ProviderIcon({ provider }: { provider: string }) {
 
 function statusLabel(status: QueueStatus) {
   if (status === "invalid") return "Needs attention";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return formatSnakeCaseLabel(status);
 }
 
 function QueueStatusValue({ status }: { status: QueueStatus }) {

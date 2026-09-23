@@ -238,7 +238,7 @@ export default function RecycleBinPage() {
                 disabled={restoringKey !== null}
               >
                 <RotateCcw />
-                {restoringKey === `${item.module_key}-${item.record_id}` ? "Restoring..." : "Restore"}
+                {restoringKey === `${item.module_key}-${item.record_id}` ? "Restoring…" : "Restore"}
               </Button>
             </div>
           )}

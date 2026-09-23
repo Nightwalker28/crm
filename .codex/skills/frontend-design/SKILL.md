@@ -177,14 +177,9 @@ the routes first; parallel runs add a dozen timeout failures that vanish seriall
 
 ## 6. Known baseline
 
-`./scripts/check-design.sh` fails **2 of 14 rules at HEAD**. "Green" means *no new failures
-and this slice's own rules cleared*, not a clean run. §7.2 (`@headlessui/react`) closed in
-rebuild 5.1 batch D — `dialog.tsx` and the import/export `Menu` call sites moved to Radix:
-
-| Failing rule | Site | Owner |
-|---|---|---|
-| §4.1 spacing on the 4px grid | `LynkSplash.tsx:58` — `pl-[0.2em]` | rebuild 5.9 |
-| §4.2 no call-site control heights | `ClientPageCreateForm.tsx:335` — `size-6` | rebuild 5.8 |
+`./scripts/check-design.sh` passes **all 14 rules at HEAD** — the last standing failure,
+`LynkSplash.tsx`'s `pl-[0.2em]`, closed in rebuild 5.9 batch 1. "Green" is now a clean run:
+any failure is new, and it is the slice's to fix or to exempt with a written reason.
 
 ---
 

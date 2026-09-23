@@ -437,7 +437,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `search/GlobalCommandPalette.tsx` | 399 | 5.7 | adopt | | batch 8a — one item class; group labels through cmdk's `heading` (record groups printed theirs twice); `PanelLoading` / `PanelError`; `DialogPanel` owns its own ground and shadow |
 | `notifications/NotificationCenter.tsx` | 217 | 5.6 | rebuild | **A9** — admin-only href at `:210`, no `isAdmin` check | **A9 done, batch 3.** The row itself is **5.7's**, with the other ten `ListRow` implementations — batch 8 measured its unread `bg-action-primary-muted` as a fourth instance of the action-tint-as-status pattern 7d retired three times. **Row done, 5.7 batch 6** — `ListRow` in an inset `RowList`, unread is weight and an ink dot, and the hand-written loading / error / empty are `PanelStates` |
 | `notifications/BrowserNotificationsBridge.tsx` | 67 | — | unchanged | No UI | |
-| `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` | |
+| `LynkSplash.tsx` | 93 | 5.9 | adopt | **§9 identity — the motif is not touched.** Only `pl-[0.2em]` at `:58` || **done, 5.9 batch 1** — the padding compensated a `tracking-[0.25em]` the loader lost in the consistency pass; with no tracking left it was pushing the word off centre. `check-design.sh` **all 14 pass** |
 | `client-portal/ClientPageCreateForm.tsx` | 374 | 5.8 | rebuild | `size-6` call-site control height at `:335` — a standing guard failure | **done** — 5.8 batch 5: the `size-6` was one of three hand-written chips; `RemovableChip` took all three and `check-design.sh` went 2 of 14 → **1 of 14** |
 
 ### 2.7 Shared field and picker components (7)
@@ -579,7 +579,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | `lib/currency.ts` | 5.1 | **new** | Does not exist. Dates *are* centralised in `lib/datetime.ts` — the contrast is the argument | **done** (A); 12 shadowing duplicates removed 18 Aug, zero currency `Intl.NumberFormat` left outside it |
 | `lib/chartColors.ts` | 5.7 | adopt | Already correct; the only legal source of chart colour | |
 | `lib/datetime.ts` | — | unchanged | Already the single source for time | |
-| `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go | |
+| `lib/module-display.ts` | 5.9 | adopt | `formatSnakeCaseLabel` is the only function allowed to build a label from a key; 17 open-coded repeats go || **done, 5.9 batch 1** — it now produces sentence case and splits on `_ . -`, so it absorbed the event-type and activity-log humanisers too. The twelve open-coded repeats left at HEAD are gone (five had gone in 5.1–5.8); `statusStyles#labelize` and `automation/utils#formatModuleLabel` call through it |
 | `lib/routes.ts` | 5.6 | rebuild | **A9** — the notification href fallback at `:86` points at an admin-only route | **done, batch 3** — the fallback is the dashboard. A fourth A9 site turned up in `DashboardOperationalWidgets`, which passed the admin route explicitly |
 | `lib/moduleViewConfigs.ts` | 5.5 | adopt | | **done — unchanged.** It already supplies the column options the toolbar's picker needed (batch 3) |
 | `lib/savedViewQuery.ts` | 5.5 | rebuild | The request codec | **done, batch 2** — gains the address-bar codec: one `SavedViewConfig`, two destinations |

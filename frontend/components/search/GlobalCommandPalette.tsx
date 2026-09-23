@@ -299,7 +299,7 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
                   ref={inputRef}
                   value={query}
                   onValueChange={setQuery}
-                  placeholder="Search records across the workspace..."
+                  placeholder="Search records across the workspace…"
                   // It was `outline-none` with nothing in its place — the one focus stop in the
                   // app with no indicator (§2.3), found in 5.7's close-out tab walk.
                   className="h-10 w-full rounded-[var(--radius-control-sm)] bg-transparent px-2 text-sm text-copy-primary outline-none placeholder:text-copy-muted focus-visible:ring-2 focus-visible:ring-focus"

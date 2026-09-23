@@ -95,9 +95,9 @@ const emptyApiKeyDraft: ApiKeyDraft = {
 
 const orderStatusOptions = [
   { value: "submitted", label: "Submitted" },
-  { value: "under_review", label: "Under Review" },
+  { value: "under_review", label: "Under review" },
   { value: "confirmed", label: "Confirmed" },
-  { value: "in_progress", label: "In Progress" },
+  { value: "in_progress", label: "In progress" },
   { value: "completed", label: "Completed" },
   { value: "cancelled", label: "Cancelled" },
   { value: "rejected", label: "Rejected" },

@@ -297,7 +297,7 @@ function ModuleAccessEditor({
           </p>
           <ActionBar size="default">
             <Button type="button" onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>
-              <Save />{isSaving ? "Saving..." : "Save Access"}
+              <Save />{isSaving ? "Saving…" : "Save Access"}
             </Button>
           </ActionBar>
         </CardFooter>

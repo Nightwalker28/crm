@@ -232,7 +232,7 @@ export default function MailComposePage() {
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 rows={14}
-                placeholder="Write your message..."
+                placeholder="Write your message…"
                 className="min-h-72 resize-y"
               />
             </Field>

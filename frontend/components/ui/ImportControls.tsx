@@ -207,7 +207,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
 
       <DropdownMenuItem disabled={menuDisabled} onSelect={() => inputRef.current?.click()}>
         <Upload aria-hidden="true" />
-        {isPreviewing ? "Reading file..." : isImporting ? "Importing..." : importLabel}
+        {isPreviewing ? "Reading file…" : isImporting ? "Importing…" : importLabel}
       </DropdownMenuItem>
 
       <Dialog open={isImportDialogOpen} onClose={() => { if (!isImporting) resetImportState(); }}>
@@ -296,7 +296,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
                     Cancel
                   </Button>
                   <Button type="button" onClick={() => void handleImportSubmit()} disabled={isImporting || !preview}>
-                    {isImporting ? "Starting import..." : "Run import"}
+                    {isImporting ? "Starting import…" : "Run import"}
                   </Button>
                 </>
               )}

@@ -1,3 +1,4 @@
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import type { StatusTone } from "@/lib/statusStyles";
 import type { ReactNode } from "react";
 
@@ -43,7 +44,7 @@ export function DataTransferJobProgress({
   children,
 }: Props) {
   const safeProgress = Math.min(100, Math.max(0, progress));
-  const operationLabel = operation.charAt(0).toUpperCase() + operation.slice(1);
+  const operationLabel = formatSnakeCaseLabel(operation);
 
   return (
     <div className="space-y-4">
@@ -72,7 +73,7 @@ export function DataTransferJobProgress({
           <div className="h-full rounded-full bg-primary transition-[width] duration-150" style={{ width: `${safeProgress}%` }} />
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 text-xs text-copy-muted">
-          <span>{message || "Waiting for progress..."}</span>
+          <span>{message || "Waiting for progress…"}</span>
           <span>{safeProgress}%</span>
         </div>
       </Card>

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import type { ReactNode } from "react";
 
 import { ResolvedRecordLayout } from "@/components/forms/ResolvedRecordLayout";
@@ -30,8 +31,7 @@ export function formatReadOnlyValue(fieldType: string, value: unknown): ReactNod
     return formatDateTime(String(value)) || <EmptyValue context="field" />;
   }
   if (fieldType === "select" || fieldType === "single_select") {
-    const label = String(value).replace(/_/g, " ");
-    return label.charAt(0).toUpperCase() + label.slice(1);
+    return formatSnakeCaseLabel(String(value));
   }
   if (Array.isArray(value)) {
     return value.length ? value.map(String).join(", ") : <EmptyValue context="field" />;

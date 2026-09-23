@@ -83,7 +83,7 @@ function SetupPasswordPageContent() {
         throw new Error("The password could not be set. Check the requirements or request a new setup link.");
       }
 
-      setSuccess("Password set successfully. Redirecting to login...");
+      setSuccess("Password set successfully. Redirecting to login…");
       window.setTimeout(() => router.replace("/auth/login"), 1000);
     } catch {
       setError(getErrorMessage());
@@ -143,7 +143,7 @@ function SetupPasswordPageContent() {
           disabled={isSubmitting}
           className="w-full"
         >
-          {isSubmitting ? "Saving..." : "Set Password"}
+          {isSubmitting ? "Saving…" : "Set Password"}
         </Button>
       </form>
 

@@ -12,8 +12,8 @@ export const OPPORTUNITY_STAGE_LABELS: Record<string, string> = {
   qualified: "Qualified",
   proposal: "Proposal",
   negotiation: "Negotiation",
-  closed_won: "Closed Won",
-  closed_lost: "Closed Lost",
+  closed_won: "Closed won",
+  closed_lost: "Closed lost",
 };
 
 import { getOpportunityStage as getCentralOpportunityStageStyle } from "@/lib/statusStyles";

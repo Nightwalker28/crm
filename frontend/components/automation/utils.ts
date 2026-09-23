@@ -1,3 +1,4 @@
+import { getModuleDisplayName } from "@/lib/module-display";
 import type { StatusTone } from "@/lib/statusStyles";
 
 import type {
@@ -107,7 +108,7 @@ export function isBlankValue(value: unknown) {
 }
 
 export function formatModuleLabel(moduleKey: string) {
-  return moduleKey.split("_").filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return getModuleDisplayName(moduleKey);
 }
 
 export function statusToneFor(status: string): StatusTone {

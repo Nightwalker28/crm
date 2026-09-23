@@ -99,7 +99,7 @@ function CustomerSelector({
         className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1"
       >
         {optionsQuery.isLoading ? (
-          <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers...</div>
+          <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers…</div>
         ) : optionsQuery.isError ? (
           <div role="alert" className="px-3 py-3 text-sm text-copy-secondary">
             <p>Customers could not be loaded.</p>
@@ -272,7 +272,7 @@ export default function ClientPortalDashboardPage() {
             </FieldGroup>
             <Button type="submit" disabled={isCreatingAccount}>
               <Send className="h-4 w-4" />
-              {isCreatingAccount ? "Creating..." : "Create Setup Link"}
+              {isCreatingAccount ? "Creating…" : "Create Setup Link"}
             </Button>
           </form>
           {lastSetupLink ? (

@@ -202,11 +202,11 @@ export default function PublicClientPage() {
                 <div className="grid gap-2">
                   <Button type="button" onClick={() => void submitAction("accept")} disabled={Boolean(isSubmitting)} style={{ backgroundColor: accentColor }}>
                     <Check className="h-4 w-4" />
-                    {isSubmitting === "accept" ? "Accepting..." : "Accept"}
+                    {isSubmitting === "accept" ? "Accepting…" : "Accept"}
                   </Button>
                   <Button type="submit" variant="outline" disabled={Boolean(isSubmitting)}>
                     <MessageSquare className="h-4 w-4" />
-                    {isSubmitting === "request-changes" ? "Sending..." : "Request Changes"}
+                    {isSubmitting === "request-changes" ? "Sending…" : "Request Changes"}
                   </Button>
                   <Button type="button" variant="ghost" onClick={() => pageQuery.refetch()} disabled={pageQuery.isFetching}>
                     <RefreshCw className="h-4 w-4" />

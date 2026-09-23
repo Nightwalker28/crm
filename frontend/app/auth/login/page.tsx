@@ -262,7 +262,7 @@ export default function LoginPage() {
           disabled={formLoading || googleLoading || microsoftLoading || ssoLoading}
           className="w-full"
         >
-          {formLoading ? "Signing in..." : "Sign in with email"}
+          {formLoading ? "Signing in…" : "Sign in with email"}
         </Button>
       </form>
       ) : null}
@@ -295,7 +295,7 @@ export default function LoginPage() {
             disabled={mfaLoading || (!mfaCode.trim() && !mfaBackupCode.trim())}
             className="w-full"
           >
-            {mfaLoading ? "Verifying..." : "Verify MFA"}
+            {mfaLoading ? "Verifying…" : "Verify MFA"}
           </Button>
         </form>
       ) : null}
@@ -352,7 +352,7 @@ export default function LoginPage() {
                 disabled={mfaLoading || !mfaCode.trim()}
                 className="w-full"
               >
-                {mfaLoading ? "Enabling..." : "Enable MFA"}
+                {mfaLoading ? "Enabling…" : "Enable MFA"}
               </Button>
             </>
           )}
@@ -376,7 +376,7 @@ export default function LoginPage() {
       >
         <span className="relative z-10 flex items-center justify-center gap-3">
           <AnimatedShinyText shimmerWidth={40}>
-            {ssoLoading ? "Redirecting..." : "Continue with SSO"}
+            {ssoLoading ? "Redirecting…" : "Continue with SSO"}
           </AnimatedShinyText>
         </span>
       </Button>
@@ -393,7 +393,7 @@ export default function LoginPage() {
         <span className="relative z-10 flex items-center justify-center gap-3">
           <GoogleMark />
           <AnimatedShinyText shimmerWidth={40}>
-            {googleLoading ? "Redirecting..." : "Sign in with Google"}
+            {googleLoading ? "Redirecting…" : "Sign in with Google"}
           </AnimatedShinyText>
         </span>
       </Button>
@@ -413,7 +413,7 @@ export default function LoginPage() {
             <span className="bg-[#ffb900]" />
           </span>
           <AnimatedShinyText shimmerWidth={40}>
-            {microsoftLoading ? "Redirecting..." : "Sign in with Microsoft"}
+            {microsoftLoading ? "Redirecting…" : "Sign in with Microsoft"}
           </AnimatedShinyText>
         </span>
       </Button>

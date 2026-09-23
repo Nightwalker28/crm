@@ -42,7 +42,7 @@ export function DashboardNoteWidget({
       }}
       maxLength={2000}
       className="min-h-44 resize-y"
-      placeholder="Write a quick note..."
+      placeholder="Write a quick note…"
       aria-label="Dashboard quick note"
     />
   );

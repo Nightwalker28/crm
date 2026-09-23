@@ -412,6 +412,20 @@ capitalised. The same applies to the `capitalize` class and to runtime title-cas
 that rebuild a label from a key. Until the Title Case check in
 `design-rules.spec.ts` lands, this one is enforced by reading.
 
+**What keeps its capitals, decided in rebuild 5.9.** Sentence case applies to every string
+Lynk authors, and Lynk's own nouns are not proper names:
+
+| Keeps its capitals | Sentence case |
+|---|---|
+| Other people's names — Google Drive, Microsoft, WhatsApp, LinkedIn, Lynk | Module names — *Insertion orders*, *Client portal* |
+| Acronyms — MFA, SSO, CSV, API, IMAP | Feature names — *Recycle bin*, *Module builder*, *Record layouts* |
+| Places, time zones, currencies | Widget and report titles — *Leads by status* |
+| **What the operator typed** — a team, a custom module, a saved view | Column headers, enum labels, dialog titles |
+
+A module name read as a proper name is what produced *Module Settings* beside *All settings*
+on the same rail. The last row is the one exception to "Lynk authors it": a tenant's
+*Platform Admins* team is rendered exactly as it was named.
+
 ### 3.6 Values the operator did not supply
 
 An absent value had **six spellings** — `"—"` ×32, `"Unassigned"` ×25, `"-"` ×25,
@@ -437,8 +451,29 @@ never correct; the character is an em dash.
 "In Progress" and "To Do" — so §3.5 is broken on data that reaches every list page in the
 app, by a helper rather than by a designer. The correct forms are "Closed won", "In
 progress", "To do". `lib/module-display.ts#formatSnakeCaseLabel` is the one function
-allowed to build a label from a key; the 17 open-coded `charAt(0).toUpperCase()` repeats
-are drift.
+allowed to build a label from a key, and it produces sentence case — `lead.created` is
+*Lead created*. The open-coded `charAt(0).toUpperCase()` repeats are gone; `labelize` in
+`statusStyles.ts` calls it rather than repeating it (rebuild 5.9).
+
+### 3.7 An action keeps its name
+
+The interface's verbs are how an operator learns their way around it, so each action has one
+name and keeps it from the button to the toast (§7.4).
+
+- **Making a record is *Create X*.** Not *New X*, not *Add X* — *Create lead*, *Create
+  invoice*, *Create field*. *Add* is for putting an existing thing into a container: *Add
+  widget* to a dashboard, *Add to calendar*, a line item added to a quote. *Upload* is for
+  a file, *Record* for a payment, *Compose* for mail — each names what actually happens.
+- **The pending label is that verb plus `…`** — §7.5.
+- **The toast is the noun and the past tense** — *Create invoice* → *Invoice created.*, not
+  *Saved successfully* and not a bare *Record created.* when the page knows what it made.
+  A toast is a sentence, so it ends with a period.
+- **An error names the fix** (§7.5), including on a route boundary: *Check your connection
+  and try again* over *Something went wrong*.
+- **A destructive confirmation names the record and the consequence** — the title asks the
+  question about *this* thing (*Delete "Q-1042"?*), the description says what happens next,
+  and the button repeats the verb (*Delete quote*), never *OK* or *Confirm*.
+- **An empty state says what the thing is, then offers to create one** (§7.4).
 
 ---
 

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
@@ -80,7 +81,7 @@ function formatAmount(value: number | string | null | undefined, currency: strin
 
 function stockLabel(value?: string | null) {
   if (!value) return "Untracked";
-  return value.split("_").map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ");
+  return formatSnakeCaseLabel(value);
 }
 
 function stockStyle(value?: string | null) {

@@ -13,7 +13,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatDateTime } from "@/lib/datetime";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 
 type ActivityItem = {
   id: number;
@@ -48,11 +48,7 @@ const ACTION_OPTIONS = [
 ] as const;
 
 function formatActivityLabel(value: string) {
-  return value
-    .split(/[._-]+/)
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatSnakeCaseLabel(value);
 }
 
 function actionTone(action: string): StatusTone {

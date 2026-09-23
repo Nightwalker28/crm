@@ -174,7 +174,7 @@ test("Users does not fetch identity or domain settings", async ({ page }) => {
     await route.continue();
   });
   await page.goto("/dashboard/settings/users");
-  await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByPlaceholder("Search users…")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
   // A8's settings rail links every destination from every settings page by design, and it
   // renders inside `main`, so "no Authentication link on the page" is no longer sayable as
@@ -270,7 +270,7 @@ test("Users supports responsive bulk role and status updates", async ({
   await expect(
     page.getByRole("heading", { name: "User Management" }),
   ).toBeVisible();
-  await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByPlaceholder("Search users…")).toBeVisible();
   await page.getByRole("checkbox", { name: "Select Amina Silva" }).click();
   await page.getByRole("checkbox", { name: "Select Noah Fernando" }).click();
   await page.getByRole("combobox", { name: "Bulk role" }).click();

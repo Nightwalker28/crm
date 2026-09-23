@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import type { FormEvent } from "react";
 import { useMemo, useRef, useState } from "react";
@@ -289,7 +290,7 @@ function InsertionOrderFormEditor({
                     <FieldLabel htmlFor="io-status">Status <RequiredMark /></FieldLabel>
                     <Select value={form.status} onValueChange={(value) => update("status", value)}>
                       <SelectTrigger id="io-status" className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>)}</SelectContent>
+                      <SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{formatSnakeCaseLabel(status)}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
                 ) : null}

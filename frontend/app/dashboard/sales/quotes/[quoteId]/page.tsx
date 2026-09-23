@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useState } from "react";
 import { useParams } from "next/navigation";
@@ -727,8 +728,7 @@ function ProposalFact({ label, value }: { label: string; value: string }) {
 /** Sentence case from the stored enum: `partially_signed` reads `Partially signed` (§3.5). */
 function proposalStatusLabel(proposal: QuoteProposal | null) {
   if (!proposal) return "Not generated";
-  const words = proposal.status.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  return formatSnakeCaseLabel(proposal.status);
 }
 
 /** The proposal's event log, in the shape the History sheet merges (design.md §4.7). */

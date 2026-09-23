@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Radio, RefreshCw } from "lucide-react";
@@ -53,11 +54,7 @@ const deliveryStatusOptions = [
 ];
 
 function humanizeEventType(value: string) {
-  return value
-    .split(".")
-    .map((part) => part.replace(/_/g, " "))
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatSnakeCaseLabel(value);
 }
 
 function eventTitle(event: CrmEvent) {

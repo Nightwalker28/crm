@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { motion, AnimatePresence } from "motion/react";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Card } from "../ui/Card";
@@ -72,7 +73,7 @@ export default function UserFilters({
       <ModuleListToolbar
         searchValue={value.search}
         onSearchChange={(search) => onChange({ ...value, search })}
-        searchPlaceholder="Search users..."
+        searchPlaceholder="Search users…"
         filtersOpen={value.filtersOpen}
         activeFilterCount={activeCount}
         onToggleFilters={() => onChange({ ...value, filtersOpen: !value.filtersOpen })}
@@ -167,9 +168,7 @@ export default function UserFilters({
                       }
                     />
                     {options.allStatuses.map((statusValue) => {
-                      const label =
-                        statusValue.charAt(0).toUpperCase() +
-                        statusValue.slice(1);
+                      const label = formatSnakeCaseLabel(statusValue);
 
                       return (
                         <FilterChip
