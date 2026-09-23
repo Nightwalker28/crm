@@ -106,8 +106,8 @@ test("stages mobile widget changes and persists them with one save", async ({ pa
   await expect(page.getByText("Dashboard edit mode")).toBeVisible();
   await page.getByRole("button", { name: "Add widget" }).click();
   await page.getByRole("button", { name: /Quick note/ }).click();
-  await page.getByRole("button", { name: "Resize Quick Note to small" }).click();
-  await page.getByRole("button", { name: "Move Quick Note up" }).click();
+  await page.getByRole("button", { name: "Resize Quick note to small" }).click();
+  await page.getByRole("button", { name: "Move Quick note up" }).click();
   await page.getByRole("button", { name: "Remove Quick Actions" }).click();
 
   await expect(page.getByText("Unsaved layout changes")).toBeVisible();
@@ -120,7 +120,7 @@ test("stages mobile widget changes and persists them with one save", async ({ pa
   expect(payload.widgets).toHaveLength(2);
   expect(payload.widgets[1]).toMatchObject({ type: "note", size: "small" });
   await expect(page.getByRole("button", { name: "Edit dashboard" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Resize Quick Note to small" })).toBeHidden();
+  await expect(page.getByRole("button", { name: "Resize Quick note to small" })).toBeHidden();
 });
 
 test("cancel discards the whole dashboard draft without writing", async ({ page }) => {

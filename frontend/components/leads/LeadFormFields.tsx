@@ -168,7 +168,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               value={value.next_follow_up_at}
               onChange={(event) => onChange({ ...value, next_follow_up_at: event.target.value })}
             />
-            <FieldDescription>Sets the Lead planning date. Reminder tasks can be created from the Activity tab.</FieldDescription>
+            <FieldDescription>Sets the lead&rsquo;s planning date. Reminder tasks can be created from the Activity tab.</FieldDescription>
           </Field>
         ) : null}
         {enabled("tags") ? (

@@ -446,7 +446,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   });
 
   await page.goto("/dashboard/sales/leads/new");
-  await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create lead", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create lead" }).click();
   // Next renders an empty route announcer with role="alert", so match the form's own error
   // slot rather than every alert on the page.

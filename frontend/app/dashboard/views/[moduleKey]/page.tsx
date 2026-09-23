@@ -170,7 +170,7 @@ export default function ManageModuleViewPage() {
      <Button asChild variant="ghost" size="sm"><Link href={definition.route}><ArrowLeft />Back to {definition.label}</Link></Button>
      <Select value={saved.selectedViewId || selectedViewKey} onValueChange={navigateToView}><SelectTrigger className="w-full sm:w-64" aria-label="Select saved view"><SelectValue /></SelectTrigger><SelectContent>{saved.views.map((view) => <SelectItem key={String(view.id ?? "system-default")} value={String(view.id ?? "system-default")}>{view.name}{view.is_default ? " (Default)" : ""}</SelectItem>)}</SelectContent></Select>
      {saved.selectedView?.is_system ? <Button variant="outline" onClick={startDuplicate}><Copy />Duplicate</Button> : mode === "view" ? <Button variant="outline" onClick={startEdit}><Pencil />Edit view</Button> : null}
-     <Button onClick={startCreate}><Plus />Create view</Button>
+     {mode === "view" ? <Button onClick={startCreate}><Plus />Create view</Button> : null}
      </>
    )}
  >

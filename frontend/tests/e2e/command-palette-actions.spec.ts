@@ -217,7 +217,7 @@ test("shows only permitted module actions and opens routed create workflows", as
 
   await page.getByText("Create lead", { exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
-  await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create lead", level: 1 })).toBeVisible();
 });
 
 test("exposes every accessible module destination and supports Arrow and Enter navigation", async ({ page }) => {
@@ -382,7 +382,7 @@ test("opens mail composition as a routed full-page workflow", async ({ page }) =
   await page.getByText("Compose email", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/mail\/compose$/);
-  await expect(page.getByRole("heading", { name: "Compose email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compose email", level: 1 })).toBeVisible();
 });
 
 test("opens client-page creation as a routed full-page workflow", async ({ page }) => {
@@ -390,7 +390,7 @@ test("opens client-page creation as a routed full-page workflow", async ({ page 
   await page.getByText("Create client page", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/client-portal\/pages\/new$/);
-  await expect(page.getByRole("heading", { name: "Create client page" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create client page", level: 1 })).toBeVisible();
 });
 
 test("opens insertion-order creation as a routed full-page workflow", async ({ page }) => {
@@ -408,7 +408,7 @@ test("opens insertion-order creation as a routed full-page workflow", async ({ p
   await page.getByText("Create insertion order", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/finance\/insertion-orders\/new$/);
-  await expect(page.getByRole("heading", { name: "Create insertion order" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create insertion order", level: 1 })).toBeVisible();
 });
 
 test("opens payment recording as an edit-authorized routed workflow", async ({ page }) => {
@@ -432,7 +432,7 @@ test("opens payment recording as an edit-authorized routed workflow", async ({ p
   await page.getByText("Record payment", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/finance\/payments\/record$/);
-  await expect(page.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record payment", level: 1 })).toBeVisible();
 });
 
 test("hides payment recording without invoice edit permission", async ({ page }) => {

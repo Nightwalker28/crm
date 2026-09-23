@@ -45,8 +45,8 @@ test("department Add Team actions preserve their exact context", async ({ page }
   const operations = departmentCard(page, "Operations");
   const customerSuccess = departmentCard(page, "Customer Success");
 
-  await expect(operations.getByRole("button", { name: "Add Team" })).toBeVisible();
-  await operations.getByRole("button", { name: "Add Team" }).click();
+  await expect(operations.getByRole("button", { name: "Create team" })).toBeVisible();
+  await operations.getByRole("button", { name: "Create team" }).click();
   let editor = page.getByRole("dialog", { name: "Create Team" });
   await expect(editor).toContainText("Selected department: Operations");
   await expect(editor.getByLabel("Department")).toContainText("Operations");
@@ -56,7 +56,7 @@ test("department Add Team actions preserve their exact context", async ({ page }
   await page.getByRole("button", { name: "Discard changes" }).click();
 
   await expect(customerSuccess.getByText("No teams in this department yet.")).toBeVisible();
-  await customerSuccess.getByRole("button", { name: "Add Team" }).click();
+  await customerSuccess.getByRole("button", { name: "Create team" }).click();
   editor = page.getByRole("dialog", { name: "Create Team" });
   await expect(editor).toContainText("Selected department: Customer Success");
   await expect(editor.getByLabel("Department")).toContainText("Customer Success");
@@ -66,7 +66,7 @@ test("global Create Team defaults to the first department", async ({ page }) => 
   await mockStructure(page);
   await page.goto("/dashboard/settings/teams");
 
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Create team", exact: true }).click();
   const editor = page.getByRole("dialog", { name: "Create Team" });
   await expect(editor).toContainText("Selected department: Operations");
   await expect(editor.getByLabel("Department")).toContainText("Operations");
@@ -90,10 +90,10 @@ test("adds another team to a department that already has teams", async ({ page }
   });
   await page.goto("/dashboard/settings/teams");
 
-  await departmentCard(page, "Operations").getByRole("button", { name: "Add Team" }).click();
+  await departmentCard(page, "Operations").getByRole("button", { name: "Create team" }).click();
   const editor = page.getByRole("dialog", { name: "Create Team" });
   await editor.getByLabel("Name").fill("Revenue Enablement");
-  await editor.getByRole("button", { name: "Save Team" }).click();
+  await editor.getByRole("button", { name: "Create team" }).click();
 
   await expect.poll(() => createPayload).toMatchObject({
     name: "Revenue Enablement",
@@ -110,7 +110,7 @@ test("no-department state disables team creation and directs department setup", 
   );
   await page.goto("/dashboard/settings/teams");
 
-  await expect(page.getByRole("button", { name: "Create Team" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Create team", exact: true })).toBeDisabled();
   await expect(page.getByText("Create the first department, then add teams inside it.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Create Department" })).toHaveCount(2);
 });
@@ -119,7 +119,7 @@ test("team editor guards unsaved close and keeps the sheet open when cancelled",
   await mockStructure(page);
   await page.goto("/dashboard/settings/teams");
 
-  await departmentCard(page, "Customer Success").getByRole("button", { name: "Add Team" }).click();
+  await departmentCard(page, "Customer Success").getByRole("button", { name: "Create team" }).click();
   const editor = page.getByRole("dialog", { name: "Create Team" });
   await editor.getByLabel("Name").fill("Onboarding");
   await editor.getByRole("button", { name: "Close team editor" }).click();
@@ -196,12 +196,12 @@ test("Teams and Departments confirms consequences and redacts mutation failures"
   await expect(page.getByText("tenant_id=42 has protected team rows")).toHaveCount(0);
   await page.getByRole("button", { name: "Dismiss" }).click();
 
-  await page.getByRole("button", { name: "Create Team" }).click();
+  await page.getByRole("button", { name: "Create team", exact: true }).click();
   const teamDialog = page.getByRole("dialog").filter({ hasText: "Create Team" });
   await expect(teamDialog).toHaveAccessibleName("Create team");
   await teamDialog.getByLabel("Name").fill("Customer Success");
   await expect(teamDialog.getByLabel("Department")).toBeVisible();
-  await teamDialog.getByRole("button", { name: "Save Team" }).click();
+  await teamDialog.getByRole("button", { name: "Create team" }).click();
 
   await expect(teamDialog.getByText("We could not save this team. Try again.")).toBeVisible();
   await expect(page.getByText("database_password=private-secret")).toHaveCount(0);
@@ -214,7 +214,7 @@ test("Teams create deep link initializes the department and opens the editor", a
   const teamDialog = page.getByRole("dialog", { name: "Create Team" });
   await expect(teamDialog).toBeVisible();
   await expect(teamDialog.getByLabel("Department")).toContainText("Operations");
-  await expect(teamDialog.getByRole("button", { name: "Save Team" })).toBeDisabled();
+  await expect(teamDialog.getByRole("button", { name: "Create team" })).toBeDisabled();
 });
 
 test("Teams and Departments exposes a fixed recoverable load error", async ({ page }) => {

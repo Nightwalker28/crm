@@ -117,7 +117,7 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   });
 
   await page.goto("/dashboard/sales/contacts/new");
-  await expect(page.getByRole("heading", { name: "Create contact" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create contact", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create contact" }).click();
   // A bare getByRole("alert") also matches Next's route announcer, and a bare "Email" label
   // also matches the "Email opt-out" checkbox. Target the field slot and the input itself.

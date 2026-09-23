@@ -9,7 +9,8 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-in progress** — batches 1–5 landed; see its status blocks for the batch plan.
+done** — batches 1–5 and the close-out, `5677bc8` through the batch 6 correction. **5.10 is
+next.**
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6757,6 +6758,70 @@ it lands with the rest.
 surface 5.9 touched (which is most of them — the copy sweep moved strings in 30 specs), and a
 browser pass: a record page, a create form (the 20rem aside), a drawer, the settings rail, a portal
 page and the auth surface, in both themes and at 768px.
+
+### Status: batch 6 — close-out
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **14 of 14** |
+| `design-rules.spec.ts` + `scroll-containers.spec.ts` | **2 passed** (10.4m). 90 routes audited; `design-rules` logged `/dashboard/sales/opportunities` and `/quotes` unreachable — the documented cold-list symptom. Both loaded 200 in the browser pass |
+| The 24 spec files 5.9 touched | **87 passed, 61 failed** (49.5m), then attributed — below |
+| After the correction | The 15 5.9-attributed tests re-run: **10 pass**; the other 5 now fail at a later step, past the 5.9 string, on an inherited cause. `teams-revamp` whole file: **9 of 10** |
+| `npm run lint`, `npm run build` | Clean, green — after the stack was stopped, and `.next` cleared afterwards |
+
+**Attribution was read, not measured.** The auto-mode permission check refused the source swap a
+measured baseline needs (as it did in 5.8). Each of the 61 was read against its page snapshot and
+against `git grep` of the pre-5.9 tree. **Twelve were 5.9's**, in four causes:
+
+| Cause | Tests | Fix |
+|---|---|---|
+| *New X* → *Create X* made the create form's visible title identical to the shell's `sr-only` `h1` — a heading locator now resolves to two | accounts :92, contacts :113, leads :441, command-palette :196 :358 :388 :396 :414 | Spec: `level: 1`, the page's own name |
+| Each department's *Add team* became *Create team* — three buttons with one name, so a screen reader could not tell the departments apart | teams :41 :75 :118 :166 | **App**: `aria-label="Create team in {department}"`; spec: the global button by `exact: true` |
+| The view manager's toolbar *Create view* stayed visible beside the form's *Create view* submit | view-manager :123 | **App**: the toolbar button hides outside `view` mode, as *Edit view* already did |
+| *Quick Note* → *Quick note* in a composed `aria-label` | dashboard-edit-mode :92 | Spec |
+
+**The other 49 are inherited** — none waits on a string 5.9 changed, and each fails on a cause
+older than it: settings rail and hub links both matching `/^Permissions/` and `/^Teams/`; the
+shell-header selector `main > div > header`; `sticky` table headers R3 removed; resize controls
+that are radios since 5.1 and a spec that asks for buttons; `getByLabel('Name' | 'Label',
+{ exact })` against labels carrying a `RequiredMark`; headings that no longer exist
+(*Unable to load backup settings*, *…teams and departments*, *Manager Permissions*); a palette
+that did not open in two tests while it opened in six others. The five tests that still fail
+after the correction fail on these.
+
+**The browser pass** — a throwaway Playwright script, deleted after the run: eleven routes, a
+create form, a drawer, 768px, and `/auth/login`, both themes, body ground logged as proof
+(`rgb(11, 13, 16)` dark, `rgb(247, 248, 250)` light). The record page was not reached — the
+script's lead-link selector matched nothing in the list, so the record panels' new `p-6` was
+seen on the form, drawer and portal cards but not on a record's tabs. It found four copy
+defects, all fixed in this commit:
+
+- **The pipeline funnel and the status widgets printed raw keys** — `closed_won`, `lead`. The
+  bucket labels come from the API as keys; `BucketList`, `PipelineFunnel` and the weighted
+  forecast's stage rows now pass them through `formatSnakeCaseLabel`. Owner rows do not: a name
+  or an email is not a key.
+- The team and department drawers were titled *Create team* and submitted *Save team* — §3.7.
+  In create mode they submit *Create team* / *Create department* and pend *Creating…*.
+- Their hint sent the operator to *Modules*, a page renamed *Module settings* in 5.6.
+- The lead form's *Sets the Lead planning date.*
+
+**The honeycomb renders as a honeycomb** in dark. The forced-light capture of `/auth/login` looks
+wrong — dark inputs and buttons on a light card, the lattice at full black — but 5.9's diff in
+`/auth` is two margins and one link, no theme or colour code, and forcing the class after
+hydration may not reach a surface that scopes its own theme. **Filed for the owner to look at**,
+not attributed to this sub-phase.
+
+### What 5.9 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| The seeded *Notes* section holding one *Notes* field — a persisted seed, needs a data migration | The owner |
+| `/auth/login` in a forced light theme renders dark controls on a light card — observed, not attributed | The owner |
+| A `check-design.sh` rule failing on a 5-step spacing class | 5.10 |
+| The 49 inherited spec failures above | `docs/e2e-suite-status.md`'s owners — none is copy |
+| ~45 unrendered *Failed to …* fallbacks inside hooks | Nobody — unrendered; churn |
+| *Support Cases*, *Case Number*, *Contract Number* | Scoping decision 8 |
+| The dirty line reads *All changes saved* in edit drawers against §7.5's *No unsaved changes* | 5.4 settled it by majority (5.6 batch 1 note); a vocabulary call for the owner |
 
 ---
 

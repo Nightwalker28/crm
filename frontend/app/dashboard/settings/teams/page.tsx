@@ -69,7 +69,7 @@ function DepartmentEditorPanel({
       footer={(
         <>
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-          <Button type="submit" disabled={submitting || !form.name.trim()}>{submitting ? "Saving\u2026" : "Save department"}</Button>
+          <Button type="submit" disabled={submitting || !form.name.trim()}>{submitting ? (mode === "create" ? "Creating\u2026" : "Saving\u2026") : mode === "create" ? "Create department" : "Save department"}</Button>
         </>
       )}
     >
@@ -92,7 +92,7 @@ function DepartmentEditorPanel({
             onChange={(event) => onChange({ ...form, description: event.target.value })}
             placeholder="Optional description"
           />
-          <FieldDescription>Departments organize teams for assignment and can be selected for module access from Modules.</FieldDescription>
+          <FieldDescription>Departments organize teams for assignment and can be selected for module access from Module settings.</FieldDescription>
         </Field>
       </FieldGroup>
     </EditorPanel>
@@ -143,7 +143,7 @@ function TeamEditorPanel({
       footer={(
         <>
           <Button type="button" variant="outline" onClick={onClose} disabled={submitting}>Cancel</Button>
-          <Button type="submit" disabled={submitting || !dirty || !form.name.trim() || !form.department_id}>{submitting ? "Saving\u2026" : "Save team"}</Button>
+          <Button type="submit" disabled={submitting || !dirty || !form.name.trim() || !form.department_id}>{submitting ? (mode === "create" ? "Creating\u2026" : "Saving\u2026") : mode === "create" ? "Create team" : "Save team"}</Button>
         </>
       )}
     >
@@ -182,7 +182,7 @@ function TeamEditorPanel({
             onChange={(event) => onChange({ ...form, description: event.target.value })}
             placeholder="Optional description"
           />
-          <FieldDescription>Teams place users in the org structure and can be selected for module access from Modules.</FieldDescription>
+          <FieldDescription>Teams place users in the org structure and can be selected for module access from Module settings.</FieldDescription>
         </Field>
       </FieldGroup>
     </EditorPanel>
@@ -350,7 +350,7 @@ export default function TeamsAndDepartmentsPage() {
                   description={department.description || undefined}
                   action={department.id !== -1 ? (
                     <ActionBar size="sm">
-                      <Button size="sm" variant="ghost" onClick={() => openCreateTeam(department.id)}><Plus />Create team</Button>
+                      <Button size="sm" variant="ghost" aria-label={`Create team in ${department.name}`} onClick={() => openCreateTeam(department.id)}><Plus />Create team</Button>
                       <Button size="icon-sm" variant="outline" onClick={() => openEditDepartment(department)} aria-label={`Edit ${department.name}`}><Pencil /></Button>
                       {/* R5: `destructive` is a solid red fill, and one per row put twenty
                           of them on this page — the only file in the app that draws a row

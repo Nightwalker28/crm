@@ -98,7 +98,7 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   });
 
   await page.goto("/dashboard/sales/organizations/new");
-  await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create account", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByText("Account name is required.")).toBeVisible();
   await expect(page.getByText("Primary email is required.")).toBeVisible();

@@ -1,3 +1,4 @@
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import type { ReactNode } from "react";
 import { BarChart3, Filter, Lock, Users } from "lucide-react";
 
@@ -105,7 +106,7 @@ function BucketList({ rows, emptyLabel }: { rows: CrmBucket[]; emptyLabel: strin
       {rows.slice(0, 5).map((row) => (
         <li key={row.key}>
           <div className="flex items-center justify-between gap-3 text-sm">
-            <span className="truncate text-copy-secondary">{row.label}</span>
+            <span className="truncate text-copy-secondary">{formatSnakeCaseLabel(row.label)}</span>
             <span className="font-medium tabular-nums text-copy-primary">{row.count}</span>
           </div>
           <div className="mt-1 h-1.5 rounded-full bg-surface-raised" aria-hidden="true">
@@ -134,7 +135,7 @@ function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
     <ul className="space-y-3">
       {data.map((row) => (
         <li key={row.key} className="grid grid-cols-[7rem_minmax(0,1fr)] items-center gap-3">
-          <span className="truncate text-xs text-copy-muted">{row.label}</span>
+          <span className="truncate text-xs text-copy-muted">{formatSnakeCaseLabel(row.label)}</span>
           <div className="min-w-0">
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span className="font-medium tabular-nums text-copy-primary">{row.count}</span>
@@ -179,7 +180,7 @@ function WeightedForecast({ forecast }: { forecast: CrmDashboardSummary["forecas
         {rows.length ? (
           <RowList label="Weighted pipeline by stage">
             {rows.map((row) => (
-              <AmountRow key={row.key} title={row.label} meta={`${row.count} opportunities`} amount={formatDashboardCurrency(row.weighted_pipeline_amount)} />
+              <AmountRow key={row.key} title={formatSnakeCaseLabel(row.label)} meta={`${row.count} opportunities`} amount={formatDashboardCurrency(row.weighted_pipeline_amount)} />
             ))}
           </RowList>
         ) : <PanelEmpty icon={BarChart3} title="No deals close in this period" />}
