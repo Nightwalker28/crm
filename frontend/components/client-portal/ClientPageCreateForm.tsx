@@ -182,13 +182,13 @@ export default function ClientPageCreateForm() {
           title="Create client page"
           sidebar={
             <>
-              <Card className="p-5">
+              <Card className="p-6">
                 <SectionHeading>Sharing boundary</SectionHeading>
                 <p className="mt-2 text-p-sm text-copy-secondary">
                   This draft is private to CRM users until you explicitly publish a scoped, expiring client link.
                 </p>
               </Card>
-              <Card className="p-5">
+              <Card className="p-6">
                 <SectionHeading>Package summary</SectionHeading>
                 <dl className="mt-4 grid gap-3 text-sm">
                   <div className="flex justify-between gap-4"><dt className="text-copy-muted">Customer</dt><dd className="text-right text-copy-primary">{form.linkedLabel || "Not selected"}</dd></div>

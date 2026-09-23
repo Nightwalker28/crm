@@ -279,7 +279,7 @@ function RecordContent({ tabs }: { tabs: RecordExtraTab[] }) {
       value={activeTabId}
       onValueChange={selectTab}
       data-slot="record-content"
-      className="flex min-w-0 flex-col gap-5 lg:min-h-0 lg:flex-1"
+      className="flex min-w-0 flex-col gap-6 lg:min-h-0 lg:flex-1"
     >
       <div className="shrink-0 overflow-x-auto border-b border-line-default">
         <Tabs.List className="flex min-w-max gap-2">

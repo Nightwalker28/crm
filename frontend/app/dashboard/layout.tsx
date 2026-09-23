@@ -153,7 +153,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <ProfileMenu />
             </div>
           </header>
-          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
             {/* A recessed, bordered box reading *Checking access...* stood where the page would be,
                 then the page replaced it with a different shape. The route's own loading state is
                 the shape the page is about to take (rebuild 5.7 close-out). */}

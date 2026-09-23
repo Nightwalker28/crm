@@ -131,7 +131,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
     >
       <Card className="overflow-hidden">
         {!isEdit ? (
-          <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-presets-heading">
+          <section className="border-b border-line-subtle p-4 md:p-6" aria-labelledby="template-presets-heading">
             <h2 id="template-presets-heading" className="text-base font-semibold text-copy-primary">Start from a preset</h2>
             <p className="mt-1 text-sm text-copy-muted">Presets are editable starting points and do not send messages.</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -140,10 +140,10 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
           </section>
         ) : null}
 
-        <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-details-heading">
+        <section className="border-b border-line-subtle p-4 md:p-6" aria-labelledby="template-details-heading">
           <h2 id="template-details-heading" className="text-base font-semibold text-copy-primary">Template details</h2>
           <p className="mt-1 text-sm text-copy-muted">Name the template and choose where it is available.</p>
-          <FieldGroup className="mt-5">
+          <FieldGroup className="mt-4">
             <Field data-invalid={error?.field === "name"}>
               <FieldLabel htmlFor="template-name">Name <RequiredMark /></FieldLabel>
               <Input ref={nameRef} id="template-name" value={draft.name} maxLength={180} onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setError(null); }} aria-invalid={error?.field === "name"} placeholder="Quote follow-up" />
@@ -153,7 +153,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
               <FieldLabel htmlFor="template-description">Description</FieldLabel>
               <Input id="template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel>Channel <RequiredMark /></FieldLabel>
                 <Select value={draft.channel} onValueChange={(value) => setDraft((current) => ({ ...current, channel: value }))}><SelectTrigger aria-label="Channel"><SelectValue /></SelectTrigger><SelectContent>{CHANNEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
@@ -177,10 +177,10 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
           </FieldGroup>
         </section>
 
-        <section className="px-5 py-5 md:px-6" aria-labelledby="template-content-heading">
+        <section className="p-4 md:p-6" aria-labelledby="template-content-heading">
           <h2 id="template-content-heading" className="text-base font-semibold text-copy-primary">Message content</h2>
           <p className="mt-1 text-sm text-copy-muted">Variables wrapped in braces are detected and saved automatically.</p>
-          <FieldGroup className="mt-5">
+          <FieldGroup className="mt-4">
             <Field data-invalid={error?.field === "body" || error?.field === "form"}>
               <FieldLabel htmlFor="template-body">Body <RequiredMark /></FieldLabel>
               <Textarea ref={bodyRef} id="template-body" value={draft.body} onChange={(event) => { setDraft((current) => ({ ...current, body: event.target.value })); setError(null); }} className="min-h-48" aria-invalid={error?.field === "body" || error?.field === "form"} />

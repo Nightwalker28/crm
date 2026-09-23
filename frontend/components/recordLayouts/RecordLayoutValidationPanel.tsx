@@ -37,7 +37,7 @@ export function RecordLayoutValidationPanel({
             <XCircle className="h-4 w-4" aria-hidden="true" />
             {errors.length === 1 ? "1 problem blocks publishing" : `${errors.length} problems block publishing`}
           </div>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-p-sm text-copy-secondary">
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-p-sm text-copy-secondary">
             {errors.map((message) => (
               <li key={message} data-layout-error>{message}</li>
             ))}
@@ -64,7 +64,7 @@ export function RecordLayoutValidationPanel({
             {warnings.length === 1 ? "1 suggestion" : `${warnings.length} suggestions`}
           </div>
           <p className="mt-1 text-p-xs text-copy-muted">These do not block publishing.</p>
-          <ul className="mt-2 list-disc space-y-1 pl-5 text-p-sm text-copy-secondary">
+          <ul className="mt-2 list-disc space-y-1 pl-4 text-p-sm text-copy-secondary">
             {warnings.map((message) => (
               <li key={message} data-layout-warning>{message}</li>
             ))}

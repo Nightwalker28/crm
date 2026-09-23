@@ -9,7 +9,7 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-in progress** — batches 1–4 landed; see its status blocks for the batch plan.
+in progress** — batches 1–5 landed; see its status blocks for the batch plan.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6707,6 +6707,56 @@ those strings; the close-out run will show whether they are already on the failu
 
 **Next: batch 5** — `gap-5` / `p-5` onto the ladder (150 sites, contracts and support excluded),
 one two-column ratio, one grid breakpoint.
+
+### Status: batch 5 — the ladder, one split, one breakpoint
+
+**The 5-step is gone** — 140 lines across 72 files; the count was ~190 classes once `px-`,
+`py-`, `mt-`, `pl-` and the breakpoint-prefixed forms were counted, not just `gap-5` / `p-5`.
+The replacement is by **role**, as §4.1 and §4.4 already said, not by rounding:
+
+| Was | Became | Why |
+|---|---|---|
+| `<Card className="px-5 py-5">` — a card holding a section (≈30, most record-page and portal panels) | `p-6` | §4.4's card content padding, the value `CardBody` supplies |
+| `p-5`, standalone, on a section card | `p-6` | Same role |
+| `p-5 sm:p-6`, `px-5 py-5 md:px-6` | `p-4 sm:p-6` / `p-4 md:p-6` | Dense on a narrow viewport, card padding above — the gutter pair's own shape |
+| `px-5` on a header, row or drawer edge; `sm:` / `md:px-5` | `px-6` | Aligns with the card and gutter edge beside it. `EditorPanel` and `RecordSpine` moved with it |
+| `px-4 py-5` (a drawer body, a dashed empty box) | `p-4` | Dense container |
+| `py-5` on the two layout scrollers | `py-6` | The page's top edge matches the section stack under it |
+| `gap-5`, `space-y-5` between regions or sections | `gap-6` / `space-y-6` | §4.1's section step |
+| `space-y-5` in the import / export dialogs, a form's `gap-5` | `-4` | Between fields |
+| `mt-5 … border-t pt-5` (a divided section) | `mt-6 … pt-6` | A section boundary |
+| Any other `mt-` / `mb-` / `my-` / `py-5` inside a panel | `-4` | Heading-to-content, the in-panel step |
+| `pl-5` on a bulleted list | `pl-4` | Indent for the marker |
+
+**This is not invisible.** Record and portal panels gain 4px a side; list rows and drawer edges
+gain 4px horizontally. It is the one thing in 5.9 a screenshot shows, so the close-out's browser
+pass looks at a record page, a drawer and a portal page in both themes.
+
+**One page split.** Six main-plus-aside grids had six ratios — `2fr / 20–23.75rem` on every form,
+`2fr / 18rem–0.8fr` on resolved layouts, `1fr / 18rem`, `1fr / 340px`, `1.4fr / 360px`, and one
+at `xl`. All six are §4.4's `lg:grid-cols-[minmax(0,1fr)_20rem]`, so **the form aside is now the
+same 20rem as the record spine**, which §4.4 had claimed since 5.4 and the class had not honoured.
+§4.4 now also names what is *not* a page split and keeps its own ratio — master-detail, the public
+booking page, the layout builder's live preview, a row's own columns.
+
+**One field-grid breakpoint.** Ten label/value or input grids flipped at `sm`; they are `md`.
+Two-column grids that are not field grids — option chips, checkbox lists, recovery codes, stat
+tiles, related-record cards — keep their own breakpoints.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run build` | Green |
+| `check-design.sh` | 14 of 14 |
+
+**Filed for 5.10:** a source rule in `check-design.sh` that fails on a 5-step spacing class.
+Without it §4.1 is enforced by reading again, which is how 112 became 190. It is new coverage, so
+it lands with the rest.
+
+**Next: batch 6** — close-out. `check-design.sh`, both rendered guards, the module specs for every
+surface 5.9 touched (which is most of them — the copy sweep moved strings in 30 specs), and a
+browser pass: a record page, a create form (the 20rem aside), a drawer, the settings rail, a portal
+page and the auth surface, in both themes and at 768px.
 
 ---
 

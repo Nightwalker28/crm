@@ -162,15 +162,15 @@ export default function PublicQuoteProposalPage() {
                   : "Check your connection and try again. If the problem continues, contact the sender."}
               </p>
               {error === "temporary" ? (
-                <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+                <Button type="button" variant="outline" className="mt-4" onClick={() => setReloadKey((current) => current + 1)}>
                   <RefreshCw />
                   Try again
                 </Button>
               ) : null}
             </Card>
           ) : (
-            <div className="grid gap-5">
-              <Card className="p-5 sm:p-6">
+            <div className="grid gap-6">
+              <Card className="p-4 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm text-copy-muted">
@@ -191,7 +191,7 @@ export default function PublicQuoteProposalPage() {
                 </div>
               </Card>
 
-              <Card className="p-5 sm:p-6">
+              <Card className="p-4 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="font-semibold text-copy-primary">Proposal</h2>
@@ -203,7 +203,7 @@ export default function PublicQuoteProposalPage() {
                   </Button>
                 </div>
                 {proposal.content_text.trim() ? (
-                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-p-sm text-copy-secondary sm:p-5">
+                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-p-sm text-copy-secondary sm:p-6">
                     {proposal.content_text}
                   </article>
                 ) : (

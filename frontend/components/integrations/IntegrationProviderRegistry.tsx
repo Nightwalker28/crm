@@ -125,7 +125,7 @@ export function IntegrationProviderRegistry({
             const { provider, connection } = item;
             const tone = statusTone(connection.status);
             return (
-              <Card key={provider.key} className="px-5 py-5">
+              <Card key={provider.key} className="p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">

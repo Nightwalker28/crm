@@ -358,7 +358,7 @@ export default function CustomerGroupsSettingsPage() {
             <Textarea id="customer-group-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
           </Field>
         </FieldGroup>
-        <FieldGroup className="mt-5 border-t border-line-subtle pt-5">
+        <FieldGroup className="mt-6 border-t border-line-subtle pt-6">
           <Field>
             <FieldLabel>Default assignment</FieldLabel>
             <SegmentedBoolean

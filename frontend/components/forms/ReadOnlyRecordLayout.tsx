@@ -87,9 +87,9 @@ export function ReadOnlyFieldSection({
 }) {
   if (!fields.length) return null;
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       <SectionHeading>{title}</SectionHeading>
-      <div className="mt-4 grid gap-x-6 gap-y-4 sm:grid-cols-2">
+      <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
         {fields.map((field) => (
           <div key={field.key} className={field.width === "full" ? "sm:col-span-2" : undefined}>
             <ReadOnlyField label={field.label} fieldType={field.fieldType} value={field.value} />

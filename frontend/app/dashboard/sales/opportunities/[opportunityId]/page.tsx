@@ -535,7 +535,7 @@ function DealOverview({
 }) {
   if (isLayoutLoading || !layout) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         {layoutError ? (
           <PanelError message="The deal details layout could not be loaded." onRetry={onRetryLayout} />
         ) : (

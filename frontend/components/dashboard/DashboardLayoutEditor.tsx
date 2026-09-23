@@ -316,7 +316,7 @@ export function DashboardLayoutEditor({
                 Choose a module summary or quick view to add to your personal dashboard.
               </DialogDescription>
             </DialogHeader>
-            <div className="mt-5 grid gap-3 md:grid-cols-2">
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
               {catalog.map((item) => (
                 <Button
                   key={`${item.type}-${item.module_key ?? "base"}`}

@@ -160,7 +160,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
                 </div>
               )}
 
-              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <FieldGroup className="grid gap-4 md:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="create-user-first-name">First name</FieldLabel>
                   <Input
@@ -268,7 +268,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
             </div>
           )}
 
-          <DialogFooter className="mt-5">
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
               {setupLink ? "Done" : "Cancel"}
             </Button>

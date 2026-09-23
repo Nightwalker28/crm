@@ -115,7 +115,7 @@ export default function CustomFieldInputs({ definitions, values, onChange }: Pro
         <p className="mt-1 text-p-sm text-copy-muted">These fields are managed by a workspace administrator.</p>
       </div>
 
-      <FieldGroup className="grid gap-4 sm:grid-cols-2">
+      <FieldGroup className="grid gap-4 md:grid-cols-2">
         {definitions.map((field) => (
           <div key={field.id} className={field.field_type === "long_text" ? "sm:col-span-2" : undefined}>
             <CustomFieldInput

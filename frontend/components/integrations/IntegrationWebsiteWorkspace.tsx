@@ -390,7 +390,7 @@ export function IntegrationWebsiteWorkspace() {
         </FieldGroup>
 
         {latestApiKey ? (
-          <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
+          <div role="status" className="mt-4 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-3">
             <div className="mb-2 text-xs font-medium text-copy-muted">Copy this key now</div>
             <div className="break-all font-mono text-xs text-copy-primary">{latestApiKey}</div>
             <div className="mt-3 flex flex-wrap gap-2">
@@ -509,7 +509,7 @@ export function IntegrationWebsiteWorkspace() {
       />
       <div className="text-xs text-copy-muted">{publishedCatalogTotal} published item{publishedCatalogTotal === 1 ? "" : "s"} available through the public catalog API.</div>
 
-      <div className="grid gap-5 md:grid-cols-2">
+      <div className="grid gap-6 md:grid-cols-2">
         {[
           {
             title: "Products",
@@ -522,7 +522,7 @@ export function IntegrationWebsiteWorkspace() {
             href: "/dashboard/catalog/services",
           },
         ].map((item) => (
-          <Card key={item.href} className="px-5 py-5">
+          <Card key={item.href} className="p-6">
             <div className="flex items-start gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
                 <Package size={17} className="text-copy-secondary" />

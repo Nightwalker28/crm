@@ -44,7 +44,7 @@ export function RecordFormLayout({
       >
         {title}
       </h2>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,23.75rem)]">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <div className="grid min-w-0 gap-6">{children}</div>
         <aside className="grid gap-6 lg:sticky lg:top-6">{sidebar}</aside>
       </div>
@@ -81,10 +81,10 @@ export function FormSection({
     // scrolling inside it. `RecordTable variant="lineItems"` is the first content wide enough
     // to show it: its derived min-width pushed the column to 1082px inside a 692px track and
     // painted the grid under the record rail. A section must never resize the form (§4.5).
-    <Card className={cn("min-w-0 p-5 md:p-6", className)}>
+    <Card className={cn("min-w-0 p-4 md:p-6", className)}>
       {/* R7: `text-base font-semibold text-copy-primary` was the pre-ruling heading, one
           step *louder* than the values under it. `SectionHeading` is the role. */}
-      <SectionHeading description={description} action={action} className="mb-5">
+      <SectionHeading description={description} action={action} className="mb-4">
         {title}
       </SectionHeading>
       {children}

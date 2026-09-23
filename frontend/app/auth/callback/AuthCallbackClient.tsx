@@ -43,7 +43,7 @@ export default function AuthCallbackClient() {
           was carrying no information the line beneath it did not. */}
       <AlertTriangle className="mx-auto mb-4 size-8 text-state-danger" aria-hidden="true" />
 
-      <p className="mb-5 text-sm text-copy-secondary">{message}</p>
+      <p className="mb-4 text-sm text-copy-secondary">{message}</p>
 
       <Button
         type="button"

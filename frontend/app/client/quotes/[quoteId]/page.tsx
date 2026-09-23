@@ -86,7 +86,7 @@ export default function ClientQuoteDetailPage() {
       details={
         quote ? (
           <div className="flex min-w-0 flex-col gap-6">
-            <Card className="px-5 py-5">
+            <Card className="p-6">
               <FactList>
                 <Fact label="Issued">{quote.issue_date ? formatDateOnly(quote.issue_date) : <EmptyValue context="field" />}</Fact>
                 <Fact label="Expires">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : <EmptyValue context="field" />}</Fact>
@@ -94,7 +94,7 @@ export default function ClientQuoteDetailPage() {
               </FactList>
             </Card>
 
-            <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
               <PanelHeader
                 title="Proposal"
                 description={
@@ -114,7 +114,7 @@ export default function ClientQuoteDetailPage() {
               )}
             </Card>
 
-            <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
               <PanelHeader
                 title="Your response"
                 description={

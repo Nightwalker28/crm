@@ -385,10 +385,10 @@ export default function DocumentUploadFormPage() {
     >
       <Card className="mx-auto w-full max-w-6xl">
         <section>
-          <div className="border-b border-line-subtle px-4 py-4 md:px-5">
+          <div className="border-b border-line-subtle px-4 py-4 md:px-6">
             <SectionHeading description="Add one document or a batch. You can review every file before uploading.">Choose files</SectionHeading>
           </div>
-          <div className="p-4 md:p-5">
+          <div className="p-4 md:p-6">
             {dropZone}
             <div ref={selectionStatusRef} tabIndex={-1} className="sr-only" aria-live="polite">{queue.length ? `${queue.length} files in the upload queue.` : "No files selected."}</div>
 
@@ -435,7 +435,7 @@ export default function DocumentUploadFormPage() {
                               {!item.overrides ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-copy-secondary">This file currently inherits shared metadata and associations.</p><Button type="button" variant="outline" size="sm" onClick={() => enableOverrides(item)}>Customize this file</Button></div> : (
                                 <div className="grid gap-4">
                                   <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium text-copy-label">Per-file override</p><Button type="button" variant="ghost" size="sm" onClick={() => updateQueueItem(item.id, { overrides: undefined })}>Use shared values</Button></div>
-                                  <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="grid gap-4 md:grid-cols-2">
                                     <Field><FieldLabel htmlFor={`title-${item.id}`}>Display title</FieldLabel><Input id={`title-${item.id}`} value={item.overrides.displayName} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, displayName: event.target.value } })} /></Field>
                                     <Field><FieldLabel htmlFor={`category-${item.id}`}>Category</FieldLabel><Input id={`category-${item.id}`} value={item.overrides.category} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, category: event.target.value } })} /></Field>
                                   </div>
@@ -458,7 +458,7 @@ export default function DocumentUploadFormPage() {
         </section>
 
         <section className="border-t border-line-subtle">
-          <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-start md:p-5">
+          <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-start md:p-6">
             <div>
               <SectionHeading description="Files stay private and require authenticated document access.">Upload destination</SectionHeading>
               <div className="mt-3 flex items-start gap-3 text-sm">
@@ -484,23 +484,23 @@ export default function DocumentUploadFormPage() {
               {destinationLocked ? <FieldDescription>Finish or clear uploaded and failed rows before changing destination.</FieldDescription> : null}
             </Field>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-4 py-3 text-xs md:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-4 py-3 text-xs md:px-6">
             <TextLink href="/dashboard/settings/integrations">Manage cloud connections</TextLink>
             {connectionsQuery.isError ? <Button variant="ghost" size="sm" onClick={() => void connectionsQuery.refetch()}><RefreshCw />Retry connection check</Button> : null}
           </div>
-          {connectionsQuery.isError ? <p role="alert" className="border-t border-line-subtle px-4 py-3 text-xs text-state-warning md:px-5">Cloud connections could not be checked. Local storage remains available.</p> : null}
+          {connectionsQuery.isError ? <p role="alert" className="border-t border-line-subtle px-4 py-3 text-xs text-state-warning md:px-6">Cloud connections could not be checked. Local storage remains available.</p> : null}
         </section>
 
         <section className="border-t border-line-subtle">
           <details className="group">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:px-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:px-6">
               <div>
                 <SectionHeading description="Apply the same category, tags, description, and related records to every pending file.">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></SectionHeading>
               </div>
               <ChevronDown className="h-5 w-5 shrink-0 text-copy-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
             </summary>
-            <div className="border-t border-line-subtle p-4 md:p-5">
-              <div className="grid max-w-3xl gap-5">
+            <div className="border-t border-line-subtle p-4 md:p-6">
+              <div className="grid max-w-3xl gap-4">
                 <Field><FieldLabel>CRM associations</FieldLabel><FieldDescription className="mb-2">Link these files to the records that use them.</FieldDescription><AssociationPicker value={associations} onChange={(value) => { setAssociations(value); touchShared(); }} disabled={isBusy} queryKeyPrefix="document-upload-associations" /></Field>
                 <Field><FieldLabel htmlFor="document-category">Category</FieldLabel><Input id="document-category" value={category} disabled={isBusy} onChange={(event) => { setCategory(event.target.value); touchShared(); }} placeholder="Contract, proposal, specification…" /></Field>
                 <Field><FieldLabel htmlFor="document-tags">Tags</FieldLabel><TagsInput inputId="document-tags" value={tags} disabled={isBusy} onChange={(value) => { setTags(value); touchShared(); }} /></Field>
@@ -516,7 +516,7 @@ export default function DocumentUploadFormPage() {
             summary rather than the whole row — otherwise every button appearing or
             disappearing is announced. */}
         <FormFooter
-          className="border-line-subtle p-4 md:p-5"
+          className="border-line-subtle p-4 md:p-6"
           status={<span aria-live="polite">{footerSummary}</span>}
         >
               {complete.length ? <Button variant="ghost" onClick={() => setQueue((current) => current.filter((item) => item.status !== "complete"))} disabled={isBusy}>Clear completed</Button> : null}

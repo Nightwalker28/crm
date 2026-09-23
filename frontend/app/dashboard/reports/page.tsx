@@ -583,7 +583,7 @@ export default function ReportsPage() {
       {hasForecastAccess ? <Card>
         <div className="flex flex-col gap-3 p-4 lg:flex-row lg:items-start lg:justify-between">
           <PanelHeader title="Weighted forecast" description="Open deal value weighted by explicit probability or stage default." />
-          <FieldGroup className="grid gap-3 sm:grid-cols-2">
+          <FieldGroup className="grid gap-3 md:grid-cols-2">
             <Field>
               <FieldLabel htmlFor="forecast-start">Start</FieldLabel>
               <Input id="forecast-start" type="date" value={forecastStart} onChange={(event) => setForecastStart(event.target.value)} />
@@ -757,7 +757,7 @@ export default function ReportsPage() {
 
       <InlineSavedViewFilters filterFields={filterFields} filters={filters} onChange={setFilters} />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_18rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_20rem]">
         <Card className="min-h-[28rem] p-4">
           <PanelHeader
             title={`${selectedModule?.label ?? "Module"} report`}
@@ -878,7 +878,7 @@ export default function ReportsPage() {
                 {saveError ? <FieldError id="saved-report-name-error">{saveError}</FieldError> : null}
               </Field>
             </div>
-            <DialogFooter className="mt-5">
+            <DialogFooter className="mt-4">
               <Button type="button" variant="ghost" onClick={() => setSaveDialogOpen(false)}>
                 Cancel
               </Button>

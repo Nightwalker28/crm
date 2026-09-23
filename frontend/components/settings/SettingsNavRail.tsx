@@ -27,7 +27,7 @@ export function SettingsNavRail({ className }: { className?: string }) {
     <nav
       data-slot="settings-nav-rail"
       aria-label="Settings"
-      className={cn("flex min-w-0 flex-col gap-5", className)}
+      className={cn("flex min-w-0 flex-col gap-6", className)}
     >
       <SettingsNavLink
         href={SETTINGS_ROUTES.root}

@@ -240,7 +240,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
       {/* This section was a recessed, bordered box inside the detail panel's own box — the level
           §1.3 forbids — with a hand-written `text-xs` label and its own icon. It is a section
           under a heading, like *Version history* beside it. */}
-      <section className="mt-5 space-y-3">
+      <section className="mt-4 space-y-3">
         <SectionHeading as="h3">Client portal access</SectionHeading>
         {canEdit ? (
           <div className="grid gap-3 lg:grid-cols-[160px_minmax(220px,1fr)_220px_auto] lg:items-end">
@@ -318,7 +318,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
         )}
       </section>
 
-      <section className="mt-5 space-y-3 border-t border-line-subtle pt-5">
+      <section className="mt-6 space-y-3 border-t border-line-subtle pt-6">
         <SectionHeading as="h3">Version history</SectionHeading>
         {versionsQuery.isLoading ? (
           <PanelLoading label="Loading versions…" />

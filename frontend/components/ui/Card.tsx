@@ -58,7 +58,7 @@ export function Card({ className, children, variant, asChild = false, ...props }
   );
 }
 
-// The three slots ran pt-6 / py-5 / py-4 - three vertical steps in one
+// The three slots ran pt-6 / py-4 / py-4 - three vertical steps in one
 // component, one of them the 5-step that 4.1 rules off the ladder. They now
 // carry two values with named roles: 24px is the card's content padding, 16px
 // is the action-bar padding a footer shares with a toolbar row (4.4).

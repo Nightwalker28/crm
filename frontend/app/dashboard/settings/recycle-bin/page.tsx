@@ -185,7 +185,7 @@ export default function RecycleBinPage() {
       ) : null}
 
       <Card>
-        <div className="border-b border-line-subtle px-5 py-4">
+        <div className="border-b border-line-subtle px-6 py-4">
           <SectionHeading>{label}</SectionHeading>
           <p className="mt-1 text-sm text-copy-muted">Restore records without removing their audit history.</p>
         </div>

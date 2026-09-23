@@ -48,7 +48,7 @@ export default function ClientMessagesPage() {
       backLabel="Return to the portal"
       onRetry={() => messagesQuery.refetch()}
     >
-      <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
+      <div className="grid gap-6 lg:grid-cols-[360px_minmax(0,1fr)]">
         <Card className="flex h-fit flex-col gap-4 p-4">
           <PanelHeader title="Ask a question" description="A member of the team replies in this thread." />
           <form className="grid gap-4" onSubmit={(event) => void submitQuestion(event)}>

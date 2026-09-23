@@ -343,7 +343,7 @@ export default function TeamsAndDepartmentsPage() {
         ) : (
           <div className="divide-y divide-line-default">
             {groupedTeams.map(({ department, teams: departmentTeams }) => (
-              <section key={department.id} className="py-5 first:pt-0 last:pb-0" aria-labelledby={`department-${department.id}`}>
+              <section key={department.id} className="py-4 first:pt-0 last:pb-0" aria-labelledby={`department-${department.id}`}>
                 <SectionHeading
                   as="h3"
                   id={`department-${department.id}`}

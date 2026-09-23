@@ -522,7 +522,7 @@ export default function BackupSettingsPage() {
         title="Schedule"
         description="Frequency, retention, scope and destination are validated together, so they save as a set."
       >
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           <SettingsRow label="Backups" description="Scheduled backups run automatically on the frequency and retention below.">
             <SegmentedBoolean
               aria-label="Backup schedule"
@@ -621,7 +621,7 @@ export default function BackupSettingsPage() {
         title="Restore"
         description="Preview a backup artifact before it is applied. Every restore writes to live tenant data."
       >
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           <div className="grid gap-3 md:grid-cols-3">
             <Field>
               <FieldLabel>Backup run</FieldLabel>
@@ -706,7 +706,7 @@ export default function BackupSettingsPage() {
             </Button>
           </ActionBar>
 
-          <div className="border-t border-line-subtle pt-5">
+          <div className="border-t border-line-subtle pt-6">
             <SectionHeading as="h3" className="mb-3" description="Creates a safety backup first, then replaces every supported module from a full-tenant backup.">
               Whole tenant
             </SectionHeading>

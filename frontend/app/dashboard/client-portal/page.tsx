@@ -249,7 +249,7 @@ export default function ClientPortalDashboardPage() {
     >
 
       <div className="grid gap-4">
-        <Card className="px-5 py-5">
+        <Card className="p-6">
           <div className="mb-4">
             <h2 className="text-base font-semibold text-copy-primary">Client login access</h2>
             <FieldDescription className="mt-1">Create a setup link manually linked to a contact or organization.</FieldDescription>
@@ -289,7 +289,7 @@ export default function ClientPortalDashboardPage() {
         </Card>
       </div>
 
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <SectionHeading description="Publish a signed link after the pricing snapshot is ready." className="mb-4">
           Shared pages
         </SectionHeading>
@@ -308,7 +308,7 @@ export default function ClientPortalDashboardPage() {
         />
       </Card>
 
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <SectionHeading className="mb-4">Client accounts</SectionHeading>
         <ClientAccountsTable
           accounts={accounts}

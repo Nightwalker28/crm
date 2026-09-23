@@ -535,7 +535,7 @@ function ContactOverview({
 
   if (isLayoutLoading || !layout) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         {layoutError ? (
           <PanelError message="The contact details layout could not be loaded." onRetry={onRetryLayout} />
         ) : (
@@ -584,7 +584,7 @@ function RelatedRecords({
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {canViewOpportunities ? (
-        <Card className="px-5 py-5">
+        <Card className="p-6">
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-base font-semibold text-copy-primary">Related deals</h2>
             {canCreateOpportunity ? (
@@ -615,7 +615,7 @@ function RelatedRecords({
           </div>
         </Card>
       ) : null}
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <h2 className="text-base font-semibold text-copy-primary">Related quotes</h2>
         <div className="mt-4 space-y-3">
           {summary.related_quotes.length ? (

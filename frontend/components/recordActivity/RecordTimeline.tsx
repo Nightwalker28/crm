@@ -309,7 +309,7 @@ export default function RecordTimeline({
   }
 
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       <RecordTimelineComposer
         moduleKey={moduleKey}
         entityId={entityId}
@@ -325,7 +325,7 @@ export default function RecordTimeline({
           value={filter}
           onValueChange={(next: Filter) => setFilter(next)}
           aria-label="Filter the timeline by type"
-          className="mt-5"
+          className="mt-4"
         >
           {availableFilters.map((option) => (
             <SegmentedItem key={option.id} value={option.id}>

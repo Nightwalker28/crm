@@ -331,7 +331,7 @@ export default function RolesPermissionsPage() {
     >
       {(
         <Card className="flex min-h-0 flex-1 flex-col">
-            <div className="border-b border-line-subtle px-5 py-4">
+            <div className="border-b border-line-subtle px-6 py-4">
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
                   <h2 className="text-lg font-semibold text-copy-primary">
@@ -446,7 +446,7 @@ export default function RolesPermissionsPage() {
                     and R5 takes the colour — a dirty form is not an exception state. The
                     save error stays `state-danger`, because that one is. */}
                 <FormFooter
-                  className="px-5 pb-4"
+                  className="px-6 pb-4"
                   status={
                     <>
                       <span className="font-medium">{isDirty ? "Unsaved changes" : "All changes saved"}</span>

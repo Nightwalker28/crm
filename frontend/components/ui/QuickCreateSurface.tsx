@@ -177,7 +177,7 @@ export function QuickCreateSurface({
             requestClose();
           }}
         >
-          <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-5">
+          <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-6">
             <div className="min-w-0">
               <SheetTitle className="text-lg font-semibold text-copy-primary">{title}</SheetTitle>
               <SheetDescription className="mt-1 text-p-sm text-copy-muted">
@@ -196,7 +196,7 @@ export function QuickCreateSurface({
             </Button>
           </SheetHeader>
 
-          <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+          <div ref={bodyRef} className="min-h-0 flex-1 overflow-y-auto p-4 sm:px-6">
             {isLoading ? (
               <div role="status" aria-label={`Loading ${title}`} className="grid gap-4">
                 <Skeleton className="h-[var(--size-control)] w-full" />
@@ -226,7 +226,7 @@ export function QuickCreateSurface({
             )}
           </div>
 
-          <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-4 py-3 sm:px-5">
+          <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-4 py-3 sm:px-6">
             <div className="min-h-5 text-sm text-copy-muted" role="status" aria-live="polite">
               {isSubmitting ? pendingLabel : statusMessage}
             </div>
@@ -282,14 +282,14 @@ export function QuickCreateSurface({
           <DialogPrimitive.Root open={discardConfirmationOpen} onOpenChange={setDiscardConfirmationOpen}>
             <DialogPrimitive.Portal>
               <DialogPrimitive.Overlay className="fixed inset-0 z-[60] bg-overlay" />
-              <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-5 shadow-[var(--shadow-panel)] outline-none">
+              <DialogPrimitive.Content className="fixed left-1/2 top-1/2 z-[70] w-[calc(100%-2rem)] max-w-md -translate-x-1/2 -translate-y-1/2 rounded-[var(--radius-dialog)] border border-line-default bg-surface-raised p-6 shadow-[var(--shadow-panel)] outline-none">
                 <DialogPrimitive.Title className="text-base font-semibold text-copy-primary">
                   {discardTitle}
                 </DialogPrimitive.Title>
                 <DialogPrimitive.Description className="mt-2 text-p-sm text-copy-secondary">
                   {discardDescription}
                 </DialogPrimitive.Description>
-                <div className="mt-5 flex justify-end gap-2">
+                <div className="mt-4 flex justify-end gap-2">
                   <Button type="button" variant="outline" size="lg" onClick={() => setDiscardConfirmationOpen(false)}>
                     Cancel
                   </Button>

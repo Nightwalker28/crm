@@ -61,13 +61,13 @@ export default function ClientMessageDetailPage() {
         item ? (
           <div className="flex min-w-0 flex-col gap-6">
             {item.description ? (
-              <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+              <Card className="flex min-w-0 flex-col gap-4 p-6">
                 <PanelHeader title="Your question" />
                 <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p>
               </Card>
             ) : null}
 
-            <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
               <PanelHeader title="Conversation" />
               {item.comments.length === 0 ? (
                 <EmptyState

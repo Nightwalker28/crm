@@ -46,7 +46,7 @@ export default function ProvisioningSettingsPage() {
     >
       {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
       <FormSection title="User provisioning" description="These apply together on the next verified sign-in, so they save as a set.">
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           <SettingsRow label="Auto-provision users" description="Create a CRM user the first time a verified identity signs in.">
             <SegmentedBoolean
               aria-label="Auto-provision users"

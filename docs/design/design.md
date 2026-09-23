@@ -499,8 +499,9 @@ All spacing is a Tailwind step (multiples of 4px). No arbitrary `p-[13px]`.
 | `gap-6` | Between sections of a page |
 | `gap-8` | Between major regions. Rare. |
 
-**There is no 5-step.** `gap-5` and `p-5` are not on the ladder and are being swept
-out (112 uses at the time of the ruling). Being a multiple of 4px is necessary, not
+**There is no 5-step.** `gap-5` and `p-5` are not on the ladder. They were swept out in
+rebuild 5.9 — 112 uses at the time of the ruling, ~190 by the sweep once `px-`, `py-`, `mt-`
+and the rest of the family were counted — and none remain outside contracts and support. Being a multiple of 4px is necessary, not
 sufficient — the ladder is a closed set, the same way control heights are (§4.2).
 
 The 5-step is why card padding has three values at once (`p-4` ×77, `p-5` ×81,
@@ -578,6 +579,12 @@ The last two replace measured drift, not a gap: the two-column split had **10 di
 ratios** with the breakpoint flipping between `lg` and `xl`, and the responsive field grid
 `grid gap-* sm|md:grid-cols-2` was hand-written **78 times**. A page split is `lg` because
 it reorders major regions; a field grid is `md` because it only reflows label/value pairs.
+
+**What is not a page split** (rebuild 5.9, which moved the six that were): a **master-detail**
+list on the left (the portal's message threads), a **public booking page** whose left column is
+the meeting's summary, a **builder beside a live preview** (record layouts — the preview has to
+render near the width it previews), and a **row's own columns**. Those carry their own ratio
+because they are not main-plus-aside. A new main-plus-aside page takes the one above.
 
 `Card` carries **two** vertical values, not three. It ran `pt-6` / `py-5` / `py-4` —
 one step per slot, one of them the 5-step §4.1 rules off the ladder. 24px is the

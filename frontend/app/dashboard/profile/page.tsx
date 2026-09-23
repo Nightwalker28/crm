@@ -463,7 +463,7 @@ export default function ProfilePage() {
           )}
 
           {mfaRecoveryCodes.length ? (
-            <div role="status" className="mt-5 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-4">
+            <div role="status" className="mt-4 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-4">
               <div className="text-sm font-semibold text-copy-primary">Save these recovery codes now</div>
               <p className="mt-1 text-sm text-copy-secondary">Each code can be used once if your authenticator is unavailable.</p>
               <div className="mt-3 grid gap-1 font-mono text-xs text-copy-primary sm:grid-cols-2">

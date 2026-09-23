@@ -82,7 +82,7 @@ export default function RecordDocumentsPanel({
   const documents = documentsQuery.data?.results ?? [];
 
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       {canUpload ? (
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
           <Input

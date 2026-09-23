@@ -544,7 +544,7 @@ function QuoteOverview({
 }) {
   if (isLayoutLoading || !layout) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         {layoutError ? (
           <PanelError message="The quote details layout could not be loaded." onRetry={onRetryLayout} />
         ) : (
@@ -647,7 +647,7 @@ function ProposalPanel({
   }
 
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       <SectionHeading>Proposal</SectionHeading>
       <FieldDescription className="mt-1">
         Generate the quote proposal and send it as a signed link. Every send, open and
@@ -663,7 +663,7 @@ function ProposalPanel({
         </div>
       ) : null}
 
-      <dl className="mt-5 grid gap-4 sm:grid-cols-3">
+      <dl className="mt-4 grid gap-4 sm:grid-cols-3">
         {/* Only the status is a raw enum, so only the status is title-cased. Applying
             `capitalize` to all three turned "Not sent" into "Not sent" — §3.5. */}
         <ProposalFact label="Status" value={proposalStatusLabel(proposal)} />
@@ -678,7 +678,7 @@ function ProposalPanel({
       </dl>
 
       {canEdit ? (
-        <div className="mt-5 border-t border-line-subtle pt-5">
+        <div className="mt-6 border-t border-line-subtle pt-6">
           <Field>
             <FieldLabel htmlFor="quote-proposal-recipient">Recipient</FieldLabel>
             <Input

@@ -92,7 +92,7 @@ function ModuleAccessEditor({
 
   const departmentsPanel = (
     <div>
-      <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
+      <p className="border-b border-line-subtle px-6 py-3 text-sm text-copy-secondary">
         Department access opens the parent gate. Select the individual teams that should receive access from the Teams tab.
       </p>
       <RecordTable
@@ -160,7 +160,7 @@ function ModuleAccessEditor({
 
   const teamsPanel = (
     <div>
-      <p className="border-b border-line-subtle px-5 py-3 text-sm text-copy-secondary">
+      <p className="border-b border-line-subtle px-6 py-3 text-sm text-copy-secondary">
         A team can be selected only when its parent department is allowed. Unassigned teams use a direct team grant.
       </p>
       <RecordTable

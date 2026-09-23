@@ -53,7 +53,7 @@ function LayoutSection({
   const hasInvalidField = fields.some((field) => invalidFieldKeys.has(field.field_key));
 
   const body = (
-    <div className={cn("grid gap-x-6 gap-y-4", viewport === "auto" && "sm:grid-cols-2")}>
+    <div className={cn("grid gap-x-6 gap-y-4", viewport === "auto" && "md:grid-cols-2")}>
       {fields.map((field) => (
         <div
           key={field.field_key}
@@ -69,7 +69,7 @@ function LayoutSection({
 
   return (
     <Card
-      className="px-5 py-5"
+      className="p-6"
       data-layout-section={section.id}
       data-layout-region={section.region}
     >
@@ -78,11 +78,11 @@ function LayoutSection({
           <summary className="cursor-pointer text-base font-semibold text-copy-primary">
             {section.label}
           </summary>
-          <div className="mt-5">{body}</div>
+          <div className="mt-4">{body}</div>
         </details>
       ) : (
         <>
-          <h2 className="mb-5 text-base font-semibold text-copy-primary">{section.label}</h2>
+          <h2 className="mb-4 text-base font-semibold text-copy-primary">{section.label}</h2>
           {body}
         </>
       )}
@@ -110,7 +110,7 @@ export function ResolvedRecordLayout({
     <div
       className={cn(
         "grid items-start gap-4",
-        hasSidebar && viewport === "auto" && "lg:grid-cols-[minmax(0,2fr)_minmax(18rem,0.8fr)]",
+        hasSidebar && viewport === "auto" && "lg:grid-cols-[minmax(0,1fr)_20rem]",
         className,
       )}
       data-record-layout={`${layout.module_key}:${layout.surface}`}

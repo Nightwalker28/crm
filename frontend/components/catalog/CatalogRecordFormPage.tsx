@@ -224,16 +224,16 @@ function CatalogRecordFormEditor({
         title={mode === "edit" ? (record?.name ?? titleNoun) : `New ${noun}`}
         sidebar={
           <div className="grid gap-6">
-            <Card className="p-5">
+            <Card className="p-6">
               <SectionHeading description="Control availability inside Lynk and the public website feed.">Publishing</SectionHeading>
-              <div className="mt-5 grid gap-3">
+              <div className="mt-4 grid gap-3">
                 <ToggleRow label="Public website feed" checked={form.is_public} onChange={(is_public) => setForm((current) => ({ ...current, is_public }))} />
                 <ToggleRow label="Active" checked={form.is_active} onChange={(is_active) => setForm((current) => ({ ...current, is_active }))} />
               </div>
             </Card>
-            <Card className="p-5">
+            <Card className="p-6">
               <SectionHeading description="Upload a customer-facing image for this catalog record.">Media</SectionHeading>
-              <div className="mt-5 grid gap-3">
+              <div className="mt-4 grid gap-3">
                 {record?.media_url ? (
                   <Image src={resolveMediaUrl(record.media_url)} alt="" width={320} height={240} unoptimized className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover" />
                 ) : (

@@ -297,7 +297,7 @@ export function RecordSpineMeta({
                 side="right"
                 className="z-50 flex h-dvh w-full max-w-none flex-col bg-surface-raised outline-none sm:max-w-[36rem] sm:border-l sm:border-line-default"
               >
-                <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-5">
+                <SheetHeader className="flex min-h-16 items-start justify-between gap-4 border-b border-line-subtle px-4 py-3 sm:px-6">
                   <div className="min-w-0">
                     <SheetTitle className="text-lg font-semibold text-copy-primary">
                       {historyTitle}
@@ -307,7 +307,7 @@ export function RecordSpineMeta({
                     </SheetDescription>
                   </div>
                 </SheetHeader>
-                <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:px-6">
                   {history}
                 </div>
               </SheetContent>

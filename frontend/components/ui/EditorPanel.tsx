@@ -86,7 +86,7 @@ export function EditorPanel({
 
   const body = (
     <>
-      <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-default px-5 py-4">
+      <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-default px-6 py-4">
         <div className="min-w-0">
           <SheetTitle className="text-lg font-semibold text-copy-primary">{title}</SheetTitle>
           {description ? (
@@ -104,13 +104,13 @@ export function EditorPanel({
         </Button>
       </SheetHeader>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">{children}</div>
+      <div className="min-h-0 flex-1 overflow-y-auto p-6">{children}</div>
 
       {footer ? (
         // R3: not sticky. The footer is pinned by the flex column, which is a layout rather
         // than a bar floating over content — and it is `FormFooter`, so the panel's two
         // rules are one ink and the actions inherit R4's height.
-        <FormFooter status={status} className="bg-surface px-5 py-4">
+        <FormFooter status={status} className="bg-surface px-6 py-4">
           {footer}
         </FormFooter>
       ) : null}

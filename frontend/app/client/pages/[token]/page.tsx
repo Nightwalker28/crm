@@ -115,7 +115,7 @@ export default function PublicClientPage() {
             />
           </div>
         ) : page ? (
-          <div className="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1.4fr)_360px]">
+          <div className="grid flex-1 gap-6 py-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <section>
               <div className="mb-6 border-l-4 pl-4" style={{ borderColor: accentColor }}>
                 <h1 className="text-lg font-semibold text-copy-primary">{page.title}</h1>
@@ -190,7 +190,7 @@ export default function PublicClientPage() {
               ) : null}
             </section>
 
-            <aside className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
+            <aside className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-6">
               <h2 className="text-base font-semibold text-copy-primary">Response</h2>
               <p className="mt-1 text-sm text-copy-secondary">
                 {page.pricing_mode === "personalized"

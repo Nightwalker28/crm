@@ -285,7 +285,7 @@ function SidebarGroupManager({
   }
 
   return (
-    <div className="border-t border-line-subtle pt-5">
+    <div className="border-t border-line-subtle pt-6">
       <SectionHeading as="h3" description="Groups organize modules without changing their routes.">
         Custom sidebar groups
       </SectionHeading>

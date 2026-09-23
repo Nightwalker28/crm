@@ -115,7 +115,7 @@ export default function AuthenticationSettingsPage() {
       </FormSection>
 
       <FormSection title="OIDC SSO" description="Tenant sign-in through an external identity provider. These fields are validated together, so they save as a set.">
-        <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-6">
           <SettingsRow label="Single sign-on" description="Offer the provider as a sign-in method for this workspace.">
             <SegmentedBoolean
               aria-label="Single sign-on"

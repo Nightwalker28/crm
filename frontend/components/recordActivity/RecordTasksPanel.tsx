@@ -201,7 +201,7 @@ export default function RecordTasksPanel({
   }
 
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       {/*
         No `PanelHeader`. The tab strip above already says `Tasks`, and this panel is that
         tab's whole content — so a heading here draws the same word twice (4.7). The action

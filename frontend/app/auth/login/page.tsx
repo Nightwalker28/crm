@@ -360,7 +360,7 @@ export default function LoginPage() {
         </form>
       ) : null}
 
-      {loginStep === "login" ? <div className="my-5 flex items-center gap-3 text-xs font-medium text-copy-label">
+      {loginStep === "login" ? <div className="my-4 flex items-center gap-3 text-xs font-medium text-copy-label">
         <div className="h-px flex-1 bg-line-subtle" />
         <span>or</span>
         <div className="h-px flex-1 bg-line-subtle" />

@@ -343,7 +343,7 @@ export default function CalendarBookingSettingsPage() {
           {bookingHandleMutation.error ? <FieldError>{bookingHandleMutation.error.message}</FieldError> : null}
         </Field>
         <FormFooter
-          className="mt-5"
+          className="mt-4"
           status={isHandleDirty ? "Unsaved changes" : "No unsaved changes"}
         >
           <Button

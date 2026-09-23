@@ -23,7 +23,7 @@ export default function SettingsPage() {
         {SETTINGS_NAV_GROUPS.map((group) => (
           <section key={group.key} aria-labelledby={`${group.key}-heading`}>
             <Card>
-              <div className="border-b border-line-subtle px-5 py-4">
+              <div className="border-b border-line-subtle px-6 py-4">
                 <h2 id={`${group.key}-heading`} className="text-sm font-semibold text-copy-primary">
                   {group.title}
                 </h2>
@@ -35,7 +35,7 @@ export default function SettingsPage() {
                     <Link
                       key={item.href}
                       href={item.href}
-                      className="group flex items-center justify-between gap-4 border-b border-line-subtle px-5 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
+                      className="group flex items-center justify-between gap-4 border-b border-line-subtle px-6 py-4 transition-colors last:border-b-0 hover:bg-surface-muted focus-visible:relative focus-visible:z-10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus"
                     >
                       <span className="flex min-w-0 items-start gap-3">
                         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">

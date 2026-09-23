@@ -70,7 +70,7 @@ export default function ClientPortalLayout({ children }: { children: ReactNode }
                 one h1 per page (§8). The dashboard header makes the same call. */}
             {sectionLabel ? <div className="truncate text-sm font-semibold text-copy-primary">{sectionLabel}</div> : null}
           </header>
-          <div className="scrollbar-hide h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+          <div className="scrollbar-hide h-full w-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
             {/* Ruling 4 — the layout owns the width. Six of them drifted because every page
                 set its own.
 

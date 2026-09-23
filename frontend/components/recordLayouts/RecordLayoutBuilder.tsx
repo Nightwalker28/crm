@@ -461,7 +461,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
         </Card>
       ) : null}
 
-      <div className="grid items-start gap-5 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.5fr)_minmax(20rem,1fr)]">
         <div className="grid min-w-0 gap-4">
           {sections.map((section, index) => (
             <SectionCard

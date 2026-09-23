@@ -299,7 +299,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
             : "Check your connection and try again."}
         </p>
         {loadError === "temporary" ? (
-          <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+          <Button type="button" variant="outline" className="mt-4" onClick={() => setReloadKey((current) => current + 1)}>
             <RefreshCw />
             Try again
           </Button>
@@ -319,7 +319,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
             <time dateTime={selectedSlot.start_at}>{formatSlotTime(selectedSlot.start_at, displayTimezone)}</time>
           </p>
         ) : null}
-        <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-2 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-secondary">
+        <div className="mx-auto mt-4 flex max-w-md items-center justify-center gap-2 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-secondary">
           <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
           Confirmation details were sent to the meeting organizer.
         </div>
@@ -330,8 +330,8 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
   const timezoneOptions = Array.from(new Set([browserTimezone(), bookingType.timezone, ...DISPLAY_TIMEZONES]));
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-      <Card className="p-5 sm:p-6">
+    <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+      <Card className="p-4 sm:p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
             <CalendarDays className="h-5 w-5 text-copy-secondary" aria-hidden="true" />
@@ -341,11 +341,11 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
             <p className="mt-1 text-sm text-copy-muted">{bookingType.owner_name || "Lynk"}</p>
           </div>
         </div>
-        <div className="mt-5 flex items-center gap-2 text-sm text-copy-secondary">
+        <div className="mt-4 flex items-center gap-2 text-sm text-copy-secondary">
           <Clock3 className="h-4 w-4 text-copy-muted" aria-hidden="true" />
           {bookingType.duration_minutes} minutes
         </div>
-        <Field className="mt-5 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4">
+        <Field className="mt-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4">
           <FieldLabel htmlFor="booking-display-timezone">Display timezone</FieldLabel>
           <Select value={displayTimezone} onValueChange={setDisplayTimezone}>
             <SelectTrigger id="booking-display-timezone" className="w-full">
@@ -359,7 +359,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
         </Field>
       </Card>
 
-      <Card className="p-5 sm:p-6">
+      <Card className="p-4 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-2">
           <section aria-labelledby="booking-times-heading">
             <div className="flex items-center justify-between gap-3">

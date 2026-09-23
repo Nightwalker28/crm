@@ -35,7 +35,7 @@ export function RecordRelatedCard({
 }) {
   const items = Array.isArray(children) ? children : [children];
   return (
-    <Card className="px-5 py-5">
+    <Card className="p-6">
       <div className="flex items-start justify-between gap-3">
         <h2 className="text-base font-semibold text-copy-primary">{title}</h2>
         {action}

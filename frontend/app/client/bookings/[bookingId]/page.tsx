@@ -65,7 +65,7 @@ export default function ClientBookingDetailPage() {
       details={
         booking ? (
           <div className="flex min-w-0 flex-col gap-6">
-            <Card className="px-5 py-5">
+            <Card className="p-6">
               <FactList>
                 <Fact label="Duration">{durationLabel(booking)}</Fact>
                 <Fact label="Host">{booking.owner_name || <EmptyValue context="field" />}</Fact>
@@ -76,13 +76,13 @@ export default function ClientBookingDetailPage() {
             </Card>
 
             {booking.guest_note ? (
-              <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+              <Card className="flex min-w-0 flex-col gap-4 p-6">
                 <PanelHeader title="Your note" />
                 <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{booking.guest_note}</p>
               </Card>
             ) : null}
 
-            <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
               <PanelHeader
                 title="Need to change this?"
                 description="Rescheduling and cancelling from the portal are not available yet — send a message and the team will move it for you."

@@ -283,7 +283,7 @@ function InsertionOrderFormEditor({
           title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "Create insertion order"}
           sidebar={
             <>
-              <Card className="p-5">
+              <Card className="p-6">
                 <SectionHeading>Order state</SectionHeading>
                 {fieldEnabled("status") ? (
                   <Field className="mt-4">
@@ -305,7 +305,7 @@ function InsertionOrderFormEditor({
                 ) : null}
                 {order?.updated_at ? <p className="mt-4 text-xs text-copy-muted">Last updated {formatDateTime(order.updated_at)}</p> : null}
               </Card>
-              <Card className="p-5">
+              <Card className="p-6">
                 <SectionHeading>Customer relationship</SectionHeading>
                 <p className="mt-2 text-p-sm text-copy-secondary">
                   Link an existing contact or account when possible. A lightweight contact can be created only when no record is linked.

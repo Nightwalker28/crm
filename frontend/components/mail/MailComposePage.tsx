@@ -122,7 +122,7 @@ export default function MailComposePage() {
           <p className="mt-2 max-w-2xl text-p-sm text-copy-secondary">
             Connect or repair a Gmail, Microsoft, or IMAP/SMTP mailbox before composing an email.
           </p>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button asChild><Link href="/dashboard/mail">Review mail connections</Link></Button>
             <Button variant="outline" asChild><Link href="/dashboard/settings/integrations">Manage integrations</Link></Button>
           </div>
@@ -142,7 +142,7 @@ export default function MailComposePage() {
         title="Compose email"
         sidebar={
           <>
-            <Card className="p-5">
+            <Card className="p-6">
               <SectionHeading>Sending mailbox</SectionHeading>
               <Field className="mt-4">
                 <FieldLabel>Provider</FieldLabel>
@@ -162,7 +162,7 @@ export default function MailComposePage() {
                 <FieldDescription>The selected provider sends the message using your connected account.</FieldDescription>
               </Field>
             </Card>
-            <Card className="p-5">
+            <Card className="p-6">
               <SectionHeading>CRM variables</SectionHeading>
               <p className="mt-2 text-p-sm text-copy-secondary">
                 Variables resolve from linked record context or a matching contact recipient when the message is sent.

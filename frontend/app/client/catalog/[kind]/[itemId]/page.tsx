@@ -80,16 +80,16 @@ export default function ClientCatalogItemPage() {
       }
       details={
         item ? (
-          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
             <div className="flex min-w-0 flex-col gap-6">
               {item.description ? (
-                <Card className="flex min-w-0 flex-col gap-4 px-5 py-5">
+                <Card className="flex min-w-0 flex-col gap-4 p-6">
                   <PanelHeader title="About this item" />
                   <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{item.description}</p>
                 </Card>
               ) : null}
 
-              <Card className="px-5 py-5">
+              <Card className="p-6">
                 <FactList>
                   <Fact label="Public price">
                     <Money amount={item.public_unit_price} currency={item.currency} />
@@ -101,7 +101,7 @@ export default function ClientCatalogItemPage() {
               </Card>
             </div>
 
-            <Card className="flex h-fit min-w-0 flex-col gap-4 px-5 py-5">
+            <Card className="flex h-fit min-w-0 flex-col gap-4 p-6">
               <PanelHeader title="Request this item" description="The team turns your request into an order." />
               <form className="grid gap-4" onSubmit={(event) => void submitRequest(event)}>
                 <Field>

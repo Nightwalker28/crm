@@ -277,7 +277,7 @@ function CatalogOverview({
 }) {
   if (isLayoutLoading || !layout) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         {layoutError ? (
           <PanelError
             message={`The ${noun.toLowerCase()} details layout could not be loaded.`}
@@ -305,7 +305,7 @@ function CatalogOverview({
             : undefined
         }
       />
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <SectionHeading>Catalog image</SectionHeading>
         <div className="mt-4 max-w-xs">
           {record.media_url ? (

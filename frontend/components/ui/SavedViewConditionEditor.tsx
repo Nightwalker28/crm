@@ -301,7 +301,7 @@ function ConditionGroupsContent({
                 );
               })
             ) : (
-              <div className="rounded-[var(--radius-control)] border border-dashed border-line-subtle px-4 py-5 text-sm text-copy-muted">
+              <div className="rounded-[var(--radius-control)] border border-dashed border-line-subtle p-4 text-sm text-copy-muted">
                 No {groupKey === "all" ? "AND" : "OR"} conditions yet.
               </div>
             )}
@@ -329,7 +329,7 @@ export function SavedViewConditionEditor({
 
   if (wrapInCard) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <ConditionGroupsContent
           filterFields={filterFields}
           filters={filters}

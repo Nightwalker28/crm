@@ -229,7 +229,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
               </div>
             </DialogHeader>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               {importError ? (
                 <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                   {importError}
@@ -310,7 +310,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
 
 function ImportSummary({ summary }: { summary: ImportSummaryResponse }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3">
         <SummaryCard label="Total rows" value={summary.total_rows} />
         <SummaryCard label="Imported" value={summary.imported_rows} tone="success" />

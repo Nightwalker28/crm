@@ -109,7 +109,7 @@ export default function RecordPaymentPage() {
       <RecordFormLayout
         title="Record payment"
         sidebar={
-          <Card className="p-5">
+          <Card className="p-6">
             <SectionHeading>Selected invoice</SectionHeading>
             {invoice ? (
               <dl className="mt-4 grid gap-3 text-sm">

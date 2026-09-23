@@ -191,7 +191,7 @@ export function ExportControls({
               </div>
             </DialogHeader>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               {exportError ? (
                 <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                   {exportError}
