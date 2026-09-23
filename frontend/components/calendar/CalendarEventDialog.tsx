@@ -159,7 +159,7 @@ export default function CalendarEventDialog({
       });
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to save calendar event");
+      setError(submitError instanceof Error ? submitError.message : "The event could not be saved. Check the times and try again.");
     }
   }
 
@@ -177,7 +177,7 @@ export default function CalendarEventDialog({
       await onDelete();
       onClose();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete calendar event");
+      setError(deleteError instanceof Error ? deleteError.message : "The event could not be deleted. Try again.");
     }
   }
 

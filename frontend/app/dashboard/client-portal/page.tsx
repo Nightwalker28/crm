@@ -178,7 +178,7 @@ export default function ClientPortalDashboardPage() {
       setLastSetupLink(account.setup_link ?? null);
       toast.success("Client account created.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create client account."));
+      toast.error(errorMessage(error, "The client account could not be created. Check the email and try again."));
     }
   }
 
@@ -199,7 +199,7 @@ export default function ClientPortalDashboardPage() {
       const updated = await updateAccountStatus({ accountId, status });
       toast.success(`Client access set to ${updated.status}.`);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update client access."));
+      toast.error(errorMessage(error, "Client access could not be changed. Try again."));
     }
   }
 
@@ -217,7 +217,7 @@ export default function ClientPortalDashboardPage() {
       if (account.setup_link) await copyText(account.setup_link, "Setup link");
       toast.success("Setup link regenerated.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to regenerate setup link."));
+      toast.error(errorMessage(error, "A new setup link could not be created. Try again."));
     }
   }
 
@@ -234,7 +234,7 @@ export default function ClientPortalDashboardPage() {
       if (page.public_link) await copyText(page.public_link, "Client link");
       toast.success("Client page link published.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to publish client page."));
+      toast.error(errorMessage(error, "The page could not be published. Try again."));
     }
   }
 

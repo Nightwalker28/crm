@@ -66,7 +66,7 @@ export default function MailComposePage() {
   if (contextQuery.error) {
     return (
       <RouteErrorState
-        title="Unable to prepare mail"
+        title="The composer could not be opened"
         description="We could not load your available mail connections. Try again or return to Mail."
         reset={() => void contextQuery.refetch()}
         backHref="/dashboard/mail"

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -96,7 +97,7 @@ export default function CatalogRecordFormPage({
   if (mode === "edit" && (query.error || !query.data)) {
     return (
       <RouteErrorState
-        title={`Unable to load ${noun}`}
+        title={`${formatSnakeCaseLabel(noun)} could not be loaded`}
         reset={() => void query.refetch()}
         backHref={`/dashboard/catalog/${kind}`}
         backLabel={`Back to ${kind}`}

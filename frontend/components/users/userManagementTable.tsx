@@ -631,7 +631,7 @@ export function UserManagementTable({
           emptyState={{
             icon: UsersRound,
             title: "No users yet",
-            description: "Use Create user to add the first person to this workspace.",
+            description: "Create the first user to give someone access to this workspace.",
           }}
           hasActiveFilters={hasActiveFilters}
           onClearFilters={clearAllFilters}

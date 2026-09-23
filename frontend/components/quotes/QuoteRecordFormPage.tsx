@@ -209,7 +209,7 @@ export default function QuoteRecordFormPage({
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
-        title="Unable to load quote"
+        title="Quote could not be loaded"
         reset={() => void query.refetch()}
         backHref="/dashboard/sales/quotes"
         backLabel="Back to quotes"

@@ -193,7 +193,7 @@ export default function PosInvoiceRecordFormPage({
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
-        title="Unable to load invoice"
+        title="Invoice could not be loaded"
         reset={() => void query.refetch()}
         backHref="/dashboard/finance/pos"
         backLabel="Back to invoices"

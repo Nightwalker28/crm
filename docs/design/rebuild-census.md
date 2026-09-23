@@ -523,12 +523,12 @@ taken. Counted here so the denominator stays honest.
 | `InlineSavedViewFilters.tsx` | 87 | 5.5 | adopt | | **done — unchanged.** Same as above |
 | `SectionTabs.tsx` (was `RecordTabs.tsx`) | 94 | 5.3 | rebuild | Radix, correct. Was marked **do not re-fix** | **done, batch 5** — renamed, and the note above was wrong on two counts. Its `Tabs.Content` carried `focus-visible:outline-none` with nothing behind it (§2.3), and its trigger class list was a byte-identical duplicate of the archetype's. It had one call site left, none of them a record, and the name is why two more pages hand-rolled a strip. It is the card-scoped strip now, on all three such pages |
 | `QuickCreateSurface.tsx` | 315 | 5.4 | adopt | **A3** — both create paths on all 15 modules | **done, batch 6** — one surface for the four current adopters; the nine-module rollout is owned by crm-evolution |
-| `EmptyState.tsx` | 29 | 5.9 | adopt | Copy: an invitation to act | |
+| `EmptyState.tsx` | 29 | 5.9 | adopt | Copy: an invitation to act | **done, 5.9 batch 4** — the primitive holds no copy; its words are the call sites'. 34 direct uses and 42 list `emptyState` props were read; the ones lacking an action have it beside them (a form or header button), except the webhook list, which gained *Create webhook*, and customer groups, which said *once the backend provides them* |
 | `PermissionDeniedState.tsx` | 36 | 5.6 | adopt | Reaches 1 of 23 settings pages | **done, batches 3 + 7d** — batch 3 took it to all 21 page files and found the measurement had been of the wrong thing; **the component itself audited clean in 7d** — its `text-xl` is a *state* title, which §3.3 allows |
 | `RouteStates.tsx` | 32 | 5.1 | adopt | Also the source for the 38 route boundaries | |
 | `skeleton.tsx` | 13 | — | unchanged | Correct | |
 | `spinner.tsx` | 16 | — | unchanged | Correct | |
-| `sonner.tsx` | 65 | 5.9 | adopt | Toast copy keeps the action's name | |
+| `sonner.tsx` | 65 | 5.9 | adopt | Toast copy keeps the action's name | **done, 5.9 batch 4** — no copy in the primitive. 149 success toasts read: already noun + past tense bar three (*Module created* and *Module changes saved* lacked a period and the verb; *Notification channel added.* named a thing the button calls a webhook) |
 | `input.tsx` | 25 | — | unchanged | Fixed in consistency Phase 2 | |
 | `textarea.tsx` | 20 | — | unchanged | same | |
 | `select.tsx` | 189 | 5.1 | adopt | Gains `SelectTrigger variant="ghost"` — `InlineFieldEdit`'s R6 affordance, added to the primitive per §7.3 rather than styled at the call site | **done** (E) |

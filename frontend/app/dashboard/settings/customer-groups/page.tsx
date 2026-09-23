@@ -448,8 +448,8 @@ export default function CustomerGroupsSettingsPage() {
         }}
         emptyState={{
           icon: BadgePercent,
-          title: "No customer groups",
-          description: "Customer groups will appear here once the backend provides them.",
+          title: "No customer groups yet",
+          description: "Create a group to segment contacts and accounts.",
           action: <Button type="button" onClick={() => void startNewGroup()}><Plus />Create group</Button>,
         }}
         rowActions={(group) => (

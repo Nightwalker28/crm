@@ -418,7 +418,7 @@ function ModuleWorkspace({
     try {
       await onSave({ draft, fields, deletedIds });
       setBaseline(snapshot(draft, fields, deletedIds));
-      toast.success("Module changes saved");
+      toast.success("Module saved.");
     } catch {
       setSaveError("We couldn't save this module. Review the fields and try again.");
     }
@@ -638,7 +638,7 @@ function CreateModulePanel({
         sidebar_tab_key: sidebarTabKey,
         fields: [{ label: "Name", field_type: "text", is_required: true, display_in_list: true }],
       });
-      toast.success("Module created");
+      toast.success("Module created.");
     } catch {
       setError("We couldn't create this module. Check the name and try again.");
     }

@@ -90,7 +90,7 @@ export default function CustomModuleRecordEditPage({
   if (schema.error || recordQuery.error || moduleFields.error || !schema.data) {
     return (
       <RouteErrorState
-        title="Unable to load this record"
+        title="This record could not be loaded"
         description="The record or its module configuration could not be loaded. Try again or return to the record list."
         reset={() => void Promise.all([schema.refetch(), recordQuery.refresh(), moduleFields.refresh()])}
         backHref={listHref}

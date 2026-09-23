@@ -9,7 +9,7 @@ found a layout defect every automated check had passed over; that is written up 
 the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing at `9923ceb`.
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
-in progress** — batches 1–3 landed; see its status blocks for the batch plan.
+in progress** — batches 1–4 landed; see its status blocks for the batch plan.
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -6650,6 +6650,63 @@ already a two-match pair as *Add Task* / *Add task*, and nothing changes there.
 error copy that names the failure (*Failed to …*, *Something went wrong*) in route and panel
 states; empty states that describe without offering the create action; the five dialogs with no
 description (5.1 batch D); the seeded *Notes* section holding a *Notes* field (5.3).
+
+### Status: batch 4 — the voice
+
+**Much less was wrong than the brief was written against.** 5.1–5.8 standardised the states and
+the dialogs, and with them most of the voice: no confirmation says *Are you sure?* (all of them go
+through `useConfirm` and name the record), and of 149 success toasts, three were off. What was left
+was **error copy that names the failure** and a handful of empty states.
+
+**Errors name the fix.** 38 page-level fallbacks read *Failed to …* or *Something went wrong* —
+the string an operator sees when the server sends no message of its own. Each is now *what could
+not happen*, then *what to do*: *Failed to connect IMAP/SMTP mailbox.* → *The mailbox could not
+be connected. Check the server, port and password, then try again.* A copy failure says to copy by
+hand; a rejected MFA code says to enter the current one. **29 route and record-page error titles**
+moved from *Unable to load quotes* to *Quotes could not be loaded* — the form `PageShell`,
+`ListStates` and `RecordTable` already composed, so a failure reads the same whether a boundary or
+a primitive caught it. `RouteErrorState`'s default description stopped listing the two buttons
+under it and says what to do: *Check your connection, then try again. Nothing you saved has been
+lost.*
+
+**Not swept, and why:** the ~45 *Failed to …* fallbacks inside **hooks** (`useClientPortal` holds
+35). They become an `Error`'s message, and the pages that catch them render their own fixed copy —
+5.8 moved the portal to exactly that. They are unrendered; rewriting them would be churn.
+
+**Toasts.** *Module created* / *Module changes saved* → *Module created.* / *Module saved.*; the
+webhook's is *Webhook created.* (batch 3). *Record created.* on a custom module **stays**: the page
+knows only *record*, and its button is *Create record*, so it already keeps the action's name.
+
+**Empty states.** 76 read. Most without an action have one beside them — a header button or the
+form above — and repeating it inside the empty state would draw the same action twice. Three
+changed: the webhook list gains *Create webhook*; customer groups said *will appear here once the
+backend provides them*, which is the developer's view of the page; users referred to a button by
+name instead of saying what to do.
+
+**The five dialogs with no description (5.1 batch D) stay without one.** Task, event, payment,
+save-report and the command palette are each named by their title and explained by the form under
+it; a sentence restating the title is the *Are you sure?* problem in reverse. The ruling: **a
+dialog description is earned by saying something the title and the content do not.**
+
+**Deferred: the seeded *Notes* section holding one *Notes* field** (5.3's note). It is not copy —
+it is a seed in `backend/.../record_layouts.py` (three modules), and seeded layouts are persisted
+per tenant, so changing the seed moves new tenants only and existing ones need a data migration.
+Renaming the field's label to *Internal notes* would also rename it wherever the field renders.
+Filed for the owner as a data question, not taken in a copy batch.
+
+**Specs.** One moved: `auth-dashboard:38` asserted *Failed to start MFA setup*. Three specs assert
+headings that **no longer exist at HEAD before this batch** — `backups-revamp:209` *Unable to load
+backup settings*, `teams-revamp:238` *Unable to load teams and departments*, and
+`invoices-revamp:250` on the print page (a census `unchanged` row). Nothing in source renders
+those strings; the close-out run will show whether they are already on the failure list.
+
+| Check | Result |
+|---|---|
+| `npm run lint` | Clean |
+| `npm run build` | Green |
+
+**Next: batch 5** — `gap-5` / `p-5` onto the ladder (150 sites, contracts and support excluded),
+one two-column ratio, one grid breakpoint.
 
 ---
 

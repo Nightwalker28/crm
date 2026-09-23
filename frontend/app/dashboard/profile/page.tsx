@@ -319,7 +319,7 @@ export default function ProfilePage() {
   if (loadFailed) {
     return (
       <RouteErrorState
-        title="Unable to load profile"
+        title="Profile could not be loaded"
         description="Your profile could not be loaded. Check your connection and try again."
         reset={() => setLoadVersion((current) => current + 1)}
       />

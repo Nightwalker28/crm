@@ -67,7 +67,7 @@ export default function LoginPage() {
       const data = await res.json();
       window.location.href = data.auth_url;
     } catch {
-      setError(getErrorMessage("Failed to start Google sign-in"));
+      setError(getErrorMessage("Google sign-in could not be started. Try again."));
       setGoogleLoading(false);
     }
   }
@@ -81,7 +81,7 @@ export default function LoginPage() {
       const data = await res.json();
       window.location.href = data.auth_url;
     } catch {
-      setError(getErrorMessage("Failed to start Microsoft sign-in"));
+      setError(getErrorMessage("Microsoft sign-in could not be started. Try again."));
       setMicrosoftLoading(false);
     }
   }
@@ -102,7 +102,7 @@ export default function LoginPage() {
       }
       window.location.href = data.auth_url;
     } catch {
-      setError(getErrorMessage("Failed to start SSO sign-in"));
+      setError(getErrorMessage("SSO sign-in could not be started. Check the email address and try again."));
       setSsoLoading(false);
     }
   }
@@ -150,7 +150,7 @@ export default function LoginPage() {
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError(getErrorMessage("Failed to sign in"));
+      setError(getErrorMessage("Sign-in failed. Check your email and password and try again."));
     } finally {
       setFormLoading(false);
     }
@@ -173,7 +173,7 @@ export default function LoginPage() {
       setMfaOtpAuthUri("");
       setMfaCode("");
       setMfaRecoveryCodes([]);
-      setError(getErrorMessage("Failed to start MFA setup"));
+      setError(getErrorMessage("MFA setup could not be started. Try again."));
     } finally {
       setMfaLoading(false);
     }
@@ -199,7 +199,7 @@ export default function LoginPage() {
       router.replace("/dashboard");
       router.refresh();
     } catch {
-      setError(getErrorMessage("Failed to verify MFA"));
+      setError(getErrorMessage("That code was not accepted. Enter the current code from your authenticator."));
     } finally {
       setMfaLoading(false);
     }
@@ -219,7 +219,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error("MFA could not be enabled. Check the code and try again.");
       setMfaRecoveryCodes(Array.isArray(data?.backup_codes) ? data.backup_codes : []);
     } catch {
-      setError(getErrorMessage("Failed to enable MFA"));
+      setError(getErrorMessage("MFA could not be turned on. Enter a fresh code and try again."));
     } finally {
       setMfaLoading(false);
     }

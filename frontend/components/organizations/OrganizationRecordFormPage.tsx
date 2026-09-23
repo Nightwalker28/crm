@@ -183,7 +183,7 @@ export default function OrganizationRecordFormPage({
   if (mode === "edit" && summaryQuery.error)
     return (
       <RouteErrorState
-        title="Unable to load this account"
+        title="This account could not be loaded"
         reset={() => void summaryQuery.refetch()}
         backHref="/dashboard/sales/organizations"
         backLabel="Back to accounts"

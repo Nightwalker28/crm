@@ -132,7 +132,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
 
   if (mode === "edit" && summaryQuery.isLoading) return <RouteLoadingState label="contact" />;
   if (mode === "edit" && summaryQuery.error) {
-    return <RouteErrorState title="Unable to load this contact" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />;
+    return <RouteErrorState title="This contact could not be loaded" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />;
   }
 
   const title = mode === "edit" ? "Edit contact" : "Create contact";

@@ -239,8 +239,9 @@ export function IntegrationWebhookWorkspace() {
           description: "Existing webhooks are unchanged.",
         }}
         emptyState={{
-          title: "No notification channels configured",
-          description: "Add a webhook to receive CRM event notifications.",
+          title: "No webhooks yet",
+          description: "Create a webhook to post CRM events to Slack or Microsoft Teams.",
+          action: <Button type="button" onClick={openEditor}><Plus />Create webhook</Button>,
         }}
         columns={[
           {

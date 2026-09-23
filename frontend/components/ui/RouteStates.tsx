@@ -24,7 +24,7 @@ export function RouteLoadingState({ label = "page" }: { label?: string }) {
   return <div className="space-y-6" aria-label={`Loading ${label}`} aria-busy="true"><div><Skeleton className="h-7 w-40" /><Skeleton className="mt-3 h-4 w-full max-w-xl" /></div><Skeleton className="h-16 w-full rounded-[var(--radius-card)]" /><Skeleton className="h-[420px] w-full rounded-[var(--radius-card)]" /></div>;
 }
 
-export function RouteErrorState({ title, description = "The page could not be loaded. You can try again or return to the previous page.", reset, backHref = "/dashboard", backLabel = "Return to dashboard", titleAs: Title = "h1" }: { title: string; description?: string; reset: () => void; backHref?: string; backLabel?: string } & RouteStateTitleProps) {
+export function RouteErrorState({ title, description = "Check your connection, then try again. Nothing you saved has been lost.", reset, backHref = "/dashboard", backLabel = "Return to dashboard", titleAs: Title = "h1" }: { title: string; description?: string; reset: () => void; backHref?: string; backLabel?: string } & RouteStateTitleProps) {
   return <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-6"><Title className="text-lg font-semibold text-copy-primary">{title}</Title><p className="mt-2 text-p-sm text-copy-secondary">{description}</p><div className="mt-4 flex flex-wrap gap-2"><Button type="button" onClick={reset}><RotateCcw />Try again</Button><Button asChild variant="outline"><Link href={backHref}>{backLabel}</Link></Button></div></div>;
 }
 

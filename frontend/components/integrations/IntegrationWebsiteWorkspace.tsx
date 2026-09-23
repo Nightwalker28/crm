@@ -198,7 +198,7 @@ export function IntegrationWebsiteWorkspace() {
       await navigator.clipboard.writeText(latestApiKey);
       toast.success("API key copied.");
     } catch {
-      toast.error("Failed to copy API key.");
+      toast.error("The key could not be copied. Select it and copy it by hand.");
     }
   }
 

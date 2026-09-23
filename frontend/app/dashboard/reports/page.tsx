@@ -526,7 +526,7 @@ export default function ReportsPage() {
 
   if (modulesQuery.isLoading) return <RouteLoadingState label="reports" />;
   if (modulesQuery.error) {
-    return <RouteErrorState title="Unable to load reports" reset={() => void modulesQuery.refetch()} />;
+    return <RouteErrorState title="Reports could not be loaded" reset={() => void modulesQuery.refetch()} />;
   }
 
   return (

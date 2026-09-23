@@ -154,7 +154,7 @@ export default function OrderRecordFormPage({
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
-        title="Unable to load order"
+        title="Order could not be loaded"
         reset={() => void query.refetch()}
         backHref="/dashboard/sales/orders"
         backLabel="Back to orders"

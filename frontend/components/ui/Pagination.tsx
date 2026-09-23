@@ -36,7 +36,7 @@ async function fetchPaginationConfig() {
   const res = await apiFetch("/config/pagination");
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load pagination config.");
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Page sizes could not be loaded. Reload the page to try again.");
   }
   return body as PaginationConfig;
 }

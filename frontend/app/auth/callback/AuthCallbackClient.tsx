@@ -28,7 +28,7 @@ export default function AuthCallbackClient() {
   const message = (() => {
     if (status === "forbidden") return "Your account must be added by an administrator before Google sign-in can be used.";
     if (status === "inactive") return "Your account has been deactivated. Please contact an administrator.";
-    if (status === "error") return "Something went wrong during login";
+    if (status === "error") return "Sign-in could not be completed. Start again from the sign-in page.";
     if (status === "active") return null;
     return "Login failed";
   })();

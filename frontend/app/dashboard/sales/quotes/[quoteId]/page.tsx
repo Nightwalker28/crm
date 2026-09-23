@@ -302,7 +302,7 @@ export default function QuoteDetailPage() {
       ]);
       toast.success("Quote converted to order.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to convert quote to order.");
+      toast.error(error instanceof Error ? error.message : "The quote could not be converted. Check that it is accepted and try again.");
     } finally {
       setConverting(false);
     }
@@ -609,7 +609,7 @@ function ProposalPanel({
       onChanged();
       toast.success("Proposal generated.");
     } catch (generateError) {
-      setError(generateError instanceof Error ? generateError.message : "Failed to generate proposal.");
+      setError(generateError instanceof Error ? generateError.message : "The proposal could not be generated. Try again.");
     } finally {
       setBusy(null);
     }
@@ -630,7 +630,7 @@ function ProposalPanel({
       onChanged();
       toast.success("Proposal marked sent.");
     } catch (sendError) {
-      setError(sendError instanceof Error ? sendError.message : "Failed to send proposal.");
+      setError(sendError instanceof Error ? sendError.message : "The proposal could not be sent. Check the recipient and try again.");
     } finally {
       setBusy(null);
     }

@@ -167,7 +167,7 @@ export default function OpportunityRecordFormPage({
   if (mode === "edit" && summaryQuery.error)
     return (
       <RouteErrorState
-        title="Unable to load this deal"
+        title="This deal could not be loaded"
         reset={() => void summaryQuery.refetch()}
         backHref="/dashboard/sales/opportunities"
         backLabel="Back to deals"

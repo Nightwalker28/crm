@@ -221,7 +221,7 @@ export default function MailPage() {
       router.replace("/dashboard/mail");
     }
     if (mailConnectStatus === "error") {
-      toast.error("Failed to connect Gmail inbox.");
+      toast.error("Gmail could not be connected. Try again, and allow access when Google asks.");
       router.replace("/dashboard/mail");
     }
   }, [mailConnectStatus, router]);
@@ -255,7 +255,7 @@ export default function MailPage() {
       .catch((error) => {
         if (!cancelled) {
           setLinkTargets([]);
-          toast.error(getErrorMessage(error, "Failed to search records."));
+          toast.error(getErrorMessage(error, "Records could not be searched. Try again."));
         }
       })
       .finally(() => {
@@ -302,7 +302,7 @@ export default function MailPage() {
       toast.success("IMAP/SMTP mailbox connected.");
       setImapFormOpen(false);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to connect IMAP/SMTP mailbox."));
+      toast.error(getErrorMessage(error, "The mailbox could not be connected. Check the server, port and password, then try again."));
     } finally {
       setImapForm((current) => ({ ...current, password: "" }));
     }
@@ -337,7 +337,7 @@ export default function MailPage() {
         setImapForm(emptyImapForm);
       }
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to disconnect mailbox."));
+      toast.error(getErrorMessage(error, "The mailbox could not be disconnected. Try again."));
     }
   }
 
@@ -373,7 +373,7 @@ export default function MailPage() {
       setLinkModuleKey("sales_contacts");
       setLinkSearch(selectedMessage.from_email ?? "");
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to create contact from this email."));
+      toast.error(getErrorMessage(error, "A contact could not be created from this email. Try again."));
     } finally {
       setCreatingContact(false);
     }
@@ -388,7 +388,7 @@ export default function MailPage() {
       });
       toast.success(`Mail linked to ${target.label}.`);
     } catch (error) {
-      toast.error(getErrorMessage(error, "Failed to link mail."));
+      toast.error(getErrorMessage(error, "The email could not be linked. Try again."));
     }
   }
 

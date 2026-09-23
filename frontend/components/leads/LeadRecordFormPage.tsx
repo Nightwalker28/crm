@@ -137,7 +137,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   }
 
   if (mode === "edit" && summaryQuery.error) {
-    return <RouteErrorState title="Unable to load this lead" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/leads" backLabel="Back to leads" />;
+    return <RouteErrorState title="This lead could not be loaded" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/leads" backLabel="Back to leads" />;
   }
 
   const title = mode === "edit" ? "Edit lead" : "Create lead";

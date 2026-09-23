@@ -104,7 +104,7 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!taskId || !taskDetailQuery.error) return;
-    toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "Failed to load task.");
+    toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "This task could not be opened. Check your connection and try again.");
     updateAddress(clearDialogAddress);
   }, [taskDetailQuery.error, taskId, updateAddress]);
 

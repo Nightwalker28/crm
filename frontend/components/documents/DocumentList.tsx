@@ -135,7 +135,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
       if (versionInputRef.current) versionInputRef.current.value = "";
       toast.success("Document version uploaded.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to upload document version."));
+      toast.error(errorMessage(error, "The new version could not be uploaded. Check the file type and try again."));
     }
   }
 
@@ -148,7 +148,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
       });
       toast.success(nextTemplate ? "Document marked as template." : "Template flag removed.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update template status."));
+      toast.error(errorMessage(error, "The template setting could not be changed. Try again."));
     }
   }
 
@@ -179,7 +179,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
       setShareExpiresAt("");
       toast.success("Document shared with client portal.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to share document."));
+      toast.error(errorMessage(error, "The share link could not be created. Try again."));
     }
   }
 
@@ -195,7 +195,7 @@ function DocumentDetailPanel({ document, canEdit }: { document: DocumentItem; ca
       await revokeDocumentClientShare({ documentId: document.id, shareId });
       toast.success("Client document access revoked.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to revoke document access."));
+      toast.error(errorMessage(error, "Access could not be revoked. Try again."));
     }
   }
 

@@ -228,7 +228,7 @@ export default function MessageTemplateRecordFormPage({ templateId = null }: { t
 
   if (modulesLoading || (templateId !== null && templatesQuery.isLoading)) return <RouteLoadingState label="message template" />;
   if (!permitted) return <PermissionDeniedState />;
-  if (templatesQuery.error) return <RouteErrorState title="Unable to load this template" reset={() => void templatesQuery.refetch()} backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
+  if (templatesQuery.error) return <RouteErrorState title="This template could not be loaded" reset={() => void templatesQuery.refetch()} backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
   const template = templateId === null ? null : templatesQuery.data?.find((item) => item.id === templateId) ?? null;
   if (templateId !== null && !template) return <RouteNotFoundState recordLabel="Message template" backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
   return <TemplateEditor key={template?.id ?? "new"} template={template} />;

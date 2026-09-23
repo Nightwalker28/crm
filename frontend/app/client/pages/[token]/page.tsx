@@ -59,7 +59,7 @@ export default function PublicClientPage() {
     try {
       await downloadPublicClientPageDocument(token, document);
     } catch {
-      toast.error("Failed to open document.");
+      toast.error("The document could not be opened. Check your connection and try again.");
     } finally {
       setOpeningDocumentId(null);
     }

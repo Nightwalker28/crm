@@ -333,7 +333,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save backup settings."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Backup settings could not be saved. Check the destination and try again."),
   });
   useUnsavedChangesGuard(isSettingsDirty, saveMutation.isPending);
 
@@ -356,7 +356,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create tenant backup."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The backup could not be started. Check the destination and try again."),
   });
 
   const previewRestoreMutation = useMutation({
@@ -368,7 +368,7 @@ export default function BackupSettingsPage() {
       setRestorePreview(result);
       toast.success("Restore preview ready.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to preview restore."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The restore preview could not be prepared. Choose the backup again and retry."),
   });
 
   const executeRestoreMutation = useMutation({
@@ -389,7 +389,7 @@ export default function BackupSettingsPage() {
       }
       await queryClient.invalidateQueries({ queryKey: ["activity-log"] });
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore module."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The module could not be restored. Review the preview and try again."),
   });
 
   const previewWholeRestoreMutation = useMutation({
@@ -401,7 +401,7 @@ export default function BackupSettingsPage() {
       setWholeRestorePreview(result);
       toast.success("Whole-tenant restore preview ready.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to preview whole-tenant restore."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The restore preview could not be prepared. Choose the backup again and retry."),
   });
 
   const executeWholeRestoreMutation = useMutation({
@@ -420,7 +420,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore tenant."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The workspace could not be restored. Review the preview and try again."),
   });
 
   const deleteRunMutation = useMutation({
@@ -432,7 +432,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to delete backup artifact."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The backup could not be deleted. Try again."),
   });
 
   async function downloadRun(run: TenantBackupRun) {

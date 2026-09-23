@@ -48,7 +48,7 @@ export default function ConvertLeadPage() {
 
   if (modulesLoading || summaryQuery.isLoading) return <RouteLoadingState label="lead conversion" />;
   if (!leadActions?.can_edit || !canPrepareTargets) return <PermissionDeniedState />;
-  if (!summaryQuery.data || summaryQuery.error) return <RouteErrorState title="Unable to prepare this lead conversion" reset={() => void summaryQuery.refetch()} backHref={backHref} backLabel="Back to lead" />;
+  if (!summaryQuery.data || summaryQuery.error) return <RouteErrorState title="This lead could not be prepared for conversion" reset={() => void summaryQuery.refetch()} backHref={backHref} backLabel="Back to lead" />;
 
   const lead = summaryQuery.data.lead;
   const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.primary_email;

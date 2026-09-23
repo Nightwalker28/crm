@@ -137,7 +137,7 @@ export default function InsertionOrderRecordFormPage({
   if (mode === "edit" && orderQuery.error) {
     return (
       <RouteErrorState
-        title="Unable to load insertion order"
+        title="Insertion order could not be loaded"
         description="We could not load this insertion order. Try again or return to the list."
         reset={() => void orderQuery.refetch()}
         backHref="/dashboard/finance/insertion-orders"

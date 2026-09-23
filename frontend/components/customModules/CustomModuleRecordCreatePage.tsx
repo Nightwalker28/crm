@@ -62,7 +62,7 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
   if (schema.error || moduleFields.error || !schema.data) {
     return (
       <RouteErrorState
-        title="Unable to prepare this record"
+        title="This record could not be prepared"
         description="The module configuration could not be loaded. Try again or return to the record list."
         reset={() => void Promise.all([schema.refetch(), moduleFields.refresh()])}
         backHref={`/dashboard/custom/${moduleKey}`}
