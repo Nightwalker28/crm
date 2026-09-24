@@ -235,7 +235,9 @@ test("Teams and Departments exposes a fixed recoverable load error", async ({ pa
 
   await page.goto("/dashboard/settings/teams");
 
-  await expect(page.getByRole("heading", { name: "Unable to load teams and departments" })).toBeVisible();
+  // The whole-route state names the page; its title is a paragraph because the page's one
+  // heading is the surface title above it (design.md 8).
+  await expect(page.getByRole("alert").getByText("Teams could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/tenant_id=42|private-host/)).toHaveCount(0);
 });

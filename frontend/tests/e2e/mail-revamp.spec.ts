@@ -78,7 +78,7 @@ test("Mail composer is responsive, validates recipients, and sends through the s
   );
 
   await page.goto("/dashboard/mail/compose");
-  await expect(page.getByRole("heading", { name: "Compose email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compose email", level: 2 })).toBeVisible();
 
   await page.getByRole("textbox", { name: "To" }).fill("not-an-email");
   await page.getByRole("button", { name: "Send email" }).click();

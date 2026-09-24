@@ -373,7 +373,9 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
       }),
     }),
   );
-  await page.route("**/sales/leads?**", (route) =>
+  // The API path, not `**/sales/leads?**`: choosing a view puts `?view=` in the page's own URL
+  // (rebuild 5.5), and the broad glob answered that navigation with this JSON.
+  await page.route("**/api/v1/sales/leads?**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -426,10 +428,8 @@ test("Leads list keeps its controls usable in a narrow viewport", async ({ page 
   expect(tableBounds?.height).toBeLessThan(400);
   await expect(tableRegion.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Qualified" })).toBeVisible();
   await expect(tableRegion.locator('[data-slot="status-value"][data-tone="category"]', { hasText: "Warm" })).toBeVisible();
-  const stickyPositions = await tableRegion.locator("thead th").evaluateAll((headers) =>
-    headers.slice(0, 2).map((header) => window.getComputedStyle(header).position),
-  );
-  expect(stickyPositions).toEqual(["sticky", "sticky"]);
+  // The header row pins as one: `thead` is sticky (Table), not each cell (design.md 4.4).
+  expect(await tableRegion.locator("thead").evaluate((head) => window.getComputedStyle(head).position)).toBe("sticky");
 
   const filtersButton = page.getByRole("button", { name: /Filters/ });
   await filtersButton.focus();
@@ -836,10 +836,11 @@ test("Lead workspace distinguishes denied and missing records", async ({ page })
   );
 
   await page.goto(`/dashboard/sales/leads/${deniedLeadId}`);
-  await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
+  await expect(page.getByRole("alert").getByText("You do not have permission to view this page", { exact: true })).toBeVisible();
 
   await page.goto(`/dashboard/sales/leads/${missingLeadId}`);
-  await expect(page.getByRole("heading", { name: "Lead not found" })).toBeVisible();
+  // A whole-route state titles itself in a paragraph; the page's one heading is the surface title.
+  await expect(page.getByText("Lead not found", { exact: true })).toBeVisible();
 });
 
 test("Lead detail layout failure stays contained to Details", async ({ page }) => {

@@ -174,8 +174,8 @@ export default function LeadConversionForm({
           />
           {!shouldCreateAccount && capabilities.canViewOrganizations ? (
             <Field className="mt-4">
-              <FieldLabel>Existing account</FieldLabel>
-              <LinkedRecordPicker recordType="organization" valueId={accountId} displayValue={accountSearch} onDisplayValueChange={(value) => { setAccountSearch(value); setAccountId(null); }} onSelect={(option) => { setAccountId(option.id); setAccountSearch(option.label); }} onClear={() => { setAccountId(null); setAccountSearch(""); }} placeholder="Search accounts" queryKeyPrefix="convert-lead-account" noResultsText="No accounts matched this search." />
+              <FieldLabel htmlFor="lead-conversion-existing-account">Existing account</FieldLabel>
+              <LinkedRecordPicker inputId="lead-conversion-existing-account" recordType="organization" valueId={accountId} displayValue={accountSearch} onDisplayValueChange={(value) => { setAccountSearch(value); setAccountId(null); }} onSelect={(option) => { setAccountId(option.id); setAccountSearch(option.label); }} onClear={() => { setAccountId(null); setAccountSearch(""); }} placeholder="Search accounts" queryKeyPrefix="convert-lead-account" noResultsText="No accounts matched this search." />
             </Field>
           ) : null}
         </FormSection>
@@ -192,8 +192,8 @@ export default function LeadConversionForm({
           />
           {!shouldCreateContact && capabilities.canViewContacts ? (
             <Field className="mt-4">
-              <FieldLabel>Existing contact</FieldLabel>
-              <LinkedRecordPicker recordType="contact" valueId={contactId} displayValue={contactSearch} onDisplayValueChange={(value) => { setContactSearch(value); setContactId(null); }} onSelect={(option) => { setContactId(option.id); setContactSearch(option.label); if (!shouldCreateAccount && !accountId && option.organization_id) { setAccountId(option.organization_id); setAccountSearch(option.organization_name || "Linked via contact"); } }} onClear={() => { setContactId(null); setContactSearch(""); }} placeholder="Search contacts" queryKeyPrefix="convert-lead-contact" noResultsText="No contacts matched this search." />
+              <FieldLabel htmlFor="lead-conversion-existing-contact">Existing contact</FieldLabel>
+              <LinkedRecordPicker inputId="lead-conversion-existing-contact" recordType="contact" valueId={contactId} displayValue={contactSearch} onDisplayValueChange={(value) => { setContactSearch(value); setContactId(null); }} onSelect={(option) => { setContactId(option.id); setContactSearch(option.label); if (!shouldCreateAccount && !accountId && option.organization_id) { setAccountId(option.organization_id); setAccountSearch(option.organization_name || "Linked via contact"); } }} onClear={() => { setContactId(null); setContactSearch(""); }} placeholder="Search contacts" queryKeyPrefix="convert-lead-contact" noResultsText="No contacts matched this search." />
             </Field>
           ) : null}
         </FormSection>
@@ -210,8 +210,8 @@ export default function LeadConversionForm({
           />
           {shouldCreateDeal ? (
             <FieldGroup columns={2} className="mt-4">
-              <Field><FieldLabel>Opportunity name</FieldLabel><Input value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
-              <Field><FieldLabel>Initial stage</FieldLabel><Select value={dealStage} onValueChange={setDealStage}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((stage) => <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>)}</SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="lead-conversion-opportunity-name">Opportunity name</FieldLabel><Input id="lead-conversion-opportunity-name" value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
+              <Field><FieldLabel htmlFor="lead-conversion-initial-stage">Initial stage</FieldLabel><Select value={dealStage} onValueChange={setDealStage}><SelectTrigger id="lead-conversion-initial-stage"><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((stage) => <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>)}</SelectContent></Select></Field>
             </FieldGroup>
           ) : null}
         </FormSection>

@@ -148,5 +148,8 @@ test("removes sheet transforms and transitions when reduced motion is requested"
   const surface = page.getByRole("dialog", { name: "Create test record" });
   await expect(surface).toHaveAttribute("data-reduced-motion", "true");
   await expect(surface).toHaveCSS("transform", "none");
-  await expect(surface).toHaveCSS("transition-duration", "0s");
+  // globals.css collapses every transition to 0.01ms under reduced motion (design.md 6), with
+  // !important, so the computed value is 1e-05s rather than 0s. Either is no motion.
+  const duration = await surface.evaluate((el) => parseFloat(getComputedStyle(el).transitionDuration));
+  expect(duration).toBeLessThanOrEqual(0.00001);
 });

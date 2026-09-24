@@ -140,11 +140,13 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
   const requiredSetting = page.getByRole("group", { name: "Required" });
   const listSetting = page.getByRole("group", { name: "Include in initial system default view" });
-  await expect(requiredSetting.getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
-  await expect(listSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
-  await requiredSetting.getByRole("button", { name: "On" }).click();
-  await expect(requiredSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByLabel("Label", { exact: true }).fill("Request Priority");
+  // A boolean property is a SegmentedBoolean: two radios, Yes and No (a state such as
+  // "Field enabled" reads On and Off).
+  await expect(requiredSetting.getByRole("radio", { name: "No" })).toHaveAttribute("aria-checked", "true");
+  await expect(listSetting.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "true");
+  await requiredSetting.getByRole("radio", { name: "Yes" }).click();
+  await expect(requiredSetting.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Request Priority");
   await page.getByRole("button", { name: "Done editing field" }).click();
   await page.getByRole("button", { name: "Move Request Priority up" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
@@ -164,7 +166,7 @@ test("uses the workspace module selector and guards dirty switching", async ({ p
   await page.goto("/dashboard/settings/module-builder");
 
   await page.getByRole("button", { name: "Edit Priority" }).click();
-  await page.getByLabel("Label", { exact: true }).fill("Urgency");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Urgency");
   await page.getByRole("button", { name: "Done editing field" }).click();
 
   await page.getByRole("combobox", { name: "Module" }).click();
@@ -183,7 +185,7 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.goto("/dashboard/settings/module-builder");
 
   await page.getByRole("button", { name: "Add field" }).click();
-  await page.getByLabel("Label", { exact: true }).fill("Status");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Status");
   await page.getByLabel("Field type").click();
   await page.getByRole("option", { name: "single select" }).click();
   await page.getByLabel("Options").fill("New\nResolved");

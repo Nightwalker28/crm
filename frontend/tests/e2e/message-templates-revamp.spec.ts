@@ -65,7 +65,7 @@ test("Message template creation uses a responsive routed form and preserves dott
 test("Message template editing hydrates the routed form and confirms deletion from the list", async ({ page }) => {
   await page.goto(`/dashboard/settings/message-templates/${templateId}/edit`);
   // Routed settings pages carry no heading of their own; the shell header names the section.
-  await expect(page.locator("main > div > header").getByRole("heading", { name: "Templates" })).toBeVisible();
+  await expect(page.locator("main > div > header").getByText("Templates", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Template details" })).toBeVisible();
   await expect(page.getByLabel("Name")).toHaveValue("Quote follow-up");
   await expect(page.getByLabel("Body")).toHaveValue(/{{contact\.first_name}}/);

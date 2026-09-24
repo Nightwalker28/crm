@@ -69,7 +69,7 @@ test("Deals keep the list available when pipeline totals fail and retry with fix
 test("Deal create, detail, and edit use routed record workflows", async ({ page }) => {
   await page.route(`**/sales/opportunities/${dealId}/summary`, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(summary) }));
   await page.goto("/dashboard/sales/opportunities/new");
-  await expect(page.getByRole("heading", { name: "Create deal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create deal", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: "Create deal" }).click();
   await expect(page.getByText("Deal name is required.")).toBeVisible();
   await expect(page.getByText("Select an existing contact.")).toBeVisible();

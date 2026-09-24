@@ -96,10 +96,8 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
   await page.getByRole("button", { name: "Add Last name" }).click();
   await page.getByRole("button", { name: "Move Email up" }).focus();
   await page.keyboard.press("Enter");
-  await page.getByRole("tab", { name: "Filters" }).click();
-  await page.getByLabel("Default search").fill("active customer");
-  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
+  // Read the order while the Columns panel is showing: tabs render only the active panel.
   const selectedOrder = await page.locator('[data-testid^="selected-column-"]').evaluateAll((items) =>
     items.map((item) => item.getAttribute("data-testid")),
   );
@@ -108,6 +106,10 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
     "selected-column-first_name",
     "selected-column-last_name",
   ]);
+
+  await page.getByRole("tab", { name: "Filters" }).click();
+  await page.getByLabel("Default search").fill("active customer");
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
   const updateRequest = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/users/saved-views/sales_contacts/72"));
   await page.getByRole("button", { name: "Save changes" }).click();
   const request = await updateRequest;
@@ -148,7 +150,7 @@ test("adds editable AND and OR conditions and omits the redundant views breadcru
   await expect(page.getByText("No AND conditions yet.")).toHaveCount(0);
   await page.getByRole("button", { name: "Add OR Condition" }).click();
   await expect(page.getByText("No OR conditions yet.")).toHaveCount(0);
-  await expect(page.getByText("2 saved conditions")).toBeVisible();
+  await expect(page.getByText("2 columns · 2 conditions · Default sorting")).toBeVisible();
 });
 
 test("failed and concurrently deleted saves preserve the editable draft", async ({ page }) => {

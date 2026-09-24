@@ -310,11 +310,12 @@ test("Document library failures use recoverable messages without backend detail"
   await page.goto("/dashboard/documents");
 
   await expect(page.getByText("Storage usage is unavailable. Upload limits are still enforced by the server.")).toBeVisible();
-  await expect(page.getByText("Documents could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Documents could not be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByText("tenant_storage_limit_bytes missing for tenant 9001")).toBeHidden();
   await expect(page.getByText("SELECT documents FROM tenant_9001 failed")).toBeHidden();
-  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  // One retry for the storage meter, one for the list: each failure recovers on its own.
+  await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(2);
 });
 
 test("Revoking client document access requires confirmation", async ({ page }) => {

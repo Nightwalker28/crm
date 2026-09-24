@@ -306,7 +306,7 @@ test("More details continues on the canonical create route with the entered valu
   await panel.getByRole("button", { name: "More details" }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new\?draft=quick-create$/);
-  await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create lead", level: 2 })).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue(createdLeadEmail);
   await expect(page.getByRole("group").filter({ hasText: "First name" }).getByRole("textbox")).toHaveValue("Handed");
   await expect(page.getByRole("group").filter({ hasText: "Company" }).getByRole("textbox")).toHaveValue("Lynk QA");

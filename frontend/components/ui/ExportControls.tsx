@@ -32,6 +32,14 @@ type Props = {
   currentPageIds: number[];
   disabled?: boolean;
   onExportSuccess?: () => void;
+  /**
+   * Controlled from outside a menu. A dialog that lives inside `DropdownMenuContent` unmounts
+   * the moment the item that opened it closes the menu, so a caller that puts the item in a
+   * menu owns the open state and renders this beside the menu with `hideTrigger`.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
 type ExportExecutionResponse = {
@@ -60,10 +68,18 @@ export function ExportControls({
   currentPageIds,
   disabled,
   onExportSuccess,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: Props) {
   const downloadedExportJobRef = useRef<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isExportDialogOpen = open ?? ownOpen;
+  const setIsExportDialogOpen = (next: boolean) => {
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [exportMode, setExportMode] = useState<ExportMode>("all");
   const [exportJobId, setExportJobId] = useState<number | null>(null);
   const [exportSummary, setExportSummary] = useState<Record<string, unknown> | null>(null);
@@ -164,13 +180,15 @@ export function ExportControls({
 
   return (
     <>
-      <DropdownMenuItem
-        disabled={disabled || isExporting}
-        onSelect={() => setIsExportDialogOpen(true)}
-      >
-        <Download aria-hidden="true" />
-        {isExporting ? "Preparing export…" : exportLabel}
-      </DropdownMenuItem>
+      {hideTrigger ? null : (
+        <DropdownMenuItem
+          disabled={disabled || isExporting}
+          onSelect={() => setIsExportDialogOpen(true)}
+        >
+          <Download aria-hidden="true" />
+          {isExporting ? "Preparing export…" : exportLabel}
+        </DropdownMenuItem>
+      )}
 
       <Dialog open={isExportDialogOpen} onClose={() => { if (!isExporting) resetExportState(); }}>
         <DialogBackdrop />

@@ -133,8 +133,8 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
         ) : null}
         {enabled("team_id") ? (
           <Field>
-            <FieldLabel>Team</FieldLabel>
-            <LinkedRecordPicker
+            <FieldLabel htmlFor="lead-team">Team</FieldLabel>
+            <LinkedRecordPicker inputId="lead-team"
               recordType="team"
               valueId={value.team_id}
               displayValue={value.team_name}
@@ -151,9 +151,9 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
         ) : null}
         {enabled("status") ? (
           <Field>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel htmlFor="lead-status">Status</FieldLabel>
             <Select value={value.status} onValueChange={(status) => onChange({ ...value, status })}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectTrigger id="lead-status"><SelectValue /></SelectTrigger>
               <SelectContent>{LEAD_STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent>
             </Select>
           </Field>

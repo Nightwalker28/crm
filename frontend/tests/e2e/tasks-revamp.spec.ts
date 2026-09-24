@@ -155,7 +155,8 @@ test("Task list failures do not expose backend details", async ({ page }) => {
   );
   await page.goto("/dashboard/tasks");
 
-  await expect(page.getByText("Tasks could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Tasks could not be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByText("database_connection=secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

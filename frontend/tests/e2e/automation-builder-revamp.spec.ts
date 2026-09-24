@@ -61,22 +61,26 @@ test("shows distinct loading, error, and empty rule-list states", async ({ page 
   const pending = new Promise<void>((resolve) => { release = resolve; });
   await page.route(/\/admin\/automation-rules(?:\?.*)?$/, async (route) => { await pending; await route.fulfill({ status: 500, contentType: "application/json", body: "{}" }); });
   await page.goto("/dashboard/settings/automation");
-  await expect(page.getByLabel("Loading automation rules")).toBeVisible();
+  // The rules and the trigger registry are the page's content, so it loads and fails as a
+  // whole route (PageShell), not as a panel inside it.
+  await expect(page.getByLabel("Loading automation")).toBeVisible();
   release();
-  await expect(page.getByRole("alert")).toContainText("Automation rules could not be loaded");
+  // Filtered: in development Next mounts an empty route announcer that is also role="alert".
+  await expect(page.getByRole("alert").filter({ hasText: "Automation could not be loaded" })).toBeVisible();
 
   await page.unroute(/\/admin\/automation-rules(?:\?.*)?$/);
   await page.route(/\/admin\/automation-rules(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }));
   await page.reload();
   await expect(page.getByText("No automation rules yet")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Create rule" })).toBeVisible();
+  // The header keeps its Create rule; the empty state offers the same action (design.md 7.4).
+  await expect(page.locator('[data-slot="empty-state"]').getByRole("button", { name: "Create rule" })).toBeVisible();
 });
 
 test("creates a rule with multiple actions through the existing API", async ({ page }) => {
   await page.goto("/dashboard/settings/automation");
   await page.getByRole("button", { name: "Create rule" }).click();
   await page.getByRole("button", { name: /Untitled automation/ }).click();
-  await page.getByLabel("Name", { exact: true }).fill("Valid new lead workflow");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Valid new lead workflow");
   await page.getByRole("button", { name: "Done editing" }).click();
   await page.getByRole("button", { name: "Action", exact: true }).click();
   await page.getByRole("button", { name: "Done editing" }).click();
@@ -95,7 +99,7 @@ test("edits multiple steps, reorders actions, guards unsaved exit, and saves", a
   await page.getByText("High priority lead follow-up", { exact: true }).click();
   await page.getByText("High priority lead follow-up", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
-  await page.getByLabel("Name", { exact: true }).fill("Valid urgent lead workflow");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Valid urgent lead workflow");
   await page.getByRole("button", { name: "Done editing" }).click();
   await page.getByTestId("automation-condition-0").getByRole("button").first().click();
   await page.getByLabel("Condition value").click(); await page.getByRole("option", { name: "Qualified" }).click();
@@ -114,18 +118,18 @@ test("edits multiple steps, reorders actions, guards unsaved exit, and saves", a
 test("duplicates rules and preview-gates invalid enablement", async ({ page }) => {
   await page.goto("/dashboard/settings/automation");
   await page.getByLabel("More actions for Dormant lead reminder").click();
-  await page.getByRole("button", { name: "Enable", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Enable", exact: true }).click();
   await expect(page.getByText("This rule cannot be enabled until preview validation passes.")).toBeVisible();
   await page.getByLabel("More actions for Dormant lead reminder").click();
-  await page.getByRole("button", { name: "Duplicate" }).click();
+  await page.getByRole("menuitem", { name: "Duplicate" }).click();
   await page.getByText("Dormant lead reminder copy", { exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
-  await expect(page.getByLabel("Name", { exact: true })).toHaveValue("Dormant lead reminder copy");
+  await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Dormant lead reminder copy");
 });
 
 test("keeps run history separate and opens sanitized details in a sheet", async ({ page }) => {
   await page.goto("/dashboard/settings/automation");
-  await page.getByRole("button", { name: "Runs" }).click();
+  await page.getByRole("radio", { name: "Runs" }).click();
   await expect(page.getByRole("columnheader", { name: "Source" })).toBeVisible();
   await expect(page.getByText("Ada Lovelace")).toBeVisible();
   await page.getByRole("button", { name: "Inspect" }).click();

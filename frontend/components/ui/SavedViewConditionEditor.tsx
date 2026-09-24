@@ -176,7 +176,7 @@ function ConditionGroupsContent({
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label={`Condition ${index + 1} field`}>
                           <SelectValue placeholder="Choose field" />
                         </SelectTrigger>
                         <SelectContent>
@@ -202,7 +202,7 @@ function ConditionGroupsContent({
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label={`Condition ${index + 1} operator`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -223,6 +223,7 @@ function ConditionGroupsContent({
                         </div>
                       ) : selectedField?.type === "relation" && selectedField.recordType ? (
                         <LinkedRecordPicker
+                          ariaLabel={`Condition ${index + 1} value`}
                           recordType={selectedField.recordType}
                           valueId={relationValueId}
                           displayValue={
@@ -252,7 +253,7 @@ function ConditionGroupsContent({
                           value={typeof condition.value === "string" ? condition.value : ""}
                           onValueChange={(value) => updateCondition(groupKey, index, { value })}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger aria-label={`Condition ${index + 1} value`}>
                             <SelectValue placeholder="Choose value" />
                           </SelectTrigger>
                           <SelectContent>
@@ -265,6 +266,7 @@ function ConditionGroupsContent({
                         </Select>
                       ) : (
                         <Input
+                          aria-label={`Condition ${index + 1} value`}
                           type={selectedField?.type === "number" ? "number" : selectedField?.type === "date" ? "date" : "text"}
                           value={
                             usesListValue

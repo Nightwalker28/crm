@@ -42,7 +42,10 @@ function optionIdentity(recordType: LinkedRecordType, option: LinkedRecordOption
 }
 
 type Props = {
+  /** Ties a visible `FieldLabel htmlFor` to the input. Prefer this. */
   inputId?: string;
+  /** Only where no visible label exists (design.md 8): a placeholder is not a name. */
+  ariaLabel?: string;
   inputRef?: Ref<HTMLInputElement>;
   recordType: LinkedRecordType;
   valueId: number | null;
@@ -238,6 +241,7 @@ async function searchLinkedRecords(
 
 export default function LinkedRecordPicker({
   inputId,
+  ariaLabel,
   inputRef,
   recordType,
   valueId,
@@ -305,6 +309,7 @@ export default function LinkedRecordPicker({
       <div className="flex gap-2">
         <Input
           id={inputId}
+          aria-label={ariaLabel}
           ref={inputRef}
           value={displayValue}
           disabled={disabled}

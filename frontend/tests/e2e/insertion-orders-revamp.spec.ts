@@ -203,7 +203,7 @@ test("Insertion Order creation is routed, responsive, and focuses the required c
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/finance/insertion-orders/new");
 
-  await expect(page.getByRole("heading", { name: "Create insertion order" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create insertion order", level: 2 })).toBeVisible();
   const customerType = page.getByRole("combobox", { name: "Customer type" });
   await expect(customerType).toBeVisible();
   await customerType.click();
@@ -257,7 +257,8 @@ test("Insertion Order creation preserves commercial fields and redacts backend f
     tax_amount: 100,
     total_amount: 1100,
   });
-  await expect(page.getByText("We could not create this insertion order. Review the fields and try again.")).toBeVisible();
+  // The alert is a title and a fix, two lines (design.md 7.5).
+  await expect(page.getByRole("alert").filter({ hasText: "We could not create this insertion order." })).toContainText("Review the fields and try again.");
   await expect(page.getByText("sql_connection=private-secret")).toBeHidden();
 });
 

@@ -10,7 +10,8 @@ the sub-phase. **5.6 is done** — all 23 settings pages, batches 1–8, closing
 **5.7 is done** — batches 1–8b and the close-out, `4961c25` through the close-out's correction
 commits. **5.8 is done** — batches 1–6, `75793ca` through the batch 6 close-out. **5.9 is
 done** — batches 1–5 and the close-out, `5677bc8` through the batch 6 correction. **5.10 is
-next.**
+done** — the source and rendered guards, a canary that proves them, and the e2e suite at
+**299 of 300** (the one left is support, scoping decision 8). **The programme is complete.**
 
 A review pass on 2026-08-18 reopened and closed one item in each: 5.2's local `SummaryTile`
 container recipes, which its own grep could not see, and 5.1's `lib/currency.ts`, which had
@@ -7076,9 +7077,106 @@ parts of about 20 spec files each. Before each part, `frontend` is recreated and
 with only the routes that part's specs `goto`. That is the whole suite, run so a 7.5 GiB cap
 cannot kill the server partway. The failure list it produces is batch 3's work list.
 
-**Next: batch 3** — the full suite on a freshly recreated dev server, then every failure fixed
-(code where the code is wrong, the spec where the contract moved; contracts and support
-excluded), both guards, one browser pass, the census, and this file's header.
+### Status: batch 3 — the *after* suite, 69 failures read one by one, and the close-out
+
+**The *after* suite: 225 passed, 75 failed**, in three parts of about 20 files. Each part ran
+on a freshly recreated dev server warmed with only its own routes. Part 1 peaked at 7.18 GiB
+under a 7.5 GiB cap; the cap was raised to 8 GiB for parts 2 and 3, and nothing was
+OOM-killed. Against the *before* suite, 18 failures cleared and 3 appeared. **All 3 passed on
+a targeted re-run** (design-rules' opportunities discovery, a payments filter, the account
+`?tab=` round trip), so they are order- or timing-dependent, not regressions.
+
+Re-running the 74 in-scope failures (support excluded) by location, with page snapshots: **69
+failed again consistently.** Every one was read against its snapshot and the source. The
+classification:
+
+| Cause | Count | Fix |
+|---|---|---|
+| Error and whole-route state copy: *X could not be loaded* is a title plus a fix line (5.9), and a whole-route title is a paragraph, not a heading | 11 | Specs |
+| Two headings share a name: `PageHeader`'s sr-only `h1` and the visible form or record `h2` | 13 assertions | Specs pin `level: 2` |
+| The header's module name is text, not a heading (by design, `app/dashboard/layout.tsx`) | 4 | Specs |
+| A control became a segmented control (radios): Runs, Disabled, Required, Mobile, widget size | 7 | Specs |
+| A label carries `RequiredMark`, so `getByLabel(…, { exact })` misses | 5 | Specs use the accessible name |
+| Strict-mode doubles: the settings rail beside the hub, Next's dev route announcer (`role="alert"`), toast beside status | 9 | Specs scoped |
+| `thead` is the sticky element, not `th` | 3 | Specs |
+| An API mock glob (`**/sales/leads?**`) also matched the page URL once `?view=` moved into it (5.5) | 1 | Spec narrowed to `/api/v1/` |
+| Moved copy or names: *Users*, *Handle*, *Create product*, *2 conditions*, person-named row checkboxes, Export as a menu item, the Owner picker | 9 | Specs |
+| A spec replaced the cached session user with `{ id }`, which the admin gate reads as a non-admin | 1 | Spec merges instead |
+| Reduced motion computes to `1e-05s` (globals.css `0.01ms !important`), not `0s` | 1 | Spec asserts ≤ 0.01ms |
+
+**Real defects the failures exposed, fixed in the code:**
+
+| Defect | Fix |
+|---|---|
+| Provisioning and Authentication: 13 controls with **no accessible name**; `FieldLabel` had no `htmlFor` and the input had no `id` | Labels tied to controls |
+| The mobile nav: after Escape, **focus fell to `<body>`**, because the sheet was opened by a plain button, and Radix returns focus only to its own `Trigger` | The `Sheet` root wraps the header, and *Open navigation* is a `SheetTrigger` |
+| `EditorPanel`'s form had no `noValidate`, so the **browser's constraint check cancelled the submit** (`max="100"`), and the product's field message never rendered | `noValidate`, as the record forms already have |
+| The automation row menu was a `Popover` of buttons: it **stayed open after an action**, and the next trigger click closed it | `DropdownMenu`; items close it, arrow keys walk it, and it gets the focus ring |
+| The view manager's add-column buttons announced only the column name | `aria-label="Add {column}"` |
+
+**A new rendered check, earned by those defects:** every visible form control has an
+accessible name (§8, WCAG 4.1.2), with its own canary. It found five
+unnamed shapes on its first run and two more once those were fixed. A static scan then found
+the rest in one pass, rather than one guard run at a time. **The guard is green on it:**
+`SearchBar` (every list) takes its placeholder as the name; `Pagination`'s rows-per-page
+select, the contact Region and Country selects, lead Status, deal Currency and Stage, account
+Country, and the booking-link Owner and Timezone are tied to their labels. Six
+`LinkedRecordPicker`s pass the `inputId` their `FieldLabel` points at, and the picker gained an
+`ariaLabel` prop for the two with no visible label. The condition editor's three controls, the
+document association picker and file input, the templates search, the client page note and the
+module builder's locked field type are named.
+
+**Three more real defects, found by the second pass over the failures:**
+
+| Defect | Fix |
+|---|---|
+| **Actions → Export did nothing on every list page, and Import could not load a file.** `ExportControls` and `ImportControls` rendered their dialog and file input *inside* `DropdownMenuContent`. Choosing the item closed the menu, and Radix unmounted everything in it: the export dialog opened and vanished in the same frame, and the file picker returned to an input that no longer existed. Inherited, and failing in the *before* suite | `ModuleImportExportControls` draws the two menu items and mounts both controls beside the menu. The controls take `hideTrigger`, plus a controlled `open` (export) or an external `fileInputRef` (import). The menu items no longer say *Preparing export…*; the dialog carries the progress |
+| **A row action's menu item also opened the row.** React bubbles events through portals, so a click on a portaled `menuitem` reached `RecordTable`'s row `onClick`, and the DOM `closest()` guard could not see it. Exposed when the automation menu became a `DropdownMenu` | `RecordTable` ignores a click that did not start inside the row's own DOM. That protects every table with row actions |
+| Three form footers still read *You have unsaved … changes.* and a clean-state sentence, against 5.9's ruling | Profile, SSO and company settings read *Unsaved changes*, and nothing when clean. The scoped page-level lines (*Unsaved schedule changes*, *Unsaved layout changes*) stay: they name which of several things is dirty |
+
+**Filed for the owner, not swept:** `RequiredMark` hides its asterisk from assistive tech,
+which is right, but only ~14 of its 68 uses sit on an input that carries `required` or
+`aria-required`. On the rest, a screen-reader user is not told the field is required. It is
+a primitive-level decision (a `Field` context, or `RequiredMark` taking the control's id), so
+it is written here rather than patched at 54 call sites.
+
+**The second pass, and the last:** the remaining failures, read the same way, were more of
+the same shapes (menu items and radios, a `RequiredMark` in an exact label match, a
+not-found state titled by a paragraph, an overflow menu holding Print and Delete). Four more
+were spec races, each written up on the line: a `Control+K` sent before the palette's
+listener attached; two forms typed into before hydration; and a row click whose geometric
+centre was the Public URL copy button. The last is the trap memory records as *an
+intercepted click is usually geometry*. One spec, `dashboard-edit-mode-revamp`, had asserted
+`toBeHidden()` on a button role that no longer exists, which passes trivially. It asserts the
+radio now, so it can fail again. The *Required* property in the module builder reads Yes/No,
+beside the field's *Enabled* On/Off; that split is kept (a property answers yes or no, a state
+is on or off).
+
+| Check | Result |
+|---|---|
+| **Full suite** (three parts, each on a freshly recreated dev server, `--workers=1`) | **293 passed, 7 failed** of 300 |
+| The six in-scope failures, fixed and re-run with their whole spec files | **All pass**; 16 of 16 in those files, plus `client-portal-revamp` 4 of 4 |
+| **Net: 299 of 300.** The one failure left is `support-revamp`, scoping decision 8 | — |
+| `design-rules.spec.ts` | **Green** in the full suite, with the canary: 105 routes, 20 checks, the accessible-name check included |
+| `scroll-containers.spec.ts` | Green in the full suite |
+| `check-design.sh` | **21 of 21** |
+| `npm run lint`, `npm run build` | Clean, green. The build ran with the dev server stopped, and `.next` was cleared after |
+| Backend `test_saved_views`, `test_integrations_registry` | 20 pass |
+| Browser pass (scripted, screenshots read) | The listbox ring is visible in both themes (body `rgb(11, 13, 16)` and `rgb(247, 248, 250)` confirm the class switch). **Actions → Export opens its dialog and it stays open.** Mobile nav focus returns on close; the spec's `toBeFocused` waits for Radix's exit animation, and a 300 ms probe read `null` before it had finished |
+
+The *before* suite was 210 / 90. Of the 90, 18 cleared incidentally and the rest are fixed:
+in the code where the two defect tables and the accessible-name sweep above say so, and
+otherwise in the spec, with the reason written beside each change.
+
+### What 5.10 leaves open, deliberately
+
+| Item | Owner |
+|---|---|
+| `RequiredMark` hides its asterisk from assistive tech, and ~54 of its 68 uses sit on an input with no `required` / `aria-required`, so the requirement is not announced | **The owner.** It is a primitive decision (a `Field` context, or the mark taking its control's id), filed above rather than patched at 54 sites |
+| `support-revamp`'s one failure; contracts and support skip the new checks | Scoping decision 8 |
+| The Export and Import menu items no longer read *Preparing export…* / *Reading file…*; the dialogs carry progress | Accepted with the fix; revisit only if an operator misses it |
+| Ad-hoc forms outside `EditorPanel` (auth, portal, a few settings) have no `noValidate`, and some rely on the browser's `required` as their only check | Deliberately untouched: turning it off there removes validation rather than replacing it |
+| Run shape for the next person: recreate `frontend` before every guard or suite run, and run the suite in thirds under a memory cap. `docs/e2e-suite-status.md` has the recipe | Recorded |
 
 ---
 

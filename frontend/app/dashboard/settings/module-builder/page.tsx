@@ -218,7 +218,7 @@ function FieldInspector({
               </Select>
             ) : (
               <>
-                <Input value={fieldTypeLabel(field.field_type)} disabled />
+                <Input aria-label="Field type" value={fieldTypeLabel(field.field_type)} disabled />
                 <FieldDescription>Type is fixed after the field is created so stored values remain valid.</FieldDescription>
               </>
             )}

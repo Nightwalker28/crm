@@ -47,7 +47,7 @@ test("Profile is responsive, tracks dirty fields, and redacts save failures", as
   await expect(page.getByRole("button", { name: "Save profile" })).toBeDisabled();
   await expect(page.getByLabel("Timezone")).toBeVisible();
   await page.getByLabel("First name").fill("Jordan");
-  await expect(page.getByText("You have unsaved profile changes.")).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Save profile" }).click();
 
   expect(submitted).toMatchObject({
@@ -170,7 +170,7 @@ test("Profile presents one-time recovery codes after enabling MFA", async ({ pag
 
   await expect(page.getByText("Save these recovery codes now")).toBeVisible();
   await expect(page.getByText("RECOVERY-ONE")).toBeVisible();
-  await expect(page.getByText("MFA enabled")).toBeVisible();
+  await expect(page.getByText("MFA enabled", { exact: true })).toBeVisible();
 });
 
 test("Profile confirms MFA disabling before changing security state", async ({ page }) => {

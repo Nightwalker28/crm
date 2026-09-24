@@ -138,6 +138,7 @@ function AssociationPicker({
   return (
     <div className="space-y-3">
       <LinkedRecordPicker
+        ariaLabel="Search CRM records to associate"
         recordType="global"
         valueId={null}
         displayValue={search}
@@ -373,7 +374,7 @@ export default function DocumentUploadFormPage() {
         </div>
       </div>
       <span className={queue.length ? "text-sm font-medium text-action-primary" : "mt-4 inline-flex h-[38px] items-center rounded-[var(--radius-control)] border border-line-default bg-surface px-4 text-sm font-semibold text-copy-secondary"}>Choose files</span>
-      <input ref={fileInputRef} className="sr-only" type="file" multiple accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+      <input ref={fileInputRef} className="sr-only" type="file" aria-label="Choose files" multiple accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     </div>
   );
 

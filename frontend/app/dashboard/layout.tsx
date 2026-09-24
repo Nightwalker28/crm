@@ -14,7 +14,7 @@ import { HexagonBackground } from "@/components/ui/HexagonBackground";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -124,6 +124,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <Sidebar />
+      {/* The root wraps the header too, so "Open navigation" is the sheet's own trigger: Radix
+          returns focus to its trigger on close, and a plain button that only set state left
+          focus on <body> after Escape (design.md 8). The root renders no DOM. */}
       <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay md:hidden" />
@@ -132,13 +135,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <Sidebar mobile onNavigate={() => setMobileNavigationOpen(false)} />
           </SheetContent>
         </SheetPortal>
-      </Sheet>
 
       <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden">
         <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden bg-transparent">
           <header className="relative z-10 grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)_minmax(0,1fr)] xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
-              <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
+              <SheetTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation"><Menu /></Button></SheetTrigger>
               {/* Not an h1: this names the *module*, and `PageHeader` names the page (§8 —
                   exactly one per page). It was an h1 until every route carried a `PageShell`,
                   because demoting it sooner would have left the unmigrated pages with no
@@ -167,6 +169,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </main>
+      </Sheet>
     </div>
   );
 }

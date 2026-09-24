@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
@@ -75,6 +76,7 @@ export default function Pagination({
   onPageChange,
   onPageSizeChange,
 }: PaginationProps) {
+  const pageSizeId = useId();
   const pages = getPageNumbers(page, totalPages);
   const { data: paginationConfig } = useQuery({
     queryKey: ["pagination-config"],
@@ -99,12 +101,12 @@ export default function Pagination({
       {/* Left: Rows per page Dropdown */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Label className="font-normal">Items per page</Label>
+          <Label htmlFor={pageSizeId} className="font-normal">Items per page</Label>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => onPageSizeChange(Number(value))}
           >
-            <SelectTrigger size="sm" className="w-20 text-xs">
+            <SelectTrigger id={pageSizeId} size="sm" className="w-20 text-xs">
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent className="">

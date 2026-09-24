@@ -1,9 +1,10 @@
 "use client";
 
-import { ChevronDown } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, Download, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportControls } from "@/components/ui/ExportControls";
 import { ImportControls } from "@/components/ui/ImportControls";
 
@@ -34,6 +35,13 @@ export function ModuleImportExportControls({
   currentPageIds = [],
   onExportSuccess,
 }: Props) {
+  // The dialog and the file input live beside the menu, not inside it. Radix unmounts the
+  // menu's content when an item closes it, and anything rendered there went with it: the
+  // export dialog opened and vanished in the same frame, and the import picker returned to an
+  // input that no longer existed. The items only open what is mounted out here.
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!importEndpoint && !exportEndpoint) {
     return null;
   }
@@ -49,26 +57,43 @@ export function ModuleImportExportControls({
         </DropdownMenuTrigger>
         <DropdownMenuContent>
           {importEndpoint ? (
-            <ImportControls
-              importEndpoint={importEndpoint}
-              importLabel={importLabel}
-              fileAccept={fileAccept}
-              onImportSuccess={onImportSuccess}
-            />
+            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+              <Upload aria-hidden="true" />
+              {importLabel}
+            </DropdownMenuItem>
           ) : null}
           {exportEndpoint ? (
-            <ExportControls
-              exportEndpoint={exportEndpoint}
-              exportMethod={exportMethod}
-              exportBody={exportBody}
-              exportLabel={exportLabel}
-              selectedIds={selectedIds}
-              currentPageIds={currentPageIds}
-              onExportSuccess={onExportSuccess}
-            />
+            <DropdownMenuItem onSelect={() => setIsExportOpen(true)}>
+              <Download aria-hidden="true" />
+              {exportLabel}
+            </DropdownMenuItem>
           ) : null}
         </DropdownMenuContent>
       </DropdownMenu>
+      {importEndpoint ? (
+        <ImportControls
+          hideTrigger
+          fileInputRef={fileInputRef}
+          importEndpoint={importEndpoint}
+          importLabel={importLabel}
+          fileAccept={fileAccept}
+          onImportSuccess={onImportSuccess}
+        />
+      ) : null}
+      {exportEndpoint ? (
+        <ExportControls
+          hideTrigger
+          open={isExportOpen}
+          onOpenChange={setIsExportOpen}
+          exportEndpoint={exportEndpoint}
+          exportMethod={exportMethod}
+          exportBody={exportBody}
+          exportLabel={exportLabel}
+          selectedIds={selectedIds}
+          currentPageIds={currentPageIds}
+          onExportSuccess={onExportSuccess}
+        />
+      ) : null}
     </div>
   );
 }

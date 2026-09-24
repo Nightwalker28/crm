@@ -99,7 +99,7 @@ test("The preview renders desktop and mobile without resizing the window", async
   await openBuilder(page);
 
   await expect(page.locator("[data-layout-preview='desktop']")).toBeVisible({ timeout: VALIDATION_TIMEOUT });
-  await page.getByRole("button", { name: "Mobile" }).click();
+  await page.getByRole("radio", { name: "Mobile" }).click();
 
   const mobile = page.locator("[data-layout-preview='mobile']");
   await expect(mobile).toBeVisible();

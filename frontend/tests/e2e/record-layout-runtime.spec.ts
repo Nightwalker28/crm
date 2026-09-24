@@ -148,7 +148,9 @@ test("resolved Quick Create metadata controls order, visibility, collapse, width
   await expect(qualification).toHaveAttribute("open", "");
   const ownerPicker = page.getByLabel("Owner");
   await expect(ownerPicker).toBeFocused();
-  await ownerPicker.fill("Ada");
+  // Owner is a picker (rebuild 5.4): open it, type to search, choose the person.
+  await ownerPicker.click();
+  await page.keyboard.type("Ada");
   await page.getByRole("option", { name: "Ada Owner" }).click();
 
   await page.getByRole("button", { name: "Create", exact: true }).click();

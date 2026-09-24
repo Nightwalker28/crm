@@ -390,7 +390,7 @@ export default function ProfilePage() {
             </Field>
           </FieldGroup>
 
-          <FormFooter status={dirty ? "You have unsaved profile changes." : "Profile changes are saved."}>
+          <FormFooter status={dirty ? "Unsaved changes" : null}>
             <Button type="button" onClick={() => void handleSave()} disabled={saving || !dirty}>
               {saving ? "Saving\u2026" : "Save profile"}
             </Button>

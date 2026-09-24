@@ -9,7 +9,7 @@ test.beforeEach(async ({ page }) => {
 test("Quote creation uses an itemized full-page workflow", async ({ page }) => {
   await page.goto("/dashboard/sales/quotes/new");
   await expect(
-    page.getByRole("heading", { name: "Create quote" }),
+    page.getByRole("heading", { name: "Create quote", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();

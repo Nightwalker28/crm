@@ -5,7 +5,7 @@ import { Copy, Edit3, History, MoreHorizontal, Power, PowerOff, Trash2, Workflow
 import type { AutomationRule } from "./types";
 import { formatModuleLabel, statusToneFor } from "./utils";
 import { Button } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { formatDateTime } from "@/lib/datetime";
@@ -89,18 +89,21 @@ export function AutomationRulesTable({
       isRefreshing={isRefreshing}
       shellVariant="nested"
       rowActions={(rule) => (
-        <Popover>
-          <PopoverTrigger asChild>
+        // A menu, not a popover of buttons: choosing an item closes it, and the arrow keys walk
+        // it (design.md 2.3). The popover stayed open after Enable, so the next click on the
+        // trigger closed it instead of reopening it.
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
             <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${rule.name}`}><MoreHorizontal /></Button>
-          </PopoverTrigger>
-          <PopoverContent align="end" className="w-52 border-line-default bg-surface-raised p-2 text-copy-primary">
-            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onEdit(rule)}><Edit3 />Edit</Button>
-            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onDuplicate(rule)}><Copy />Duplicate</Button>
-            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onToggle(rule)}>{rule.enabled ? <PowerOff /> : <Power />}{rule.enabled ? "Disable" : "Enable"}</Button>
-            <Button type="button" variant="ghost" className="w-full justify-start" onClick={() => onViewRuns(rule)}><History />View runs</Button>
-            <Button type="button" variant="destructiveGhost" className="w-full justify-start" onClick={() => onDelete(rule)}><Trash2 />Delete</Button>
-          </PopoverContent>
-        </Popover>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onSelect={() => onEdit(rule)}><Edit3 />Edit</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onDuplicate(rule)}><Copy />Duplicate</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onToggle(rule)}>{rule.enabled ? <PowerOff /> : <Power />}{rule.enabled ? "Disable" : "Enable"}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => onViewRuns(rule)}><History />View runs</DropdownMenuItem>
+            <DropdownMenuItem className="text-state-danger focus:bg-state-danger-muted focus:text-state-danger" onSelect={() => onDelete(rule)}><Trash2 />Delete</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       hasActiveFilters={hasFilters}
       onClearFilters={onClearFilters}

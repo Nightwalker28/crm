@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,6 +36,13 @@ type Props = {
   fileAccept: string;
   disabled?: boolean;
   onImportSuccess?: () => void;
+  /**
+   * The file input, owned by a caller that puts the menu item in a menu. An input inside
+   * `DropdownMenuContent` unmounts when the menu closes, so the picker it opened returned to
+   * nothing and no preview ever loaded. The caller clicks this ref from its own item.
+   */
+  fileInputRef?: RefObject<HTMLInputElement | null>;
+  hideTrigger?: boolean;
 };
 
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
@@ -52,9 +59,10 @@ function duplicateModeLabel(mode: DuplicateMode) {
   return "Skip duplicates";
 }
 
-export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess }: Props) {
+export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess, fileInputRef, hideTrigger = false }: Props) {
   const { confirm } = useConfirm();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const ownInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = fileInputRef ?? ownInputRef;
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -205,10 +213,12 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
         }}
       />
 
-      <DropdownMenuItem disabled={menuDisabled} onSelect={() => inputRef.current?.click()}>
-        <Upload aria-hidden="true" />
-        {isPreviewing ? "Reading file…" : isImporting ? "Importing…" : importLabel}
-      </DropdownMenuItem>
+      {hideTrigger ? null : (
+        <DropdownMenuItem disabled={menuDisabled} onSelect={() => inputRef.current?.click()}>
+          <Upload aria-hidden="true" />
+          {isPreviewing ? "Reading file…" : isImporting ? "Importing…" : importLabel}
+        </DropdownMenuItem>
+      )}
 
       <Dialog open={isImportDialogOpen} onClose={() => { if (!isImporting) resetImportState(); }}>
         <DialogBackdrop />

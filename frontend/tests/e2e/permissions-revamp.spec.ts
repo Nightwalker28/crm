@@ -194,11 +194,12 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
   await page.goto("/dashboard/settings/permissions");
 
   await expect(page.getByRole("heading", { name: "Permissions", exact: true })).toBeVisible();
-  await expect(page.getByText("Sales", { exact: true })).toBeVisible();
-  await expect(page.getByText("Finance", { exact: true })).toBeVisible();
+  // The group row, not the sidebar's Sales group.
+  await expect(page.getByRole("cell", { name: "Sales", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Finance", exact: true })).toBeVisible();
 
   await page.getByPlaceholder("Search modules").fill("Accounts");
-  await expect(page.getByText("Accounts", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Role permissions").getByText("Accounts", { exact: true })).toBeVisible();
   await expect(page.getByText("Leads", { exact: true })).toBeHidden();
 
   await page.getByRole("checkbox", { name: "Set all permissions for Accounts" }).click();

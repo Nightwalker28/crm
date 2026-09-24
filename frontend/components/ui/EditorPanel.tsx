@@ -131,7 +131,12 @@ export function EditorPanel({
           )}
         >
           {onSubmit ? (
+            // `noValidate`, as the record forms have it: the panel's own validation names the
+            // fix beside the field (design.md 7.5). Without it the browser's constraint check
+            // (`max`, `required`, `type="email"`) cancelled the submit first, showed its own
+            // tooltip, and the handler that writes the product's message never ran.
             <form
+              noValidate
               className={bodyClassName}
               onSubmit={(event: FormEvent) => {
                 event.preventDefault();

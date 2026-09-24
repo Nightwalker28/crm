@@ -96,9 +96,11 @@ test("public and client-portal surfaces follow the design rules", async ({ page 
   }
 
   // client portal has its own auth boundary
-  await page.goto(`/client/login?tenant=${TENANT}`, { waitUntil: "domcontentloaded", timeout: 45000 });
+  await page.goto(`/client/login?tenant=${TENANT}`, { waitUntil: "networkidle", timeout: 45000 });
+  // Filled after hydration, and checked: a controlled input filled earlier resets.
   await page.getByLabel(/email/i).fill(CLIENT_EMAIL);
   await page.getByLabel(/password/i).fill(CLIENT_PASSWORD);
+  await expect(page.getByLabel(/email/i)).toHaveValue(CLIENT_EMAIL);
   await page.getByRole("button", { name: /sign in|log in/i }).click();
   await page.waitForURL((u) => !u.pathname.includes("/client/login"), { timeout: 30000 });
 

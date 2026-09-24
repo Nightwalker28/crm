@@ -465,17 +465,17 @@ export default function CalendarBookingSettingsPage() {
                 <FieldDescription>The public URL will be /book/{selectedOwnerHandle}/{draft.slug || "your-link"}.</FieldDescription>
               </Field>
               <Field>
-                <FieldLabel>Owner</FieldLabel>
+                <FieldLabel htmlFor="booking-link-owner">Owner</FieldLabel>
                 <Select value={draft.owner_id || undefined} onValueChange={(value) => setDraft((current) => ({ ...current, owner_id: value }))}>
-                  <SelectTrigger><SelectValue placeholder="Current user" /></SelectTrigger>
+                  <SelectTrigger id="booking-link-owner"><SelectValue placeholder="Current user" /></SelectTrigger>
                   <SelectContent>
                     {ownerOptions.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </Field>
               <Field>
-                <FieldLabel>Timezone <RequiredMark /></FieldLabel>
-                <TimezonePicker value={draft.timezone} onChange={(timezone) => setDraft((current) => ({ ...current, timezone }))} />
+                <FieldLabel htmlFor="booking-link-timezone">Timezone <RequiredMark /></FieldLabel>
+                <TimezonePicker triggerId="booking-link-timezone" value={draft.timezone} onChange={(timezone) => setDraft((current) => ({ ...current, timezone }))} />
               </Field>
               <Field>
                 <FieldLabel htmlFor="booking-link-duration">Duration (minutes)</FieldLabel>

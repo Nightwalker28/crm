@@ -1,19 +1,22 @@
 # E2E Suite Status
 
-**Current: 236 passed / 64 failed of 300 tests** — full serial run 2026-08-20, during rebuild
-5.5's close-out, routes warmed. Two of those 64 were cleared in that close-out (see below), so
-a clean run today should show **62**.
+**Current: 299 of 300 pass** — rebuild 5.10 close-out, 2026-09-25. The full suite ran
+293 / 7 at `--workers=1`, and the six in-scope failures were then fixed and re-run with their
+whole spec files. **The one failure left is `support-revamp`**, which is out of the rebuild
+programme (`docs/design/rebuild.md` scoping decision 8). Every failure from the 5.10 *before*
+run (210 / 90) was read against a page snapshot and fixed in the code or the spec. Each fix is
+listed in `rebuild.md` 5.10 batch 3. **Treat any new red as new.**
 
-**Do not compare that to the older snapshot below.** The 2026-08-11 run was **201 passed / 43
-failed of 244 tests**, and the suite has gained 56 tests since. The counts have different
-denominators and the difference between them is not a regression count. The groups below are
-still the right triage — they were written against causes, not totals — but treat the
-per-group counts as "at least this many".
+**How to run it without losing the run to memory.** The dev server keeps every compiled route
+in memory, and warmed across the whole app it sits near 6 GiB. Under a container memory cap
+it gets OOM-killed partway, and every later test then fails on `ERR_CONNECTION_REFUSED`: a
+wholesale failure that says nothing about the code. Run the suite in three parts of about 20
+spec files. Recreate `frontend` before each part (`up -d --no-deps --force-recreate frontend`),
+and warm only the routes that part's specs `goto`. Check `docker inspect crm-frontend-1
+--format '{{.State.OOMKilled}}'` before reading any wholesale failure.
 
-**To attribute a failure to a slice, do not use this document.** Check out the pre-slice tree
-(`git checkout <sha> -- frontend/`) and re-run only the specs covering surfaces that slice
-touched, then diff the two failure lists. 5.5 did this across eleven specs in ~9 minutes and
-the two sets came back identical, which is a stronger claim than any count comparison.
+The sections below are the history from before 5.10. Their groups were written against
+causes, and all of them are now fixed.
 
 This is a working document for picking the failures back up later. Each group below records what
 was actually observed, how confident the root cause is, and what the fix looks like. Groups are

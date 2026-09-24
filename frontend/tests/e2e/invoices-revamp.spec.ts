@@ -103,7 +103,7 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
 }) => {
   await page.goto("/dashboard/finance/pos/new");
   await expect(
-    page.getByRole("heading", { name: "Create invoice" }),
+    page.getByRole("heading", { name: "Create invoice", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
@@ -156,9 +156,9 @@ test("Invoice detail and edit use routed record workflows", async ({
 
   await page.goto(`/dashboard/finance/pos/${invoiceId}`);
   await expect(
-    page.getByRole("heading", { name: "INV-BROWSER-1" }),
+    page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
   await expect(
     page.getByText("Acme Operations", { exact: true }).first(),
   ).toBeVisible();
@@ -187,10 +187,13 @@ test("Invoice actions and routed forms respect role permissions", async ({ page 
   );
 
   await page.goto(`/dashboard/finance/pos/${invoiceId}`);
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  // Print and Delete live in the record's overflow menu (design.md 4.7, archetype 2).
+  await page.getByRole("button", { name: "More INV-BROWSER-1 actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Delete|Move to recycle bin/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.goto("/dashboard/finance/pos/new");
   await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
@@ -225,7 +228,7 @@ test("Printable invoice uses accessible responsive document semantics", async ({
   await page.goto(`/dashboard/finance/pos/${invoiceId}/print`);
 
   await expect(page.getByRole("heading", { name: "Print invoice" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Print invoice INV-BROWSER-1" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to invoice" })).toHaveAttribute("href", `/dashboard/finance/pos/${invoiceId}`);
   await expect(page.getByText("Partially paid", { exact: true })).toBeVisible();

@@ -605,7 +605,7 @@ in `lib/` or `hooks/` is touched by this programme.
 | 5.7 — dashboard, reports, boards, calendars, mail | 32 |
 | 5.8 — client portal, public, auth | 28 |
 | 5.9 — copy and voice | 4 owned; it sweeps every row |
-| 5.10 — guard the composition | 0 rows; all new test coverage |
+| 5.10 — guard the composition | 0 rows; all new test coverage. **Done 2026-09-25**: 21 source rules, 20 rendered checks with a canary, and the suite at 299 / 300. The primitives it corrected (`EditorPanel`, `RecordTable`, `Pagination`, `SearchBar`, `LinkedRecordPicker`, `select` / `dropdown-menu` / `SearchableSelect`, `ExportControls` / `ImportControls`, `Avatar`) keep their owning rows; the fixes are listed in `rebuild.md` 5.10 |
 | — unchanged with a reason | 12 |
 
 5.2 and 5.9 own almost nothing and touch almost everything. That is expected and it is why

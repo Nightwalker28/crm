@@ -63,12 +63,13 @@ test("Payments provides a responsive receivables list and records a payment", as
   await expect(page.getByRole("link", { name: "INV-PAY-001" })).toBeVisible();
 
   await page.getByRole("button", { name: "Record payment" }).click();
-  await expect(page.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record payment", level: 2 })).toBeVisible();
   await expect(page.getByLabel("Payment amount")).toHaveValue("750.00");
   await page.getByLabel("Payment method").fill("Card");
   await page.getByRole("button", { name: "Record payment", exact: true }).last().click();
   await expect(page.getByText("Payment recorded.")).toBeVisible();
-  await expect(page.getByText("Paid", { exact: true })).toBeVisible();
+  // "Paid" is also a quick filter; the assertion is about the row's status.
+  await expect(page.locator('[data-slot="status-value"]', { hasText: "Paid" }).first()).toBeVisible();
 });
 
 test("Payments distinguishes filtered empty results", async ({ page }) => {
@@ -78,7 +79,13 @@ test("Payments distinguishes filtered empty results", async ({ page }) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], range_start: 0, range_end: 0, total_count: 0, total_pages: 0, page: 1, page_size: pageSize }) });
   });
   await page.goto("/dashboard/finance/payments");
-  await page.getByPlaceholder("Search payments by invoice, customer, method, or status").fill("missing customer");
+  // Type after the list has rendered its first state: a controlled input filled before
+  // hydration resets, which made this pass or fail by timing. (Not networkidle: the page
+  // holds a realtime connection open, so the network is never idle.)
+  await expect(page.getByText("No invoices available for payment tracking")).toBeVisible();
+  const search = page.getByPlaceholder("Search payments by invoice, customer, method, or status");
+  await search.fill("missing customer");
+  await expect(search).toHaveValue("missing customer");
   await expect(page.getByText("No payments match these filters")).toBeVisible();
   await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
 });
@@ -103,7 +110,7 @@ test("Payment recording provides a responsive routed workflow with bounded amoun
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/finance/payments/record");
 
-  await expect(page.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record payment", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: /INV-PAY-001 · Acme Operations/ }).click();
   await expect(page.getByLabel("Payment amount")).toHaveValue("750.00");
 
@@ -131,6 +138,7 @@ test("Payment recording hides backend failure details", async ({ page }) => {
   await page.getByRole("button", { name: /INV-PAY-001 · Acme Operations/ }).click();
   await page.getByRole("button", { name: "Record payment", exact: true }).click();
 
-  await expect(page.getByRole("alert")).toContainText("We could not record this payment.");
+  // Filtered: in development Next mounts an empty route announcer that is also role="alert".
+  await expect(page.getByRole("alert").filter({ hasText: "We could not record this payment." })).toBeVisible();
   await expect(page.getByText(/SECRET ledger reconciliation failure/)).toHaveCount(0);
 });

@@ -313,7 +313,7 @@ export default function CompanyPage() {
               footer sits in the last section because the three sections are one record. */}
           <FormFooter status={actionError
             ? <span role="alert" className="text-state-danger">{actionError}</span>
-            : isDirty ? "You have unsaved company changes." : "All company settings are saved."}>
+            : isDirty ? "Unsaved changes" : null}>
             <Button type="button" variant="outline" disabled={!isDirty || saving || logoBusyAction !== null} onClick={() => void handleDiscard()}>
               <RotateCcw />
               Discard

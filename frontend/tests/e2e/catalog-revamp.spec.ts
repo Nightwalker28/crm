@@ -255,9 +255,10 @@ test("Catalog list failures expose fixed retry guidance instead of backend detai
 
   await page.goto("/dashboard/catalog/products");
 
-  await expect(page.getByText("Catalog products could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Products could not be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByText("tenant_id=42 database_password=secret")).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
 test("Product creation is responsive and validates the first required field", async ({ page }) => {

@@ -108,8 +108,8 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
       <FieldGroup>
         {enabled("organization_id") ? (
           <Field>
-            <FieldLabel>Account</FieldLabel>
-            <LinkedRecordPicker
+            <FieldLabel htmlFor="contact-account">Account</FieldLabel>
+            <LinkedRecordPicker inputId="contact-account"
               recordType="organization"
               valueId={value.organization_id}
               displayValue={value.organization_name}
@@ -140,18 +140,18 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
         ) : null}
         {enabled("region") ? (
           <Field>
-            <FieldLabel>Region</FieldLabel>
+            <FieldLabel htmlFor="contact-region">Region</FieldLabel>
             <Select value={value.region || undefined} onValueChange={(region) => onChange({ ...value, region })}>
-              <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
+              <SelectTrigger id="contact-region"><SelectValue placeholder="Select region" /></SelectTrigger>
               <SelectContent>{REGIONS.map((region) => <SelectItem key={region} value={region}>{region}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
         ) : null}
         {enabled("country") ? (
           <Field>
-            <FieldLabel>Country</FieldLabel>
+            <FieldLabel htmlFor="contact-country">Country</FieldLabel>
             <Select value={value.country || undefined} onValueChange={(country) => onChange({ ...value, country })}>
-              <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
+              <SelectTrigger id="contact-country"><SelectValue placeholder="Select country" /></SelectTrigger>
               <SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent>
             </Select>
           </Field>

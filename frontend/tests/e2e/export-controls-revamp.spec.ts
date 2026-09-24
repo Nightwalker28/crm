@@ -87,7 +87,12 @@ test("downloads direct custom-module exports with a safe filename", async ({ pag
     route.fulfill({
       status: 200,
       contentType: "text/csv",
-      headers: { "Content-Disposition": "attachment; filename*=UTF-8''..%2F..%2Fprojects.csv" },
+      // The API is cross-origin, so the browser hides Content-Disposition unless it is exposed,
+      // as the backend's CORS config does (backend/app/main.py). A mock must say so too.
+      headers: {
+        "Content-Disposition": "attachment; filename*=UTF-8''..%2F..%2Fprojects.csv",
+        "Access-Control-Expose-Headers": "Content-Disposition",
+      },
       body: "project_name\nRenewal",
     }),
   );
@@ -95,7 +100,7 @@ test("downloads direct custom-module exports with a safe filename", async ({ pag
   await page.goto("/dashboard/custom/custom_projects");
 
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Export CSV" }).click();
+  await page.getByRole("menuitem", { name: "Export CSV" }).click();
   await expect(page.getByText("All accessible records")).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download");
@@ -144,9 +149,10 @@ test("queues selected-row exports with accessible scope controls", async ({ page
   });
   await page.goto("/dashboard/sales/leads");
 
-  await page.getByLabel("Select lead ada@example.com").click();
+  // Rows are named for the person, not the email address.
+  await page.getByLabel("Select lead Ada Lovelace").click();
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("menuitem", { name: "Export" }).click();
   await page.getByRole("radio", { name: /Selected rows/ }).click();
   await page.getByRole("button", { name: "Run export" }).click();
 
@@ -167,7 +173,7 @@ test("redacts export-start backend details", async ({ page }) => {
   await page.goto("/dashboard/sales/leads");
 
   await page.getByRole("button", { name: "Actions" }).click();
-  await page.getByRole("button", { name: "Export" }).click();
+  await page.getByRole("menuitem", { name: "Export" }).click();
   await page.getByRole("button", { name: "Run export" }).click();
 
   await expect(page.getByRole("alert")).toContainText("The export could not be started");

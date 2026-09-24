@@ -11,7 +11,7 @@ test("Order creation uses the shared itemized transaction workflow", async ({
 }) => {
   await page.goto("/dashboard/sales/orders/new");
   await expect(
-    page.getByRole("heading", { name: "Create order" }),
+    page.getByRole("heading", { name: "Create order", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();

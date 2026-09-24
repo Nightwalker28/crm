@@ -206,7 +206,9 @@ test("shows a recoverable fixed error when settings fail", async ({ page }) => {
   );
   await page.goto("/dashboard/settings/backups");
 
-  await expect(page.getByRole("heading", { name: "Unable to load backup settings" })).toBeVisible();
+  // The whole-route state names the page; its title is a paragraph because the page's one
+  // heading is the surface title above it (design.md 8).
+  await expect(page.getByRole("alert").getByText("Backups could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/internal-cache|secret-stack-trace/)).toHaveCount(0);
 });

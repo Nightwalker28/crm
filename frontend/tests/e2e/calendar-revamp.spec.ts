@@ -85,17 +85,21 @@ test("Calendar keeps core scheduling usable on mobile", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/calendar");
 
-  await expect(page.getByRole("heading", { name: "Calendar" })).toBeVisible();
-  await expect(page.getByLabel("Calendar month agenda")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Calendar", exact: true })).toBeVisible();
+  // MonthGrid (rebuild 5.7) names its region for what it shows.
+  await expect(page.getByRole("region", { name: "Event calendar" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Previous month" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Next month" })).toBeVisible();
-  await expect(page.getByText("Customer renewal review").first()).toBeVisible();
+  // Below 42rem the grid gives way to the day picker and its agenda (MonthGrid); the event is
+  // the agenda's button.
+  await expect(page.getByRole("button", { name: /Customer renewal review/ }).filter({ visible: true }).first()).toBeVisible();
 
   await page.getByRole("button", { name: "Create event" }).click();
   await expect(page.getByRole("heading", { name: "Create event" })).toBeVisible();
   await page.getByLabel("Event title").fill("Mobile follow-up");
-  await page.getByLabel("All-day event").click();
-  await expect(page.getByLabel("All-day event")).toHaveAttribute("data-state", "checked");
+  // All-day is a segmented control (All day / Timed), not a switch.
+  await page.getByRole("radio", { name: "All day", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "All day", exact: true })).toHaveAttribute("aria-checked", "true");
 });
 
 test("Calendar provider cards hide technical sync details", async ({ page }) => {

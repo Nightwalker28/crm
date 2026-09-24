@@ -294,7 +294,9 @@ test("routes administrator actions to their addressable create workflows", async
 
   for (const workflow of workflows) {
     await page.goto("/dashboard");
-    await page.keyboard.press("Control+K");
+    // The shortcut listener attaches on hydration; a Control+K sent straight after `goto`
+    // can land first and open nothing. The button waits for the palette to be ready.
+    await page.getByRole("button", { name: "Open command palette" }).filter({ visible: true }).click();
     await page.getByText(workflow.label, { exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${workflow.path.replace(/[?]/g, "\\?")}$`));
   }
@@ -509,7 +511,7 @@ test("opens message-template creation as a routed full-page workflow", async ({ 
 
   await expect(page).toHaveURL(/\/dashboard\/settings\/message-templates\/new$/);
   // Routed settings pages carry no heading of their own; the shell header names the section.
-  await expect(page.locator("main > div > header").getByRole("heading", { name: "Templates" })).toBeVisible();
+  await expect(page.locator("main > div > header").getByText("Templates", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Template details" })).toBeVisible();
 });
 

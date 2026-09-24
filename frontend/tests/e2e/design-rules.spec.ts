@@ -168,7 +168,7 @@ type Scope = "dashboard" | "public" | "portal";
 const CATEGORIES = [
   "uppercase", "mono", "radius", "controlHeight", "font", "nesting", "formTitle", "formFooter", "formSticky",
   "typeRamp", "pageRoot", "cardBorder", "controlBorder", "titleCase", "siblingHeight", "colourBudget",
-  "archetype", "settingsRail", "focus",
+  "archetype", "settingsRail", "focus", "controlName",
 ] as const;
 type Category = (typeof CATEGORIES)[number];
 type Findings = Record<Category, string[]>;
@@ -372,6 +372,21 @@ async function probeRoute(page: Page, args: { route: string; scope: Scope; recor
         out.titleCase.push(`"${text}" ${label(el)}`);
         break;
       }
+    });
+
+    // Every form control has a name (§8, WCAG 4.1.2). A label drawn beside a control and not
+    // tied to it reads visually and announces as "combobox, None": `FieldLabel` without
+    // `htmlFor`, or an input without the `id` it points at. Placeholder is not a name.
+    document.querySelectorAll<HTMLElement>(
+      'input:not([type="hidden"]):not([type="radio"]), select, textarea, [role="combobox"], [role="checkbox"], [role="switch"], [role="radiogroup"], [role="slider"]',
+    ).forEach((el) => {
+      if (!visible(el) || el.closest('[aria-hidden="true"], [inert]')) return;
+      const labelled = (el.getAttribute("aria-labelledby") || "").split(/\s+/).filter(Boolean)
+        .map((id) => document.getElementById(id)?.textContent?.trim() || "").join(" ").trim();
+      const labels = Array.from((el as HTMLInputElement).labels ?? []).map((l) => l.textContent?.trim() || "").join(" ").trim();
+      const wrapped = el.closest("label")?.textContent?.trim() || "";
+      const name = (el.getAttribute("aria-label") || "").trim() || labelled || labels || wrapped || (el.getAttribute("title") || "").trim();
+      if (!name) out.controlName.push(label(el));
     });
 
     // Sibling control height (R4): buttons that share a row compute to one height.
@@ -699,17 +714,18 @@ test("design rule audit", async ({ page, browser }) => {
       <input class="guard-canary" aria-label="canary" style="border:1px solid var(--color-border-subtle);height:38px" />
       <div class="guard-canary"><button class="guard-canary" data-slot="button" style="height:32px">Canary Button</button><button class="guard-canary" data-slot="button" style="height:38px">canary</button></div>
       <a class="guard-canary" href="#canary" style="outline:none !important;box-shadow:none !important">canary focus</a>
+      <input class="guard-canary" placeholder="no name" style="height:38px" />
       <table class="guard-canary"><tbody>${Array.from({ length: 5 }, () => '<tr><td><span style="color:var(--color-success)">paid</span></td></tr>').join("")}</tbody></table>`;
     document.querySelector("main div.overflow-y-auto")?.prepend(host);
   });
-  expect(await page.locator("#guard-canary .guard-canary").count(), "the canary is planted").toBe(8);
+  expect(await page.locator("#guard-canary .guard-canary").count(), "the canary is planted").toBe(9);
   const canary = await probeRoute(page, { route: "/dashboard", scope: "dashboard", record: false, inScope: true, dataTitled: false });
   const canaryFocus = await probeFocus(page, new Set());
   const canaryPresent = await page.locator("#guard-canary a").count();
   const canaryHits = {
     typeRamp: canary.typeRamp, cardBorder: canary.cardBorder, controlBorder: canary.controlBorder,
     titleCase: canary.titleCase, siblingHeight: canary.siblingHeight, colourBudget: canary.colourBudget,
-    focus: canaryFocus.invisible,
+    focus: canaryFocus.invisible, controlName: canary.controlName,
   };
   const blind = Object.entries(canaryHits).filter(([, hits]) => !hits.some((h) => h.includes("guard-canary"))).map(([k]) => k);
   expect(blind, `rendered checks that did not see their planted violation — focus probe: ${JSON.stringify({ ...canaryFocus, present: canaryPresent })}`).toEqual([]);
@@ -834,6 +850,7 @@ test("design rule audit", async ({ page, browser }) => {
   expect.soft(findings.archetype, "a record route not on RecordWorkspace (design.md 4.7, archetype 2)").toEqual([]);
   expect.soft(findings.settingsRail, "the settings rail misses a page or its current mark (A8)").toEqual([]);
   expect.soft(findings.focus, "focus that does not show (design.md 2.3, 8)").toEqual([]);
+  expect.soft(findings.controlName, "a form control with no accessible name (design.md 8)").toEqual([]);
   expect.soft(running, "an animation still running under reduced motion (design.md 6)").toEqual([]);
   expect(unreachable.filter((u) => !u.startsWith("/dashboard/custom")), "routes the audit could not reach").toEqual([]);
 });

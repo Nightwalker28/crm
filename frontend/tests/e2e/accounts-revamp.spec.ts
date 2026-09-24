@@ -86,7 +86,8 @@ test("Accounts list keeps shared controls usable on mobile", async ({ page }) =>
   const tableRegion = page.getByRole("region", { name: "Accounts" });
   await expect(tableRegion).toBeVisible();
   await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "Media & Entertainment" })).toBeVisible();
-  expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);
+  // The header row pins as one: `thead` is sticky (Table), not each cell (design.md 4.4).
+  expect(await tableRegion.locator("thead").evaluate((head) => window.getComputedStyle(head).position)).toBe("sticky");
 });
 
 test("Account create, detail, edit, and related-record tabs use the shared workflow", async ({ page }) => {

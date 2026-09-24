@@ -432,6 +432,10 @@ export function RecordTable<T>({
                     // A modified click belongs to the identity link, which opens a new
                     // tab natively. Swallowing it here beats navigating in place.
                     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                    // React bubbles through portals, so a click on a row action's menu item
+                    // reaches this handler although the item is not in the row's DOM. A click
+                    // that did not start inside the row is never the row's.
+                    if (!event.currentTarget.contains(event.target as Node)) return;
                     if (isInteractiveTarget(event.target)) return;
                     openRow(row);
                   },

@@ -127,14 +127,14 @@ export default function AuthenticationSettingsPage() {
             />
           </SettingsRow>
           <div className="grid gap-3 md:grid-cols-2">
-            <Field><FieldLabel>Issuer URL</FieldLabel><Input value={draft.draft.issuer_url} onChange={(event) => draft.update("issuer_url", event.target.value)} placeholder="https://idp.example.com" /></Field>
-            <Field><FieldLabel>Client ID</FieldLabel><Input value={draft.draft.client_id} onChange={(event) => draft.update("client_id", event.target.value)} /></Field>
-            <Field><FieldLabel>Client secret</FieldLabel><Input type="password" value={draft.draft.client_secret} onChange={(event) => draft.update("client_secret", event.target.value)} placeholder={settings.ssoSettings?.has_client_secret ? "Stored secret" : ""} /><FieldDescription>Leave blank to keep the stored secret.</FieldDescription></Field>
-            <Field><FieldLabel>Verified login domains</FieldLabel><Input value={settings.ssoSettings?.allowed_email_domains.join(", ") ?? ""} readOnly placeholder="Verify a custom domain first" /></Field>
-            <Field><FieldLabel>Authorization endpoint</FieldLabel><Input value={draft.draft.authorization_endpoint} onChange={(event) => draft.update("authorization_endpoint", event.target.value)} /><FieldDescription>Optional when discovery is available.</FieldDescription></Field>
-            <Field><FieldLabel>Token endpoint</FieldLabel><Input value={draft.draft.token_endpoint} onChange={(event) => draft.update("token_endpoint", event.target.value)} /></Field>
-            <Field><FieldLabel>UserInfo endpoint</FieldLabel><Input value={draft.draft.userinfo_endpoint} onChange={(event) => draft.update("userinfo_endpoint", event.target.value)} /></Field>
-            <Field><FieldLabel>JWKS URI</FieldLabel><Input value={draft.draft.jwks_uri} onChange={(event) => draft.update("jwks_uri", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="sso-issuer-url">Issuer URL</FieldLabel><Input id="sso-issuer-url" value={draft.draft.issuer_url} onChange={(event) => draft.update("issuer_url", event.target.value)} placeholder="https://idp.example.com" /></Field>
+            <Field><FieldLabel htmlFor="sso-client-id">Client ID</FieldLabel><Input id="sso-client-id" value={draft.draft.client_id} onChange={(event) => draft.update("client_id", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="sso-client-secret">Client secret</FieldLabel><Input id="sso-client-secret" type="password" value={draft.draft.client_secret} onChange={(event) => draft.update("client_secret", event.target.value)} placeholder={settings.ssoSettings?.has_client_secret ? "Stored secret" : ""} /><FieldDescription>Leave blank to keep the stored secret.</FieldDescription></Field>
+            <Field><FieldLabel htmlFor="sso-verified-login-domains">Verified login domains</FieldLabel><Input id="sso-verified-login-domains" value={settings.ssoSettings?.allowed_email_domains.join(", ") ?? ""} readOnly placeholder="Verify a custom domain first" /></Field>
+            <Field><FieldLabel htmlFor="sso-authorization-endpoint">Authorization endpoint</FieldLabel><Input id="sso-authorization-endpoint" value={draft.draft.authorization_endpoint} onChange={(event) => draft.update("authorization_endpoint", event.target.value)} /><FieldDescription>Optional when discovery is available.</FieldDescription></Field>
+            <Field><FieldLabel htmlFor="sso-token-endpoint">Token endpoint</FieldLabel><Input id="sso-token-endpoint" value={draft.draft.token_endpoint} onChange={(event) => draft.update("token_endpoint", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="sso-userinfo-endpoint">UserInfo endpoint</FieldLabel><Input id="sso-userinfo-endpoint" value={draft.draft.userinfo_endpoint} onChange={(event) => draft.update("userinfo_endpoint", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="sso-jwks-uri">JWKS URI</FieldLabel><Input id="sso-jwks-uri" value={draft.draft.jwks_uri} onChange={(event) => draft.update("jwks_uri", event.target.value)} /></Field>
           </div>
           <FactList className="border-t border-line-subtle pt-4 sm:grid-cols-2 lg:grid-cols-4">
             <Fact label="Last successful test">{settings.ssoSettings?.last_successful_test ? formatDateTime(settings.ssoSettings.last_successful_test.checked_at) : "None recorded"}</Fact>
@@ -158,7 +158,7 @@ export default function AuthenticationSettingsPage() {
           ) : null}
           {/* R3: this was `sticky bottom-0 ... backdrop-blur`. Nothing about a save bar
               needed to float over the fields it commits. */}
-          <FormFooter status={draft.isDirty ? "You have unsaved SSO changes." : "No unsaved SSO changes."}>
+          <FormFooter status={draft.isDirty ? "Unsaved changes" : null}>
             <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
             <Button variant="outline" onClick={() => void settings.testSsoSettings().catch(() => undefined)} disabled={settings.isTesting || settings.isSaving || draft.isDirty} title={draft.isDirty ? "Save changes before testing" : undefined}>{settings.isTesting ? "Testing…" : "Test connection"}</Button>
             <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving || settings.isTesting}>{settings.isSaving ? "Saving…" : "Save SSO settings"}</Button>

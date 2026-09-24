@@ -12,7 +12,8 @@ test("uses one settings entry and never renders breadcrumbs", async ({ page }) =
   await expect(page.getByRole("button", { name: "Settings", exact: true })).toHaveCount(0);
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("link", { name: /^Permissions/ }).click();
+  // The hub and the settings rail (A8) both link every page; go through the rail.
+  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: /^Permissions/ }).click();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
 });
 
@@ -50,7 +51,8 @@ test("keeps the global search centered and shell controls singular", async ({ pa
 
 test("shows only the module name in the global header and a cached profile photo", async ({ page }) => {
   await page.goto("/dashboard/sales/leads");
-  await expect(page.locator("main > div > header").getByRole("heading", { name: "Leads", exact: true })).toBeVisible();
+  // The header names the module in text, not a heading: the page's one h1 is PageHeader's (design.md 8).
+  await expect(page.locator("main > div > header").getByText("Leads", { exact: true })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await expect(page.getByPlaceholder("Search leads")).toBeVisible();
   await expect(page.getByRole("button", { name: "Create lead" })).toBeVisible();
@@ -81,7 +83,7 @@ test("renders neither breadcrumb trails nor visible page-title headers across da
   for (const [route, moduleName] of routes) {
     await page.goto(route);
     await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
-    await expect(page.locator("main > div > header").getByRole("heading", { name: moduleName, exact: true })).toBeVisible();
+    await expect(page.locator("main > div > header").getByText(moduleName, { exact: true })).toBeVisible();
     await expect(page.locator("main > div > header + div h1:not(.sr-only)")).toHaveCount(0);
   }
 });

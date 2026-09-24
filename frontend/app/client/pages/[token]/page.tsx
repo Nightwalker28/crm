@@ -198,7 +198,7 @@ export default function PublicClientPage() {
                   : "Sign in to view any personalized pricing available to your account."}
               </p>
               <form className="mt-4 space-y-3" onSubmit={(event) => void submitAction("request-changes", event)}>
-                <Textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Add a note or requested change" />
+                <Textarea aria-label="Note or requested change" value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Add a note or requested change" />
                 <div className="grid gap-2">
                   <Button type="button" onClick={() => void submitAction("accept")} disabled={Boolean(isSubmitting)} style={{ backgroundColor: accentColor }}>
                     <Check className="h-4 w-4" />

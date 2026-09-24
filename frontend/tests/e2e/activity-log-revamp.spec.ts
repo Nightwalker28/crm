@@ -103,7 +103,8 @@ test("shows retryable fixed errors without audit backend detail", async ({ page 
 
   await page.goto("/dashboard/settings/activity-log");
 
-  await expect(page.getByText("Activity could not be loaded.")).toBeVisible();
+  await expect(page.getByText("Activity could not be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/tenant_id=42|SELECT failed|private-db/)).toHaveCount(0);
 });
