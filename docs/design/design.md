@@ -708,6 +708,14 @@ If you add a legitimately bounded region, mark it — do not widen the test.
 **Watch for `overflow-x-hidden` on a vertical stack.** CSS computes the other axis to
 `auto`, so the element silently becomes a scroll container. Use `overflow-x-clip`.
 
+**Sticky pins the table header and nothing else** (`rebuild.md` R3). A save bar or toolbar
+is a flex sibling of the scroll region, never `position: sticky`. Five files hold `sticky`
+legitimately: `Table` (the header and the group row), `MatrixTable` (its pinned identity
+column, §7.10), `RecordTable` (the state row, kept in view while a wide table scrolls),
+`ModuleTableShell` (the scroll fade, a pseudo-element) and `RecordFormLayout` (the form
+aside, which is top-anchored; R3 is about the bottom-anchored save bar). `check-design.sh`
+fails a sticky in any other file. A sixth is a design change and takes §12.
+
 ### 4.6 Shadows are for elevation, not decoration
 
 `--shadow-panel` exists for things that genuinely float — dialogs, popovers,

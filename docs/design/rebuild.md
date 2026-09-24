@@ -6926,6 +6926,44 @@ stops at the portal's list pages.
 
 **Full suite runs before this sub-phase and again after it.**
 
+### The batch plan
+
+| Batch | Scope |
+|---|---|
+| ~~1~~ | ~~**Source-level checks** in `check-design.sh`: sticky, one table, field renderer, currency, `Pill`~~ **Done**, below |
+| 2 | **Rendered checks** in `design-rules.spec.ts`: type ramp, page-root rhythm, both border tiers, Title Case, focus visible, listbox active row, reduced motion, record archetype, sibling control height, colour budget, the settings rail. Widen the route list. Fix what they find |
+| 3 | **Close-out**: full suite (the programme's second), both guards, one browser pass, census, and this file's header |
+
+The *before* full suite runs between batch 1 and batch 2. Batch 1 changes no app code, so it
+measures the tree 5.9 left.
+
+### Status: batch 1 — five source checks, and one sticky that was only prose
+
+`check-design.sh` goes from 15 rules to **20**, all green at HEAD. Every new rule was proven by
+planting one violation per rule in a throwaway file. Each fired once, and the tree was clean
+again after the file was deleted.
+
+| Rule | Section | Allowlist, and why |
+|---|---|---|
+| **Sticky is a table header** | §4.5, R3 | Five files: `Table`, `MatrixTable`, `RecordTable`, `ModuleTableShell`, `RecordFormLayout`. Each reason is now written in §4.5 |
+| **One table** | §7.10, R10 | `RecordTable`, `MatrixTable`, `ModuleTableLoading`, `ModuleListToolbar`, which is §7.10's list. R10's three-file list predates `MatrixTable`; §7.10 supersedes it |
+| **No page-local field renderer** | §7.12 | `SummaryTile` / `DetailField` / `LinkedTile` / `MoneyRow` / `Fact` may be defined only in `components/ui/`. `Fact` was added because §7.12 names it |
+| **Currency goes through `<Money>`** | §7.1 | `lib/currency.ts`, and the invoice print page (§2.5 exception 2, a census `unchanged` row). The grep reads a four-line window after each `Intl.NumberFormat`, because the `style` key is never on the constructor's line |
+| **`Pill` stays deleted** | §2.4, R5 | None. It matches a JSX use, an import, a definition or a `ui/Pill` path, so the six doc comments that explain the deletion do not fire |
+
+**The first run of the sticky rule failed on four comments**: `ActionBar`, `RecordSpine`,
+`RecordWorkspace` and the settings layout all explain in prose that they are *not*
+`position: sticky`. The rule now drops lines that open with a comment marker. It did not
+need a design-exempt marker, and none was added.
+
+**The rendered half of R3 is unchanged.** `design-rules.spec.ts` already fails a
+bottom-anchored sticky inside a form. The source rule covers every other surface.
+
+Verification: `check-design.sh` 20 of 20. No app source changed, so there was nothing for
+lint or build to check. Both skill copies' baseline line now says 20.
+
+**Next:** the *before* full suite, then batch 2.
+
 ---
 
 ## Baseline

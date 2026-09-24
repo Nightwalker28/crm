@@ -142,6 +142,51 @@ check "No implicit scroll from overflow-x-hidden" "§4.5" \
      | grep -v 'overflow-y-' \
      | unexempt)"
 
+# R3 keeps sticky for the table header and nothing else. The allowlist is the files that
+# implement that header or carry a recorded exception: `Table` (the header and the group
+# row), `MatrixTable` (its pinned identity column, §7.10), `RecordTable` (the state row,
+# held in view while a wide table scrolls), `ModuleTableShell` (the scroll fade, a
+# pseudo-element) and `RecordFormLayout` (the form aside, top-anchored — R3 is about the
+# bottom-anchored save bar). A sticky anywhere else is a new decision and takes §12.
+STICKY_ALLOWED='frontend/components/(ui/(Table|MatrixTable|RecordTable|ModuleTableShell)|forms/RecordFormLayout)\.tsx'
+check "Sticky is a table header" "§4.5, rebuild R3" \
+  "a save bar or toolbar is a flex sibling of the scroll region, not position: sticky; only the table header pins" \
+  "$(grep -rnE '(^|[\"'\''\` {(])([a-z0-9-]+:)*sticky([ \"'\''\`}]|$)|position:[[:space:]]*[\"'\'']?sticky' \
+       "${FE_DIRS[@]}" "${TS_TSX[@]}" --include=*.css 2>/dev/null \
+     | grep -E 'className|cn\(|cva\(|clsx\(|= *["'\''\`]|position:' \
+     | grep -vE '^[^:]+:[0-9]+:[[:space:]]*(\*|//|/\*|\{/\*)' \
+     | grep -vE "^$STICKY_ALLOWED:" \
+     | unexempt)"
+
+# --- §7 Composition ---------------------------------------------------------------
+
+check "One table" "§7.10, rebuild R10" \
+  "a list is RecordTable and a matrix is MatrixTable; only the primitives that implement them import the Table cell primitive" \
+  "$(grep -rnE "from ['\"](@/components/ui/|(\.\./)+ui/|\./)Table['\"]" "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
+     | grep -vE '^frontend/components/ui/(RecordTable|MatrixTable|ModuleTableLoading|ModuleListToolbar)\.tsx:' \
+     | unexempt)"
+
+check "No page-local field renderer" "§7.12" \
+  "a label-over-value pair is Fact / the record spine's ink pair from components/ui, not a local SummaryTile or DetailField" \
+  "$(grep -rnE '(function|const|class)[[:space:]]+(SummaryTile|DetailField|LinkedTile|MoneyRow|Fact)\b' \
+       "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
+     | grep -v '^frontend/components/ui/' \
+     | unexempt)"
+
+# A currency-style formatter is two lines apart from its constructor, so read a window.
+check "Currency goes through <Money>" "§7.1, rebuild 5.1" \
+  "<Money> or formatMoney from lib/currency.ts; a local Intl.NumberFormat reintroduces the en-US / browser-locale split" \
+  "$(grep -rn -A4 'Intl.NumberFormat' "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
+     | grep -E "style:[[:space:]]*[\"']currency" \
+     | grep -vE '^frontend/lib/currency\.ts-' \
+     | grep -vE "^$INVOICE_PRINT" \
+     | unexempt)"
+
+check "Pill stays deleted" "§2.4, rebuild R5" \
+  "status is StatusValue (ink), a genuine badge is Chip — the bordered, tinted capsule is gone" \
+  "$(grep -rnE "(<Pill\b|import[^;]*\bPill\b|(function|const)[[:space:]]+Pill\b|ui/Pill['\"])" \
+       "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null | unexempt)"
+
 # --- §5 Icons / §7.2 Component sources --------------------------------------------
 
 check "lucide is the only icon source" "§5, §7.2" \
