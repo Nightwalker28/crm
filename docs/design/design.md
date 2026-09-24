@@ -1589,9 +1589,13 @@ their way around it.
 - **One pending label and one dirty string.**
   - The pending label is the action's own verb plus a **`…` character**, never three
     periods: `Saving…`, `Creating…`, `Sending…`, `Recording…`, `Uploading…`.
-  - The dirty line is exactly `Unsaved changes` / `No unsaved changes` — a status label, so
-    no closing period. `You have unsaved changes.`, `All changes saved`, `Unsaved message`
-    and `No changes to save.` are the same fact in four voices.
+  - The dirty line is exactly `Unsaved changes` — a status label, so no closing period — and
+    **a clean form shows nothing.** That is the explicit-save convention of the CRMs and ERPs
+    Lynk sits beside (Dynamics 365, Salesforce, HubSpot, Odoo): the line appears when there is
+    something to lose. `All changes saved` is autosave language and claims a save the operator
+    did not make; `No unsaved changes` announces an absence. `You have unsaved changes.`,
+    `Unsaved message` and `No changes to save.` are the same fact in other voices. Settled
+    2026-09-24, replacing the `Unsaved changes` / `No unsaved changes` pair.
   - **The dirty line is never coloured.** `text-state-warning` for unsaved and
     `text-state-success` for saved is colour carrying state, which R5 retires; unsaved work
     is the normal condition of an open form, not an exception.

@@ -131,7 +131,7 @@ test("hydrates the default role only after its permission query succeeds", async
   await expect(page.getByText("No modules available for this role")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sales Rep Permissions" })).toBeVisible();
   await expect(page.getByText("Leads", { exact: true })).toBeVisible();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("shows distinct real-empty and hydrated search-empty states", async ({ page }) => {
@@ -166,7 +166,7 @@ test("switches roles without edits and hydrates the selected role baseline", asy
 
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("an out-of-order response for the previous role cannot replace the selected role", async ({ page }) => {
@@ -214,7 +214,7 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
 
   expect(payload.permissions).toHaveLength(3);
   expect(Object.values(accounts?.actions ?? {}).every(Boolean)).toBeTruthy();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("warns before discarding changes when switching roles", async ({ page }) => {
@@ -235,7 +235,7 @@ test("warns before discarding changes when switching roles", async ({ page }) =>
   await page.getByRole("button", { name: "Discard and switch" }).click();
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("save success adopts the returned permissions as the new baseline", async ({ page }) => {
@@ -258,7 +258,7 @@ test("save success adopts the returned permissions as the new baseline", async (
 
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Export Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("save failure retains the editable draft", async ({ page }) => {

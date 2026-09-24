@@ -269,7 +269,7 @@ export default function CustomerGroupsSettingsPage() {
         status={saveError
           ? <span role="alert" className="text-state-danger">Customer group changes could not be saved. Check the group key and discount, then try again.</span>
           : isDirty ? "Unsaved changes"
-          : editingGroup ? "All changes saved"
+          : editingGroup ? null
           : "Name the group and give it a key to create it."}
         footer={(
           <>

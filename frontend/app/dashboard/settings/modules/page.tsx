@@ -246,7 +246,7 @@ export default function ModulesPage() {
         onSubmit={() => void saveModuleSettings()}
         status={updateError
           ? <span role="alert" className="text-state-danger">The module setting could not be updated. Review the value and try again.</span>
-          : isDirty ? "Unsaved changes" : "All changes saved"}
+          : isDirty ? "Unsaved changes" : null}
         footer={(
           <>
             <Button type="button" variant="outline" onClick={() => void closeEditor()} disabled={isSaving}>Cancel</Button>

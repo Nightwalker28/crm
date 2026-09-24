@@ -127,7 +127,7 @@ export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, o
           validated together — so the manual save stays (archetype 4). R3 takes the
           stickiness, R5 the colour. This was the tenth and last `sticky bottom-0`. */}
       <CardFooter className="flex flex-wrap items-center gap-2">
-        <p className="mr-auto text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "All changes saved"}</p>
+        <p className="mr-auto text-sm text-copy-muted">{isDirty ? "Unsaved changes" : null}</p>
         {isDirty ? <Button type="button" variant="ghost" onClick={() => setDraft(baselineDraft)}>Discard</Button> : null}
         <Button type="button" variant="outline" onClick={() => void changeEnabled(!draft.enabled)} disabled={previewMutation.isPending}>{draft.enabled ? <PowerOff /> : <Power />}{draft.enabled ? "Disable" : "Enable"}</Button>
         <Button type="button" variant="outline" onClick={() => { previewMutation.mutate(draft.enabled, { onSuccess: () => { inspect({ kind: "validation" }); toast.success("Automation draft is valid."); } }); }} disabled={previewMutation.isPending || !draft.name.trim()}><ListChecks />{previewMutation.isPending ? "Checking…" : "Validate"}</Button>

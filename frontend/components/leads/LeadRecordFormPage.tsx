@@ -164,7 +164,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       <RecordFormLayout
         title={mode === "edit" ? recordName : "Create lead"}
         sidebar={<LeadFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
-        status={isDirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : "Complete the required fields to create this lead."}
+        status={isDirty ? "Unsaved changes" : mode === "edit" ? null : "Complete the required fields to create this lead."}
         actions={(
           <>
             <Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button>

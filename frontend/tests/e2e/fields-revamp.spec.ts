@@ -150,7 +150,7 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.getByRole("button", { name: "Save field" }).click();
   const request = await customUpdate;
   expect(request.postDataJSON()).toMatchObject({ label: "Agreement Term", is_required: true, is_active: false });
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
   await page.getByRole("button", { name: "Close field editor" }).click();
 
   await page.getByRole("button", { name: "all", exact: true }).click();

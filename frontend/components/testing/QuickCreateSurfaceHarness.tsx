@@ -31,11 +31,11 @@ export function QuickCreateSurfaceHarness() {
       <div aria-label="Preserved page context" className="max-w-xl rounded-[var(--radius-card)] border border-line-default bg-surface p-6">
         <h1 className="text-xl font-semibold">Interaction surface harness</h1>
         <p className="mt-2 text-sm text-copy-muted">Neutral behavior fixture; it is not connected to a CRM module.</p>
-        <Button ref={openerRef} className="mt-5" type="button" onClick={() => setOpen(true)}>
+        <Button ref={openerRef} className="mt-4" type="button" onClick={() => setOpen(true)}>
           Open quick create
         </Button>
         <Button
-          className="ml-2 mt-5"
+          className="ml-2 mt-4"
           type="button"
           variant="outline"
           aria-pressed={failNextSubmit}
@@ -43,7 +43,7 @@ export function QuickCreateSurfaceHarness() {
         >
           Fail next submission
         </Button>
-        <dl className="mt-5 text-sm">
+        <dl className="mt-4 text-sm">
           <div>Submit count: <span data-testid="submit-count">{submitCount}</span></div>
           <div>Last outcome: <span data-testid="last-outcome">{lastOutcome}</span></div>
         </dl>

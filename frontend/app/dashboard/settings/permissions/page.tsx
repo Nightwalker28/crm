@@ -449,7 +449,7 @@ export default function RolesPermissionsPage() {
                   className="px-6 pb-4"
                   status={
                     <>
-                      <span className="font-medium">{isDirty ? "Unsaved changes" : "All changes saved"}</span>
+                      <span className="font-medium">{isDirty ? "Unsaved changes" : null}</span>
                       {saveError ? <p className="mt-1 text-sm text-state-danger" role="alert">{saveError}</p> : null}
                     </>
                   }

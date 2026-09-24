@@ -203,7 +203,7 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [22, 23] });
   await expect.poll(() => updateRequests).toBe(1);
   await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(accessibleRequestsBeforeSave);
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("shows blocked teams and preserves the draft when a concurrent department change rejects save", async ({ page }) => {

@@ -293,7 +293,7 @@ function ModuleAccessEditor({
             stays (archetype 4). R3 takes the stickiness; R5 takes the colour. */}
         <CardFooter className="flex flex-wrap items-center gap-3">
           <p className="mr-auto text-sm text-copy-muted">
-            {hasChanges ? "Unsaved changes" : "All changes saved"}
+            {hasChanges ? "Unsaved changes" : null}
           </p>
           <ActionBar size="default">
             <Button type="button" onClick={() => void handleSave()} disabled={!hasChanges || isSaving}>

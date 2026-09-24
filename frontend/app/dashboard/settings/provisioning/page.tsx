@@ -66,7 +66,7 @@ export default function ProvisioningSettingsPage() {
             <Field><FieldLabel>First name claim</FieldLabel><Input value={draft.draft.first_name_claim} onChange={(event) => draft.update("first_name_claim", event.target.value)} /></Field>
             <Field><FieldLabel>Last name claim</FieldLabel><Input value={draft.draft.last_name_claim} onChange={(event) => draft.update("last_name_claim", event.target.value)} /></Field>
           </div>
-          <FormFooter status={draft.isDirty ? "You have unsaved changes." : "No unsaved changes."}>
+          <FormFooter status={draft.isDirty ? "Unsaved changes" : null}>
             <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
             <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving}>{settings.isSaving ? "Saving…" : "Save provisioning"}</Button>
           </FormFooter>

@@ -608,7 +608,7 @@ export default function BackupSettingsPage() {
             </div>
           ) : null}
 
-          <FormFooter status={isSettingsDirty ? "Unsaved changes" : "All changes saved"}>
+          <FormFooter status={isSettingsDirty ? "Unsaved changes" : null}>
             <Button type="button" variant="ghost" onClick={() => setDraftOverride(null)} disabled={!isSettingsDirty || saveMutation.isPending}>Discard changes</Button>
             <Button type="button" onClick={() => saveMutation.mutate()} disabled={!isSettingsDirty || saveMutation.isPending}>
               <Save />{saveMutation.isPending ? "Saving…" : "Save schedule"}

@@ -242,7 +242,7 @@ function CustomModuleRecordEditor({
               </dl>
             </FormSection>
           }
-          status={isDirty ? "Unsaved changes" : "No unsaved changes"}
+          status={isDirty ? "Unsaved changes" : null}
           actions={(
             <>
               <Button asChild variant="outline">

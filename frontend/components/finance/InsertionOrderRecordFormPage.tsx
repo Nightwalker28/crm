@@ -313,7 +313,7 @@ function InsertionOrderFormEditor({
               </Card>
             </>
           }
-          status={isDirty ? "Unsaved changes" : "No unsaved changes"}
+          status={isDirty ? "Unsaved changes" : null}
           actions={(
             <>
               <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>

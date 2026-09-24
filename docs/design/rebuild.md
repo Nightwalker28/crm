@@ -6815,13 +6815,52 @@ not attributed to this sub-phase.
 
 | Item | Owner |
 |---|---|
-| The seeded *Notes* section holding one *Notes* field — a persisted seed, needs a data migration | The owner |
-| `/auth/login` in a forced light theme renders dark controls on a light card — observed, not attributed | The owner |
-| A `check-design.sh` rule failing on a 5-step spacing class | 5.10 |
+| ~~The seeded *Notes* section holding one *Notes* field~~ | **Closed 2026-09-24** — below. No migration was needed |
+| ~~`/auth/login` in a forced light theme renders dark controls on a light card~~ | **Closed 2026-09-24** — not a defect, below |
+| ~~A `check-design.sh` rule failing on a 5-step spacing class~~ | **Landed 2026-09-24** — below |
 | The 49 inherited spec failures above | `docs/e2e-suite-status.md`'s owners — none is copy |
 | ~45 unrendered *Failed to …* fallbacks inside hooks | Nobody — unrendered; churn |
 | *Support Cases*, *Case Number*, *Contract Number* | Scoping decision 8 |
-| The dirty line reads *All changes saved* in edit drawers against §7.5's *No unsaved changes* | 5.4 settled it by majority (5.6 batch 1 note); a vocabulary call for the owner |
+| ~~The dirty line reads *All changes saved* in edit drawers against §7.5's *No unsaved changes*~~ | **Settled 2026-09-24** — neither, below |
+
+### Follow-up 2026-09-24 — the four owner items
+
+**The *Notes* seed needed no migration.** The 5.9 note assumed seeded layouts are persisted per
+tenant. They are not: `MODULE_LAYOUT_SEEDS` is the in-code fallback, and a
+`record_layout_definitions` row exists only once an admin saves one — which
+`ADMIN_LAYOUT_MODULES` allows for lead quick-create alone. A detail layout for a quote, order or
+insertion order cannot have been persisted, so the seed change reaches every tenant at once. The
+fix is in the seed: `notes` never gets a section of its own. The order's joins `payment_terms` in
+a *Terms and notes* section, as the invoice already did; the quote's joins the *Quote* section
+and the insertion order's joins *References*. Backend layout tests: **28 pass**.
+
+**`/auth/login` in light is correct.** Rendered with the theme set the way an operator sets it
+(`localStorage.theme = "light"` before load) and with the class forced after hydration, both
+give body `rgb(247, 248, 250)`, inputs `rgb(241, 243, 246)`, a white card, and the dark-filled
+primary button that is the light theme's primary action. Screenshots show a light lattice and
+light card. The close-out capture was the capture, not the page. Nothing changed.
+
+**The dirty line: `Unsaved changes`, and nothing when clean.** Taken from the explicit-save
+convention of Dynamics 365, Salesforce, HubSpot and Odoo, on the owner's instruction to follow
+the industry rather than the doc. *All changes saved* is autosave language; *No unsaved changes*
+announces an absence. 23 files (contracts and support excluded) now render `null` in the clean
+state; *You have unsaved changes.* on provisioning became *Unsaved changes*. §7.5 rewritten.
+Seven specs that asserted *All changes saved* now assert *Unsaved changes* has count 0.
+
+**The 5-step rule was missing, not failing.** `check-design.sh` passed 14 of 14; 5.9 filed a
+rule to write. It is written — *No 5-step spacing* (§4.1), the whole `p`/`m`/`gap`/`space`
+family with breakpoint and negative forms, contracts and support excluded. Three sites were
+still on the 5-step and moved to the ladder: the invoice print page (`p-4 sm:p-6` /
+`p-6 sm:p-8`, `gap-6`, `mt-4`) and the quick-create test harness (`mt-4`). **15 of 15.** It
+lands ahead of 5.10 because it is source-level and cost nothing; 5.10's rendered checks are
+unchanged.
+
+| Check | Result |
+|---|---|
+| `check-design.sh` | **15 of 15**; a planted `sm:gap-5` fails the new rule |
+| Backend `test_record_layouts`, `test_record_layout_admin` | 28 pass |
+| `npm run lint`, `npm run build` | Clean, green; `.next` cleared after |
+| The seven touched specs | **Not run** — the assertion change is mechanical; they run with 5.10's full suite |
 
 ---
 

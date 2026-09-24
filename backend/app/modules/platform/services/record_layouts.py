@@ -657,6 +657,9 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
     # Money is seeded as a `Totals` section rather than left to the page, because the totals
     # *are* the document's summary — the pre-5.3 pages each drew their own private version of
     # this block, which is three renderers for one thing.
+    #
+    # `notes` never gets a section of its own: a `Notes` section holding one `Notes` field draws
+    # the word twice. It joins a neighbour instead — the order's terms, as on the invoice.
     "sales_quotes": {
         "detail": _seed(
             "sales_quotes",
@@ -667,7 +670,12 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "quote",
                     "Quote",
                     0,
-                    [("title", "full"), ("issue_date", "half"), ("expiry_date", "half")],
+                    [
+                        ("title", "full"),
+                        ("issue_date", "half"),
+                        ("expiry_date", "half"),
+                        ("notes", "full"),
+                    ],
                 ),
                 _seed_section(
                     "totals",
@@ -681,7 +689,6 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("currency", "half"),
                     ],
                 ),
-                _seed_section("notes", "Notes", 2, [("notes", "full")]),
             ],
         ),
     },
@@ -695,11 +702,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "fulfillment",
                     "Fulfillment",
                     0,
-                    [
-                        ("delivery_date", "half"),
-                        ("payment_terms", "half"),
-                        ("delivery_address", "full"),
-                    ],
+                    [("delivery_date", "half"), ("delivery_address", "full")],
                 ),
                 _seed_section(
                     "totals",
@@ -713,7 +716,12 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("currency", "half"),
                     ],
                 ),
-                _seed_section("notes", "Notes", 2, [("notes", "full")]),
+                _seed_section(
+                    "terms",
+                    "Terms and notes",
+                    2,
+                    [("payment_terms", "full"), ("notes", "full")],
+                ),
             ],
         ),
     },
@@ -777,7 +785,11 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "references",
                     "References",
                     0,
-                    [("external_reference", "half"), ("counterparty_reference", "half")],
+                    [
+                        ("external_reference", "half"),
+                        ("counterparty_reference", "half"),
+                        ("notes", "full"),
+                    ],
                 ),
                 _seed_section(
                     "period",
@@ -802,7 +814,6 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("currency", "half"),
                     ],
                 ),
-                _seed_section("notes", "Notes", 3, [("notes", "full")]),
             ],
         ),
     },

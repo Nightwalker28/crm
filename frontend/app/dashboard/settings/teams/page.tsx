@@ -64,7 +64,7 @@ function DepartmentEditorPanel({
       status={error
         ? <span role="alert" className="text-state-danger">{error}</span>
         : dirty ? "Unsaved changes"
-        : mode === "edit" ? "All changes saved"
+        : mode === "edit" ? null
         : "Complete the required fields to create this department."}
       footer={(
         <>
@@ -138,7 +138,7 @@ function TeamEditorPanel({
       status={error
         ? <span role="alert" className="text-state-danger">{error}</span>
         : dirty ? "Unsaved changes"
-        : mode === "edit" ? "All changes saved"
+        : mode === "edit" ? null
         : "Complete the required fields to create this team."}
       footer={(
         <>

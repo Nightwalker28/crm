@@ -211,7 +211,7 @@ export default function OpportunityRecordFormPage({
         status={dirty
           ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes"
+          ? null
           : "Complete the required fields to create this deal."}
         actions={(
           <>

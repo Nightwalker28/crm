@@ -129,7 +129,7 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   expect(payload.enabled).toBeTruthy();
   expect(payload.scope).toBe("selected_modules");
   expect(payload.selected_modules).toEqual(["sales_leads"]);
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("discards a dirty backup configuration without writing", async ({ page }) => {
@@ -153,7 +153,7 @@ test("discards a dirty backup configuration without writing", async ({ page }) =
   await discard.click();
 
   await expect(page.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
   expect(writes).toBe(0);
 });
 

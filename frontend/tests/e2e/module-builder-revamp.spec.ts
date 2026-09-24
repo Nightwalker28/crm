@@ -157,7 +157,7 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   const request = await fieldUpdate;
 
   expect(request.postDataJSON()).toMatchObject({ label: "Request Priority", is_required: true, sort_order: 0 });
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("uses the workspace module selector and guards dirty switching", async ({ page }) => {

@@ -128,7 +128,7 @@ export default function PosInvoicePrintPage() {
         className={`invoice-print-area overflow-hidden rounded-[var(--radius-card)] border shadow-xl ${isClassic ? "border-neutral-300 bg-neutral-100 text-neutral-950" : "border-neutral-800 bg-neutral-950 text-neutral-100"}`}
       >
         <div
-          className={isCompact ? "p-5 sm:p-6" : "p-5 sm:p-8"}
+          className={isCompact ? "p-4 sm:p-6" : "p-6 sm:p-8"}
           style={{
             borderTop:
               invoice.template_id === "modern"
@@ -203,7 +203,7 @@ export default function PosInvoicePrintPage() {
             </div>
           </header>
 
-          <div className="mt-8 grid gap-5 sm:grid-cols-2">
+          <div className="mt-8 grid gap-6 sm:grid-cols-2">
             <div>
               <div
                 className="text-xs font-semibold"
@@ -266,7 +266,7 @@ export default function PosInvoicePrintPage() {
           </div>
 
           <div
-            className={`overflow-x-auto rounded-[var(--radius-control)] border ${isCompact ? "mt-5" : "mt-8"} ${isClassic ? "border-neutral-300" : "border-neutral-800"}`}
+            className={`overflow-x-auto rounded-[var(--radius-control)] border ${isCompact ? "mt-4" : "mt-8"} ${isClassic ? "border-neutral-300" : "border-neutral-800"}`}
           >
             <table className="w-full min-w-[560px] border-collapse text-sm">
               <caption className="sr-only">Line items for invoice {invoice.invoice_number}</caption>

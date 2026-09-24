@@ -210,7 +210,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
       {/* R3: this was a verbatim copy of `RecordFormLayout`'s sticky bar, which is exactly
           what a layout detail with no primitive behind it costs. R5: the dirty line is not
           coloured — unsaved work is the normal state of an open form, not an exception. */}
-      <FormFooter status={isDirty ? "Unsaved changes" : "No unsaved changes"}>
+      <FormFooter status={isDirty ? "Unsaved changes" : null}>
         <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
         <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
           <Save />{isSaving ? "Saving…" : isEdit ? "Save template" : "Create template"}

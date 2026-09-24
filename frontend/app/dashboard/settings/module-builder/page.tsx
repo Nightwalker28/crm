@@ -575,7 +575,7 @@ function ModuleWorkspace({
               <div className="min-w-0 text-sm text-copy-muted">
                 {saveError
                   ? <span role="alert" className="text-state-danger">{saveError}</span>
-                  : isDirty ? "Unsaved changes" : "All changes saved"}
+                  : isDirty ? "Unsaved changes" : null}
               </div>
               <ActionBar>
                 <Button type="button" variant="destructiveGhost" onClick={() => void onDelete().catch(() => undefined)} disabled={disabled}><Trash2 />Delete</Button>

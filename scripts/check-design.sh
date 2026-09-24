@@ -104,6 +104,16 @@ check "Spacing stays on the 4px grid" "§4.1" \
   "$(grep -rnE '\b(p|px|py|pt|pb|pl|pr|m|mx|my|mt|mb|ml|mr|gap|gap-x|gap-y|space-x|space-y)-\[[0-9.]+(px|rem|em)\]' \
        "${FE_DIRS[@]}" "${TSX[@]}" 2>/dev/null | unexempt)"
 
+# The ladder is a closed set, not just multiples of 4px. Rebuild 5.9 swept the 5-step out
+# (~190 classes); without this, §4.1 is enforced by rereading, which is how 112 became 190.
+# Contracts and support stay out of the programme (rebuild scoping decision 8).
+check "No 5-step spacing" "§4.1" \
+  "gap-5 / p-5 are off the ladder: p-4 for a dense container, p-6 for a card holding sections, gap-4 between fields, gap-6 between sections" \
+  "$(grep -rnE '(^|[^a-zA-Z0-9_-])-?([a-z0-9]+:)*-?(p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y)-5([^0-9./a-zA-Z_-]|$)' \
+       "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
+     | grep -vE '^frontend/(app/client/support|app/dashboard/(contracts|support)|components/(contracts|support))/' \
+     | unexempt)"
+
 check "No call-site control heights" "§4.2" \
   "control heights are a closed set (32/38/44) — add a size variant, do not pass h-* at the call site" \
   "$(grep -rnE '<(Input|Textarea|Button|Select|SelectTrigger|SearchBar|Combobox)\b[^>]*className="[^"]*\b(h|size)-([0-9]|\[[0-9])' \

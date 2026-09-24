@@ -248,7 +248,7 @@ function CatalogRecordFormEditor({
             </Card>
           </div>
         }
-        status={dirty ? "Unsaved changes" : mode === "edit" ? "No unsaved changes" : `Complete the required fields to create this ${noun}.`}
+        status={dirty ? "Unsaved changes" : mode === "edit" ? null : `Complete the required fields to create this ${noun}.`}
         actions={(
           <>
             <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>

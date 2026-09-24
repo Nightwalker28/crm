@@ -117,7 +117,7 @@ test("adds and reorders fields, updates preview, and saves from mobile", async (
       filters: { search: "active customer" },
     },
   });
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("system views are read-only and user views support create, default, and delete", async ({ page }) => {

@@ -87,7 +87,7 @@ test("creates a rule with multiple actions through the existing API", async ({ p
   const payload = (await create).postDataJSON() as { name: string; actions_json: unknown[] };
   expect(payload.name).toBe("Valid new lead workflow");
   expect(payload.actions_json).toHaveLength(2);
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("edits multiple steps, reorders actions, guards unsaved exit, and saves", async ({ page }) => {
@@ -108,7 +108,7 @@ test("edits multiple steps, reorders actions, guards unsaved exit, and saves", a
   await page.getByRole("button", { name: "Save rule" }).click();
   const payload = (await update).postDataJSON() as { name: string; conditions_json: Array<{ value: string }>; actions_json: Array<{ type: string }> };
   expect(payload.name).toBe("Valid urgent lead workflow"); expect(payload.conditions_json[0].value).toBe("qualified"); expect(payload.actions_json.map((action) => action.type)).toEqual(["add_record_note", "create_task"]);
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("duplicates rules and preview-gates invalid enablement", async ({ page }) => {

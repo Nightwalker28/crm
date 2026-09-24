@@ -667,7 +667,7 @@ export default function FieldsPage() {
           ? (createError ? <span role="alert" className="text-state-danger">{createError}</span> : null)
           : (inspectorError
             ? <span role="alert" className="text-state-danger">{inspectorError}</span>
-            : inspectorDirty ? "Unsaved changes" : "All changes saved")}
+            : inspectorDirty ? "Unsaved changes" : null)}
         footer={panelMode === "create" ? (
           <>
             <Button type="button" variant="outline" onClick={() => handlePanelOpenChange(false)} disabled={createMutation.isPending}>Cancel</Button>

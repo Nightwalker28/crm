@@ -425,7 +425,7 @@ function PosInvoiceRecordFormEditor({
         status={dirty
           ? "Unsaved changes"
           : mode === "edit"
-          ? "No unsaved changes"
+          ? null
           : "Add the customer and line items to create this invoice."}
         actions={(
           <>
