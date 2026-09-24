@@ -335,7 +335,7 @@ export default function RolesPermissionsPage() {
               <div className="flex flex-col justify-between gap-4 lg:flex-row lg:items-start">
                 <div>
                   <h2 className="text-lg font-semibold text-copy-primary">
-                    {selectedRole ? `${selectedRole.name} Permissions` : "Role permissions"}
+                    {selectedRole ? `${selectedRole.name} permissions` : "Role permissions"}
                   </h2>
                   <p className="mt-1 max-w-3xl text-sm text-copy-secondary">
                     Changes apply only to this role. Module availability is managed separately by workspace, department, and team settings.

@@ -6893,7 +6893,9 @@ Checks carried from the original Phase 8:
   so the check above cannot see it: open a `SearchableSelect`, move the active row, and assert
   its ground differs from the popover's by a real margin. Measured in 5.4 batch 2 at **1.24:1
   dark / 1.08:1 light** — the token is `--color-primary-muted`, shared with `select.tsx`, so
-  the fix is a vocabulary decision and it needs the owner.
+  the fix is a vocabulary decision and it needs the owner. **Decided 2026-09-24: the focus
+  ring.** The owner chose the inset `ring-focus` over a heavier fill token and the nav's left
+  bar. It is written in design.md §2.3.
 - **Reduced motion is respected** (§6) — re-run one route under
   `emulateMedia({ reducedMotion: "reduce" })` and assert nothing reports a running
   animation.
@@ -6931,8 +6933,16 @@ stops at the portal's list pages.
 | Batch | Scope |
 |---|---|
 | ~~1~~ | ~~**Source-level checks** in `check-design.sh`: sticky, one table, field renderer, currency, `Pill`~~ **Done**, below |
-| 2 | **Rendered checks** in `design-rules.spec.ts`: type ramp, page-root rhythm, both border tiers, Title Case, focus visible, listbox active row, reduced motion, record archetype, sibling control height, colour budget, the settings rail. Widen the route list. Fix what they find |
-| 3 | **Close-out**: full suite (the programme's second), both guards, one browser pass, census, and this file's header |
+| 2 | **Rendered checks** in `design-rules.spec.ts`: type ramp, page-root rhythm, both border tiers, Title Case, focus visible, listbox active row, reduced motion, record archetype, sibling control height, colour budget, the settings rail. Widen the route list. Fix what they find. **Verification is the guards plus only the specs for surfaces the batch touched**; no full run (owner, 2026-09-24) |
+| 3 | **Close-out**: full suite (the programme's second), both guards, one browser pass, census, and this file's header. **Every failure gets fixed, the inherited ones included** (owner, 2026-09-24). Where the code is wrong, fix the code; where the code is right and the spec asserts a moved contract, update the spec. Contracts and support stay out (scoping decision 8) |
+
+**Resource ceiling for 5.10 (owner, 2026-09-24):** Lynk may use up to **80% of the host's CPU
+and RAM** while it is the only heavy thing running. This applies to this sub-phase only, and
+the committed `docker-compose.limits.yml` keeps the 65% default. RAM binds first: other
+processes hold about 4.8 GiB of 15.4, which leaves Lynk about 7.5 GiB. The caps: `frontend`
+2.0 CPU / 7.5 GiB (a warmed dev server reaches ~6.3 GiB), `frontend-e2e` 2.5 / 1.5 GiB, `backend` 0.75 / 768 MiB, `redis` 0.25. They sum
+to 5.5 cores, and the desktop and Jellyfin take about another core. They are applied through
+a scratchpad compose override, not the limits file. `--workers=1` stays.
 
 The *before* full suite runs between batch 1 and batch 2. Batch 1 changes no app code, so it
 measures the tree 5.9 left.
@@ -6963,6 +6973,107 @@ Verification: `check-design.sh` 20 of 20. No app source changed, so there was no
 lint or build to check. Both skill copies' baseline line now says 20.
 
 **Next:** the *before* full suite, then batch 2.
+
+### The *before* suite — 210 passed, 90 failed, 1.9 h, at `5d0e5be`
+
+Run `--workers=1` with routes warmed. The first ~200 tests ran at the 1-core `frontend-e2e`
+cap, and the rest at 2.5 cores once the owner raised the ceiling. The 90 is up from 5.5's 62,
+but the counts are not comparable, and this is not a regression count.
+
+| Failure shape | Count |
+|---|---|
+| `toBeVisible` never satisfied | 42 |
+| Test timeout on `click` / `fill` / `goto` / `boundingBox` | 26 |
+| Strict-mode violations (a label or link now resolves to two elements) | 3 |
+| Other assertions (`toEqual`, `toHaveValue`, `toContainText`, `toBeHidden`, `toHaveURL`, `toHaveCSS`, `toHaveAttribute`, `toBeFocused`, `toHaveText`) | 19 |
+
+By spec: users-revamp ×5, command-palette-actions ×5, automation-builder-revamp ×5, leads-revamp ×4, leads-quick-create ×4, application-shell-refactor ×4, settings-modules-revamp ×3, payments-revamp ×3, module-builder-revamp ×3, invoices-revamp ×3, insertion-orders-revamp ×3, export-controls-revamp ×3, client-portal-revamp ×3, booking-links-revamp ×3, view-manager-revamp ×2, permissions-revamp ×2, opportunities-revamp ×2, message-templates-revamp ×2, foundation-revamp ×2, fields-revamp ×2, contacts-revamp ×2, accounts-revamp ×2, teams-revamp ×1, tasks-revamp ×1, support-revamp ×1, recycle-bin-revamp ×1, record-layouts-admin ×1, record-layout-runtime ×1, quotes-revamp ×1, quick-create-surface ×1, public-surfaces-design ×1, profile-revamp ×1, orders-revamp ×1, mail-revamp ×1, import-controls-revamp ×1, general-settings-revamp ×1, documents-revamp ×1, dashboard-edit-mode-revamp ×1, customer-groups-revamp ×1, contact-organization-rollout ×1, catalog-revamp ×1, calendar-revamp ×1, backups-revamp ×1, auth-dashboard ×1, activity-log-revamp ×1.
+
+**Batch 3 owns every one of these** (owner, 2026-09-24): code fixed where the code is wrong,
+the spec updated where the spec asserts a moved contract. The exception is `support-revamp`,
+which is scoping decision 8. Batch 3's full run is the list to work from, not this one, because
+the timeouts at the old cap may not reproduce.
+
+### Status: batch 2 — the rendered checks, a canary, and what they found
+
+`design-rules.spec.ts` grows from nine checks to twenty, walks **105 routes in three
+sessions**, and finishes in about 7.5 minutes. It was 94 routes as the admin alone.
+
+**The route list, widened.** The admin walks the dashboard, plus `/dashboard/views/*`, the
+message-template edit route and any custom module the sidebar offers (none in the demo
+tenant, so that is logged, not failed). A fresh context with no session walks
+`/auth/login`, `/auth/setup-password`, `/client/login`, `/book/…`, `/client/pages/…` and the
+proposal. A client-portal login walks the portal lists and opens one record from each. The
+old list visited `/client/*` as the admin, so it audited the portal's login redirect eight
+times. The seeded client has no bookings, messages or orders, so those three lists are
+reported as *empty in this tenant*, not as unreachable. An unreachable route is now an
+assertion, not a log line.
+
+**The new checks, per route:** the type ramp, the page root, the card and control border
+tiers, Title Case, sibling button height (R4), the colour budget (R5), the record archetype,
+the settings rail's `aria-current`, and a focus probe. **Once per run:** the rail reaches
+every settings page (A8), the listbox active row is at least 3:1 in both themes, and nothing
+loops under reduced motion. Every assertion is `expect.soft`, so one run reports every
+category.
+
+**A canary guards the guard.** Before the walk, the spec plants one violation per new
+rendered check on `/dashboard`: a 13px span, a panel bounded in `line-subtle`, an input
+bounded in `line-subtle`, a Title Case button beside a mismatched one, a link with its focus
+indicator stripped, and five rows of success ink. It fails if any check misses its plant.
+**It caught a blind check on its first run:** the focus probe had reported nothing on three
+runs because the dashboard re-renders as its widgets load and threw the plant away before
+the probe reached it. The canary is now planted after the page settles and counted before
+probing. The focus probe's clean result is a real measurement only since that fix.
+
+**Four checks were wrong on the first run and were corrected rather than the app bent to
+them:**
+
+| Check | First reading | Corrected to |
+|---|---|---|
+| Colour budget | More than half of a `tbody`'s rows hued | Any success/info ink in a list, or an **action** coloured on every row. Most demo insertion orders and every demo deal really are overdue; that is data |
+| Card border tier | Any 200×60 box bounded by `line-subtle` | Only at the card radius or larger. §1.3's row is `line-subtle` at the control radius, legitimately |
+| Title Case | Every heading and button | Skips the surface title on record, edit, portal and public routes, where it is the record's name, and text in `[data-user-content]`. Product names of more than one word keep their capitals |
+| Page root, rail, archetype | Probed 1.3 s after load | Waits for `aria-busy` to clear first. Calendar, activity-log and a lead record had been probed mid-skeleton |
+
+**What the checks found in the app, all fixed:**
+
+| Finding | Fix |
+|---|---|
+| Listbox active row 1.26:1 dark / 1.13:1 light | Inset `ring-focus` on the active row in `SearchableSelect`, `Select`, `DropdownMenuItem` and the command palette (owner, design.md §2.3). Measured **5.53:1 / 4.96:1** |
+| Invoices and payments paint every balance green or amber | Zero balance `text-copy-muted`, outstanding `text-copy-primary`; the status column says *Overdue* |
+| Documents: a red *Delete* on every row | Neutral ghost at `sm`, with the row cluster at `sm` (§4.2) through a new `size` prop on `DocumentReferenceActions`. The custom-module row delete got the same change |
+| `Avatar` `sm` at 10px; users table hand-rolled a second avatar | `Avatar` `sm` is `text-2xs`; the users table uses `Avatar` |
+| 9px notification badge, 10px *(you)* marker | `text-2xs`, plus a new source rule, **No arbitrary font sizes** (§3.3). `check-design.sh` is at **21** |
+| Lead score figure at 24px on a record | `text-sm font-semibold`; 24px is the dashboard stat only |
+| *New Product* / *New Service* | *Create product* / *Create service* (§3.7) |
+| *IO Number*, *Back to Contacts*, *Open Products*, *Admin Permissions*, *API Keys* | Sentence case |
+| The integrations registry (backend): *Backup Destinations*, *Slack Webhooks*, *Create API Key* and eight more | Sentence case. Google Calendar, Google Drive, Microsoft OneDrive and Microsoft Teams keep their capitals |
+| The system saved view is named *Default View* (backend) | *Default view*. A stored system view is renamed on its next read by the existing re-sync, so no migration is needed; one new backend test |
+| Domains: *Verify* at 38px beside a 32px icon; views page header at 32 and 38 | One height per row (R4) |
+
+Two conventions were written into design.md: §2.4 *In a list, colour marks the exception
+and nothing else*, and §3.5's `data-user-content` marker for operator text inside a heading.
+
+**Spec updates for moved copy:** `catalog-revamp` (*Create product*) and
+`view-manager-revamp` (*Default view* in its API mocks).
+
+| Check | Result |
+|---|---|
+| `design-rules.spec.ts` | **Green**, 105 routes, 7.6 min; the canary sees every planted violation; listbox 5.53:1 / 4.96:1; nothing unreachable |
+| `check-design.sh` | **21 of 21** |
+| `npm run lint`, `npm run build` | Clean, green. The build ran with the dev server stopped, and `.next` was cleared after |
+| Backend `test_saved_views`, `test_integrations_registry` | 20 pass, one new |
+| The 13 module specs batch 2 touched, plus `scroll-containers` | **106 passed, 24 failed, 28 min. All 24 are in the *before* suite's failure list and none is new.** Six that failed before now pass, the Lead journey baseline among them, likely timeouts at the old 1-core cap |
+
+**One run was thrown away, and why.** The first spec run failed 130 of 130 on
+`ERR_CONNECTION_REFUSED`: the dev server had been **OOM-killed by its own 7.5 GiB cap**. It
+had grown through a warm of every route, six guard runs and two probes. A recreated server
+with only the run's routes warmed sits at about 3 GiB. **Recreate `frontend` before every run
+from here on**, batch 3's full suite included.
+
+**Next: batch 3** — the full suite on a freshly recreated dev server, then every failure fixed
+(code where the code is wrong, the spec where the contract moved; contracts and support
+excluded), both guards, one browser pass, the census, and this file's header.
 
 ---
 

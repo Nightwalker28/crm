@@ -31,7 +31,7 @@ test.beforeEach(async ({ page }) => {
     {
       id: 71,
       module_key: "sales_contacts",
-      name: "Default View",
+      name: "Default view",
       config: { visible_columns: ["first_name", "primary_email", "contact_telephone"], filters: emptyFilters, sort: null },
       is_default: false,
       is_system: true,
@@ -199,7 +199,7 @@ test("loads view management and filter controls for every extended built-in modu
           views: [{
             id: 100,
             module_key: moduleConfig.key,
-            name: "Default View",
+            name: "Default view",
             config: { visible_columns: [], filters: emptyFilters, sort: null },
             is_default: true,
             is_system: true,
@@ -232,12 +232,12 @@ test("supports drag ordering, guards switching, and saves a new view from defaul
     await dialog.dismiss();
   });
   await page.getByLabel("Select saved view").click();
-  await page.getByRole("option", { name: "Default View" }).click();
+  await page.getByRole("option", { name: "Default view" }).click();
   await expect(page).toHaveURL(/viewId=72/);
 
   await page.getByRole("button", { name: "Discard" }).click();
   await page.getByLabel("Select saved view").click();
-  await page.getByRole("option", { name: "Default View" }).click();
+  await page.getByRole("option", { name: "Default view" }).click();
   await page.getByRole("button", { name: "Duplicate" }).click();
   await page.getByLabel("View name").fill("Focused Contacts");
 
@@ -274,7 +274,7 @@ test("custom module views omit disabled fields without adding re-enabled fields"
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ views: [
-        { id: 91, module_key: "service_requests", name: "Default View", config: { visible_columns: ["title", "legacy"], filters: emptyFilters, sort: null }, is_default: false, is_system: true },
+        { id: 91, module_key: "service_requests", name: "Default view", config: { visible_columns: ["title", "legacy"], filters: emptyFilters, sort: null }, is_default: false, is_system: true },
         { id: 92, module_key: "service_requests", name: "My View", config: { visible_columns: ["title"], filters: emptyFilters, sort: null }, is_default: true, is_system: false },
       ] }),
     }),

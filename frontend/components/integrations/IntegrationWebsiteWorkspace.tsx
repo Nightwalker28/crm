@@ -347,7 +347,7 @@ export function IntegrationWebsiteWorkspace() {
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h3 className="text-base font-semibold text-copy-primary">API Keys</h3>
+          <h3 className="text-base font-semibold text-copy-primary">API keys</h3>
           <p className="mt-1 text-sm text-copy-muted">Create scoped credentials for catalog reads and website order writeback.</p>
         </div>
         <Button type="button" size="sm" onClick={openApiKeyEditor}><Plus />New API key</Button>
@@ -531,7 +531,7 @@ export function IntegrationWebsiteWorkspace() {
                 <h3 className="text-base font-semibold text-copy-primary">{item.title}</h3>
                 <p className="mt-1 text-sm text-copy-muted">{item.description}</p>
                 <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
-                  <Link href={item.href}>Open {item.title}</Link>
+                  <Link href={item.href}>Open {item.title.toLocaleLowerCase()}</Link>
                 </Button>
               </div>
             </div>

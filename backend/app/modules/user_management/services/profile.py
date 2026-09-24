@@ -31,7 +31,9 @@ SAVED_VIEW_MODULES = {
     "catalog_products",
     "catalog_services",
 }
-SYSTEM_DEFAULT_VIEW_NAME = "Default View"
+# Sentence case (design.md 3.5). Views stored under the old "Default View" are renamed by
+# _resync_system_saved_view on their next read, so no migration is needed.
+SYSTEM_DEFAULT_VIEW_NAME = "Default view"
 COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
 SAVED_VIEW_MAX_CONFIG_BYTES = 64_000
 SAVED_VIEW_MAX_DEPTH = 8
@@ -624,14 +626,21 @@ def _resync_system_saved_view(
     the copy is safe precisely because no user intent can be lost with it.
 
     Skipped when the caller reports no defaults, so a client that omits the parameter cannot
-    blank out a stored view.
+    blank out a stored view. The name is re-derived the same way and for the same reason: it
+    is the platform's label, not the user's, and it changed case in rebuild 5.10.
     """
-    if not visible_columns:
-        return system_view
+    renamed = system_view.name != SYSTEM_DEFAULT_VIEW_NAME
+    if renamed:
+        system_view.name = SYSTEM_DEFAULT_VIEW_NAME
 
     config = system_view.config if isinstance(system_view.config, dict) else {}
     stored_columns = config.get("visible_columns")
-    if isinstance(stored_columns, list) and list(stored_columns) == list(visible_columns):
+    columns_current = isinstance(stored_columns, list) and list(stored_columns) == list(visible_columns)
+    if not visible_columns or columns_current:
+        if renamed:
+            db.add(system_view)
+            db.commit()
+            db.refresh(system_view)
         return system_view
 
     system_view.config = _build_system_default_config(module_key, visible_columns)

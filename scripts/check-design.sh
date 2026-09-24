@@ -97,6 +97,15 @@ check "No hand-tuned line heights" "§3.3" \
   "if it wraps it is prose: use text-p-xs / text-p-sm / text-p-base instead of text-sm + leading-6" \
   "$(grep -rnE 'text-(2xs|xs|sm|base|lg|xl)[^\"'\''\`]*leading-([0-9]|\[)' "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null | unexempt)"
 
+# The ramp is a closed set (11/12/14/18, 16 for prose, 24 for a stat figure). The rendered
+# guard checks what is on screen; this catches the badge or the self-marker that only renders
+# for some rows, which a walk through a demo tenant never sees.
+check "No arbitrary font sizes" "§3.3" \
+  "text-2xs (11px) is the floor; pick a role from the ladder, never text-[Npx]" \
+  "$(grep -rnE 'text-\[[0-9.]+(px|rem|em)\]' "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
+     | grep -vE '^frontend/(app/client/support|app/dashboard/(contracts|support)|components/(contracts|support))/' \
+     | unexempt)"
+
 # --- §4 Space and size -----------------------------------------------------------
 
 check "Spacing stays on the 4px grid" "§4.1" \

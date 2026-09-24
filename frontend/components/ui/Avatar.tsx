@@ -5,7 +5,7 @@ import { resolveMediaUrl } from "@/lib/media";
 import { cn } from "@/lib/utils";
 
 const AVATAR_SIZE = {
-  sm: { box: "size-6", px: 24, text: "text-[10px]" },
+  sm: { box: "size-6", px: 24, text: "text-2xs" },
   default: { box: "size-8", px: 32, text: "text-2xs" },
   lg: { box: "size-10", px: 40, text: "text-xs" },
 } as const;

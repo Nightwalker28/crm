@@ -179,7 +179,7 @@ export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
 ];
 
 export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
-  { key: "io_number", label: "IO Number" },
+  { key: "io_number", label: "IO number" },
   { key: "customer_name", label: "Customer" },
   { key: "status", label: "Status" },
   { key: "currency", label: "Currency" },
@@ -672,7 +672,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     route: "/dashboard/finance/insertion-orders",
     columns: INSERTION_ORDER_COLUMNS,
     filterFields: [
-      { key: "io_number", label: "IO Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "io_number", label: "IO number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",

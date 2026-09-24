@@ -362,7 +362,7 @@ export default function TeamsAndDepartmentsPage() {
                     </ActionBar>
                   ) : undefined}
                 >
-                  {department.name}
+                  <span data-user-content>{department.name}</span>
                 </SectionHeading>
 
                 {departmentTeams.length === 0 ? (

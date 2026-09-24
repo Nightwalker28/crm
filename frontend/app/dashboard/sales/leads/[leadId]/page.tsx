@@ -513,7 +513,7 @@ function LeadScore({
   return (
     <div data-slot="lead-score">
       <div className="flex items-baseline gap-2">
-        <span className="text-2xl font-bold tabular-nums leading-none text-copy-primary">
+        <span className="text-sm font-semibold tabular-nums text-copy-primary">
           {score ?? 0}
         </span>
         <span className="text-sm text-copy-secondary">{gradeStyle.label}</span>

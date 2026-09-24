@@ -23,7 +23,7 @@ const SEARCH_LABEL = "Search records and modules";
 // listbox's active-option token, held for the owner with `select.tsx` and `DropdownMenuItem`
 // (design.md §7.16); it is not this file's to change.
 const ITEM_CLASS =
-  "flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] px-3 py-2.5 text-sm outline-none data-[selected=true]:bg-action-primary-muted";
+  "flex cursor-pointer items-center justify-between gap-3 rounded-[var(--radius-control)] px-3 py-2.5 text-sm outline-none data-[selected=true]:bg-action-primary-muted data-[selected=true]:ring-2 data-[selected=true]:ring-inset data-[selected=true]:ring-focus";
 
 // cmdk renders `heading` itself, `aria-hidden`, and names the group's listbox from it. The
 // record groups passed `heading` *and* drew their own label, so every module printed twice;

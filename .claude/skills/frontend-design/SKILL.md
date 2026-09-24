@@ -177,7 +177,7 @@ the routes first; parallel runs add a dozen timeout failures that vanish seriall
 
 ## 6. Known baseline
 
-`./scripts/check-design.sh` passes **all 20 rules at HEAD** (*No 5-step spacing* landed after 5.9; sticky, one table, field renderer, currency and `Pill` in 5.10 batch 1) — the last standing failure,
+`./scripts/check-design.sh` passes **all 21 rules at HEAD** (*No 5-step spacing* landed after 5.9; sticky, one table, field renderer, currency and `Pill` in 5.10 batch 1; *No arbitrary font sizes* in batch 2) — the last standing failure,
 `LynkSplash.tsx`'s `pl-[0.2em]`, closed in rebuild 5.9 batch 1. "Green" is now a clean run:
 any failure is new, and it is the slice's to fix or to exempt with a written reason.
 

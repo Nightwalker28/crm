@@ -19,10 +19,13 @@ export function DocumentReferenceActions({
   document,
   showCopy = false,
   resolveView: resolveViewOverride,
+  size = "default",
 }: {
   document: DocumentReference;
   showCopy?: boolean;
   resolveView?: () => Promise<{ url: string }>;
+  /** `sm` inside a table row (design.md 4.2), so the cluster matches its siblings (R4). */
+  size?: "default" | "sm";
 }) {
   const disabledReason = document.storage_provider === "local" ? null : unavailableReason(document);
 
@@ -64,12 +67,12 @@ export function DocumentReferenceActions({
   return (
     <div className="flex flex-wrap items-center gap-2">
       {disabledReason ? <span id={reasonId} className="sr-only">{disabledReason}</span> : null}
-      <Button type="button" variant="outline" onClick={() => void openDocument()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
+      <Button type="button" variant="outline" size={size} onClick={() => void openDocument()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
         <ExternalLink />
         View
       </Button>
       {showCopy ? (
-        <Button type="button" variant="outline" onClick={() => void copyLink()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
+        <Button type="button" variant="outline" size={size} onClick={() => void copyLink()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
           <Copy />
           Copy link
         </Button>

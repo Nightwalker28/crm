@@ -97,7 +97,8 @@ export default function CustomModuleRecordsTable({
           ? (record) => (
               <Button
                 type="button"
-                variant="destructiveGhost"
+                // Neutral in the row (R5); the confirmation carries the destructive colour.
+                variant="ghost"
                 size="icon-sm"
                 onClick={() => onDelete(record)}
                 disabled={isDeleting}

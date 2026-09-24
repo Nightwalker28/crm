@@ -103,7 +103,7 @@ function renderCell(invoice: PosInvoice, column: string) {
       return <span className="text-sm tabular-nums text-copy-secondary">{money(invoice.amount_paid, invoice.currency)}</span>;
     case "balance_due":
       return (
-        <span className={`text-sm font-semibold tabular-nums ${invoice.balance_due > 0 ? "text-state-warning" : "text-state-success"}`}>
+        <span className={`text-sm font-semibold tabular-nums ${invoice.balance_due > 0 ? "text-copy-primary" : "text-copy-muted"}`}>
           {money(invoice.balance_due, invoice.currency)}
         </span>
       );

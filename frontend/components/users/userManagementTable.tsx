@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import Image from "next/image";
 import { UsersRound } from "lucide-react";
 import Pagination from "../ui/Pagination";
 import UserFilters, {
   type UserFiltersValue,
 } from "@/components/users/userFilters";
+import { Avatar } from "@/components/ui/Avatar";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
@@ -26,7 +26,6 @@ import { usePagedList } from "@/hooks/usePagedList";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 
 import { Card } from "../ui/Card";
-import { resolveMediaUrl } from "@/lib/media";
 
 export type SortKey = "name" | "role" | "email" | "status";
 export type SortDirection = "asc" | "desc";
@@ -332,27 +331,14 @@ export function UserManagementTable({
       case "name":
         return (
           <div className="flex items-center gap-2 h-7">
-            {u.photo_url ? (
-              <Image
-                src={resolveMediaUrl(u.photo_url)}
-                alt=""
-                width={24}
-                height={24}
-                unoptimized
-                className="h-6 w-6 rounded object-cover"
-              />
-            ) : (
-              <div className="flex h-6 w-6 items-center justify-center rounded bg-surface-raised text-[10px] text-copy-secondary">
-                {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
-              </div>
-            )}
+            <Avatar size="sm" src={u.photo_url} name={[u.first_name, u.last_name].filter(Boolean).join(" ") || null} email={u.email} />
 
             <div className="flex items-center gap-1 max-w-full">
               <span className="whitespace-nowrap overflow-hidden text-ellipsis">
                 {getUserName(u)}
               </span>
               {isSelf && (
-                <span className="shrink-0 text-[10px] text-copy-muted">
+                <span className="shrink-0 text-2xs text-copy-muted">
                   (You)
                 </span>
               )}

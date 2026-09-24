@@ -37,7 +37,7 @@ type InsertionOrdersListProps = {
 };
 
 const HEADERS: Record<string, string> = {
-  io_number: "IO Number",
+  io_number: "IO number",
   customer_name: "Customer",
   status: "Status",
   currency: "Currency",

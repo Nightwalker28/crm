@@ -229,6 +229,28 @@ class SavedViewConfigTests(unittest.TestCase):
         self.assertEqual(views[0]["id"], 9)
         self.assertTrue(views[0]["is_default"])
 
+    def test_list_saved_views_renames_a_stored_title_case_system_view(self):
+        # Rebuild 5.10 moved the platform's label to sentence case. A system view stored under
+        # the old name is renamed on its next read, with its columns left alone.
+        system_view = UserSavedView(
+            id=9,
+            user_id=7,
+            module_key="tasks",
+            name="Default View",
+            config={"visible_columns": ["title", "status"], "_meta": {"system_default": True}},
+            is_default=1,
+        )
+        db = SavedViewListDB([system_view])
+        user = SimpleNamespace(id=7, tenant_id=1)
+
+        views = profile.list_saved_views(db, user, "tasks", default_visible_columns=["title", "status"])
+
+        self.assertEqual(profile.SYSTEM_DEFAULT_VIEW_NAME, "Default view")
+        self.assertEqual(system_view.name, "Default view")
+        self.assertEqual(views[0]["name"], "Default view")
+        self.assertEqual(system_view.config["visible_columns"], ["title", "status"])
+        self.assertEqual(db.commits, 1)
+
     def test_system_view_cannot_be_renamed_or_reconfigured(self):
         system_view = UserSavedView(
             id=9,

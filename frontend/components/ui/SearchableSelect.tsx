@@ -362,7 +362,9 @@ export function SearchableSelect({
                 onPointerMove={() => setActiveIndex(index)}
                 className={cn(
                   "flex cursor-pointer items-center justify-between gap-2 rounded-[var(--radius-control-sm)] px-2 py-1.5 text-sm text-copy-primary select-none",
-                  "data-[active=true]:bg-accent data-[active=true]:text-accent-foreground",
+                  // The active row is where the keyboard is (aria-activedescendant), so it is drawn as
+                  // focus: the fill alone is 1.24:1 dark / 1.08:1 light against the popover (§2.3).
+                  "data-[active=true]:bg-accent data-[active=true]:text-accent-foreground data-[active=true]:ring-2 data-[active=true]:ring-inset data-[active=true]:ring-focus",
                   option.disabled && "pointer-events-none text-copy-disabled opacity-60",
                 )}
               >

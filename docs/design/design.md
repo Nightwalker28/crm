@@ -264,12 +264,33 @@ grep -rn "ring-primary" frontend/app frontend/components   # should return nothi
 Focus is never removed. `outline-none` is only acceptable when immediately paired
 with a `focus-visible:` ring on the same element.
 
+**The active option in a list is focus too.** A `SearchableSelect` row, a `Select` item, a
+`DropdownMenuItem` and the command palette's selected row are where the keyboard is, whether
+the list moves real DOM focus (Radix) or `aria-activedescendant` (the combobox and the
+palette). All four draw the same inset ring, `ring-2 ring-inset ring-focus`, over the faint
+`--color-primary-muted` fill. The fill alone measured **1.24:1 dark / 1.08:1 light** against
+the popover (rebuild 5.4 batch 2), under the 3:1 the ring itself is held to. The ring shows
+on pointer hover as well, because a list has one active row and the pointer moves it.
+Rejected: a heavier fill token (still under 3:1 unless it is loud, and it adds vocabulary),
+and the nav's left bar (it means *current page*, and sharing it would say that here too).
+`design-rules.spec.ts` opens a `SearchableSelect` and a `Select` and measures the active row
+in both themes.
+
 ### 2.4 Status colour is a pair, not a fill
 
 Every status colour ships as a solid plus a low-alpha tint of the *same* RGB
 (`--color-success` / `--color-success-muted`). A status pill is the tint as
 background and the solid as text or border. Never invent a third value by hand,
 never use the solid as a large background fill.
+
+**In a list, colour marks the exception and nothing else** (`rebuild.md` R5). `StatusValue`
+paints only warning and danger in a table. So a green balance, a red *Delete* on every row,
+or the same action painted on every row is state wearing colour. A paid invoice's zero balance is
+muted ink, and an outstanding one is primary ink, because the status column already says
+*Overdue* when it is. A row's destructive action is a neutral ghost button; the confirmation
+it opens carries the destructive colour. `design-rules.spec.ts` fails a table body with any
+success or info ink, or with a coloured action on every row. It does not count a majority of
+rows: most demo insertion orders really are overdue, and that is data, not decoration.
 
 ### 2.5 Never write a hex in a component
 
@@ -433,6 +454,15 @@ Lynk authors, and Lynk's own nouns are not proper names:
 A module name read as a proper name is what produced *Module Settings* beside *All settings*
 on the same rail. The last row is the one exception to "Lynk authors it": a tenant's
 *Platform Admins* team is rendered exactly as it was named.
+
+**Guarded rendered, since rebuild 5.10.** `design-rules.spec.ts` reads every visible heading,
+button, tab, table header and label, and fails on a capital mid-label that is not in its
+proper-noun list. That list is Lynk's vocabulary of other people's names, never the tenant's
+data. Operator text is told apart by where it sits instead: a table body, a record's name,
+a select's value. When it sits in a heading the check would otherwise read, wrap it in
+`<span data-user-content>`, as the teams page does with a department name. The platform's own
+labels are not operator text even when the backend supplies them. The integrations registry
+and the system saved view's name (*Default view*) were moved to sentence case in 5.10.
 
 ### 3.6 Values the operator did not supply
 
@@ -2073,10 +2103,9 @@ Reports was a button that opened a list containing Reports, and a tenant that di
 but one module in a group met the same defect. **Rejected: moving reports into `workspace`** —
 it edits the registry for one instance and leaves the mechanism.
 
-**Not changed: the active option in a menu or listbox.** `DropdownMenuItem`, `select.tsx` and
-the command palette's `data-selected` row still take `--color-primary-muted`. That is 5.10's
-listbox finding, and its fix is a vocabulary decision held for the owner — a nav's current page
-is a position, which this section can rule on; an active option is the keyboard's cursor.
+**The active option in a menu or listbox is focus, and it is drawn as focus** (§2.3). Settled
+by the owner in rebuild 5.10. An active option is the keyboard's cursor, not a position, so it
+does not take the nav's bar.
 
 ## 8. Accessibility floors
 

@@ -422,6 +422,7 @@ export default function DocumentList({
           <Button
             type="button"
             variant="outline"
+            size="sm"
             aria-expanded={expandedIds.includes(document.id)}
             onClick={() =>
               setExpandedIds((current) =>
@@ -432,9 +433,11 @@ export default function DocumentList({
             <ChevronDown className={`h-4 w-4 transition-transform ${expandedIds.includes(document.id) ? "rotate-180" : ""}`} />
             Versions
           </Button>
-          <DocumentReferenceActions document={document} />
+          <DocumentReferenceActions document={document} size="sm" />
           {onDelete ? (
-            <Button type="button" variant="destructiveGhost" onClick={() => onDelete(document)} disabled={isDeleting}>
+            // Neutral in the row: a red action on every line is colour carrying no exception
+            // (R5). The confirmation that follows is where the destructive colour belongs.
+            <Button type="button" variant="ghost" size="sm" onClick={() => onDelete(document)} disabled={isDeleting}>
               <Trash2 className="h-4 w-4" />
               Delete
             </Button>
