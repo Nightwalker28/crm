@@ -7071,6 +7071,11 @@ had grown through a warm of every route, six guard runs and two probes. A recrea
 with only the run's routes warmed sits at about 3 GiB. **Recreate `frontend` before every run
 from here on**, batch 3's full suite included.
 
+**Batch 3 in flight (2026-09-25):** the *after* full suite runs at `70cf457` in three
+parts of about 20 spec files each. Before each part, `frontend` is recreated and warmed
+with only the routes that part's specs `goto`. That is the whole suite, run so a 7.5 GiB cap
+cannot kill the server partway. The failure list it produces is batch 3's work list.
+
 **Next: batch 3** — the full suite on a freshly recreated dev server, then every failure fixed
 (code where the code is wrong, the spec where the contract moved; contracts and support
 excluded), both guards, one browser pass, the census, and this file's header.
