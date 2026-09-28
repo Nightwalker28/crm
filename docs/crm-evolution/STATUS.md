@@ -13,8 +13,22 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **All phases done; the closing design-guard walk left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| 3A onward | Not started | |
+| 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **3A** | **Next — see below** | |
+| 3B onward | Not started | |
+
+## Wave 2E — closed (2026-09-29)
+
+The rendered design guards (`design-rules.spec.ts` + `scroll-containers.spec.ts`,
+`--workers=1`, frontend recreated first) pass 2 of 2 in 13.5 minutes, including the new
+`/dashboard/settings/pipeline`. Wave 2E is done; its phase notes follow, newest first.
+
+**Next:** Wave 3A, the Contact run: the proven Activity projection and contextual email
+extended to Contact (runbook §4, Wave 3A; `02-communications-activity.md` +
+`03-email-integration.md`). Reuse `record_activity.py` and `mail_associations.py`; no
+module-specific persistence. Check the Deferred table first. The two rows due "after 2E"
+(participant propagation through conversion/quotes/orders; relationship summaries) are due
+before 3A's **Opportunity** run, not before the Contact run.
 
 ## Wave 2E — frontend Phase 4: a saved view remembers Table or Pipeline (2026-09-29)
 
@@ -38,12 +52,6 @@ normalization; `verify_openapi` passes. Frontend lint and build are clean; `chec
 passes 21 of 21. `opportunities-board.spec.ts` (4, new: selecting a board view opens the board
 and the default view brings the table back), `opportunities-revamp.spec.ts` (3) and
 `view-manager-revamp.spec.ts` (8) pass 15 of 15.
-
-**Next:** close Wave 2E with the full rendered design-guard walk
-(`design-rules.spec.ts scroll-containers.spec.ts --workers=1`, frontend recreated first, routes
-warmed). It now includes `/dashboard/settings/pipeline`. Fix what fails in code. Then Wave 3A, or
-the deferred rows due "after 2E": Participants propagated through conversion and Quote/Order
-(05 backend Phase 3), then relationship summaries (05 backend Phase 4).
 
 ## Wave 2E — frontend Phase 3: the Kanban, audited (2026-09-29)
 
