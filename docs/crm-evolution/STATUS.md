@@ -13,8 +13,36 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–4 and frontend Phases 1–2 done; Kanban audit and view persistence left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–4 and frontend Phases 1–3 done; view persistence and the guard walk left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — frontend Phase 3: the Kanban, audited (2026-09-29)
+
+The board predates this wave (rebuild 5.7: `OpportunitiesPipelineBoard` on the shared
+`Board`). Checked against 04 §10 Phase 3:
+
+| Requirement | State |
+|---|---|
+| Same saved-view filters as List | ✔ by construction: one `useOpportunities` query and one filter set; the board is a `?display=` of the same list |
+| Columns from active pipeline stages | ✔ since frontend Phase 1. An inactive stage is a column only while occupied, and never a move target |
+| Cards show key fields | Partly: name, account/client, owner, close date, value, overdue. Fixed, not configurable. Left as is |
+| Drag/drop, optimistic | ✔ `stageMutation.onMutate` moves the card and its `pipeline_stage` |
+| Backend validates, rejected move rolls back with a clear message | Rollback ✔. **Fixed:** the toast was generic; it now carries the server's reason ("Deal stage was not changed: Pipeline stage is inactive.") |
+| Keyboard alternative | ✔ each card's "Change stage for …" select |
+| **Fixed:** the stage was fetched only when the Stage column was visible | In board mode the list query always adds `sales_stage`, otherwise every card fell into Unstaged |
+
+The board shows the loaded page of deals, not every deal ("Showing loaded records x–y of N").
+Per-column totals are in the stat row above it. Not changed.
+
+Verification: lint and build are clean; `check-design.sh` passes 21 of 21. New
+`opportunities-board.spec.ts` passes 3 of 3 (pipeline columns with an occupied inactive column
+and no move into it, `fields` includes `sales_stage`, a keyboard move saves, a refused move
+rolls back with its reason). `opportunities-revamp.spec.ts` passes 3 of 3.
+
+**Next:** Wave 2E frontend Phase 4. A saved view remembers List/Board: persist the display in
+the saved-view config (backend saved views store arbitrary config? check `useSavedViews` /
+`SavedViewConfig`), keep `?display=` as the address, and apply a view's display when it is
+selected. Then the full rendered design-guard walk, which closes Wave 2E.
 
 ## Wave 2E — Phase 4: the legacy constraint goes, tenants can add stages (2026-09-29)
 
@@ -39,13 +67,6 @@ passes (362 paths). On a throwaway PostgreSQL database: a custom key is accepted
 downgrade with it is refused, and after moving the deal back the downgrade restores the check
 (a `CheckViolation` proves it), then re-upgrades. Frontend lint and build are clean;
 `check-design.sh` passes 21 of 21; `pipeline-settings.spec.ts` passes 6 of 6.
-
-**Next:** Wave 2E frontend Phases 3–4. Audit `OpportunitiesPipelineBoard` + `Board` against 04
-§10 Phase 3 (same saved-view population as List ✔ by construction, optimistic move ✔, rollback
-✔, keyboard alternative ✔; check that inactive stages cannot take a drop, the rejected-move
-message, and that the Stage column is fetched in board mode even when hidden in the table).
-Then Phase 4: the saved view remembers List/Kanban (`?display=` is only the URL today). Then
-the full rendered design-guard walk, which closes Wave 2E.
 
 ## Wave 2E — frontend Phase 2: the pipeline settings screen (2026-09-29)
 

@@ -34,6 +34,15 @@ import { appendSavedViewFilterParams, buildSavedViewExportPayload, canonicalSave
 
 type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string; stage_id: number | null; label: string; semantic_type: string; count: number; total_value: number }> };
 
+/**
+ * A refused stage move names its reason — the server's own words for a known refusal (an
+ * inactive stage, a stage that no longer exists) — and falls back to a generic line otherwise.
+ */
+function stageMoveErrorMessage(error: unknown) {
+  const reason = error instanceof Error ? error.message : "";
+  return reason && !/^Failed with \d+$/.test(reason) ? `Deal stage was not changed: ${reason}.` : "Deal stage could not be updated. Try again.";
+}
+
 async function fetchPipelineSummary(filters: SavedViewFilters) {
   const params = new URLSearchParams();
   appendSavedViewFilterParams(params, filters);
@@ -63,11 +72,18 @@ export default function OpportunitiesPage() {
   }, [customFields, moduleFields, pipelineQuery.data]); const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_opportunities;
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_opportunities", defaultConfig); const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig); const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const activeFiltersKey = useMemo(() => canonicalSavedViewFiltersKey(activeFilters), [activeFilters]); const activeSort = useMemo<OpportunitySortState>(() => { const sort = draftConfig.sort; return sort && typeof sort.key === "string" ? { key: sort.key, direction: sort.direction === "desc" ? "desc" : "asc" } : null; }, [draftConfig.sort]);
+  // The board groups by stage, so it always asks for the stage even when the table has hidden
+  // that column; otherwise every card would land in Unstaged.
+  const [displayMode, setDisplayMode] = useListDisplay(["table", "pipeline"]);
+  const listColumns = useMemo(
+    () => (displayMode === "pipeline" && !visibleColumns.includes("sales_stage") ? [...visibleColumns, "sales_stage"] : visibleColumns),
+    [displayMode, visibleColumns],
+  );
   const summaryQuery = useQuery({ queryKey: ["sales-opportunities-pipeline-summary", activeFiltersKey], queryFn: () => fetchPipelineSummary(activeFilters), staleTime: 30_000 });
-  const { opportunities, page, pageSize, totalPages, totalCount, rangeStart, rangeEnd, isLoading, isFetching, error, goToPage, onPageSizeChange, refresh, updateOpportunityStage } = useOpportunities(visibleColumns, activeFilters, activeSort);
-  const [selectedIds, setSelectedIds] = useState<number[]>([]); const [displayMode, setDisplayMode] = useListDisplay(["table", "pipeline"]); const currentPageIds = useMemo(() => opportunities.map((item) => item.opportunity_id), [opportunities]);
+  const { opportunities, page, pageSize, totalPages, totalCount, rangeStart, rangeEnd, isLoading, isFetching, error, goToPage, onPageSizeChange, refresh, updateOpportunityStage } = useOpportunities(listColumns, activeFilters, activeSort);
+  const [selectedIds, setSelectedIds] = useState<number[]>([]); const currentPageIds = useMemo(() => opportunities.map((item) => item.opportunity_id), [opportunities]);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters); const activeFilterCount = allConditions.length + anyConditions.length; const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount); const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
-  async function changeStage(opportunityId: number, currentStage: string | null | undefined, nextStage: string) { if (currentStage === nextStage) return; try { await updateOpportunityStage(opportunityId, nextStage); toast.success("Deal stage updated."); } catch { toast.error("Deal stage could not be updated. Try again."); } }
+  async function changeStage(opportunityId: number, currentStage: string | null | undefined, nextStage: string) { if (currentStage === nextStage) return; try { await updateOpportunityStage(opportunityId, nextStage); toast.success("Deal stage updated."); } catch (error) { toast.error(stageMoveErrorMessage(error)); } }
   // While totals load, the tiles are the pipeline's own active stages, so the row does not
   // reflow when the counts arrive.
   const loadingStages: PipelineSummary["stages"] = [
