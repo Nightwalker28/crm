@@ -13,8 +13,42 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–3, frontend Phase 1, and the settings API done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–3 and frontend Phases 1–2 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — frontend Phase 2: the pipeline settings screen (2026-09-29)
+
+`/dashboard/settings/pipeline` ("Deal pipeline", Customization group; `SETTINGS_ROUTES.pipeline`).
+It is archetype 4: one `FormSection` holding a `SortableList` of `PipelineStageRow`s.
+
+- Each row is one stage: name (commits on blur or Enter), outcome (`Open` / `In progress` /
+  `Won` / `Lost`), probability %, `Active`/`Inactive` (`SegmentedBoolean`), and move up/down.
+  Each change autosaves (R1) through `useAutosave`, and the row's `SaveStateIndicator`
+  reports it. A server refusal, such as a duplicate name or the last active open stage, shows
+  its own reason under the row and marks the field invalid. The stable key and the live deal
+  count are shown under the name.
+- Deactivating a stage that holds deals asks first and names the count. The deals stay put.
+- Reorder: the move buttons are the contract, and drag is an enhancement (the `SortableList`
+  primitive). The order is applied optimistically and rolled back on failure, with its own
+  indicator in the section header. The list is **not** disabled while saving: a disabled list
+  drops its move buttons, and focus went with them. A move made during a save is ignored.
+- A save writes the server's pipeline into the `sales-opportunity-pipeline` cache and
+  invalidates usage, deal lists, totals and the deal summary, so labels change everywhere.
+- The route was added to the design-rules and scroll-containers route lists and to the census.
+
+Verification: lint and build are clean; `check-design.sh` passes 21 of 21.
+`pipeline-settings.spec.ts` passes 5 of 5: rename and Saved, a refused name in place, reorder
+with focus kept, deactivate with the count and a working Cancel, and the permission wall. A
+theme probe gave dark body `rgb(11, 13, 16)` and light `rgb(247, 248, 250)`; at 390px there is
+no horizontal overflow and the row wraps. **Not run:** the full rendered design-guard walk,
+which has no route filter. It is owed once at the end of Wave 2E.
+
+**Next:** Wave 2E Phase 4. Drop the legacy `ck_sales_opportunities_sales_stage` check
+constraint (and the `OPPORTUNITY_STAGE_PATTERN` on the stage PATCH schema) now that every
+reader and writer goes through stage rows. Then add `POST /sales/opportunities/pipeline/stages`
+(key slug unique per pipeline, appended last) and an "Add stage" control on the settings page.
+Keep `sales_stage` as the mirrored key column. Then audit the existing board against 04 §10
+Phase 3 and do Phase 4 view persistence. Finish with the full design-guard walk.
 
 ## Wave 2E — pipeline settings API (2026-09-29)
 
@@ -40,13 +74,6 @@ department access, so a salesperson can move deals but not redefine stages.
 
 Verification: `test_pipeline_settings.py` 12 of 12. The full backend suite passes 1094 of 1094
 with Redis up. `verify_openapi` passes (361 paths). No migration.
-
-**Next:** the pipeline settings screen itself (04 frontend Phase 2 UI) on these endpoints:
-settings archetype, rename/probability/outcome per stage, a non-drag reorder (move up/down),
-deactivate/reactivate with the `stage-usage` count in the warning, invalidating
-`sales-opportunity-pipeline` on save. Where it lives: check `app/dashboard/settings/**` and the
-record-layout admin for the settings pattern. Then Phase 4, dropping the legacy constraint to
-allow adding stages.
 
 ## Wave 2E — frontend Phase 1: configurable selectors (2026-09-29)
 

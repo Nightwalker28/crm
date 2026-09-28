@@ -270,6 +270,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/fields/error.tsx` | 7 | 5.1 | rebuild | | done |
 | `settings/fields/loading.tsx` | 5 | 5.1 | rebuild | | done |
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **done, batches 1 + 7c** — the IA leak closed in 1; the page's own Title Case title fixed in 7c |
+| `settings/pipeline/page.tsx` | 140 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — archetype 4: `PageShell variant="settings"`, one `FormSection`, `SortableList` rows, autosave per row (R1), order's own `SaveStateIndicator` |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **done, batches 4a + 7a** — `RecordTable` with sortable columns, three page-local states deleted; then `EditorPanel` |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **done, batches 3 + 5 + 7d** — denied state, then the address vocabulary; in 7d the page-local `RouteLoadingState` and `Card`+`EmptyState` moved onto `AutomationRunsTable`, which has owned both states since 4a |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **done, batches 3 + 7d** — denied state; **audited clean in 7d** |
@@ -338,6 +339,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunityQuickCreateLayoutFields.tsx` | 291 | 5.4 | adopt | | **done, batch 6** — shared layout frame + Owner value select |
 | `opportunities/OpportunityParticipants.tsx` | 565 | — | new | crm-evolution Wave 2D, added after the programme closed | **born on the system** — `RecordRelatedCard` + `RowList`/`ListRow` rows, `EditorPanel`, `DropdownMenu` row actions, Contact Quick Create in place |
 | `opportunities/OpportunityStageSelect.tsx` | 75 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — the shared `Select`; options from the tenant pipeline |
+| `opportunities/PipelineStageRow.tsx` | 170 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — one autosaving settings row per stage: `useAutosave` + `SaveStateIndicator`, `SegmentedBoolean`, `useConfirm` before deactivating a stage in use |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | **done, close-out** — audited |
 | `opportunities/opportunityStages.ts` | 140 | 5.1 | rebuild | Tone classification (R5) | **done** (B); Wave 2E: the stage list is gone, tone comes from `semantic_type` |
 | `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | **done** — batch 3 archetype; batch 5 totals/sections/labels; batch 6 Owner. The line-item table is 5.5's |

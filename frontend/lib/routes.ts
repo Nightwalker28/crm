@@ -36,6 +36,7 @@ export const SETTINGS_ROUTES = {
   moduleBuilder: "/dashboard/settings/module-builder",
   fields: "/dashboard/settings/fields",
   recordLayouts: "/dashboard/settings/record-layouts",
+  pipeline: "/dashboard/settings/pipeline",
   automation: "/dashboard/settings/automation",
   calendarBooking: "/dashboard/settings/calendar-booking",
   backups: "/dashboard/settings/backups",

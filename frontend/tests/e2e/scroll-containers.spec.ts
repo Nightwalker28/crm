@@ -66,6 +66,7 @@ const ROUTES = [
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",
   "/dashboard/settings/record-layouts",
+  "/dashboard/settings/pipeline",
   "/dashboard/settings/general",
   "/dashboard/settings/integrations",
   "/dashboard/settings/message-templates",
