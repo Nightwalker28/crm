@@ -54,6 +54,7 @@ from app.modules.sales.routes.contacts_routes import router as sales_contacts_ro
 from app.modules.sales.routes.leads_routes import router as sales_leads_router
 from app.modules.sales.routes.organizations_routes import router as sales_organization_router
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
+from app.modules.sales.routes.pipelines_routes import router as sales_pipelines_router
 from app.modules.sales.routes.opportunity_participants_routes import (
     router as sales_opportunity_participants_router,
 )
@@ -126,6 +127,8 @@ router.include_router(sales_organization_router, prefix="/sales")
 # Before the opportunities router: its literal `/opportunities/participant-roles`
 # path would otherwise be matched by `/opportunities/{opportunity_id}` first.
 router.include_router(sales_opportunity_participants_router, prefix="/sales")
+# Before the opportunities router: `/opportunities/pipeline/...` are literal paths.
+router.include_router(sales_pipelines_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(sales_quotes_router, prefix="/sales")
 router.include_router(sales_orders_router, prefix="/sales")

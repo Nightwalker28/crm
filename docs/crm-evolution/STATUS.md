@@ -13,8 +13,40 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–3 and frontend Phase 1 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–3, frontend Phase 1, and the settings API done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — pipeline settings API (2026-09-29)
+
+The backend half of 04 frontend Phase 2, on a new `pipelines_routes.py` mounted before the
+opportunities router. Every route needs Opportunities `configure` on top of module and
+department access, so a salesperson can move deals but not redefine stages.
+
+- `PATCH /sales/opportunities/pipeline/stages/{id}` changes `label`, `semantic_type`,
+  `probability` or `is_active`. The stable `key` is not in the contract. Names are unique per
+  pipeline, case-insensitively, and at most 80 characters. The pipeline must keep at least one
+  active stage that is not won or lost, so a deactivation or reclassification that removes the
+  last one is refused. Deactivation keeps its deals where they are and refuses only new
+  assignments.
+- `PUT /sales/opportunities/pipeline/stage-order` takes the full list of stage ids. An
+  incomplete, duplicated or foreign list is a 409 ("reload and try again"), so a stale client
+  cannot misplace a stage it never saw.
+- `GET /sales/opportunities/pipeline/stage-usage` returns live deals per stage in the caller's
+  tenant, for the UI's impact warnings.
+- Every change writes one `ActivityLog` row (`entity_type=sales_pipeline`,
+  `action=configure`) with the before and after pipeline. A stage from another tenant is a 404.
+- Not built: adding a stage (blocked on the legacy check constraint) and deleting one (never,
+  by design).
+
+Verification: `test_pipeline_settings.py` 12 of 12. The full backend suite passes 1094 of 1094
+with Redis up. `verify_openapi` passes (361 paths). No migration.
+
+**Next:** the pipeline settings screen itself (04 frontend Phase 2 UI) on these endpoints:
+settings archetype, rename/probability/outcome per stage, a non-drag reorder (move up/down),
+deactivate/reactivate with the `stage-usage` count in the warning, invalidating
+`sales-opportunity-pipeline` on save. Where it lives: check `app/dashboard/settings/**` and the
+record-layout admin for the settings pattern. Then Phase 4, dropping the legacy constraint to
+allow adding stages.
 
 ## Wave 2E — frontend Phase 1: configurable selectors (2026-09-29)
 
@@ -52,15 +84,6 @@ Verification: lint and build are clean; `check-design.sh` passes 21 of 21. Backe
 the retry test. `leads-revamp.spec.ts` plus `contact-organization-rollout.spec.ts` pass 22 of 22 (the first
 run failed 1, the dirty-baseline bug above, now fixed). Not checked: the rendered design guards,
 and a both-theme pass. No styling changed; only where the labels and options come from.
-
-**Next:** Wave 2E frontend Phase 2, the pipeline settings UI (rename, reorder with a non-drag
-path, semantic type, probability, deactivate with an impact warning). It needs backend
-management endpoints under `configure`. **Adding a stage needs the legacy
-`ck_sales_opportunities_sales_stage` constraint dropped or relaxed first**, so plan that
-migration (Phase 4 territory) or ship rename/reorder/deactivate first and adding stages second.
-The Kanban (frontend Phase 3) is largely present already: `OpportunitiesPipelineBoard` on the
-shared `Board`, the same list query and filters, an optimistic move with rollback, and a keyboard
-stage menu. Audit it against 04 §10 Phase 3 rather than rebuilding it.
 
 ## Wave 2E — pipeline Phase 3: dependent business logic (2026-09-29)
 

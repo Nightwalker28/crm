@@ -1029,6 +1029,29 @@ class SalesPipelineResponse(BaseModel):
     stages: list[SalesPipelineStageResponse]
 
 
+class SalesPipelineStageUpdate(BaseModel):
+    """A partial change to one stage. The stable `key` is deliberately not editable."""
+
+    label: str | None = Field(default=None, max_length=80)
+    semantic_type: str | None = None
+    probability: Decimal | None = Field(default=None, ge=0, le=100)
+    is_active: bool | None = None
+
+
+class SalesPipelineStageOrderUpdate(BaseModel):
+    stage_ids: list[int] = Field(min_length=1)
+
+
+class SalesPipelineStageUsage(BaseModel):
+    stage_id: int
+    live_deal_count: int
+
+
+class SalesPipelineStageUsageResponse(BaseModel):
+    pipeline_id: int
+    stages: list[SalesPipelineStageUsage]
+
+
 class OpportunityPipelineStageSummary(BaseModel):
     stage_key: str
     # None for the Unstaged bucket.

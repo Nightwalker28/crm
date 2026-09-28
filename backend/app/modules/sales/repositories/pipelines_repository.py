@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.sales.models import SalesOpportunity, SalesPipeline, SalesPipelineStage
@@ -76,3 +76,28 @@ def list_stages_by_ids(db: Session, *, tenant_id: int, stage_ids: set[int]) -> l
         .filter(SalesPipelineStage.tenant_id == tenant_id, SalesPipelineStage.id.in_(sorted(stage_ids)))
         .all()
     )
+
+
+def get_stage(db: Session, *, tenant_id: int, stage_id: int) -> SalesPipelineStage | None:
+    return (
+        db.query(SalesPipelineStage)
+        .filter(SalesPipelineStage.tenant_id == tenant_id, SalesPipelineStage.id == stage_id)
+        .first()
+    )
+
+
+def count_live_deals_by_stage(db: Session, *, tenant_id: int, pipeline_id: int) -> dict[int, int]:
+    """Live (not soft-deleted) deals per stage row of one pipeline."""
+
+    rows = (
+        db.query(SalesOpportunity.pipeline_stage_id, func.count(SalesOpportunity.opportunity_id))
+        .filter(
+            SalesOpportunity.tenant_id == tenant_id,
+            SalesOpportunity.pipeline_id == pipeline_id,
+            SalesOpportunity.pipeline_stage_id.is_not(None),
+            SalesOpportunity.deleted_at.is_(None),
+        )
+        .group_by(SalesOpportunity.pipeline_stage_id)
+        .all()
+    )
+    return {int(stage_id): int(count) for stage_id, count in rows}

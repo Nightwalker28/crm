@@ -26,6 +26,7 @@ from app.modules.sales.opportunity_stages import (
     OPPORTUNITY_UNSTAGED_PROBABILITY,
     OPPORTUNITY_PIPELINE_MODULE_KEY,
     PIPELINE_STAGE_CLOSED_SEMANTICS,
+    PIPELINE_STAGE_SEMANTIC_SET,
     default_opportunity_pipeline_stages,
     normalize_legacy_opportunity_stage,
 )
@@ -263,3 +264,103 @@ def serialize_pipeline(pipeline: SalesPipeline, *, include_inactive: bool = True
         "is_active": bool(pipeline.is_active),
         "stages": [serialize_pipeline_stage(stage) for stage in stages],
     }
+
+
+# ---------------------------------------------------------------------------
+# Pipeline configuration (04 frontend Phase 2's backend): rename, re-weight,
+# reclassify, deactivate/reactivate and reorder the stages of the tenant's
+# default pipeline. Adding stages waits for the legacy `sales_stage` check
+# constraint to go (Phase 4); a stage is never deleted, only deactivated.
+# ---------------------------------------------------------------------------
+
+STAGE_LABEL_MAX_LENGTH = 80
+
+
+def _bad_request(detail: str) -> HTTPException:
+    return HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=detail)
+
+
+def _assert_pipeline_still_usable(stages: list[SalesPipelineStage]) -> None:
+    """A pipeline must keep somewhere for a new deal to go.
+
+    New deals and conversions start at an active stage that is not an outcome, so
+    removing the last one would leave create forms with nothing to choose.
+    """
+
+    if not any(stage.is_active and stage.semantic_type not in PIPELINE_STAGE_CLOSED_SEMANTICS for stage in stages):
+        raise _bad_request("The pipeline needs at least one active stage that is not won or lost")
+
+
+def stage_usage(db: Session, tenant_id: int) -> dict:
+    pipeline = ensure_default_opportunity_pipeline(db, tenant_id)
+    counts = pipelines_repository.count_live_deals_by_stage(db, tenant_id=tenant_id, pipeline_id=pipeline.id)
+    return {
+        "pipeline_id": pipeline.id,
+        "stages": [{"stage_id": stage.id, "live_deal_count": counts.get(stage.id, 0)} for stage in pipeline.stages],
+    }
+
+
+def update_pipeline_stage(db: Session, tenant_id: int, stage_id: int, changes: dict) -> SalesPipelineStage:
+    """Apply a validated partial change to one stage. The caller commits.
+
+    The stable `key` is not editable. A stage from another tenant is a 404, the
+    same answer as one that does not exist.
+    """
+
+    stage = pipelines_repository.get_stage(db, tenant_id=tenant_id, stage_id=stage_id)
+    if stage is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Pipeline stage not found")
+    siblings = list(stage.pipeline.stages)
+
+    if "label" in changes:
+        label = (changes["label"] or "").strip()
+        if not label:
+            raise _bad_request("A stage needs a name")
+        if len(label) > STAGE_LABEL_MAX_LENGTH:
+            raise _bad_request(f"A stage name can be at most {STAGE_LABEL_MAX_LENGTH} characters")
+        if any(other.id != stage.id and other.label.strip().lower() == label.lower() for other in siblings):
+            raise _bad_request("Another stage in this pipeline already has that name")
+        stage.label = label
+    if "semantic_type" in changes:
+        semantic_type = (changes["semantic_type"] or "").strip().lower()
+        if semantic_type not in PIPELINE_STAGE_SEMANTIC_SET:
+            raise _bad_request("Unsupported stage outcome")
+        stage.semantic_type = semantic_type
+    if "probability" in changes:
+        probability = changes["probability"]
+        if probability is None:
+            raise _bad_request("A stage needs a probability")
+        probability = Decimal(str(probability))
+        if probability < 0 or probability > 100:
+            raise _bad_request("Probability must be between 0 and 100")
+        stage.probability = probability
+    if "is_active" in changes and changes["is_active"] is not None:
+        # Deals already in a deactivated stage stay there and stay readable; only new
+        # assignments are refused (`assign_opportunity_stage`).
+        stage.is_active = bool(changes["is_active"])
+
+    _assert_pipeline_still_usable(siblings)
+    db.flush()
+    return stage
+
+
+def reorder_pipeline_stages(db: Session, tenant_id: int, stage_ids: list[int]) -> SalesPipeline:
+    """Set board order from a complete list of the pipeline's stage ids. The caller commits.
+
+    The list must name every stage exactly once, inactive ones included, so a client
+    working from a stale copy (a stage it has never seen) is refused rather than
+    silently leaving that stage wherever it happened to fall.
+    """
+
+    pipeline = ensure_default_opportunity_pipeline(db, tenant_id)
+    stages_by_id = {stage.id: stage for stage in pipeline.stages}
+    if len(stage_ids) != len(set(stage_ids)) or set(stage_ids) != set(stages_by_id):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="The stage order must list every stage of the pipeline exactly once; reload and try again",
+        )
+    for position, stage_id in enumerate(stage_ids):
+        stages_by_id[stage_id].position = position
+    db.flush()
+    db.expire(pipeline, ["stages"])
+    return pipeline
