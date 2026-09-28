@@ -13,8 +13,54 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–3 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–3 and frontend Phase 1 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — frontend Phase 1: configurable selectors (2026-09-29)
+
+The client no longer lists stages. Options, order, labels and outcome come from
+`GET /sales/opportunities/pipeline` (`hooks/sales/useOpportunityPipeline.ts`, with a 5-minute
+stale time), and a deal's own stage from its `pipeline_stage`.
+
+- `opportunityStages.ts` is now helpers only: `stageTone` (won → success, lost → critical,
+  everything else neutral, per R5), `resolveStage`, `selectableStages` (active stages, plus
+  the current one if it was deactivated), and `defaultStageKey` (the first active stage that
+  is not an outcome). `OPPORTUNITY_STAGE_ORDER`/`LABELS`, the `statusStyles.ts` stage map and
+  `scripts/check-opportunity-stages.py` are deleted.
+- `OpportunityStageSelect` is the one picker. The full form, Quick Create and Lead conversion
+  use it; conversion offers only stages past the entry stage and starts at the first `ongoing`
+  one. An empty value displays the pipeline default, and `buildOpportunityPayload` submits that
+  same default, so what is shown is what is saved. Conversion's dirty-check baseline moved from
+  `"qualified"` to `""` with it; missing that made an untouched conversion prompt on Cancel.
+- Deal record page: the spine track is the tenant's stages minus `lost` ones, the inline Stage
+  options come from the pipeline, and the header status comes from `pipeline_stage`. A stage
+  change writes the saved record back, so the label is never stale. An unstaged deal now shows
+  "Unstaged" instead of pretending to be at Lead.
+- Table status and overdue, the board's columns (inactive columns only while occupied, and they
+  accept no cards), the list's loading stat tiles, the Stage saved-view filter options (by
+  stable key, inactive stages marked), related-deal labels on Contact/Account, the linked-record
+  picker, and the dashboard funnel (which drops `lost` by meaning; the backend dashboard rows now
+  carry `semantic_type`).
+- `opportunities-revamp.spec.ts` "pipeline totals … retry": the spec was at fault.
+  `getByText("Lead")` also matched real deals in the table. It is now scoped to the stat tile.
+- `lib/moduleViewConfigs.ts` keeps its static Stage options as the fallback for any caller that
+  does not have the pipeline. The list page overrides them.
+
+Verification: lint and build are clean; `check-design.sh` passes 21 of 21. Backend
+`test_pipeline_business_logic`, forecasting and API-route tests pass 80 of 80.
+`opportunities-revamp.spec.ts` plus `opportunity-participants.spec.ts` pass 8 of 8, including
+the retry test. `leads-revamp.spec.ts` plus `contact-organization-rollout.spec.ts` pass 22 of 22 (the first
+run failed 1, the dirty-baseline bug above, now fixed). Not checked: the rendered design guards,
+and a both-theme pass. No styling changed; only where the labels and options come from.
+
+**Next:** Wave 2E frontend Phase 2, the pipeline settings UI (rename, reorder with a non-drag
+path, semantic type, probability, deactivate with an impact warning). It needs backend
+management endpoints under `configure`. **Adding a stage needs the legacy
+`ck_sales_opportunities_sales_stage` constraint dropped or relaxed first**, so plan that
+migration (Phase 4 territory) or ship rename/reorder/deactivate first and adding stages second.
+The Kanban (frontend Phase 3) is largely present already: `OpportunitiesPipelineBoard` on the
+shared `Board`, the same list query and filters, an optimistic move with rollback, and a keyboard
+stage menu. Audit it against 04 §10 Phase 3 rather than rebuilding it.
 
 ## Wave 2E — pipeline Phase 3: dependent business logic (2026-09-29)
 
@@ -49,14 +95,6 @@ Verification: `test_pipeline_business_logic.py` 14 of 14. Each test changes a st
 meaning or label on the row and checks the behaviour follows the meaning. The full backend
 suite passes 1082 of 1082 with Redis up. `verify_openapi` passes. No migration and no frontend
 change.
-
-**Next:** Wave 2E frontend Phase 1, the configurable selectors. Forms, Quick Create, Lead
-conversion, the deal header track, table/status styling and saved-view filter options should
-read `GET /sales/opportunities/pipeline` and the `pipeline_stage` on each deal, not
-`opportunityStages.ts` or `statusStyles.ts` keys; tone comes from `semantic_type`. Work from the
-frontend rows of `04a-stage-inventory.md`. The inherited `opportunities-revamp.spec.ts`
-"pipeline totals … retry" failure is due in this slice. Then frontend Phase 2 (settings UI;
-adding a stage needs the legacy check constraint relaxed first) and Phase 3 (Kanban).
 
 ## Wave 2E — pipeline Phase 2: Opportunity references (2026-09-29)
 

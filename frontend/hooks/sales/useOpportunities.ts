@@ -7,12 +7,18 @@ import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 import { getSalesApiColumns } from "@/hooks/sales/listColumns";
+import { findStage, type OpportunityPipeline, type OpportunityStageRef } from "@/components/opportunities/opportunityStages";
+import { OPPORTUNITY_PIPELINE_QUERY_KEY } from "@/hooks/sales/useOpportunityPipeline";
 
 export type Opportunity = {
   opportunity_id: number;
   opportunity_name: string;
   client?: string | null;
   sales_stage?: string | null;
+  pipeline_id?: number | null;
+  pipeline_stage_id?: number | null;
+  /** The deal's stage row: label and outcome for display. Present when Stage is enabled. */
+  pipeline_stage?: OpportunityStageRef | null;
   contact_id?: number | null;
   organization_id?: number | null;
   assigned_to?: number | null;
@@ -37,7 +43,7 @@ export type Opportunity = {
   created_time?: string | null;
 };
 
-export type OpportunityPayload = Omit<Opportunity, "opportunity_id" | "created_time">;
+export type OpportunityPayload = Omit<Opportunity, "opportunity_id" | "created_time" | "pipeline_id" | "pipeline_stage">;
 
 type OpportunitiesResponse = {
   results: Opportunity[];
@@ -167,7 +173,11 @@ export function useOpportunities(
       const previous = queryClient.getQueriesData<OpportunitiesResponse>({ queryKey: ["sales-opportunities"] });
       queryClient.setQueriesData<OpportunitiesResponse>({ queryKey: ["sales-opportunities"] }, (current) => current ? {
         ...current,
-        results: current.results.map((opportunity) => opportunity.opportunity_id === opportunityId ? { ...opportunity, sales_stage: salesStage } : opportunity),
+        results: current.results.map((opportunity) => opportunity.opportunity_id === opportunityId ? {
+          ...opportunity,
+          sales_stage: salesStage,
+          pipeline_stage: findStage(queryClient.getQueryData<OpportunityPipeline>(OPPORTUNITY_PIPELINE_QUERY_KEY), salesStage) ?? opportunity.pipeline_stage,
+        } : opportunity),
       } : current);
       return { previous };
     },

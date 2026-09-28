@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import OpportunitiesPipelineBoard from "@/components/opportunities/OpportunitiesPipelineBoard";
 import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQuickCreate";
 import OpportunitiesTable from "@/components/opportunities/OpportunitiesTable";
+import { orderedStages, selectableStages, UNSTAGED_LABEL } from "@/components/opportunities/opportunityStages";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { StatGroup, StatTile } from "@/components/ui/StatTile";
@@ -25,15 +26,13 @@ import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useListDisplay } from "@/hooks/useListDisplay";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useOpportunities, type OpportunitySortState } from "@/hooks/sales/useOpportunities";
+import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import { useSavedViews, type SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { appendSavedViewFilterParams, buildSavedViewExportPayload, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 
-type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string; label: string; count: number; total_value: number }> };
-const EMPTY_STAGES: PipelineSummary["stages"] = [
-  ["lead", "Lead"], ["qualified", "Qualified"], ["proposal", "Proposal"], ["negotiation", "Negotiation"], ["closed_won", "Closed won"], ["closed_lost", "Closed lost"], ["unstaged", "Unstaged"],
-].map(([stage_key, label]) => ({ stage_key, label, count: 0, total_value: 0 }));
+type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string; stage_id: number | null; label: string; semantic_type: string; count: number; total_value: number }> };
 
 async function fetchPipelineSummary(filters: SavedViewFilters) {
   const params = new URLSearchParams();
@@ -48,7 +47,20 @@ export default function OpportunitiesPage() {
   const canCreate = Boolean(modules.find((module) => module.name === "sales_opportunities")?.actions?.can_create);
   const [quickCreateOpen, setQuickCreateOpen] = useState(false);
   const quickCreateTriggerRef = useRef<HTMLButtonElement>(null);
-  const definition = useMemo(() => buildModuleViewDefinition("sales_opportunities", customFields, moduleFields), [customFields, moduleFields]); const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_opportunities;
+  const pipelineQuery = useOpportunityPipeline();
+  // The Stage filter offers the tenant's stages by stable key, so a saved view keeps working
+  // when a label is renamed. Inactive stages stay listed: old deals can still be filtered.
+  const definition = useMemo(() => {
+    const base = buildModuleViewDefinition("sales_opportunities", customFields, moduleFields);
+    const stages = orderedStages(pipelineQuery.data);
+    if (!base || !stages.length) return base;
+    return {
+      ...base,
+      filterFields: base.filterFields.map((field) => field.key === "sales_stage"
+        ? { ...field, options: stages.map((stage) => ({ value: stage.key, label: stage.is_active ? stage.label : `${stage.label} (inactive)` })) }
+        : field),
+    };
+  }, [customFields, moduleFields, pipelineQuery.data]); const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_opportunities;
   const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_opportunities", defaultConfig); const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig); const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const activeFiltersKey = useMemo(() => canonicalSavedViewFiltersKey(activeFilters), [activeFilters]); const activeSort = useMemo<OpportunitySortState>(() => { const sort = draftConfig.sort; return sort && typeof sort.key === "string" ? { key: sort.key, direction: sort.direction === "desc" ? "desc" : "asc" } : null; }, [draftConfig.sort]);
   const summaryQuery = useQuery({ queryKey: ["sales-opportunities-pipeline-summary", activeFiltersKey], queryFn: () => fetchPipelineSummary(activeFilters), staleTime: 30_000 });
@@ -56,7 +68,13 @@ export default function OpportunitiesPage() {
   const [selectedIds, setSelectedIds] = useState<number[]>([]); const [displayMode, setDisplayMode] = useListDisplay(["table", "pipeline"]); const currentPageIds = useMemo(() => opportunities.map((item) => item.opportunity_id), [opportunities]);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters); const activeFilterCount = allConditions.length + anyConditions.length; const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount); const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
   async function changeStage(opportunityId: number, currentStage: string | null | undefined, nextStage: string) { if (currentStage === nextStage) return; try { await updateOpportunityStage(opportunityId, nextStage); toast.success("Deal stage updated."); } catch { toast.error("Deal stage could not be updated. Try again."); } }
-  const stages = summaryQuery.data?.stages ?? EMPTY_STAGES;
+  // While totals load, the tiles are the pipeline's own active stages, so the row does not
+  // reflow when the counts arrive.
+  const loadingStages: PipelineSummary["stages"] = [
+    ...selectableStages(pipelineQuery.data).map((stage) => ({ stage_key: stage.key, stage_id: stage.id, label: stage.label, semantic_type: String(stage.semantic_type), count: 0, total_value: 0 })),
+    { stage_key: "unstaged", stage_id: null, label: UNSTAGED_LABEL, semantic_type: "open", count: 0, total_value: 0 },
+  ];
+  const stages = summaryQuery.data?.stages ?? loadingStages;
 
   return <PageShell variant="list" title="Deals">
     <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search deals" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} columnOptions={definition?.columns ?? []} visibleColumns={visibleColumns} onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))} onClearFilters={clearFilters} selectedCount={selectedIds.length} selectionNoun="deal" onClearSelection={() => setSelectedIds([])} viewControls={<><SavedViewSelector moduleKey="sales_opportunities" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} /><SegmentedControl aria-label="Deal display" value={displayMode} onValueChange={setDisplayMode}><SegmentedItem value="table"><Table2 />Table</SegmentedItem><SegmentedItem value="pipeline"><Columns3 />Pipeline</SegmentedItem></SegmentedControl></>} actionControls={<ModuleImportExportControls importEndpoint="/sales/opportunities/import" exportEndpoint="/sales/opportunities/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />} primaryAction={canCreate ? <Button ref={quickCreateTriggerRef} type="button" onClick={() => setQuickCreateOpen(true)}><Plus />Create deal</Button> : null} />

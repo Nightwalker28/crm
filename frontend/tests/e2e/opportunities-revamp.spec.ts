@@ -4,7 +4,7 @@ import { loginAsAdmin } from "./helpers/auth";
 
 const dealId = 987654324;
 const summary = {
-  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
+  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", pipeline_stage: { id: 3, key: "proposal", label: "Proposal", semantic_type: "ongoing", probability: 50, is_active: true }, contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
   contact: { contact_id: 41, first_name: "Grace", last_name: "Buyer", primary_email: "grace@example.com", contact_telephone: "+94770000003", current_title: "COO" },
   organization: { org_id: 51, org_name: "Acme" },
   participant_contacts: [], can_view_contacts: true,
@@ -13,7 +13,7 @@ const summary = {
 const pipelineSummary = {
   total_count: 2,
   stages: [
-    { stage_key: "lead", label: "Lead", count: 2, total_value: 125000 },
+    { stage_key: "lead", stage_id: 1, label: "Lead", semantic_type: "open", probability: 10, is_active: true, count: 2, total_value: 125000 },
   ],
 };
 
@@ -62,8 +62,9 @@ test("Deals keep the list available when pipeline totals fail and retry with fix
   await expect(page.getByText("sql_connection=private-secret")).toHaveCount(0);
   shouldFail = false;
   await page.getByRole("button", { name: "Retry totals" }).click();
-  const leadCard = page.getByText("Lead", { exact: true }).locator("..").locator("..");
-  await expect(leadCard.getByText("2", { exact: true })).toBeVisible();
+  // Scoped to the stat row: the table under it can hold real deals whose stage is also "Lead".
+  const leadTile = page.locator('[data-slot="stat-tile"]', { has: page.getByText("Lead", { exact: true }) });
+  await expect(leadTile.getByText("2", { exact: true })).toBeVisible();
 });
 
 test("Deal create, detail, and edit use routed record workflows", async ({ page }) => {

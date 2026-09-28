@@ -26,6 +26,8 @@ export function buildOpportunityPayload(
   customFieldValues: Record<string, unknown>,
   moduleFields: ModuleFieldConfig[],
   mode: "create" | "edit" = "create",
+  /** The pipeline's default stage (`defaultStageKey`), used when the form left Stage empty. */
+  defaultStage = "",
 ) {
   const trim = (value: string) => value.trim() || null;
   return pickEnabledModulePayload(
@@ -37,7 +39,7 @@ export function buildOpportunityPayload(
       organization_id: form.organization_id,
       // An edit that clears the owner would otherwise reassign the deal to the editor.
       assigned_to: mode === "edit" && form.assigned_to === null ? undefined : form.assigned_to,
-      sales_stage: form.sales_stage || "lead",
+      sales_stage: form.sales_stage || defaultStage || null,
       start_date: form.start_date || null,
       expected_close_date: form.expected_close_date || null,
       probability_percent: form.probability_percent.trim() ? Number(form.probability_percent) : null,

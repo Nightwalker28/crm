@@ -87,6 +87,8 @@ class ClosedSemanticsTests(BusinessLogicFixture):
         labels = {row["key"]: row["label"] for row in summary["deal_stages"]}
         self.assertEqual(labels["unstaged"], "Unstaged")
         self.assertEqual(labels["closed_won"], "Closed won")
+        semantics = {row["key"]: row["semantic_type"] for row in summary["deal_stages"]}
+        self.assertEqual((semantics["closed_lost"], semantics["unstaged"]), ("lost", "open"))
 
         self.stage("closed_lost").semantic_type = "ongoing"
         self.db.commit()

@@ -928,6 +928,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
         stage_counts: dict[str, int] = {}
         stage_values: dict[str, Decimal] = {}
         stage_labels: dict[str, str] = {}
+        stage_semantics: dict[str, str] = {}
         rows = deal_base.with_entities(
             SalesOpportunity.sales_stage,
             SalesOpportunity.pipeline_stage_id,
@@ -945,6 +946,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
             facts = stages_by_id.get(stage_id) or pipelines_services.legacy_stage_facts(sales_stage)
             key = facts.key
             stage_labels[key] = facts.label
+            stage_semantics[key] = facts.semantic_type
             stage_counts[key] = stage_counts.get(key, 0) + 1
             numeric_value = _parse_decimalish(value)
             stage_values[key] = stage_values.get(key, Decimal("0")) + numeric_value
@@ -958,6 +960,8 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
             {
                 "key": key,
                 "label": stage_labels[key],
+                # So a chart can leave out lost deals by meaning, not by key.
+                "semantic_type": stage_semantics[key],
                 "count": stage_counts[key],
                 "value": float(stage_values.get(key, Decimal("0"))),
             }

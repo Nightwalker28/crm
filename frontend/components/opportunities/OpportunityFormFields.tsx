@@ -5,7 +5,7 @@ import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
-import { getOpportunityStageLabel, OPPORTUNITY_STAGE_ORDER } from "@/components/opportunities/opportunityStages";
+import { OpportunityStageSelect } from "@/components/opportunities/OpportunityStageSelect";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -41,7 +41,7 @@ export type OpportunityFormValue = {
 
 export const EMPTY_OPPORTUNITY_FORM: OpportunityFormValue = {
   opportunity_name: "", client: "", contact_id: null, contact_name: "", organization_id: null,
-  organization_name: "", assigned_to: null, assigned_to_name: "", sales_stage: "lead", start_date: "",
+  organization_name: "", assigned_to: null, assigned_to_name: "", sales_stage: "", start_date: "",
   expected_close_date: "", probability_percent: "", total_cost_of_project: "", currency_type: "USD",
   campaign_type: "", total_leads: "", cpl: "", target_geography: "", target_audience: "", domain_cap: "",
   tactics: "", delivery_format: "", attachments: [],
@@ -100,7 +100,7 @@ export function OpportunityFormMainFields({ value, onChange, customFields, custo
 export function OpportunityFormSidebarFields({ value, onChange, moduleFields, mode }: Pick<Props, "value" | "onChange" | "moduleFields" | "mode">) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return <>
-    <FormSection title="Pipeline" description="Set the stage used in pipeline reporting.">{enabled("sales_stage") ? <Field><FieldLabel htmlFor="deal-stage">Stage</FieldLabel><Select value={value.sales_stage || "lead"} onValueChange={(sales_stage) => onChange({ ...value, sales_stage })}><SelectTrigger id="deal-stage"><SelectValue /></SelectTrigger><SelectContent>{OPPORTUNITY_STAGE_ORDER.map((stage) => <SelectItem key={stage} value={stage}>{getOpportunityStageLabel(stage)}</SelectItem>)}</SelectContent></Select></Field> : <p className="text-sm text-copy-muted">Pipeline stage is not enabled.</p>}</FormSection>
+    <FormSection title="Pipeline" description="Set the stage used in pipeline reporting.">{enabled("sales_stage") ? <Field><FieldLabel htmlFor="deal-stage">Stage</FieldLabel><OpportunityStageSelect id="deal-stage" value={value.sales_stage} onChange={(sales_stage) => onChange({ ...value, sales_stage })} /></Field> : <p className="text-sm text-copy-muted">Pipeline stage is not enabled.</p>}</FormSection>
     <FormSection title="Ownership" description="Assign responsibility for moving this deal forward.">{enabled("assigned_to") ? <Field><FieldLabel htmlFor="deal-owner">Owner</FieldLabel><OwnerSelect id="deal-owner" moduleKey="sales_opportunities" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New deals default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled.</p>}</FormSection>
   </>;
 }

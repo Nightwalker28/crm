@@ -9,12 +9,14 @@ import { toast } from "sonner";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { OpportunityStageSelect } from "@/components/opportunities/OpportunityStageSelect";
+import { orderedStages } from "@/components/opportunities/opportunityStages";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 
@@ -31,14 +33,6 @@ export type LeadConversionCapabilities = {
   canCreateContacts: boolean;
   canCreateOpportunities: boolean;
 };
-
-const DEAL_STAGES = [
-  { value: "qualified", label: "Qualified" },
-  { value: "proposal", label: "Proposal" },
-  { value: "negotiation", label: "Negotiation" },
-  { value: "closed_won", label: "Closed won" },
-  { value: "closed_lost", label: "Closed lost" },
-];
 
 export default function LeadConversionForm({
   leadId,
@@ -60,7 +54,13 @@ export default function LeadConversionForm({
   const [contactSearch, setContactSearch] = useState("");
   const [createDeal, setCreateDeal] = useState(false);
   const [dealName, setDealName] = useState("");
-  const [dealStage, setDealStage] = useState("qualified");
+  const [dealStage, setDealStage] = useState("");
+  const pipelineQuery = useOpportunityPipeline();
+  // A converted lead is already qualified, so a new deal starts at the first stage in active
+  // pursuit rather than at the pipeline's entry stage.
+  const initialDealStage =
+    orderedStages(pipelineQuery.data).find((stage) => stage.is_active && stage.semantic_type === "ongoing")?.key ?? "";
+  const effectiveDealStage = dealStage || initialDealStage;
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<LeadConversionResult | null>(null);
@@ -73,7 +73,7 @@ export default function LeadConversionForm({
   // against the state the page opened in, so the defaults the operator never touched do not
   // count as work: arriving and leaving costs no prompt.
   const initialSnapshot = useMemo(
-    () => JSON.stringify([capabilities.canCreateOrganizations, null, "", capabilities.canCreateContacts, null, "", false, "", "qualified"]),
+    () => JSON.stringify([capabilities.canCreateOrganizations, null, "", capabilities.canCreateContacts, null, "", false, "", ""]),
     [capabilities.canCreateContacts, capabilities.canCreateOrganizations],
   );
   const currentSnapshot = useMemo(
@@ -106,7 +106,7 @@ export default function LeadConversionForm({
           contact_id: shouldCreateContact ? null : contactId,
           create_deal: shouldCreateDeal,
           deal_name: shouldCreateDeal ? (dealName.trim() || defaultDealName) : null,
-          deal_stage: shouldCreateDeal ? dealStage : null,
+          deal_stage: shouldCreateDeal ? effectiveDealStage || null : null,
         }),
       });
       const body = await res.json().catch(() => null);
@@ -211,7 +211,7 @@ export default function LeadConversionForm({
           {shouldCreateDeal ? (
             <FieldGroup columns={2} className="mt-4">
               <Field><FieldLabel htmlFor="lead-conversion-opportunity-name">Opportunity name</FieldLabel><Input id="lead-conversion-opportunity-name" value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
-              <Field><FieldLabel htmlFor="lead-conversion-initial-stage">Initial stage</FieldLabel><Select value={dealStage} onValueChange={setDealStage}><SelectTrigger id="lead-conversion-initial-stage"><SelectValue /></SelectTrigger><SelectContent>{DEAL_STAGES.map((stage) => <SelectItem key={stage.value} value={stage.value}>{stage.label}</SelectItem>)}</SelectContent></Select></Field>
+              <Field><FieldLabel htmlFor="lead-conversion-initial-stage">Initial stage</FieldLabel><OpportunityStageSelect id="lead-conversion-initial-stage" value={effectiveDealStage} onChange={setDealStage} filter={(semanticType) => semanticType !== "open"} /></Field>
             </FieldGroup>
           ) : null}
         </FormSection>

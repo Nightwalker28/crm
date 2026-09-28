@@ -34,6 +34,7 @@ import {
   RecordSpineMeta,
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { useOpportunityStageLabel } from "@/hooks/sales/useOpportunityPipeline";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
   isModuleFieldEnabled,
@@ -581,6 +582,7 @@ function RelatedRecords({
   canCreateOpportunity: boolean;
   onCreateOpportunity: () => void;
 }) {
+  const stageLabel = useOpportunityStageLabel(canViewOpportunities);
   return (
     <div className="grid gap-4 lg:grid-cols-2">
       {canViewOpportunities ? (
@@ -604,7 +606,7 @@ function RelatedRecords({
                 >
                   <div className="text-sm font-semibold text-copy-primary">{opportunity.opportunity_name}</div>
                   <div className="mt-1 text-sm text-copy-muted">
-                    {opportunity.sales_stage || "Unstaged"}
+                    {stageLabel(opportunity.sales_stage)}
                     {opportunity.expected_close_date ? ` · closes ${opportunity.expected_close_date}` : ""}
                   </div>
                 </Link>

@@ -125,16 +125,6 @@ const POS_PAYMENT_STATUS: Record<string, StatusDescriptor> = {
   paid: s("Paid"),
 };
 
-const OPPORTUNITY_STAGE: Record<string, StatusDescriptor> = {
-  lead: n("Lead"),
-  qualified: n("Qualified"),
-  proposal: n("Proposal"),
-  negotiation: n("Negotiation"),
-  unstaged: n("Unstaged"),
-  closed_won: s("Closed won"),
-  closed_lost: c("Closed lost"),
-};
-
 const LEAD_STATUS: Record<string, StatusDescriptor> = {
   new: n("New"),
   contacted: n("Contacted"),
@@ -196,8 +186,6 @@ export const getInsertionOrderStatus = (v: string) => descriptorFrom(INSERTION_O
 export const getContractStatus = (v: string) => descriptorFrom(CONTRACT_STATUS, v);
 export const getPosInvoiceStatus = (v: string) => descriptorFrom(POS_INVOICE_STATUS, v);
 export const getPosPaymentStatus = (v: string) => descriptorFrom(POS_PAYMENT_STATUS, v);
-export const getOpportunityStage = (v: string) =>
-  descriptorFrom(OPPORTUNITY_STAGE, v || "unstaged");
 export const getLeadStatus = (v: string) => descriptorFrom(LEAD_STATUS, v);
 export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);

@@ -13,6 +13,8 @@ export type CrmBucket = {
   label: string;
   count: number;
   value: number;
+  /** Deal stage rows only: the stage's outcome, which is what decides a lost deal. */
+  semantic_type?: string;
 };
 
 type OwnerPerformance = {
@@ -128,7 +130,7 @@ function BucketList({ rows, emptyLabel }: { rows: CrmBucket[]; emptyLabel: strin
  * only honest length comparison (dataviz: marks anchored to the baseline).
  */
 function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
-  const data = rows.filter((row) => row.key !== "closed_lost").slice(0, 6);
+  const data = rows.filter((row) => row.semantic_type !== "lost").slice(0, 6);
   const max = Math.max(...data.map((row) => row.count), 1);
   if (!data.length) return <PanelEmpty icon={Filter} title="No pipeline stage data yet" />;
   return (

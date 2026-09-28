@@ -23,6 +23,8 @@ import {
 } from "@/components/opportunities/opportunityMutation";
 import { layoutHasVisibleField } from "@/components/forms/quickCreateLayout";
 import { QuickCreateSurface, type QuickCreateOutcome } from "@/components/ui/QuickCreateSurface";
+import { defaultStageKey } from "@/components/opportunities/opportunityStages";
+import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import {
   useQuickCreateRecord,
   type QuickCreateContext,
@@ -80,6 +82,7 @@ export function OpportunityQuickCreate({
 }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const pipelineQuery = useOpportunityPipeline();
   const defaults = context?.defaults ?? {};
   // Only the relationship the source record actually establishes is locked. A deal opened
   // from an Account still needs its contact chosen, so that field stays editable.
@@ -109,7 +112,7 @@ export function OpportunityQuickCreate({
     save: ({ form, customFieldValues, moduleFields }) =>
       saveOpportunity({
         mode: "create",
-        payload: buildOpportunityPayload(form, customFieldValues, moduleFields),
+        payload: buildOpportunityPayload(form, customFieldValues, moduleFields, "create", defaultStageKey(pipelineQuery.data)),
       }),
     onCreated: async (opportunityId, outcome) => {
       await Promise.all([

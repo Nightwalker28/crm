@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 
 export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global";
 
@@ -175,7 +176,13 @@ async function searchLinkedRecords(
     if (recordType === "opportunity") {
       const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
       const client = typeof record.client === "string" ? record.client : null;
-      const stage = typeof record.sales_stage === "string" ? record.sales_stage.replace(/_/g, " ") : null;
+      const stageRef = record.pipeline_stage as { label?: unknown } | null | undefined;
+      const stage =
+        typeof stageRef?.label === "string"
+          ? stageRef.label
+          : typeof record.sales_stage === "string" && record.sales_stage
+            ? formatSnakeCaseLabel(record.sales_stage)
+            : null;
       return {
         id: Number(record.opportunity_id),
         label: name,

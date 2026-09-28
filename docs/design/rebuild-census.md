@@ -337,8 +337,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunityQuickCreate.tsx` | 187 | 5.4 | adopt | **A3** — wired into contacts and accounts but *not* the deals list | **done, batch 6** — list + contextual entry points share it |
 | `opportunities/OpportunityQuickCreateLayoutFields.tsx` | 291 | 5.4 | adopt | | **done, batch 6** — shared layout frame + Owner value select |
 | `opportunities/OpportunityParticipants.tsx` | 565 | — | new | crm-evolution Wave 2D, added after the programme closed | **born on the system** — `RecordRelatedCard` + `RowList`/`ListRow` rows, `EditorPanel`, `DropdownMenu` row actions, Contact Quick Create in place |
+| `opportunities/OpportunityStageSelect.tsx` | 75 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — the shared `Select`; options from the tenant pipeline |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | **done, close-out** — audited |
-| `opportunities/opportunityStages.ts` | 32 | 5.1 | rebuild | Tone classification (R5) | **done** (B) |
+| `opportunities/opportunityStages.ts` | 140 | 5.1 | rebuild | Tone classification (R5) | **done** (B); Wave 2E: the stage list is gone, tone comes from `semantic_type` |
 | `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | **done** — batch 3 archetype; batch 5 totals/sections/labels; batch 6 Owner. The line-item table is 5.5's |
 | `orders/OrderRecordFormPage.tsx` | 693 | 5.4 | rebuild | `variant="lineItems"` | **done** — batch 3 archetype; batch 5 totals/sections/requiredness/labels; batch 6 Owner. The line-item table is 5.5's |
 | `finance/pos/PosInvoiceRecordFormPage.tsx` | 867 | 5.4 | rebuild | `variant="lineItems"` | **done** — batches 3 and 5; the line-item table is 5.5's |

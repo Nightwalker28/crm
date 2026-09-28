@@ -8,10 +8,9 @@ here as they migrate; Phase 4 may not drop the legacy check constraint while any
 
 The legacy catalog is `backend/app/modules/sales/opportunity_stages.py`
 (`lead, qualified, proposal, negotiation, closed_won, closed_lost`, plus a display-only
-`unstaged` bucket for NULL). The frontend mirror is
-`frontend/components/opportunities/opportunityStages.ts`.
-`scripts/check-opportunity-stages.py` checks that mirror for drift. It is not part of
-`codex-check.sh`.
+`unstaged` bucket for NULL). It now only seeds pipelines and backs deals with no stage
+reference. The frontend mirror of it and its drift check (`scripts/check-opportunity-stages.py`)
+were removed in frontend Phase 1: the client reads the tenant pipeline instead.
 
 ## Storage and validation
 

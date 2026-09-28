@@ -38,6 +38,7 @@ import {
   RecordSpineMeta,
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { useOpportunityStageLabel } from "@/hooks/sales/useOpportunityPipeline";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
   isModuleFieldEnabled,
@@ -627,6 +628,7 @@ function RelatedRecords({
   onCreateContact: () => void;
   onCreateOpportunity: () => void;
 }) {
+  const stageLabel = useOpportunityStageLabel(canViewOpportunities);
   return (
     <RecordRelatedList>
       {canViewContacts ? (
@@ -677,7 +679,7 @@ function RelatedRecords({
               key={deal.opportunity_id}
               href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
               title={deal.opportunity_name}
-              detail={`${deal.sales_stage || "Unstaged"}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
+              detail={`${stageLabel(deal.sales_stage)}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
             />
           ))}
         </RecordRelatedCard>

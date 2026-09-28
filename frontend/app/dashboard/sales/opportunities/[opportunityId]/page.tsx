@@ -9,10 +9,13 @@ import { Pencil } from "lucide-react";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import {
-  getOpportunityStage,
-  getOpportunityStageLabel,
-  normalizeOpportunityStage,
-  OPPORTUNITY_STAGE_ORDER,
+  findStage,
+  normalizeStageKey,
+  orderedStages,
+  resolveStage,
+  selectableStages,
+  stageStatus,
+  type OpportunityStageRef,
 } from "@/components/opportunities/opportunityStages";
 import {
   OpportunityParticipants,
@@ -28,6 +31,7 @@ import {
   RecordRelatedList,
 } from "@/components/recordWorkspace/RecordRelatedList";
 import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
+import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import {
   RecordWorkspace,
   useRecordTabHref,
@@ -82,6 +86,7 @@ type OpportunitySummary = {
     opportunity_name: string;
     client?: string | null;
     sales_stage?: string | null;
+    pipeline_stage?: OpportunityStageRef | null;
     contact_id?: number | null;
     contact_name?: string | null;
     organization_id?: number | null;
@@ -134,25 +139,6 @@ const SPINE_OWNED_FIELDS = [
   "contact_id",
   "organization_id",
 ] as const;
-
-/**
- * The track shows the pipeline, so the one stage that leaves it is not a step on it.
- *
- * `closed_won` is where the pipeline ends and stays on the track; `closed_lost` is an exit,
- * and drawing it as the last step would say a lost deal is a completed one.
- */
-const DEAL_TRACK_VALUES = ["lead", "qualified", "proposal", "negotiation", "closed_won"] as const;
-
-const DEAL_TRACK_STEPS = DEAL_TRACK_VALUES.map((value) => ({
-  id: value,
-  label: getOpportunityStageLabel(value),
-}));
-
-const DEAL_STAGE_OPTIONS: InlineFieldEditOption[] = OPPORTUNITY_STAGE_ORDER.map((value) => ({
-  value,
-  ...getOpportunityStage(value),
-  label: getOpportunityStageLabel(value),
-}));
 
 class OpportunitySummaryRequestError extends Error {
   constructor(
@@ -219,7 +205,22 @@ export default function OpportunityDetailPage() {
   const summaryError = summaryQuery.error;
   const notFound =
     summaryError instanceof OpportunitySummaryRequestError && summaryError.status === 404;
-  const stage = normalizeOpportunityStage(deal?.sales_stage) || "lead";
+  const pipelineQuery = useOpportunityPipeline();
+  const pipeline = pipelineQuery.data;
+  const stage = normalizeStageKey(deal?.sales_stage);
+  const stageDisplay = stageStatus(resolveStage(pipeline, stage, deal?.pipeline_stage));
+  /**
+   * The track shows the pipeline, so a stage that leaves it is not a step on it: a won stage
+   * ends the track and stays on it, a lost stage is an exit, and drawing it as the last step
+   * would say a lost deal is a completed one. Order and labels are the tenant's.
+   */
+  const trackSteps = orderedStages(pipeline)
+    .filter((item) => item.semantic_type !== "lost" && (item.is_active || item.key === stage))
+    .map((item) => ({ id: item.key, label: item.label }));
+  const stageOptions: InlineFieldEditOption[] = selectableStages(pipeline, stage).map((item) => ({
+    value: item.key,
+    ...stageStatus(item),
+  }));
   const dealName = deal?.opportunity_name || "Deal";
   const recordHref = `/dashboard/sales/opportunities/${params.opportunityId}`;
   const editHref = useRecordTabHref(`${recordHref}/edit`);
@@ -235,9 +236,14 @@ export default function OpportunityDetailPage() {
   async function updateStage(next: string) {
     if (!summary || stage === next) return;
     const previous = summary;
+    const nextStage = findStage(pipeline, next);
     queryClient.setQueryData(["sales-opportunity-summary", params.opportunityId], {
       ...summary,
-      opportunity: { ...summary.opportunity, sales_stage: next },
+      opportunity: {
+        ...summary.opportunity,
+        sales_stage: next,
+        pipeline_stage: nextStage ?? summary.opportunity.pipeline_stage,
+      },
     });
     try {
       const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
@@ -246,6 +252,10 @@ export default function OpportunityDetailPage() {
         body: JSON.stringify({ sales_stage: next }),
       });
       if (!res.ok) throw new Error("The deal stage could not be saved.");
+      const saved = (await res.json()) as OpportunitySummary["opportunity"];
+      queryClient.setQueryData<OpportunitySummary>(["sales-opportunity-summary", params.opportunityId], (current) =>
+        current ? { ...current, opportunity: { ...current.opportunity, ...saved } } : current,
+      );
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities-pipeline-summary"] }),
@@ -313,7 +323,7 @@ export default function OpportunityDetailPage() {
         />
       ) : undefined}
       status={<StatusValue
-        status={{ ...getOpportunityStage(stage), label: getOpportunityStageLabel(stage) }}
+        status={stageDisplay}
         context="record"
       />}
       subtitle={deal ? (
@@ -362,9 +372,9 @@ export default function OpportunityDetailPage() {
         <RecordSpine>
           {summary && deal ? (
             <>
-              {DEAL_TRACK_VALUES.includes(stage as (typeof DEAL_TRACK_VALUES)[number]) ? (
+              {trackSteps.some((step) => step.id === stage) ? (
                 <RecordSpineTrack
-                  steps={DEAL_TRACK_STEPS}
+                  steps={trackSteps}
                   currentId={stage}
                   label="Deal pipeline"
                 />
@@ -376,12 +386,12 @@ export default function OpportunityDetailPage() {
                     <InlineFieldEdit
                       fieldLabel="Stage"
                       value={stage}
-                      options={DEAL_STAGE_OPTIONS}
+                      options={stageOptions}
                       onCommit={(next) => updateStage(next.value)}
                     />
                   ) : (
                     <StatusValue
-                      status={{ ...getOpportunityStage(stage), label: getOpportunityStageLabel(stage) }}
+                      status={stageDisplay}
                       context="record"
                     />
                   )}

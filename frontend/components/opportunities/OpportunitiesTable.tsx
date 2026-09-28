@@ -12,7 +12,7 @@ import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getOpportunityStageLabel, getOpportunityStage } from "@/components/opportunities/opportunityStages";
+import { isClosedSemantic, resolveStage, stageStatus } from "@/components/opportunities/opportunityStages";
 
 type Props = {
   opportunities: Opportunity[];
@@ -97,17 +97,15 @@ function renderCell(opportunity: Opportunity, column: string) {
       return <span className="text-sm text-copy-secondary">{opportunity.assigned_to_name || "Unassigned"}</span>;
     case "sales_stage": {
       if (!opportunity.sales_stage) return <span className="text-sm text-copy-disabled">—</span>;
-      const style = getOpportunityStage(opportunity.sales_stage);
       return (
-        <StatusValue status={{ ...style, label: String(getOpportunityStageLabel(opportunity.sales_stage)) }} className="w-28" />
+        <StatusValue status={stageStatus(resolveStage(undefined, opportunity.sales_stage, opportunity.pipeline_stage))} className="w-28" />
       );
     }
     case "expected_close_date": {
       if (!opportunity.expected_close_date) return <span className="text-sm text-copy-disabled">—</span>;
       const overdue =
         isOverdue(opportunity.expected_close_date) &&
-        opportunity.sales_stage !== "closed_won" &&
-        opportunity.sales_stage !== "closed_lost";
+        !isClosedSemantic(resolveStage(undefined, opportunity.sales_stage, opportunity.pipeline_stage)?.semantic_type);
       return (
         <span className={`text-sm font-medium tabular-nums ${overdue ? "text-state-danger" : "text-copy-secondary"}`}>
           {formatDateOnly(opportunity.expected_close_date)}

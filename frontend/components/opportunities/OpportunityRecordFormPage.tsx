@@ -28,6 +28,8 @@ import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
+import { defaultStageKey } from "@/components/opportunities/opportunityStages";
+import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -67,6 +69,7 @@ export default function OpportunityRecordFormPage({
   const listHref = "/dashboard/sales/opportunities";
   const cancelHref = useRecordTabHref(mode === "edit" && opportunityId ? `${listHref}/${opportunityId}` : listHref);
   const queryClient = useQueryClient();
+  const pipelineQuery = useOpportunityPipeline();
   const [form, setForm] = useState<OpportunityFormValue>(
     EMPTY_OPPORTUNITY_FORM,
   );
@@ -141,7 +144,7 @@ export default function OpportunityRecordFormPage({
       const savedId = await saveOpportunity({
         mode,
         opportunityId,
-        payload: buildOpportunityPayload(form, customValues, moduleFields, mode),
+        payload: buildOpportunityPayload(form, customValues, moduleFields, mode, defaultStageKey(pipelineQuery.data)),
       });
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),

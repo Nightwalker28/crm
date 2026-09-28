@@ -11,13 +11,9 @@ import {
   validateLayoutDrivenQuickCreate,
 } from "@/components/forms/quickCreateLayout";
 import type { OpportunityFormValue } from "@/components/opportunities/OpportunityFormFields";
-import {
-  getOpportunityStageLabel,
-  OPPORTUNITY_STAGE_ORDER,
-} from "@/components/opportunities/opportunityStages";
+import { OpportunityStageSelect } from "@/components/opportunities/OpportunityStageSelect";
 import { FieldDescription } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { ResolvedRecordLayoutViewport } from "@/components/forms/ResolvedRecordLayout";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
@@ -169,26 +165,16 @@ export function OpportunityQuickCreateLayoutFields({
     if (field.field_key === "sales_stage") {
       return (
         <QuickCreateField field={field} aria={aria} error={error}>
-          <Select
-            value={value.sales_stage || "lead"}
-            onValueChange={(sales_stage) => onChange({ ...value, sales_stage })}
+          <OpportunityStageSelect
+            id={inputId}
+            value={value.sales_stage}
+            onChange={(sales_stage) => onChange({ ...value, sales_stage })}
             disabled={disabled}
             required={field.required}
-          >
-            <SelectTrigger
-              id={inputId}
-              className="w-full"
-              aria-invalid={aria.invalid}
-              aria-describedby={aria.describedBy}
-            >
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {OPPORTUNITY_STAGE_ORDER.map((stage) => (
-                <SelectItem key={stage} value={stage}>{getOpportunityStageLabel(stage)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+            className="w-full"
+            ariaInvalid={aria.invalid}
+            ariaDescribedBy={aria.describedBy}
+          />
         </QuickCreateField>
       );
     }
