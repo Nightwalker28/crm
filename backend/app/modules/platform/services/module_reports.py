@@ -22,6 +22,7 @@ from app.modules.platform.services import custom_modules
 from app.modules.platform.services.custom_fields import CUSTOM_FIELD_FILTER_PREFIX, list_custom_field_definitions
 from app.modules.platform.services.module_fields import module_field_enabled_map, sanitize_disabled_filter_conditions
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES
 from app.modules.sales.repositories import contacts_repository, leads_repository, opportunities_repository, organizations_repository, quotes_repository
 from app.modules.tasks.models import Task
 from app.modules.tasks.repositories import tasks_repository
@@ -37,15 +38,7 @@ SAVED_REPORT_SORT_FIELDS = {
     "updated_at": UserModuleReport.updated_at,
 }
 CRM_MODULE_KEYS = {"sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "tasks"}
-FORECAST_STAGE_PROBABILITIES = {
-    "lead": Decimal("10"),
-    "qualified": Decimal("25"),
-    "proposal": Decimal("50"),
-    "negotiation": Decimal("75"),
-    "closed_won": Decimal("100"),
-    "closed_lost": Decimal("0"),
-    "unstaged": Decimal("10"),
-}
+FORECAST_STAGE_PROBABILITIES = {**OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES, "unstaged": Decimal("10")}
 FORECAST_COMMIT_THRESHOLD = Decimal("75")
 FORECAST_BEST_CASE_THRESHOLD = Decimal("50")
 

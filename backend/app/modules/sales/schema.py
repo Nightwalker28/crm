@@ -978,6 +978,26 @@ class OpportunitySummaryResponse(BaseModel):
     insertion_order_count: int
 
 
+class SalesPipelineStageResponse(BaseModel):
+    id: int
+    key: str
+    label: str
+    position: int
+    semantic_type: str
+    is_closed: bool
+    probability: float
+    is_active: bool
+
+
+class SalesPipelineResponse(BaseModel):
+    id: int
+    module_key: str
+    name: str
+    is_default: bool
+    is_active: bool
+    stages: list[SalesPipelineStageResponse]
+
+
 class OpportunityPipelineStageSummary(BaseModel):
     stage_key: str
     label: str

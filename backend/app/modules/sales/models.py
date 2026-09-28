@@ -10,7 +10,12 @@ from app.modules.sales.opportunity_contact_roles import (
     DEFAULT_OPPORTUNITY_CONTACT_ROLE,
     OPPORTUNITY_CONTACT_ROLE_CHECK_SQL,
 )
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_CHECK_SQL
+from app.modules.sales.opportunity_stages import (
+    OPPORTUNITY_PIPELINE_MODULE_KEY,
+    OPPORTUNITY_STAGE_CHECK_SQL,
+    PIPELINE_MODULE_CHECK_SQL,
+    PIPELINE_STAGE_SEMANTIC_CHECK_SQL,
+)
 
 
 def _get_custom_field_cache(record) -> dict | None:
@@ -765,3 +770,83 @@ class SalesOpportunityContact(Base):
     contact = relationship("SalesContact", lazy="selectin")
     created_by = relationship("User", foreign_keys=[created_by_user_id])
     deleted_by = relationship("User", foreign_keys=[deleted_by_user_id])
+
+
+class SalesPipeline(Base):
+    """A tenant's configurable sales pipeline (04-pipelines-kanban, Phase 1).
+
+    Pipelines are sales-domain configuration, not generic metadata, so
+    `module_key` is constrained to the modules that have one. A pipeline is
+    deactivated rather than deleted, because historical records keep pointing at
+    its stages.
+    """
+
+    __tablename__ = "sales_pipelines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "name", name="uq_sales_pipelines_name"),
+        # One default per tenant and module, enforced in the database so two
+        # concurrent first-use seeds cannot both win.
+        Index(
+            "uq_sales_pipelines_default",
+            "tenant_id",
+            "module_key",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default"),
+        ),
+        CheckConstraint("NOT is_default OR is_active", name="ck_sales_pipelines_default_active"),
+        CheckConstraint(PIPELINE_MODULE_CHECK_SQL, name="ck_sales_pipelines_module"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(Text, nullable=False, server_default=OPPORTUNITY_PIPELINE_MODULE_KEY)
+    name = Column(Text, nullable=False)
+    is_default = Column(Boolean, nullable=False, server_default=expression.false())
+    is_active = Column(Boolean, nullable=False, server_default=expression.true())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    stages = relationship(
+        "SalesPipelineStage",
+        back_populates="pipeline",
+        order_by="(SalesPipelineStage.position, SalesPipelineStage.id)",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class SalesPipelineStage(Base):
+    """One stage of a pipeline.
+
+    `key` is the stable machine identity and is never renamed; `label` is what an
+    administrator edits. Business logic reads `semantic_type` or `key`, never the
+    label. An inactive stage stays so records that sat in it remain readable.
+    """
+
+    __tablename__ = "sales_pipeline_stages"
+    __table_args__ = (
+        UniqueConstraint("pipeline_id", "key", name="uq_sales_pipeline_stages_key"),
+        Index("ix_sales_pipeline_stages_pipeline_position", "tenant_id", "pipeline_id", "position"),
+        CheckConstraint(PIPELINE_STAGE_SEMANTIC_CHECK_SQL, name="ck_sales_pipeline_stages_semantic"),
+        CheckConstraint("probability >= 0 AND probability <= 100", name="ck_sales_pipeline_stages_probability"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    pipeline_id = Column(
+        BigInteger,
+        ForeignKey("sales_pipelines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = Column(Text, nullable=False)
+    label = Column(Text, nullable=False)
+    position = Column(Integer, nullable=False, server_default="0")
+    semantic_type = Column(Text, nullable=False)
+    probability = Column(Numeric(5, 2), nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, server_default=expression.true())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    pipeline = relationship("SalesPipeline", back_populates="stages")

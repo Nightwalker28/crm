@@ -37,6 +37,8 @@ from app.modules.sales.models import (
     SalesOrder,
     SalesOrderItem,
     SalesOrganization,
+    SalesPipeline,
+    SalesPipelineStage,
     SalesQuote,
 )
 from app.modules.support.models import SupportCase
@@ -68,7 +70,11 @@ SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
 }
 
 MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
-    "sales_opportunities": [("sales_opportunity_contacts.json", SalesOpportunityContact)],
+    "sales_opportunities": [
+        ("sales_opportunity_contacts.json", SalesOpportunityContact),
+        ("sales_pipelines.json", SalesPipeline),
+        ("sales_pipeline_stages.json", SalesPipelineStage),
+    ],
     "sales_orders": [("sales_order_items.json", SalesOrderItem)],
     "documents": [("document_versions.json", DocumentVersion), ("document_links.json", DocumentLink)],
 }

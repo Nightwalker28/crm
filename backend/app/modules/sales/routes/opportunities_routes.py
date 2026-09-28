@@ -39,10 +39,11 @@ from app.modules.sales.schema import (
     SalesOpportunityListResponse,
     SalesOpportunityResponse,
     SalesOpportunityStageUpdate,
+    SalesPipelineResponse,
     SalesOpportunityUpdate,
 )
 from app.modules.sales.services.followups import log_opportunity_follow_up
-from app.modules.sales.services import opportunities_api
+from app.modules.sales.services import opportunities_api, pipelines_services
 from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
     OPPORTUNITY_EXPORT_HEADERS,
@@ -359,6 +360,24 @@ def get_sales_opportunity_pipeline_summary(
         all_filter_conditions=all_conditions,
         any_filter_conditions=any_conditions,
     )
+
+
+@router.get("/pipeline", response_model=SalesPipelineResponse)
+def get_sales_opportunity_pipeline(
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "view")),
+):
+    """The tenant's resolved default pipeline, with every stage in board order.
+
+    Inactive stages are included and flagged, because existing deals can still sit
+    in them; clients offer only active stages for new assignment.
+    """
+
+    pipeline = pipelines_services.ensure_default_opportunity_pipeline(db, current_user.tenant_id)
+    db.commit()
+    return pipelines_services.serialize_pipeline(pipeline)
 
 
 @router.get("/recycle", response_model=SalesOpportunityListResponse)

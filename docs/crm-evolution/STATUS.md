@@ -12,9 +12,57 @@ Last updated 2026-09-29.
 | 1C–1F | Done | `RecordWorkspace`, `record_activity.py`, `mail_associations.py`, `RecordEmailComposer` |
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
-| **2D** | **Done — see below** | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| 2E | Not started | No pipeline/stage models, no Kanban |
+| 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
+| **2E** | **Phase 1 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — pipeline Phase 1: models and compatibility resolver (2026-09-29)
+
+Backend Phase 1 of `04-pipelines-kanban.md`. `sales_opportunities.sales_stage` is untouched;
+no Opportunity references a stage row yet.
+
+- **Inventory first.** `04a-stage-inventory.md` lists every place that compares, validates,
+  groups or displays a legacy stage key, backend and frontend, each tagged with the 04 phase
+  that migrates it. Phase 4 may not drop `ck_sales_opportunities_sales_stage` while a row is
+  unticked.
+- `sales_pipelines` / `sales_pipeline_stages` (`20260817_sales_pipelines`). A stage has a
+  stable `key`, an editable `label`, `position`, `semantic_type`
+  (`open | ongoing | won | lost`; `open` = entry, `ongoing` = active pursuit, both not-closed),
+  `probability`, `is_active`. There is one default pipeline per tenant and module, enforced
+  by a partial unique index, and a default must be active (a check constraint). `module_key`
+  is constrained to `sales_opportunities`: pipelines are sales-domain, not generic metadata.
+- The migration seeds a default pipeline for **every** tenant from the legacy catalog, using
+  the same keys, the report's forecast weights as probabilities, and sentence-case labels.
+  It then asserts that no stored `sales_stage` is orphaned.
+- `pipelines_services.ensure_default_opportunity_pipeline` seeds tenants created later on
+  first use (it flushes and does not commit; a losing concurrent seed reads the winner).
+  `resolve_legacy_opportunity_stage` maps a stored value to its row **by key**, never label.
+  Inactive stages still resolve, so history stays readable. The bootstrap seed calls ensure.
+- `GET /sales/opportunities/pipeline` (Opportunity `view`) returns the resolved default with
+  every stage, including `semantic_type` and `is_closed`, so clients never infer from labels.
+- The backend label catalog is now sentence case (`Closed won`), matching the frontend
+  mirror; `scripts/check-opportunity-stages.py` passes again (it was failing at HEAD). The
+  pipeline-summary endpoint's labels change case accordingly.
+- Tenant backups now export `sales_pipelines.json` / `sales_pipeline_stages.json` with
+  Opportunities. Restore does not read them yet, same as `sales_opportunity_contacts.json`.
+- `FORECAST_STAGE_PROBABILITIES` now derives from the catalog; the values are unchanged
+  (pinned by a test).
+
+Verification: `test_sales_pipelines.py` 21 of 21, which covers the populated backfill with
+every legacy stage, idempotency, the orphan block, default uniqueness, inactive-default
+rejection, the concurrent-seed loss, key-not-label resolution, inactive-stage history,
+tenant isolation, and the route's permission and ordering. The full backend suite passes,
+1046 of 1046: 4 rate-limit tests need Redis and were re-run with it. `verify_migrations` passes at
+`20260817_sales_pipelines`, and `verify_openapi` passes for 358 paths. A populated upgrade on a
+throwaway PostgreSQL database seeded 6 stages for each of three tenants and rejected a second
+default. Not run: the contract drift check (layout family untouched), frontend lint/build (no
+frontend change), and a real `alembic downgrade`.
+
+**Next:** Wave 2E Phase 2. Add `pipeline_id`/`stage_id` references on `sales_opportunities`,
+backfill them from `sales_stage` via the resolver, and keep writing the legacy key as the
+compatibility field. Update create, edit, stage PATCH, import and Lead conversion to set
+both, with same-tenant and inactive-stage validation. Work from the `2` rows of
+`04a-stage-inventory.md`.
 
 ## Wave 2D — participant management (2026-09-29)
 
@@ -59,4 +107,5 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`) | Filed by rebuild 5.3 as its own slice | A standalone slice; not tied to a wave |
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
 | `RequiredMark` not announced to screen readers (about 54 of 68 uses) | A primitive decision for the owner: a `Field` context, or the mark taking its control's id | When the owner picks the approach; then fix in the primitive, not at each call site |
-| `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | At the start of 2E, which reworks the pipeline surface anyway |
+| `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | 2E frontend Phase 1, the first 2E slice that touches the list page |
+| Tenant restore of pipeline configuration | Backups export it; restore reads no child files yet | With 2E Phase 2, once deals reference stage ids a restore must remap them |
