@@ -13,8 +13,39 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–3 and frontend Phases 1–2 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–4 and frontend Phases 1–2 done; Kanban audit and view persistence left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — Phase 4: the legacy constraint goes, tenants can add stages (2026-09-29)
+
+- `20260819_drop_stage_check` drops `ck_sales_opportunities_sales_stage`. A stage is valid
+  when the deal's own tenant's pipeline has it (`assign_opportunity_stage`). The downgrade
+  refuses while any deal holds a non-legacy key, then restores the check. `sales_stage`
+  stays as the mirrored stable key, because filters, search and export read it. The stage
+  PATCH schema's fixed-list `pattern` is gone as well; an unknown key is a 400 from the service.
+- `POST /sales/opportunities/pipeline/stages` (`configure`, audited): `label`, optional `key`,
+  `semantic_type` (default `ongoing`), and optional `probability` (defaults by outcome: 10 / 50 /
+  100 / 0). A derived key is slugged from the name and gets `_2`, `_3`… while taken; `unstaged`
+  is reserved, and a key must start with a letter. An explicit key must be free and
+  well-formed. A non-outcome stage is inserted before the first won/lost stage; an outcome goes
+  last. A stage is never deleted, only deactivated.
+- Settings page: `AddPipelineStage` has name, outcome and an explicit **Add stage** button. It
+  is a create, so it does not autosave (R1). A refusal (duplicate name) shows under the form and
+  keeps the typed name.
+
+Verification: `test_pipeline_add_stage.py` 11 of 11. The full backend suite passes 1105 of 1105
+with Redis up. `verify_migrations` passes at `20260819_drop_stage_check`, and `verify_openapi`
+passes (362 paths). On a throwaway PostgreSQL database: a custom key is accepted at head, a
+downgrade with it is refused, and after moving the deal back the downgrade restores the check
+(a `CheckViolation` proves it), then re-upgrades. Frontend lint and build are clean;
+`check-design.sh` passes 21 of 21; `pipeline-settings.spec.ts` passes 6 of 6.
+
+**Next:** Wave 2E frontend Phases 3–4. Audit `OpportunitiesPipelineBoard` + `Board` against 04
+§10 Phase 3 (same saved-view population as List ✔ by construction, optimistic move ✔, rollback
+✔, keyboard alternative ✔; check that inactive stages cannot take a drop, the rejected-move
+message, and that the Stage column is fetched in board mode even when hidden in the table).
+Then Phase 4: the saved view remembers List/Kanban (`?display=` is only the URL today). Then
+the full rendered design-guard walk, which closes Wave 2E.
 
 ## Wave 2E — frontend Phase 2: the pipeline settings screen (2026-09-29)
 
@@ -42,13 +73,6 @@ with focus kept, deactivate with the count and a working Cancel, and the permiss
 theme probe gave dark body `rgb(11, 13, 16)` and light `rgb(247, 248, 250)`; at 390px there is
 no horizontal overflow and the row wraps. **Not run:** the full rendered design-guard walk,
 which has no route filter. It is owed once at the end of Wave 2E.
-
-**Next:** Wave 2E Phase 4. Drop the legacy `ck_sales_opportunities_sales_stage` check
-constraint (and the `OPPORTUNITY_STAGE_PATTERN` on the stage PATCH schema) now that every
-reader and writer goes through stage rows. Then add `POST /sales/opportunities/pipeline/stages`
-(key slug unique per pipeline, appended last) and an "Add stage" control on the settings page.
-Keep `sales_stage` as the mirrored key column. Then audit the existing board against 04 §10
-Phase 3 and do Phase 4 view persistence. Finish with the full design-guard walk.
 
 ## Wave 2E — pipeline settings API (2026-09-29)
 
@@ -265,4 +289,5 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
 | `RequiredMark` not announced to screen readers (about 54 of 68 uses) | A primitive decision for the owner: a `Field` context, or the mark taking its control's id | When the owner picks the approach; then fix in the primitive, not at each call site |
 | `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | 2E frontend Phase 1, the first 2E slice that touches the list page |
+| Automation *Stage* condition options are the six seeded keys (`automation_registry.py`), so a tenant-added stage cannot be picked there | The registry is static per module; making one field's options tenant-dynamic is a registry contract change | When automation conditions gain tenant-resolved options; until then *Stage outcome* (semantic type) covers "a deal was won/lost" |
 | Tenant restore of pipeline configuration and stage ids | Backups export pipelines, stages and each deal's stage ids; restore reads no sales files yet | When tenant restore gains sales-module restore: stage ids must be remapped, not copied |

@@ -340,6 +340,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `opportunities/OpportunityParticipants.tsx` | 565 | — | new | crm-evolution Wave 2D, added after the programme closed | **born on the system** — `RecordRelatedCard` + `RowList`/`ListRow` rows, `EditorPanel`, `DropdownMenu` row actions, Contact Quick Create in place |
 | `opportunities/OpportunityStageSelect.tsx` | 75 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — the shared `Select`; options from the tenant pipeline |
 | `opportunities/PipelineStageRow.tsx` | 170 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — one autosaving settings row per stage: `useAutosave` + `SaveStateIndicator`, `SegmentedBoolean`, `useConfirm` before deactivating a stage in use |
+| `opportunities/AddPipelineStage.tsx` | 95 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — a create, so an explicit button (R1), `Field`/`FieldError` for the server's reason |
 | `opportunities/opportunityMutation.ts` | 105 | 5.4 | unchanged | Data | **done, close-out** — audited |
 | `opportunities/opportunityStages.ts` | 140 | 5.1 | rebuild | Tone classification (R5) | **done** (B); Wave 2E: the stage list is gone, tone comes from `semantic_type` |
 | `quotes/QuoteRecordFormPage.tsx` | 820 | 5.4 | rebuild | Line-item grid → `variant="lineItems"` | **done** — batch 3 archetype; batch 5 totals/sections/labels; batch 6 Owner. The line-item table is 5.5's |

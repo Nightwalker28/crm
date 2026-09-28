@@ -6,7 +6,6 @@ from typing import Any, Optional
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.modules.sales.opportunity_contact_roles import OPPORTUNITY_CONTACT_ROLE_PATTERN
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
 
 
 class CustomerGroupSummary(BaseModel):
@@ -850,7 +849,8 @@ class SalesOpportunityUpdate(BaseModel):
 class SalesOpportunityStageUpdate(BaseModel):
     """Move a deal by legacy key or by stage id; when both are sent they must agree."""
 
-    sales_stage: str | None = Field(default=None, pattern=OPPORTUNITY_STAGE_PATTERN)
+    # Validated against the tenant's pipeline by `assign_opportunity_stage`, not a fixed list.
+    sales_stage: str | None = Field(default=None, max_length=40)
     pipeline_stage_id: int | None = None
 
     @model_validator(mode="after")
@@ -1036,6 +1036,14 @@ class SalesPipelineStageUpdate(BaseModel):
     semantic_type: str | None = None
     probability: Decimal | None = Field(default=None, ge=0, le=100)
     is_active: bool | None = None
+
+
+class SalesPipelineStageCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    # Optional: derived from the name when omitted. Permanent once created.
+    key: str | None = Field(default=None, max_length=40)
+    semantic_type: str = "ongoing"
+    probability: Decimal | None = Field(default=None, ge=0, le=100)
 
 
 class SalesPipelineStageOrderUpdate(BaseModel):

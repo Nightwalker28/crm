@@ -75,6 +75,20 @@ async function stubPipeline(page: Page) {
     Object.assign(store.stages.find((stage) => stage.id === id)!, change);
     return route.fulfill(json(pipeline()));
   });
+  await page.route("**/api/v1/sales/opportunities/pipeline/stages", (route) => {
+    const body = route.request().postDataJSON() as { label: string; semantic_type: string };
+    store.requests.push(`POST ${JSON.stringify(body)}`);
+    if (store.stages.some((stage) => stage.label.toLowerCase() === body.label.toLowerCase())) {
+      return route.fulfill(json({ detail: "Another stage in this pipeline already has that name" }, 400));
+    }
+    const closedAt = [...store.stages].sort((a, b) => a.position - b.position).find((stage) => stage.is_closed)?.position ?? store.stages.length;
+    store.stages.forEach((stage) => { if (stage.position >= closedAt) stage.position += 1; });
+    store.stages.push({
+      id: 800, key: body.label.toLowerCase().replace(/[^a-z0-9]+/g, "_"), label: body.label, position: closedAt,
+      semantic_type: body.semantic_type, is_closed: false, probability: 50, is_active: true,
+    });
+    return route.fulfill(json(pipeline(), 201));
+  });
   await page.route("**/api/v1/sales/opportunities/pipeline/stage-order", (route) => {
     const { stage_ids } = route.request().postDataJSON() as { stage_ids: number[] };
     store.requests.push(`PUT ${stage_ids.join(",")}`);
@@ -144,6 +158,34 @@ test.describe("with configure on deals", () => {
     await page.getByRole("dialog", { name: "Deactivate Negotiation?" }).getByRole("button", { name: "Deactivate stage" }).click();
     await expect.poll(() => store.requests.at(-1)).toBe(`PATCH 703 {"is_active":false}`);
     await expect(row.getByRole("radio", { name: "Inactive" })).toHaveAttribute("aria-checked", "true");
+  });
+});
+
+test.describe("adding a stage", () => {
+  test.slow();
+
+  test.beforeEach(async ({ page }) => {
+    await stubModules(page, true);
+    await loginAsAdmin(page);
+  });
+
+  test("adds a step before the outcomes, and a duplicate name says why", async ({ page }) => {
+    const store = await stubPipeline(page);
+    await page.goto("/dashboard/settings/pipeline");
+    const form = page.getByRole("form", { name: "Add a stage" });
+
+    await form.getByLabel("New stage").fill("Technical review");
+    await form.getByRole("button", { name: "Add stage" }).click();
+    await expect(page.getByTestId("pipeline-stage-technical_review")).toBeVisible();
+    expect(store.requests).toContain(`POST {"label":"Technical review","semantic_type":"ongoing"}`);
+    await expect(form.getByLabel("New stage")).toHaveValue("");
+    const keys = await page.locator('[data-testid^="pipeline-stage-"]').evaluateAll((rows) => rows.map((row) => row.getAttribute("data-testid")));
+    expect(keys.slice(-3)).toEqual(["pipeline-stage-technical_review", "pipeline-stage-closed_won", "pipeline-stage-closed_lost"]);
+
+    await form.getByLabel("New stage").fill("proposal");
+    await form.getByRole("button", { name: "Add stage" }).click();
+    await expect(form.getByText("Another stage in this pipeline already has that name")).toBeVisible();
+    await expect(form.getByLabel("New stage")).toHaveValue("proposal");
   });
 });
 

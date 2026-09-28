@@ -13,7 +13,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { PipelineSettingsError, type PipelineStageChange } from "@/hooks/sales/useOpportunityPipeline";
 
 /** What a stage means to reports, the forecast, automations and the deal record. */
-const OUTCOMES = [
+export const STAGE_OUTCOMES = [
   { value: "open", label: "Open" },
   { value: "ongoing", label: "In progress" },
   { value: "won", label: "Won" },
@@ -121,7 +121,7 @@ export function PipelineStageRow({ stage, liveDealCount, handle, moveButtons, on
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {OUTCOMES.map((outcome) => (
+            {STAGE_OUTCOMES.map((outcome) => (
               <SelectItem key={outcome.value} value={outcome.value}>{outcome.label}</SelectItem>
             ))}
           </SelectContent>

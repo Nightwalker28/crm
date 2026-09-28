@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { AddPipelineStage } from "@/components/opportunities/AddPipelineStage";
 import { PipelineStageRow } from "@/components/opportunities/PipelineStageRow";
 import { orderedStages, type OpportunityPipeline } from "@/components/opportunities/opportunityStages";
 import { PageShell } from "@/components/ui/PageShell";
@@ -12,6 +13,7 @@ import { SortableList } from "@/components/ui/SortableList";
 import {
   OPPORTUNITY_PIPELINE_QUERY_KEY,
   PIPELINE_STAGE_USAGE_QUERY_KEY,
+  createPipelineStage,
   reorderPipelineStages,
   updatePipelineStage,
   useOpportunityPipeline,
@@ -32,8 +34,8 @@ const MODULE_KEY = "sales_opportunities";
  * board order and moves by button as well as by drag. What a stage *means* — its outcome and
  * probability — is set here and read everywhere else; its key never changes.
  *
- * Adding a stage is not offered yet: deals still mirror their stage into a legacy column
- * constrained to the six seeded keys, and that constraint goes in the pipeline's Phase 4.
+ * A stage is added with an explicit button, never deleted — only deactivated, because deals
+ * that sat in it must stay readable.
  */
 export default function PipelineSettingsPage() {
   const queryClient = useQueryClient();
@@ -55,6 +57,11 @@ export default function PipelineSettingsPage() {
       ]);
     },
     [queryClient],
+  );
+
+  const addStage = useCallback(
+    async (stage: { label: string; semantic_type: string }) => applySaved(await createPipelineStage(stage)),
+    [applySaved],
   );
 
   const saveStage = useCallback(
@@ -131,6 +138,7 @@ export default function PipelineSettingsPage() {
             />
           )}
         />
+        <AddPipelineStage onAdd={addStage} />
       </FormSection>
     </PageShell>
   );

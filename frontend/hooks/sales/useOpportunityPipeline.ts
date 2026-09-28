@@ -70,6 +70,15 @@ export async function updatePipelineStage(stageId: number, change: PipelineStage
   return readPipelineResponse(res);
 }
 
+export async function createPipelineStage(stage: { label: string; semantic_type: string; key?: string; probability?: number }) {
+  const res = await apiFetch("/sales/opportunities/pipeline/stages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(stage),
+  });
+  return readPipelineResponse(res);
+}
+
 export async function reorderPipelineStages(stageIds: number[]) {
   const res = await apiFetch("/sales/opportunities/pipeline/stage-order", {
     method: "PUT",

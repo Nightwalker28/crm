@@ -8,6 +8,7 @@ stage label to decide behaviour.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from decimal import Decimal
 
@@ -364,3 +365,95 @@ def reorder_pipeline_stages(db: Session, tenant_id: int, stage_ids: list[int]) -
     db.flush()
     db.expire(pipeline, ["stages"])
     return pipeline
+
+
+STAGE_KEY_MAX_LENGTH = 40
+_RESERVED_STAGE_KEYS = {OPPORTUNITY_UNSTAGED_KEY}
+_DEFAULT_PROBABILITY_BY_SEMANTIC = {
+    "open": Decimal("10"),
+    "ongoing": Decimal("50"),
+    "won": Decimal("100"),
+    "lost": Decimal("0"),
+}
+
+
+def _slug_stage_key(value: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "_", value.strip().lower()).strip("_")
+    if not slug or not slug[0].isalpha():
+        slug = f"stage_{slug}".strip("_")
+    return slug[:STAGE_KEY_MAX_LENGTH].rstrip("_")
+
+
+def create_pipeline_stage(db: Session, tenant_id: int, data: dict) -> SalesPipelineStage:
+    """Add a stage to the tenant's default pipeline. The caller commits.
+
+    The key is the stage's permanent identity: supplied explicitly it must be free,
+    derived from the name it gets a numeric suffix until it is. A stage that is not an
+    outcome is placed before the first won/lost stage, where a new step of the sale
+    belongs; an outcome goes last. Either can be moved afterwards.
+    """
+
+    pipeline = ensure_default_opportunity_pipeline(db, tenant_id)
+    stages = list(pipeline.stages)
+
+    label = (data.get("label") or "").strip()
+    if not label:
+        raise _bad_request("A stage needs a name")
+    if len(label) > STAGE_LABEL_MAX_LENGTH:
+        raise _bad_request(f"A stage name can be at most {STAGE_LABEL_MAX_LENGTH} characters")
+    if any(stage.label.strip().lower() == label.lower() for stage in stages):
+        raise _bad_request("Another stage in this pipeline already has that name")
+
+    semantic_type = (data.get("semantic_type") or "ongoing").strip().lower()
+    if semantic_type not in PIPELINE_STAGE_SEMANTIC_SET:
+        raise _bad_request("Unsupported stage outcome")
+
+    probability = data.get("probability")
+    probability = _DEFAULT_PROBABILITY_BY_SEMANTIC[semantic_type] if probability is None else Decimal(str(probability))
+    if probability < 0 or probability > 100:
+        raise _bad_request("Probability must be between 0 and 100")
+
+    taken = {stage.key for stage in stages} | _RESERVED_STAGE_KEYS
+    requested_key = (data.get("key") or "").strip().lower()
+    if requested_key:
+        if not re.fullmatch(r"[a-z][a-z0-9_]*", requested_key) or len(requested_key) > STAGE_KEY_MAX_LENGTH:
+            raise _bad_request(
+                f"A stage key is lowercase letters, digits and underscores, starts with a letter, "
+                f"and is at most {STAGE_KEY_MAX_LENGTH} characters"
+            )
+        if requested_key in taken:
+            raise _bad_request("Another stage in this pipeline already uses that key")
+        key = requested_key
+    else:
+        base = _slug_stage_key(label)
+        key, suffix = base, 2
+        while key in taken:
+            tail = f"_{suffix}"
+            key = f"{base[: STAGE_KEY_MAX_LENGTH - len(tail)]}{tail}"
+            suffix += 1
+
+    ordered = sorted(stages, key=lambda stage: (stage.position, stage.id))
+    if semantic_type in PIPELINE_STAGE_CLOSED_SEMANTICS:
+        insert_at = len(ordered)
+    else:
+        insert_at = next(
+            (index for index, stage in enumerate(ordered) if stage.semantic_type in PIPELINE_STAGE_CLOSED_SEMANTICS),
+            len(ordered),
+        )
+    for position, stage in enumerate(ordered):
+        stage.position = position if position < insert_at else position + 1
+
+    stage = SalesPipelineStage(
+        tenant_id=tenant_id,
+        pipeline_id=pipeline.id,
+        key=key,
+        label=label,
+        position=insert_at,
+        semantic_type=semantic_type,
+        probability=probability,
+        is_active=True,
+    )
+    db.add(stage)
+    db.flush()
+    db.expire(pipeline, ["stages"])
+    return stage

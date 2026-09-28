@@ -1,9 +1,9 @@
 """The legacy Opportunity stage catalog and its configurable-pipeline seed.
 
-`sales_opportunities.sales_stage` still stores one of `OPPORTUNITY_STAGE_ORDER`
-during the pipeline compatibility period (04-pipelines-kanban). Each tenant's
-default pipeline is seeded from this catalog with the same keys, so a legacy
-value resolves to exactly one stage row by key and never by label.
+Each tenant's default pipeline is seeded from this catalog with the same keys, so a
+legacy value resolves to exactly one stage row by key and never by label. Tenants may
+add stages of their own since 04-pipelines-kanban Phase 4; the catalog is the seed and
+the fallback meaning for a deal with no stage reference, not the list of valid stages.
 """
 
 from __future__ import annotations
@@ -31,12 +31,6 @@ OPPORTUNITY_STAGE_LABELS = {
 
 OPPORTUNITY_STAGE_SET = set(OPPORTUNITY_STAGE_ORDER)
 OPPORTUNITY_CLOSED_STAGE_SET = {"closed_won", "closed_lost"}
-OPPORTUNITY_STAGE_PATTERN = f"^({'|'.join(OPPORTUNITY_STAGE_ORDER)})$"
-OPPORTUNITY_STAGE_CHECK_SQL = (
-    "sales_stage IS NULL OR sales_stage IN ("
-    + ", ".join(f"'{stage}'" for stage in OPPORTUNITY_STAGE_ORDER)
-    + ")"
-)
 
 OPPORTUNITY_PIPELINE_MODULE_KEY = "sales_opportunities"
 DEFAULT_OPPORTUNITY_PIPELINE_NAME = "Sales pipeline"

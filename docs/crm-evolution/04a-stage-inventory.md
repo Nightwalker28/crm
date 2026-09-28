@@ -16,8 +16,8 @@ were removed in frontend Phase 1: the client reads the tenant pipeline instead.
 
 | Where | What it assumes | Phase |
 |---|---|---|
-| `sales/models.py` `ck_sales_opportunities_sales_stage` | DB check: value ∈ the six legacy keys | 4 (drop last) |
-| `sales/models.py` `ix_sales_opportunities_tenant_stage_active` | index on the text column | 4 |
+| `sales/models.py` `ck_sales_opportunities_sales_stage` | DB check: value ∈ the six legacy keys | 4 ✅ dropped (`20260819_drop_stage_check`) |
+| `sales/models.py` `ix_sales_opportunities_tenant_stage_active` | index on the text column | kept: filters and search still query the stable key |
 | `sales/schema.py` `SalesOpportunityStageUpdate` | `OPPORTUNITY_STAGE_PATTERN` regex; now also accepts `pipeline_stage_id` | 2 ✅ |
 | `sales/schema.py` `SalesOpportunityCreate/Update.sales_stage` | now resolved by `assign_opportunity_stage` (400, not a constraint error); `pipeline_stage_id` accepted | 2 ✅ |
 | `sales/services/opportunities_services.py` `update_opportunity_stage` | via `assign_opportunity_stage` | 2 ✅ |
@@ -52,7 +52,7 @@ were removed in frontend Phase 1: the client reads the tenant pipeline instead.
 
 | Where | What it assumes | Phase |
 |---|---|---|
-| `platform/services/automation_registry.py` condition `sales_stage` | select options are the six keys with labels | 3 ✅ |
+| `platform/services/automation_registry.py` condition `sales_stage` | select options are the six keys with labels | 3 ✅ — **but static**: a tenant-added stage is not offered here (see STATUS deferred) |
 | `platform/services/automation_registry.py` action `deal_stage` | options `qualified/proposal/negotiation` | 3 ✅ |
 | `platform/services/automation_rules.py` convert action | defaults `deal_stage` to `"qualified"` | 3 ✅ |
 | `platform/services/crm_events.py` / `opportunities_routes.py` `opportunity.stage_changed` | payload carries `previous_stage`/`stage` as raw keys, no semantic type | 3 ✅ |

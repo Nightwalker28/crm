@@ -12,7 +12,6 @@ from app.modules.sales.opportunity_contact_roles import (
 )
 from app.modules.sales.opportunity_stages import (
     OPPORTUNITY_PIPELINE_MODULE_KEY,
-    OPPORTUNITY_STAGE_CHECK_SQL,
     PIPELINE_MODULE_CHECK_SQL,
     PIPELINE_STAGE_SEMANTIC_CHECK_SQL,
 )
@@ -597,7 +596,6 @@ class SalesOrderItem(Base):
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (
-        CheckConstraint(OPPORTUNITY_STAGE_CHECK_SQL, name="ck_sales_opportunities_sales_stage"),
         CheckConstraint(
             "probability_percent IS NULL OR (probability_percent >= 0 AND probability_percent <= 100)",
             name="ck_sales_opportunities_probability_range",
@@ -619,9 +617,9 @@ class SalesOpportunity(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
     client = Column(Text, nullable=False)
-    # Legacy stage key, kept in step with `pipeline_stage_id` by the pipeline service
-    # for the compatibility period (04-pipelines-kanban Phase 2). Readers migrate off
-    # it in Phase 3; it is dropped only in Phase 4.
+    # The stage's stable key, mirrored from `pipeline_stage_id` by the pipeline service.
+    # Kept for filters, search, export and the API's `sales_stage` field. Since Phase 4
+    # it is no longer pinned to the six seeded keys; the stage row is what makes it valid.
     sales_stage = Column(Text, nullable=True)
     # Nullable during compatibility: a NULL pipeline means the tenant default, a NULL
     # stage means unstaged. Only `pipelines_services.assign_opportunity_stage` writes them.

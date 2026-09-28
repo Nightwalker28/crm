@@ -10,7 +10,7 @@ Mounted before the opportunities router so these literal paths are never read as
 opportunity id.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
@@ -19,6 +19,7 @@ from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.schema import (
     SalesPipelineResponse,
+    SalesPipelineStageCreate,
     SalesPipelineStageOrderUpdate,
     SalesPipelineStageUpdate,
     SalesPipelineStageUsageResponse,
@@ -57,6 +58,31 @@ def get_pipeline_stage_usage(
     usage = pipelines_services.stage_usage(db, current_user.tenant_id)
     db.commit()
     return usage
+
+
+@router.post("/stages", response_model=SalesPipelineResponse, status_code=status.HTTP_201_CREATED)
+def create_pipeline_stage(
+    payload: SalesPipelineStageCreate,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access(MODULE_KEY)),
+    require_permission=Depends(require_action_access(MODULE_KEY, "configure")),
+):
+    pipeline = pipelines_services.ensure_default_opportunity_pipeline(db, current_user.tenant_id)
+    before = pipelines_services.serialize_pipeline(pipeline)
+    stage = pipelines_services.create_pipeline_stage(db, current_user.tenant_id, payload.model_dump(exclude_unset=True))
+    db.commit()
+    db.refresh(stage.pipeline)
+    after = pipelines_services.serialize_pipeline(stage.pipeline)
+    _audit(
+        db,
+        current_user=current_user,
+        pipeline_id=stage.pipeline_id,
+        description=f"Added pipeline stage {stage.label}",
+        before=before,
+        after=after,
+    )
+    return after
 
 
 @router.patch("/stages/{stage_id}", response_model=SalesPipelineResponse)

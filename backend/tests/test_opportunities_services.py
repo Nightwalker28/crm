@@ -16,7 +16,6 @@ from app.modules.sales.opportunity_stages import (
     OPPORTUNITY_CLOSED_STAGE_SET,
     OPPORTUNITY_STAGE_LABELS,
     OPPORTUNITY_STAGE_ORDER,
-    OPPORTUNITY_STAGE_PATTERN,
 )
 from app.modules.sales.repositories import opportunities_repository
 from app.modules.sales.schema import SalesOpportunityStageUpdate
@@ -40,10 +39,9 @@ class FakeDB:
 class OpportunityStageMetadataTests(unittest.TestCase):
     def test_backend_stage_metadata_is_single_source_for_services_and_schema(self):
         self.assertEqual(OPPORTUNITY_CLOSED_STAGE_SET, {"closed_won", "closed_lost"})
-        self.assertEqual(
-            SalesOpportunityStageUpdate.model_fields["sales_stage"].metadata[0].pattern,
-            OPPORTUNITY_STAGE_PATTERN,
-        )
+        # Since pipeline Phase 4 a stage is valid when the tenant's pipeline has it, so the
+        # schema no longer pins the key to the six seeded stages.
+        self.assertEqual(SalesOpportunityStageUpdate(sales_stage="discovery").sales_stage, "discovery")
 
 
 class OpportunityCurrencyTests(unittest.TestCase):

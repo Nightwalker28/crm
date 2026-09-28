@@ -292,8 +292,6 @@ class SerializationTests(StageRefFixture):
         with self.assertRaises(ValidationError):
             SalesOpportunityStageUpdate()
         self.assertEqual(SalesOpportunityStageUpdate(pipeline_stage_id=4).pipeline_stage_id, 4)
-        with self.assertRaises(ValidationError):
-            SalesOpportunityStageUpdate(sales_stage="verbal_yes")
 
     def test_a_disabled_stage_field_also_blocks_writes_through_the_stage_id(self):
         self.assertEqual(
