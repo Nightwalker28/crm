@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import type { ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
@@ -13,6 +14,10 @@ import {
   normalizeOpportunityStage,
   OPPORTUNITY_STAGE_ORDER,
 } from "@/components/opportunities/opportunityStages";
+import {
+  OpportunityParticipants,
+  type OpportunityParticipant,
+} from "@/components/opportunities/OpportunityParticipants";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
@@ -71,21 +76,6 @@ type RelatedInsertionOrder = {
   currency?: string | null;
 };
 
-type ParticipantContact = {
-  id: number;
-  contact_id: number;
-  role_label: string;
-  is_primary: boolean;
-  contact_name?: string | null;
-  contact: {
-    contact_id: number;
-    first_name?: string | null;
-    last_name?: string | null;
-    primary_email?: string | null;
-    current_title?: string | null;
-  };
-};
-
 type OpportunitySummary = {
   opportunity: {
     opportunity_id: number;
@@ -124,7 +114,7 @@ type OpportunitySummary = {
     current_title?: string | null;
   } | null;
   organization?: { org_id: number; org_name: string } | null;
-  participant_contacts: ParticipantContact[];
+  participant_contacts: OpportunityParticipant[];
   can_view_contacts: boolean;
   related_quotes: RelatedQuote[];
   related_insertion_orders: RelatedInsertionOrder[];
@@ -205,6 +195,8 @@ export default function OpportunityDetailPage() {
   const documentActions = moduleActions("documents");
   const canEditDeal = Boolean(opportunityActions?.can_edit);
   const canDeleteDeal = Boolean(opportunityActions?.can_delete);
+  const canRestoreDeal = Boolean(opportunityActions?.can_restore);
+  const canCreateContacts = Boolean(moduleActions("sales_contacts")?.can_create);
   const canViewQuotes = Boolean(quoteActions?.can_view);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
@@ -414,7 +406,8 @@ export default function OpportunityDetailPage() {
                   value={summary.organization?.org_name ?? deal.organization_name}
                   href={summary.organization ? `/dashboard/sales/organizations/${summary.organization.org_id}` : null}
                 />
-                {summary.can_view_contacts && summary.participant_contacts.length ? (
+                {/* Drawn at zero too: the tab it opens is where people are added (05 §10). */}
+                {summary.can_view_contacts ? (
                   <RecordSpineCollection
                     label="Participants"
                     count={summary.participant_contacts.length}
@@ -513,7 +506,24 @@ export default function OpportunityDetailPage() {
         {
           id: "related",
           label: "Related records",
-          content: <RelatedRecords summary={summary} canViewQuotes={canViewQuotes} />,
+          content: (
+            <RelatedRecords
+              summary={summary}
+              canViewQuotes={canViewQuotes}
+              participants={summary.can_view_contacts ? (
+                <OpportunityParticipants
+                  opportunityId={summary.opportunity.opportunity_id}
+                  organization={summary.organization ?? null}
+                  participants={summary.participant_contacts}
+                  canManage={canEditDeal}
+                  canRemove={canDeleteDeal}
+                  canRestore={canRestoreDeal}
+                  canCreateContact={canCreateContacts}
+                  onChanged={() => summaryQuery.refetch()}
+                />
+              ) : null}
+            />
+          ),
         },
       ] : []}
     />
@@ -567,32 +577,16 @@ function DealOverview({
 function RelatedRecords({
   summary,
   canViewQuotes,
+  participants,
 }: {
   summary: OpportunitySummary;
   canViewQuotes: boolean;
+  /** Null when the reader cannot see contacts: the panel is not drawn at all (05 §11). */
+  participants: ReactNode;
 }) {
   return (
     <RecordRelatedList>
-      {summary.can_view_contacts ? (
-        <RecordRelatedCard
-          title="Participants"
-          empty="No contacts are involved in this deal yet."
-        >
-          {summary.participant_contacts.map((participant) => (
-            <RecordRelatedLink
-              key={participant.id}
-              href={`/dashboard/sales/contacts/${participant.contact_id}`}
-              title={
-                participant.contact_name
-                || [participant.contact.first_name, participant.contact.last_name].filter(Boolean).join(" ")
-                || participant.contact.primary_email
-                || "Contact"
-              }
-              detail={`${participant.role_label}${participant.is_primary ? " · Primary" : ""}`}
-            />
-          ))}
-        </RecordRelatedCard>
-      ) : null}
+      {participants}
       {canViewQuotes ? (
         <RecordRelatedCard title="Quotes" empty="No quotes are linked to this deal yet.">
           {summary.related_quotes.map((quote) => (

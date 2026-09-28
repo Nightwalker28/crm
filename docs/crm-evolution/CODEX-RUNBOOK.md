@@ -10,6 +10,7 @@ Codex must:
 2. Read the scoped `AGENTS.md` files for every area it expects to touch.
 3. Read the relevant `.codex/skills/` instructions.
 4. Read `/docs/crm-evolution/README.md`.
+   Then read `/docs/crm-evolution/STATUS.md` for which waves have landed, and update it when the phase ends.
 5. Read only the numbered specification for the requested workstream plus directly referenced dependencies.
 6. Inspect the current implementation and nearby tests before proposing changes.
 7. Verify every path/class/table mentioned in the specification because the repository may have changed since this plan was written.
