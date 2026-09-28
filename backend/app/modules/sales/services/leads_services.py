@@ -20,9 +20,9 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.platform.services.record_tags import hydrate_record_tags, normalize_record_tags, sync_record_tags
-from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_SET
+from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization, SalesPipelineStage
 from app.modules.sales.repositories import leads_repository, organizations_repository
+from app.modules.sales.services import pipelines_services
 from app.modules.sales.services.opportunity_contacts_services import sync_primary_contact_association
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
@@ -167,11 +167,18 @@ def _validate_status(value: str | None) -> str:
     return normalized
 
 
-def _validate_conversion_deal_stage(value: str | None) -> str:
-    normalized = (_coerce_optional(value) or "qualified").strip().lower().replace(" ", "_")
-    if normalized not in OPPORTUNITY_STAGE_SET:
+def _resolve_conversion_deal_stage(db: Session, tenant_id: int, value: str | None) -> SalesPipelineStage:
+    """The stage a converted deal starts in, resolved before anything is written.
+
+    Resolving up front keeps a bad stage from half-converting the lead. An inactive
+    stage is rejected here for the same reason, rather than after the account and
+    contact already exist.
+    """
+
+    stage = pipelines_services.resolve_legacy_opportunity_stage(db, tenant_id, _coerce_optional(value) or "qualified")
+    if stage is None or not stage.is_active:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid deal stage")
-    return normalized
+    return stage
 
 
 def _score_grade(score: int) -> str:
@@ -495,7 +502,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
 
     assigned_to = payload.get("assigned_to") or lead.assigned_to or current_user.id
     _ensure_assigned_user(db, assigned_to, tenant_id=tenant_id)
-    deal_stage = _validate_conversion_deal_stage(payload.get("deal_stage")) if payload.get("create_deal") else None
+    deal_stage = _resolve_conversion_deal_stage(db, tenant_id, payload.get("deal_stage")) if payload.get("create_deal") else None
 
     create_account = bool(payload.get("create_account", True))
     account_id = payload.get("account_id")
@@ -557,11 +564,11 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
             tenant_id=tenant_id,
             opportunity_name=deal_name,
             client=" ".join(part for part in [contact.first_name, contact.last_name] if part).strip() or contact.primary_email,
-            sales_stage=deal_stage,
             contact_id=contact.contact_id,
             organization_id=organization.org_id if organization else contact.organization_id,
             assigned_to=assigned_to,
         )
+        pipelines_services.assign_opportunity_stage(db, opportunity, pipeline_stage_id=deal_stage.id)
         db.add(opportunity)
         db.flush()
         # Conversion still produces exactly the same records; this only keeps the

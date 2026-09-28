@@ -13,8 +13,50 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Phase 1 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Phases 1–2 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — pipeline Phase 2: Opportunity references (2026-09-29)
+
+- `sales_opportunities.pipeline_id` / `pipeline_stage_id` (`20260818_opp_stage_refs`), with a
+  partial index `(tenant_id, pipeline_stage_id) WHERE deleted_at IS NULL` for board columns
+  and "stage in use" counts. The backfill resolves by key within the deal's own tenant's
+  default pipeline and covers soft-deleted deals. A NULL `sales_stage` stays unstaged, with
+  the pipeline still set. The upgrade aborts if any deal is left unresolved.
+- Both columns stay **nullable** during compatibility: NULL pipeline = tenant default, NULL
+  stage = unstaged. Making `pipeline_id` required belongs with Phase 4.
+- `pipelines_services.assign_opportunity_stage` is the only writer of `sales_stage`,
+  `pipeline_id` and `pipeline_stage_id`. Create, update (and so CSV import), the stage PATCH
+  and Lead conversion all go through it. A caller may send the legacy key, the stage id, or
+  both, and both must agree. A stage from another tenant gets the same 400 as a missing one.
+  An inactive stage or pipeline cannot be newly assigned, but a deal already in one may stay.
+  An unknown key is now a 400 rather than a check-constraint error. Lead conversion resolves
+  its stage before writing anything.
+- API: `pipeline_stage_id` is accepted on create/update/stage PATCH. Responses add
+  `pipeline_id`, `pipeline_stage_id` and `pipeline_stage` (`key`, `label`, `semantic_type`,
+  `probability`, `is_active`). List items include them only when the Stage column is visible.
+  A tenant that disabled Stage cannot write it through `pipeline_stage_id` either. Every
+  existing field keeps its meaning, so current clients are unaffected.
+- **The legacy check constraint still limits stage keys to the six seeded ones.** Adding a
+  stage (the frontend Phase 2 settings UI) therefore needs Phase 4's constraint drop, or a
+  bounded relaxation of it, first. Renaming, reordering, re-weighting and deactivating
+  stages do not.
+
+Verification: `test_opportunity_stage_refs.py` 24 of 24 (backfill for every legacy stage
+across two tenants and a soft-deleted deal, idempotency, the unresolved block, key/id
+agreement, cross-tenant rejection, inactive handling, clearing, conversion, serialization,
+field-config mapping). The two old `update_opportunity_stage` tests moved there onto a real
+session. The full backend suite passes 1068 of 1068 with Redis up. `verify_migrations` passes
+at `20260818_opp_stage_refs`, and `verify_openapi` passes. On a throwaway PostgreSQL database,
+a populated upgrade matched 14 of 14 deals and a real `alembic downgrade` to
+`20260816_opp_participants` removed both tables and columns before re-upgrading cleanly.
+No frontend change.
+
+**Next:** Wave 2E Phase 3. Migrate the dependent business logic, one family per commit, from
+the `3` rows of `04a-stage-inventory.md`: closed/won/lost by `semantic_type`, forecast
+probability from the stage row, the dashboard and pipeline summary grouped by stage row,
+automation conditions and the `opportunity.stage_changed` payload carrying stage id and
+semantic type, and export.
 
 ## Wave 2E — pipeline Phase 1: models and compatibility resolver (2026-09-29)
 
@@ -58,12 +100,6 @@ throwaway PostgreSQL database seeded 6 stages for each of three tenants and reje
 default. Not run: the contract drift check (layout family untouched), frontend lint/build (no
 frontend change), and a real `alembic downgrade`.
 
-**Next:** Wave 2E Phase 2. Add `pipeline_id`/`stage_id` references on `sales_opportunities`,
-backfill them from `sales_stage` via the resolver, and keep writing the legacy key as the
-compatibility field. Update create, edit, stage PATCH, import and Lead conversion to set
-both, with same-tenant and inactive-stage validation. Work from the `2` rows of
-`04a-stage-inventory.md`.
-
 ## Wave 2D — participant management (2026-09-29)
 
 Frontend Phase 2 of `05-relationships-data-model.md`, on the Phase 2 APIs that were already
@@ -90,9 +126,6 @@ fails only `pipeline totals … retry` on the list page, which this change does 
 
 Left open: see *Deferred* below.
 
-**Next:** Wave 2E — the pipeline compatibility phase of `04-pipelines-kanban.md`, starting
-with the inventory of every stage comparison.
-
 ## Deferred — not built, and when to build it
 
 Each row is deliberately unbuilt. The trigger column says when it is due. Check this table at
@@ -108,4 +141,4 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
 | `RequiredMark` not announced to screen readers (about 54 of 68 uses) | A primitive decision for the owner: a `Field` context, or the mark taking its control's id | When the owner picks the approach; then fix in the primitive, not at each call site |
 | `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | 2E frontend Phase 1, the first 2E slice that touches the list page |
-| Tenant restore of pipeline configuration | Backups export it; restore reads no child files yet | With 2E Phase 2, once deals reference stage ids a restore must remap them |
+| Tenant restore of pipeline configuration and stage ids | Backups export pipelines, stages and each deal's stage ids; restore reads no sales files yet | When tenant restore gains sales-module restore: stage ids must be remapped, not copied |

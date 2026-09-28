@@ -3,7 +3,7 @@ from decimal import Decimal
 import json
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from app.modules.sales.opportunity_contact_roles import OPPORTUNITY_CONTACT_ROLE_PATTERN
 from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
@@ -777,7 +777,10 @@ class ContactCompactSummary(BaseModel):
 class SalesOpportunityBase(BaseModel):
     opportunity_name: str
     client: str | None = None
+    # Legacy stage key; still accepted and returned during the pipeline
+    # compatibility period. `pipeline_stage_id` is the stable reference.
     sales_stage: str | None = None
+    pipeline_stage_id: int | None = None
     contact_id: int | None = None
     organization_id: int | None = None
     assigned_to: int | None = None
@@ -823,6 +826,7 @@ class SalesOpportunityUpdate(BaseModel):
     opportunity_name: str | None = None
     client: str | None = None
     sales_stage: str | None = None
+    pipeline_stage_id: int | None = None
     contact_id: int | None = None
     organization_id: int | None = None
     assigned_to: int | None = None
@@ -844,11 +848,35 @@ class SalesOpportunityUpdate(BaseModel):
 
 
 class SalesOpportunityStageUpdate(BaseModel):
-    sales_stage: str = Field(pattern=OPPORTUNITY_STAGE_PATTERN)
+    """Move a deal by legacy key or by stage id; when both are sent they must agree."""
+
+    sales_stage: str | None = Field(default=None, pattern=OPPORTUNITY_STAGE_PATTERN)
+    pipeline_stage_id: int | None = None
+
+    @model_validator(mode="after")
+    def require_a_stage(self):
+        if self.sales_stage is None and self.pipeline_stage_id is None:
+            raise ValueError("sales_stage or pipeline_stage_id is required")
+        return self
+
+
+class OpportunityPipelineStageRef(BaseModel):
+    """A deal's stage as display metadata, so clients never infer meaning from a label."""
+
+    id: int
+    key: str
+    label: str
+    semantic_type: str
+    probability: float
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesOpportunityResponse(SalesOpportunityBase):
     opportunity_id: int
+    pipeline_id: int | None = None
+    pipeline_stage: OpportunityPipelineStageRef | None = None
     contact_name: str | None = None
     organization_name: str | None = None
     assigned_to_name: str | None = None
@@ -866,6 +894,9 @@ class SalesOpportunityListItem(BaseModel):
     opportunity_name: str | None = None
     client: str | None = None
     sales_stage: str | None = None
+    pipeline_id: int | None = None
+    pipeline_stage_id: int | None = None
+    pipeline_stage: OpportunityPipelineStageRef | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None

@@ -20,8 +20,9 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_SET
+from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER
 from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.services import pipelines_services
 from app.modules.sales.services.opportunity_contacts_services import (
     legacy_client_name,
     sync_primary_contact_association,
@@ -399,8 +400,13 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
     if "currency_type" in data:
         data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
+    sales_stage = data.pop("sales_stage", None)
+    pipeline_stage_id = data.pop("pipeline_stage_id", None)
     data["tenant_id"] = current_user.tenant_id
     opportunity = SalesOpportunity(**data)
+    pipelines_services.assign_opportunity_stage(
+        db, opportunity, sales_stage=sales_stage, pipeline_stage_id=pipeline_stage_id
+    )
     db.add(opportunity)
     db.flush()
     sync_primary_contact_association(
@@ -460,8 +466,11 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
     if "currency_type" in data and data["currency_type"] is not None:
         data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
+    stage_changes = {key: data.pop(key) for key in ("sales_stage", "pipeline_stage_id") if key in data}
     for field, value in data.items():
         setattr(opportunity, field, value)
+    if stage_changes:
+        pipelines_services.assign_opportunity_stage(db, opportunity, **stage_changes)
 
     if "contact_id" in data:
         db.flush()
@@ -495,13 +504,14 @@ def update_opportunity_stage(
     db: Session,
     opportunity: SalesOpportunity,
     *,
-    sales_stage: str,
+    sales_stage: str | None = None,
+    pipeline_stage_id: int | None = None,
 ) -> SalesOpportunity:
-    normalized_stage = _normalize_stage(sales_stage)
-    if normalized_stage not in OPPORTUNITY_STAGE_SET:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported opportunity stage")
-
-    opportunity.sales_stage = normalized_stage
+    if sales_stage is None and pipeline_stage_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A stage is required")
+    pipelines_services.assign_opportunity_stage(
+        db, opportunity, sales_stage=sales_stage, pipeline_stage_id=pipeline_stage_id
+    )
     db.commit()
     db.refresh(opportunity)
     return hydrate_custom_field_record(

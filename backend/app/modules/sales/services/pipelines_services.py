@@ -8,10 +8,11 @@ stage label to decide behaviour.
 
 from __future__ import annotations
 
+from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.modules.sales.models import SalesPipeline, SalesPipelineStage
+from app.modules.sales.models import SalesOpportunity, SalesPipeline, SalesPipelineStage
 from app.modules.sales.opportunity_stages import (
     DEFAULT_OPPORTUNITY_PIPELINE_NAME,
     OPPORTUNITY_PIPELINE_MODULE_KEY,
@@ -79,6 +80,75 @@ def resolve_legacy_opportunity_stage(
         return None
     pipeline = ensure_default_opportunity_pipeline(db, tenant_id)
     return pipelines_repository.get_stage_by_key(db, tenant_id=tenant_id, pipeline_id=pipeline.id, key=key)
+
+
+_UNSET = object()
+
+
+def assign_opportunity_stage(
+    db: Session,
+    opportunity: SalesOpportunity,
+    *,
+    sales_stage=_UNSET,
+    pipeline_stage_id=_UNSET,
+) -> None:
+    """Set a deal's stage, keeping the legacy key and the stage reference in step.
+
+    The only writer of `sales_stage`, `pipeline_id` and `pipeline_stage_id` during
+    the compatibility period (04-pipelines-kanban Phase 2). Callers pass the legacy
+    key, the stage id, or both; both must name the same stage. The stage must
+    belong to the deal's tenant, and an inactive stage or pipeline cannot be newly
+    assigned, though a deal already in one may stay there. Passing neither just
+    attaches the tenant default pipeline to a deal that has none.
+
+    Raises 400 for anything unassignable. A stage id from another tenant is
+    reported exactly like one that does not exist.
+    """
+
+    tenant_id = opportunity.tenant_id
+    stage: SalesPipelineStage | None = None
+    clears_stage = False
+
+    if pipeline_stage_id is not _UNSET and pipeline_stage_id is not None:
+        stage = (
+            db.query(SalesPipelineStage)
+            .filter(SalesPipelineStage.id == pipeline_stage_id, SalesPipelineStage.tenant_id == tenant_id)
+            .first()
+        )
+        if stage is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pipeline stage not found")
+        if sales_stage is not _UNSET and sales_stage is not None:
+            if normalize_legacy_opportunity_stage(sales_stage) != stage.key:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="sales_stage and pipeline_stage_id name different stages",
+                )
+    elif sales_stage is not _UNSET and normalize_legacy_opportunity_stage(sales_stage) is not None:
+        stage = resolve_legacy_opportunity_stage(db, tenant_id, sales_stage)
+        if stage is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported opportunity stage")
+    elif sales_stage is not _UNSET or pipeline_stage_id is not _UNSET:
+        clears_stage = True
+
+    if stage is None:
+        if clears_stage:
+            opportunity.sales_stage = None
+            opportunity.pipeline_stage_id = None
+            opportunity.pipeline_stage = None
+        if opportunity.pipeline_id is None:
+            opportunity.pipeline_id = ensure_default_opportunity_pipeline(db, tenant_id).id
+        return
+
+    if stage.id != opportunity.pipeline_stage_id:
+        if not stage.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pipeline stage is inactive")
+        if not stage.pipeline.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Pipeline is inactive")
+
+    opportunity.pipeline_id = stage.pipeline_id
+    opportunity.pipeline_stage_id = stage.id
+    opportunity.pipeline_stage = stage
+    opportunity.sales_stage = stage.key
 
 
 def is_closed_stage(stage: SalesPipelineStage | None) -> bool:

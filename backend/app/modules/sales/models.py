@@ -606,13 +606,27 @@ class SalesOpportunity(Base):
         Index("ix_sales_opportunities_tenant_close_active", "tenant_id", "expected_close_date", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        # Board columns and "stage in use" counts group live deals by stage row.
+        Index(
+            "ix_sales_opportunities_tenant_pipeline_stage_active",
+            "tenant_id",
+            "pipeline_stage_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     opportunity_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
     client = Column(Text, nullable=False)
+    # Legacy stage key, kept in step with `pipeline_stage_id` by the pipeline service
+    # for the compatibility period (04-pipelines-kanban Phase 2). Readers migrate off
+    # it in Phase 3; it is dropped only in Phase 4.
     sales_stage = Column(Text, nullable=True)
+    # Nullable during compatibility: a NULL pipeline means the tenant default, a NULL
+    # stage means unstaged. Only `pipelines_services.assign_opportunity_stage` writes them.
+    pipeline_id = Column(BigInteger, ForeignKey("sales_pipelines.id"), nullable=True, index=True)
+    pipeline_stage_id = Column(BigInteger, ForeignKey("sales_pipeline_stages.id"), nullable=True)
 
     contact_id = Column(
         BigInteger,
@@ -655,6 +669,7 @@ class SalesOpportunity(Base):
     contact = relationship("SalesContact", lazy="selectin")
     organization = relationship("SalesOrganization", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    pipeline_stage = relationship("SalesPipelineStage", lazy="selectin")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
     contact_associations = relationship(
         "SalesOpportunityContact",

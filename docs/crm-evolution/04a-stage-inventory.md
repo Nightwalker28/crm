@@ -3,8 +3,8 @@
 The inventory `04-pipelines-kanban.md` §3 requires before any reader migrates. Taken
 2026-09-29 at the start of Wave 2E, against `20260817_sales_pipelines`. Each row is a place
 that compares, validates, groups, or displays `sales_opportunities.sales_stage` by its
-legacy key. The **Phase** column is the 04 phase that migrates it. Tick rows off here as
-they migrate; Phase 4 may not drop the legacy check constraint while any row is unticked.
+legacy key. The **Phase** column is the 04 phase that migrates it; ✅ marks a migrated row. Tick rows off
+here as they migrate; Phase 4 may not drop the legacy check constraint while any row is unticked.
 
 The legacy catalog is `backend/app/modules/sales/opportunity_stages.py`
 (`lead, qualified, proposal, negotiation, closed_won, closed_lost`, plus a display-only
@@ -19,12 +19,12 @@ The legacy catalog is `backend/app/modules/sales/opportunity_stages.py`
 |---|---|---|
 | `sales/models.py` `ck_sales_opportunities_sales_stage` | DB check: value ∈ the six legacy keys | 4 (drop last) |
 | `sales/models.py` `ix_sales_opportunities_tenant_stage_active` | index on the text column | 4 |
-| `sales/schema.py` `SalesOpportunityStageUpdate` | `OPPORTUNITY_STAGE_PATTERN` regex | 2 |
-| `sales/schema.py` `SalesOpportunityCreate/Update.sales_stage` | free `str`, relies on the DB check | 2 |
-| `sales/services/opportunities_services.py` `update_opportunity_stage` | normalizes, checks `OPPORTUNITY_STAGE_SET` | 2 |
-| `sales/services/opportunities_services.py` import (`sales_stage` column) | CSV text passes through to the DB check | 3 |
-| `sales/services/leads_services.py` `_validate_conversion_deal_stage` | conversion stage ∈ `OPPORTUNITY_STAGE_SET` | 2 |
-| `sales/schema.py` `LeadConvert.deal_stage` default `"qualified"` | a legacy key as a default | 2 |
+| `sales/schema.py` `SalesOpportunityStageUpdate` | `OPPORTUNITY_STAGE_PATTERN` regex; now also accepts `pipeline_stage_id` | 2 ✅ |
+| `sales/schema.py` `SalesOpportunityCreate/Update.sales_stage` | now resolved by `assign_opportunity_stage` (400, not a constraint error); `pipeline_stage_id` accepted | 2 ✅ |
+| `sales/services/opportunities_services.py` `update_opportunity_stage` | via `assign_opportunity_stage` | 2 ✅ |
+| `sales/services/opportunities_services.py` import (`sales_stage` column) | goes through create/update, so it is resolved by key and a bad value is a row failure | 2 ✅ (validation); header aliases still 3 |
+| `sales/services/leads_services.py` `_resolve_conversion_deal_stage` | resolved by key before any write; inactive rejected | 2 ✅ |
+| `sales/schema.py` `LeadConversionRequest.deal_stage` default `"qualified"` | a legacy key as a default, resolved by key | 2 ✅ (a stable key is allowed) |
 
 ## Business logic by closed/won/lost
 

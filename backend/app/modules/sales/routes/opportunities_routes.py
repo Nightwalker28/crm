@@ -123,6 +123,20 @@ OPPORTUNITY_IMPORT_ALIASES = {
 }
 
 
+def _field_config_keys(field_keys: set[str]) -> set[str]:
+    """Field keys as field configuration knows them.
+
+    `pipeline_stage_id` is the stage field in another form, so a tenant that
+    disabled Stage cannot write it through the id either.
+    """
+
+    keys = set(field_keys) - {"custom_fields"}
+    if "pipeline_stage_id" in keys:
+        keys.discard("pipeline_stage_id")
+        keys.add("sales_stage")
+    return keys
+
+
 def _serialize_opportunity(opportunity) -> dict:
     return SalesOpportunityResponse.model_validate(opportunity).model_dump(mode="json")
 
@@ -211,6 +225,9 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
             "custom_fields",
         }
     )
+    # The stage reference travels with the legacy key whenever the key is visible.
+    if "sales_stage" in safe_fields:
+        safe_fields.update({"pipeline_id", "pipeline_stage_id", "pipeline_stage"})
     payload = {"opportunity_id": opportunity.opportunity_id}
     for field in safe_fields:
         if field == "custom_fields":
@@ -408,7 +425,7 @@ def create_sales_opportunity(
         db,
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
-        field_keys=set(payload.model_fields_set) - {"custom_fields"},
+        field_keys=_field_config_keys(set(payload.model_fields_set)),
     )
     data = sanitize_disabled_field_payload(
         db,
@@ -528,7 +545,7 @@ def update_sales_opportunity(
         db,
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
-        field_keys=set(update_data) - {"custom_fields"},
+        field_keys=_field_config_keys(set(update_data)),
     )
     update_data = sanitize_disabled_field_payload(
         db,
@@ -552,7 +569,7 @@ def update_sales_opportunity(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
-    if "sales_stage" in update_data and before_state.get("sales_stage") != updated.sales_stage:
+    if ("sales_stage" in update_data or "pipeline_stage_id" in update_data) and before_state.get("sales_stage") != updated.sales_stage:
         safe_emit_crm_event(
             db,
             tenant_id=current_user.tenant_id,
@@ -586,7 +603,12 @@ def update_sales_opportunity_stage(
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     before_state = _serialize_opportunity(opportunity)
-    updated = update_opportunity_stage(db, opportunity, sales_stage=payload.sales_stage)
+    updated = update_opportunity_stage(
+        db,
+        opportunity,
+        sales_stage=payload.sales_stage,
+        pipeline_stage_id=payload.pipeline_stage_id,
+    )
     action = "close" if updated.sales_stage in OPPORTUNITY_CLOSED_STAGE_SET else "stage_change"
     log_activity(
         db,
