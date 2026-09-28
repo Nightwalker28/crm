@@ -73,6 +73,12 @@ OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES = {
 }
 
 
+# A deal with no stage. It is open business, weighted as the forecast always
+# weighted it, and sorts after every real stage.
+OPPORTUNITY_UNSTAGED_KEY = "unstaged"
+OPPORTUNITY_UNSTAGED_PROBABILITY = Decimal("10")
+
+
 def normalize_legacy_opportunity_stage(stage: str | None) -> str | None:
     """The key a stored or submitted legacy stage value refers to, or None when blank."""
 

@@ -20,8 +20,7 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER
-from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.repositories import opportunities_repository, pipelines_repository
 from app.modules.sales.services import pipelines_services
 from app.modules.sales.services.opportunity_contacts_services import (
     legacy_client_name,
@@ -133,11 +132,6 @@ def list_all_opportunities(
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
     )
-
-
-def _normalize_stage(stage: str | None) -> str:
-    normalized = (stage or "").strip().lower().replace(" ", "_")
-    return normalized or "unstaged"
 
 
 def _parse_numeric_value(raw_value: str | None) -> Decimal:
@@ -268,40 +262,64 @@ def summarize_opportunity_pipeline(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> dict:
-    summary = {
-        stage: {"stage_key": stage, "label": OPPORTUNITY_STAGE_LABELS[stage], "count": 0, "total_value": Decimal("0")}
-        for stage in OPPORTUNITY_STAGE_ORDER
-    }
-    summary["unstaged"] = {
-        "stage_key": "unstaged",
-        "label": OPPORTUNITY_STAGE_LABELS["unstaged"],
-        "count": 0,
-        "total_value": Decimal("0"),
-    }
+    """Counts and value per stage of the tenant's pipeline, over the filtered deals.
 
-    total_count = 0
-    for sales_stage, count, total_value in opportunities_repository.summarize_pipeline(
+    Columns come from the pipeline, not a hardcoded list: every active stage in
+    board order, an inactive stage only while deals still sit in it, then
+    Unstaged. Buckets are keyed by stage row, so a renamed label moves nothing.
+    """
+
+    pipeline = pipelines_services.ensure_default_opportunity_pipeline(db, tenant_id)
+    buckets: dict[str, dict] = {}
+    for stage in sorted(pipeline.stages, key=lambda item: (item.position, item.id)):
+        buckets[stage.key] = {"facts": pipelines_services.stage_facts(stage), "is_active": bool(stage.is_active), "count": 0, "total_value": Decimal("0")}
+    unstaged = pipelines_services.UNSTAGED_FACTS
+    buckets[unstaged.key] = {"facts": unstaged, "is_active": True, "count": 0, "total_value": Decimal("0")}
+
+    rows = opportunities_repository.summarize_pipeline(
         db,
         tenant_id=tenant_id,
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    ):
-        stage_key = _normalize_stage(sales_stage)
-        bucket = summary.get(stage_key) or summary["unstaged"]
-        bucket["count"] += int(count or 0)
-        bucket["total_value"] += Decimal(str(total_value or 0))
+    )
+    foreign_stage_ids = {row[0] for row in rows if row[0] is not None and not any(b["facts"].stage_id == row[0] for b in buckets.values())}
+    foreign_stages = {
+        stage.id: stage
+        for stage in pipelines_repository.list_stages_by_ids(db, tenant_id=tenant_id, stage_ids=foreign_stage_ids)
+    }
+    stage_keys_by_id = {bucket["facts"].stage_id: key for key, bucket in buckets.items() if bucket["facts"].stage_id is not None}
+
+    total_count = 0
+    for stage_id, sales_stage, count, total_value in rows:
+        if stage_id in stage_keys_by_id:
+            key = stage_keys_by_id[stage_id]
+        elif stage_id in foreign_stages:
+            # A stage of a non-default pipeline: shown as its own column after the board.
+            facts = pipelines_services.stage_facts(foreign_stages[stage_id])
+            key = f"{facts.key}#{facts.stage_id}"
+            buckets.setdefault(key, {"facts": facts, "is_active": bool(foreign_stages[stage_id].is_active), "count": 0, "total_value": Decimal("0")})
+        else:
+            key = pipelines_services.legacy_stage_facts(sales_stage).key
+            if key not in buckets:
+                key = unstaged.key
+        buckets[key]["count"] += int(count or 0)
+        buckets[key]["total_value"] += Decimal(str(total_value or 0))
         total_count += int(count or 0)
 
-    ordered_keys = [*OPPORTUNITY_STAGE_ORDER, "unstaged"]
     stages = [
         {
-            "stage_key": key,
-            "label": summary[key]["label"],
-            "count": summary[key]["count"],
-            "total_value": float(summary[key]["total_value"]),
+            "stage_key": bucket["facts"].key,
+            "stage_id": bucket["facts"].stage_id,
+            "label": bucket["facts"].label,
+            "semantic_type": bucket["facts"].semantic_type,
+            "probability": float(bucket["facts"].probability),
+            "is_active": bucket["is_active"],
+            "count": bucket["count"],
+            "total_value": float(bucket["total_value"]),
         }
-        for key in ordered_keys
+        for bucket in buckets.values()
+        if bucket["is_active"] or bucket["count"]
     ]
     return {
         "total_count": total_count,

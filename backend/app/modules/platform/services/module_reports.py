@@ -22,7 +22,8 @@ from app.modules.platform.services import custom_modules
 from app.modules.platform.services.custom_fields import CUSTOM_FIELD_FILTER_PREFIX, list_custom_field_definitions
 from app.modules.platform.services.module_fields import module_field_enabled_map, sanitize_disabled_filter_conditions
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesQuote
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES
+from app.modules.sales.repositories import pipelines_repository
+from app.modules.sales.services import pipelines_services
 from app.modules.sales.repositories import contacts_repository, leads_repository, opportunities_repository, organizations_repository, quotes_repository
 from app.modules.tasks.models import Task
 from app.modules.tasks.repositories import tasks_repository
@@ -38,7 +39,6 @@ SAVED_REPORT_SORT_FIELDS = {
     "updated_at": UserModuleReport.updated_at,
 }
 CRM_MODULE_KEYS = {"sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "tasks"}
-FORECAST_STAGE_PROBABILITIES = {**OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES, "unstaged": Decimal("10")}
 FORECAST_COMMIT_THRESHOLD = Decimal("75")
 FORECAST_BEST_CASE_THRESHOLD = Decimal("50")
 
@@ -141,30 +141,11 @@ def _money(value: Decimal) -> Decimal:
     return value.quantize(Decimal("0.01"))
 
 
-def _normalize_forecast_stage(stage: str | None) -> str:
-    normalized = (stage or "").strip().lower().replace(" ", "_")
-    return normalized or "unstaged"
-
-
-def _stage_label(stage: str | None) -> str:
-    labels = {
-        "lead": "Lead",
-        "qualified": "Qualified",
-        "proposal": "Proposal",
-        "negotiation": "Negotiation",
-        "closed_won": "Closed Won",
-        "closed_lost": "Closed Lost",
-        "unstaged": "Unstaged",
-    }
-    normalized = _normalize_forecast_stage(stage)
-    return labels.get(normalized, normalized.replace("_", " ").title())
-
-
-def _forecast_probability(opportunity: SalesOpportunity) -> Decimal:
+def _forecast_probability(opportunity: SalesOpportunity, facts: pipelines_services.OpportunityStageFacts) -> Decimal:
     explicit = getattr(opportunity, "probability_percent", None)
     if explicit is not None:
         return max(Decimal("0"), min(Decimal(str(explicit)), Decimal("100")))
-    return FORECAST_STAGE_PROBABILITIES.get(_normalize_forecast_stage(opportunity.sales_stage), FORECAST_STAGE_PROBABILITIES["unstaged"])
+    return facts.probability
 
 
 def _empty_forecast_bucket(key: str, label: str) -> dict[str, Any]:
@@ -180,12 +161,18 @@ def _empty_forecast_bucket(key: str, label: str) -> dict[str, Any]:
     }
 
 
-def _add_forecast_bucket_amount(bucket: dict[str, Any], *, amount: Decimal, probability: Decimal, stage_key: str) -> None:
+def _add_forecast_bucket_amount(
+    bucket: dict[str, Any],
+    *,
+    amount: Decimal,
+    probability: Decimal,
+    facts: pipelines_services.OpportunityStageFacts,
+) -> None:
     bucket["count"] += 1
-    if stage_key == "closed_won":
+    if facts.is_won:
         bucket["actual_revenue_amount"] += amount
         return
-    if stage_key == "closed_lost":
+    if facts.is_lost:
         return
     weighted_amount = amount * (probability / Decimal("100"))
     bucket["gross_pipeline_amount"] += amount
@@ -800,22 +787,22 @@ def generate_forecast_summary(
     won_count = 0
 
     for opportunity in opportunities:
-        stage_key = _normalize_forecast_stage(opportunity.sales_stage)
+        facts = pipelines_services.opportunity_stage_facts(opportunity)
         amount = _parse_decimalish(opportunity.total_cost_of_project)
-        probability = _forecast_probability(opportunity)
-        if stage_key not in {"closed_won", "closed_lost"}:
+        probability = _forecast_probability(opportunity, facts)
+        if not facts.is_closed:
             open_count += 1
-        if stage_key == "closed_won":
+        if facts.is_won:
             won_count += 1
 
-        stage_bucket = stage_buckets.setdefault(stage_key, _empty_forecast_bucket(stage_key, _stage_label(stage_key)))
-        _add_forecast_bucket_amount(stage_bucket, amount=amount, probability=probability, stage_key=stage_key)
+        stage_bucket = stage_buckets.setdefault(facts.key, _empty_forecast_bucket(facts.key, facts.label))
+        _add_forecast_bucket_amount(stage_bucket, amount=amount, probability=probability, facts=facts)
 
         owner_key = str(opportunity.assigned_to) if opportunity.assigned_to is not None else "__unassigned__"
         if opportunity.assigned_to is not None:
             owner_ids.add(opportunity.assigned_to)
         owner_bucket = owner_buckets.setdefault(owner_key, _empty_forecast_bucket(owner_key, "Unassigned"))
-        _add_forecast_bucket_amount(owner_bucket, amount=amount, probability=probability, stage_key=stage_key)
+        _add_forecast_bucket_amount(owner_bucket, amount=amount, probability=probability, facts=facts)
 
         assigned_user = getattr(opportunity, "assigned_user", None)
         user_team_id = getattr(assigned_user, "team_id", None)
@@ -823,9 +810,9 @@ def generate_forecast_summary(
         if user_team_id is not None:
             team_ids.add(user_team_id)
         team_bucket = team_buckets.setdefault(team_key, _empty_forecast_bucket(team_key, "Unassigned"))
-        _add_forecast_bucket_amount(team_bucket, amount=amount, probability=probability, stage_key=stage_key)
+        _add_forecast_bucket_amount(team_bucket, amount=amount, probability=probability, facts=facts)
 
-        _add_forecast_bucket_amount(totals, amount=amount, probability=probability, stage_key=stage_key)
+        _add_forecast_bucket_amount(totals, amount=amount, probability=probability, facts=facts)
 
     owner_labels = _user_labels(db, tenant_id=current_user.tenant_id, user_ids=owner_ids)
     for key, bucket in owner_buckets.items():
@@ -940,24 +927,42 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
         deal_base = db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == tenant_id, SalesOpportunity.deleted_at.is_(None))
         stage_counts: dict[str, int] = {}
         stage_values: dict[str, Decimal] = {}
-        for stage, value in deal_base.with_entities(SalesOpportunity.sales_stage, SalesOpportunity.total_cost_of_project).all():
-            key = _serialize_bucket_key(stage)
+        stage_labels: dict[str, str] = {}
+        rows = deal_base.with_entities(
+            SalesOpportunity.sales_stage,
+            SalesOpportunity.pipeline_stage_id,
+            SalesOpportunity.total_cost_of_project,
+        ).all()
+        stages_by_id = {
+            stage.id: pipelines_services.stage_facts(stage)
+            for stage in pipelines_repository.list_stages_by_ids(
+                db,
+                tenant_id=tenant_id,
+                stage_ids={row.pipeline_stage_id for row in rows if row.pipeline_stage_id is not None},
+            )
+        }
+        for sales_stage, stage_id, value in rows:
+            facts = stages_by_id.get(stage_id) or pipelines_services.legacy_stage_facts(sales_stage)
+            key = facts.key
+            stage_labels[key] = facts.label
             stage_counts[key] = stage_counts.get(key, 0) + 1
             numeric_value = _parse_decimalish(value)
             stage_values[key] = stage_values.get(key, Decimal("0")) + numeric_value
-            if key not in {"closed_won", "closed_lost"}:
+            if facts.is_won:
+                won_count += 1
+            elif facts.is_lost:
+                lost_count += 1
+            else:
                 pipeline_value += numeric_value
         deal_stage_rows = [
             {
                 "key": key,
-                "label": _serialize_bucket_label(key),
+                "label": stage_labels[key],
                 "count": stage_counts[key],
                 "value": float(stage_values.get(key, Decimal("0"))),
             }
             for key in sorted(stage_counts, key=lambda item: stage_values.get(item, Decimal("0")), reverse=True)
         ]
-        won_count = stage_counts.get("closed_won", 0)
-        lost_count = stage_counts.get("closed_lost", 0)
     forecast_summary = None
     if has_deals:
         forecast_start = now.date()
@@ -1016,7 +1021,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
             db.query(
                 SalesOpportunity.assigned_to.label("owner_id"),
                 func.count().label("count"),
-                func.sum(case((SalesOpportunity.sales_stage == "closed_won", 1), else_=0)).label("won_count"),
+                func.sum(case((pipelines_repository.opportunity_won_clause(), 1), else_=0)).label("won_count"),
             )
             .filter(SalesOpportunity.tenant_id == tenant_id, SalesOpportunity.deleted_at.is_(None))
             .group_by(SalesOpportunity.assigned_to)

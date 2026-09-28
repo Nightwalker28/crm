@@ -22,6 +22,9 @@ CRM_EVENT_TYPES = {
     "lead.converted",
     "deal.assigned",
     "opportunity.stage_changed",
+    # Emitted on entering a won/lost stage by semantic type, never by label.
+    "opportunity.won",
+    "opportunity.lost",
     # Relationship changes worth reacting to. A participant's role change is
     # deliberately absent: it is audited, but it is not an event worth waking
     # automations for.

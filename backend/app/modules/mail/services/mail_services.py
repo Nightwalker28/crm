@@ -56,6 +56,7 @@ from app.modules.platform.services.message_templates import (
     render_template_text,
 )
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.user_management.models import Tenant, User, UserStatus
 
 
@@ -933,7 +934,8 @@ def _opportunity_token_values(opportunity: SalesOpportunity | None) -> dict[str,
     return {
         "id": str(opportunity.opportunity_id),
         "name": opportunity.opportunity_name or "",
-        "stage": opportunity.sales_stage or "",
+        # The stage's display label; the stable key is not something to put in an email.
+        "stage": opportunity_stage_facts(opportunity).label if opportunity.sales_stage else "",
         "client": opportunity.client or "",
         "value": opportunity.total_cost_of_project or "",
         "currency": opportunity.currency_type or "",

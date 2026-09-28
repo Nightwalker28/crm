@@ -224,11 +224,12 @@ def summarize_pipeline(
     return (
         query.order_by(None)
         .with_entities(
+            SalesOpportunity.pipeline_stage_id,
             SalesOpportunity.sales_stage,
             func.count(SalesOpportunity.opportunity_id),
             func.coalesce(func.sum(_opportunity_value_expression(db)), 0),
         )
-        .group_by(SalesOpportunity.sales_stage)
+        .group_by(SalesOpportunity.pipeline_stage_id, SalesOpportunity.sales_stage)
         .all()
     )
 

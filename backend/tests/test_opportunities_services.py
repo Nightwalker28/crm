@@ -39,8 +39,6 @@ class FakeDB:
 
 class OpportunityStageMetadataTests(unittest.TestCase):
     def test_backend_stage_metadata_is_single_source_for_services_and_schema(self):
-        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_ORDER)
-        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_LABELS)
         self.assertEqual(OPPORTUNITY_CLOSED_STAGE_SET, {"closed_won", "closed_lost"})
         self.assertEqual(
             SalesOpportunityStageUpdate.model_fields["sales_stage"].metadata[0].pattern,
@@ -244,7 +242,7 @@ class OpportunityListTests(unittest.TestCase):
         with patch.object(
             opportunities_repository,
             "summarize_pipeline",
-            return_value=[("lead", 2, Decimal("15.50"))],
+            return_value=[(None, "lead", 2, Decimal("15.50"))],
         ) as summarize:
             summary = opportunities_services.summarize_opportunity_pipeline(self.db, tenant_id=10)
 

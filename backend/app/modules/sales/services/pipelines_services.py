@@ -8,6 +8,9 @@ stage label to decide behaviour.
 
 from __future__ import annotations
 
+from dataclasses import dataclass
+from decimal import Decimal
+
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -15,6 +18,12 @@ from sqlalchemy.orm import Session
 from app.modules.sales.models import SalesOpportunity, SalesPipeline, SalesPipelineStage
 from app.modules.sales.opportunity_stages import (
     DEFAULT_OPPORTUNITY_PIPELINE_NAME,
+    OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES,
+    OPPORTUNITY_STAGE_LABELS,
+    OPPORTUNITY_STAGE_ORDER,
+    OPPORTUNITY_STAGE_SEMANTIC_TYPES,
+    OPPORTUNITY_UNSTAGED_KEY,
+    OPPORTUNITY_UNSTAGED_PROBABILITY,
     OPPORTUNITY_PIPELINE_MODULE_KEY,
     PIPELINE_STAGE_CLOSED_SEMANTICS,
     default_opportunity_pipeline_stages,
@@ -149,6 +158,80 @@ def assign_opportunity_stage(
     opportunity.pipeline_stage_id = stage.id
     opportunity.pipeline_stage = stage
     opportunity.sales_stage = stage.key
+
+
+@dataclass(frozen=True)
+class OpportunityStageFacts:
+    """What business logic may know about a deal's stage.
+
+    Reports, forecasts, scans and events read these instead of comparing legacy
+    keys or labels. `key` is `unstaged` when the deal has no stage.
+    """
+
+    key: str
+    label: str
+    semantic_type: str
+    probability: Decimal
+    position: int
+    stage_id: int | None = None
+
+    @property
+    def is_closed(self) -> bool:
+        return self.semantic_type in PIPELINE_STAGE_CLOSED_SEMANTICS
+
+    @property
+    def is_won(self) -> bool:
+        return self.semantic_type == "won"
+
+    @property
+    def is_lost(self) -> bool:
+        return self.semantic_type == "lost"
+
+
+UNSTAGED_FACTS = OpportunityStageFacts(
+    key=OPPORTUNITY_UNSTAGED_KEY,
+    label=OPPORTUNITY_STAGE_LABELS[OPPORTUNITY_UNSTAGED_KEY],
+    semantic_type="open",
+    probability=OPPORTUNITY_UNSTAGED_PROBABILITY,
+    position=10_000,
+)
+
+
+def stage_facts(stage: SalesPipelineStage) -> OpportunityStageFacts:
+    return OpportunityStageFacts(
+        key=stage.key,
+        label=stage.label,
+        semantic_type=stage.semantic_type,
+        probability=Decimal(str(stage.probability)),
+        position=stage.position,
+        stage_id=stage.id,
+    )
+
+
+def legacy_stage_facts(sales_stage: str | None) -> OpportunityStageFacts:
+    """Facts for a legacy key with no stage row, from the seeded catalog.
+
+    Only rows written outside `assign_opportunity_stage` lack a reference; they
+    keep exactly the meaning the key was seeded with. Unknown keys are unstaged.
+    """
+
+    key = normalize_legacy_opportunity_stage(sales_stage)
+    if key not in OPPORTUNITY_STAGE_SEMANTIC_TYPES:
+        return UNSTAGED_FACTS
+    return OpportunityStageFacts(
+        key=key,
+        label=OPPORTUNITY_STAGE_LABELS[key],
+        semantic_type=OPPORTUNITY_STAGE_SEMANTIC_TYPES[key],
+        probability=OPPORTUNITY_STAGE_DEFAULT_PROBABILITIES[key],
+        position=OPPORTUNITY_STAGE_ORDER.index(key),
+    )
+
+
+def opportunity_stage_facts(opportunity) -> OpportunityStageFacts:
+    stage = getattr(opportunity, "pipeline_stage", None)
+    if stage is not None:
+        return stage_facts(stage)
+    return legacy_stage_facts(getattr(opportunity, "sales_stage", None))
 
 
 def is_closed_stage(stage: SalesPipelineStage | None) -> bool:

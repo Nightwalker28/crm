@@ -13,8 +13,50 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Phases 1–2 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`; inventory in `04a-stage-inventory.md` |
+| **2E** | **Backend Phases 1–3 of 4 done — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — pipeline Phase 3: dependent business logic (2026-09-29)
+
+Every backend `3` row of `04a-stage-inventory.md` is migrated. The file's closing section
+records how.
+
+- **Meaning comes from the stage row.** `OpportunityStageFacts` (key, label, semantic type,
+  probability, position) per deal, plus null-safe SQL clauses for closed and won. The stale
+  deal scan, the stage PATCH's `close` audit action, the forecast (won, lost, open counts,
+  weights, bucket labels), the CRM dashboard (won/lost counts, open pipeline value, stage
+  buckets) and the owner scorecard's won count all read `semantic_type`/`probability`.
+  Seeded values equal the old hardcoded ones, so untouched tenants see the same numbers.
+  Visible differences: bucket labels are now sentence case, and the dashboard's no-stage
+  bucket is `unstaged` / "Unstaged" instead of `__empty__`.
+- **Pipeline summary** (`GET /pipeline-summary`): columns come from the tenant's pipeline in
+  position order. An inactive stage appears only while deals sit in it, then Unstaged. Rows
+  are keyed by stage row and carry `stage_id`, `semantic_type`, `probability` and `is_active`.
+- **Events.** `opportunity.stage_changed` now carries `sales_stage`, `stage_id`,
+  `stage_label`, `stage_semantic_type`, their `previous_` pair, and a `field_changes`
+  entry. **Bug fixed:** the automation *Stage* condition reads `payload.sales_stage`, which the
+  event never carried, so stage conditions could not match. `opportunity.won` /
+  `opportunity.lost` were registered triggers that nothing emitted. They now fire on entering
+  a won/lost semantic type, and not on moving between two stages of the same outcome. There is
+  a new `Stage outcome` automation condition (`stage_semantic_type`). Neither new event is a
+  Slack alert.
+- **Display.** Global search, the recycle bin and the `{{opportunity.stage}}` mail variable
+  show the stage label instead of the raw key.
+- Nothing else in `backend/app` compares a legacy key. What remains are stable-key uses the
+  spec allows: filters, search document, export, and automation option values.
+
+Verification: `test_pipeline_business_logic.py` 14 of 14. Each test changes a stage's
+meaning or label on the row and checks the behaviour follows the meaning. The full backend
+suite passes 1082 of 1082 with Redis up. `verify_openapi` passes. No migration and no frontend
+change.
+
+**Next:** Wave 2E frontend Phase 1, the configurable selectors. Forms, Quick Create, Lead
+conversion, the deal header track, table/status styling and saved-view filter options should
+read `GET /sales/opportunities/pipeline` and the `pipeline_stage` on each deal, not
+`opportunityStages.ts` or `statusStyles.ts` keys; tone comes from `semantic_type`. Work from the
+frontend rows of `04a-stage-inventory.md`. The inherited `opportunities-revamp.spec.ts`
+"pipeline totals … retry" failure is due in this slice. Then frontend Phase 2 (settings UI;
+adding a stage needs the legacy check constraint relaxed first) and Phase 3 (Kanban).
 
 ## Wave 2E — pipeline Phase 2: Opportunity references (2026-09-29)
 
@@ -51,12 +93,6 @@ at `20260818_opp_stage_refs`, and `verify_openapi` passes. On a throwaway Postgr
 a populated upgrade matched 14 of 14 deals and a real `alembic downgrade` to
 `20260816_opp_participants` removed both tables and columns before re-upgrading cleanly.
 No frontend change.
-
-**Next:** Wave 2E Phase 3. Migrate the dependent business logic, one family per commit, from
-the `3` rows of `04a-stage-inventory.md`: closed/won/lost by `semantic_type`, forecast
-probability from the stage row, the dashboard and pipeline summary grouped by stage row,
-automation conditions and the `opportunity.stage_changed` payload carrying stage id and
-semantic type, and export.
 
 ## Wave 2E — pipeline Phase 1: models and compatibility resolver (2026-09-29)
 

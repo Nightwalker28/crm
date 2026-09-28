@@ -18,7 +18,6 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
-from app.modules.platform.services.module_reports import FORECAST_STAGE_PROBABILITIES
 from app.modules.sales.models import SalesOpportunity, SalesPipeline, SalesPipelineStage
 from app.modules.sales.opportunity_stages import (
     OPPORTUNITY_CLOSED_STAGE_SET,
@@ -109,8 +108,10 @@ class CatalogTests(unittest.TestCase):
         self.assertEqual(closed, OPPORTUNITY_CLOSED_STAGE_SET)
 
     def test_forecast_weights_are_unchanged(self):
+        """The weights the forecast hardcoded before pipelines existed."""
+
         self.assertEqual(
-            FORECAST_STAGE_PROBABILITIES,
+            {key: pipelines_services.legacy_stage_facts(key).probability for key in OPPORTUNITY_STAGE_ORDER},
             {
                 "lead": Decimal("10"),
                 "qualified": Decimal("25"),
@@ -118,9 +119,10 @@ class CatalogTests(unittest.TestCase):
                 "negotiation": Decimal("75"),
                 "closed_won": Decimal("100"),
                 "closed_lost": Decimal("0"),
-                "unstaged": Decimal("10"),
             },
         )
+        self.assertEqual(pipelines_services.legacy_stage_facts(None).probability, Decimal("10"))
+        self.assertEqual(pipelines_services.legacy_stage_facts("mystery").key, "unstaged")
 
     def test_the_migration_seed_is_the_catalog_at_this_revision(self):
         self.assertEqual(

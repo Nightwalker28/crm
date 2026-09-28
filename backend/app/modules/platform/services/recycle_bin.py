@@ -53,6 +53,7 @@ from app.modules.sales.services.quotes_services import (
 )
 from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOrganizationResponse, SalesQuoteResponse
 from app.modules.sales.schema import SalesOpportunityResponse
+from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.calendar.services.calendar_services import (
     get_calendar_event_or_404,
     list_deleted_calendar_events,
@@ -167,7 +168,7 @@ def list_recycle_items(
                 "module_key": module_key,
                 "record_id": item.opportunity_id,
                 "title": item.opportunity_name,
-                "subtitle": item.client or item.sales_stage or "Opportunity",
+                "subtitle": item.client or (item.sales_stage and opportunity_stage_facts(item).label) or "Opportunity",
                 "deleted_at": item.deleted_at,
                 "details": SalesOpportunityResponse.model_validate(item).model_dump(mode="json"),
             }

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesContact, SalesOpportunity
-from app.modules.sales.opportunity_stages import OPPORTUNITY_CLOSED_STAGE_SET
+from app.modules.sales.repositories import pipelines_repository
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.tasks.models import Task
 from app.modules.tasks.services.tasks_services import (
@@ -147,10 +147,7 @@ def _inactive_opportunities(db: Session, *, cutoff: datetime) -> list[SalesOppor
         .filter(
             SalesOpportunity.deleted_at.is_(None),
             SalesOpportunity.assigned_to.is_not(None),
-            or_(
-                SalesOpportunity.sales_stage.is_(None),
-                ~SalesOpportunity.sales_stage.in_(OPPORTUNITY_CLOSED_STAGE_SET),
-            ),
+            ~pipelines_repository.opportunity_closed_clause(),
             or_(
                 SalesOpportunity.last_contacted_at.is_(None),
                 SalesOpportunity.last_contacted_at <= cutoff,

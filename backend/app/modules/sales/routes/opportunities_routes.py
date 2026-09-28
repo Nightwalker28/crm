@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -28,7 +30,6 @@ from app.modules.platform.services.module_fields import (
     sanitize_disabled_filter_conditions,
 )
 from app.modules.user_management.services import admin_modules
-from app.modules.sales.opportunity_stages import OPPORTUNITY_CLOSED_STAGE_SET
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -235,6 +236,68 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
         else:
             payload[field] = getattr(opportunity, field, None)
     return SalesOpportunityListItem.model_validate(payload)
+
+
+def _stage_facts_from_state(state: dict) -> pipelines_services.OpportunityStageFacts:
+    """The stage facts a serialized deal carried before a write."""
+
+    stage = state.get("pipeline_stage")
+    if isinstance(stage, dict):
+        return pipelines_services.OpportunityStageFacts(
+            key=stage["key"],
+            label=stage["label"],
+            semantic_type=stage["semantic_type"],
+            probability=Decimal(str(stage["probability"])),
+            position=0,
+            stage_id=stage["id"],
+        )
+    return pipelines_services.legacy_stage_facts(state.get("sales_stage"))
+
+
+def _emit_stage_events(db: Session, *, current_user, before_state: dict, opportunity) -> None:
+    """`opportunity.stage_changed`, plus `opportunity.won`/`lost` on entering that outcome.
+
+    The payload carries stable identity and meaning alongside the legacy keys:
+    `stage_id` and `stage_semantic_type` for automations, and `sales_stage` plus a
+    `field_changes` entry so the Stage condition field (which reads
+    `payload.sales_stage`) can match this event. Won/lost fire on the transition
+    into that semantic type only, so moving between two won stages is not a second win.
+    """
+
+    previous = _stage_facts_from_state(before_state)
+    current = pipelines_services.opportunity_stage_facts(opportunity)
+    payload = {
+        **actor_payload(current_user),
+        "opportunity_id": opportunity.opportunity_id,
+        "deal_name": opportunity.opportunity_name,
+        "previous_stage": before_state.get("sales_stage"),
+        "stage": opportunity.sales_stage,
+        "sales_stage": opportunity.sales_stage,
+        "stage_id": current.stage_id,
+        "stage_label": current.label,
+        "stage_semantic_type": current.semantic_type,
+        "previous_stage_id": previous.stage_id,
+        "previous_stage_semantic_type": previous.semantic_type,
+        "assigned_to": opportunity.assigned_to,
+        "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
+    }
+    if before_state.get("sales_stage") != opportunity.sales_stage:
+        # The stage PATCH also emits for a same-stage move; that is not a change.
+        payload["field_changes"] = {"sales_stage": {"from": before_state.get("sales_stage"), "to": opportunity.sales_stage}}
+    common = {
+        "tenant_id": current_user.tenant_id,
+        "actor_user_id": current_user.id if current_user else None,
+        "entity_type": "sales_opportunity",
+        "entity_id": opportunity.opportunity_id,
+    }
+    safe_emit_crm_event(db, event_type="opportunity.stage_changed", payload=payload, **common)
+    if current.semantic_type != previous.semantic_type and (current.is_won or current.is_lost):
+        safe_emit_crm_event(
+            db,
+            event_type="opportunity.won" if current.is_won else "opportunity.lost",
+            payload=payload,
+            **common,
+        )
 
 
 @router.get("", response_model=SalesOpportunityListResponse)
@@ -570,23 +633,7 @@ def update_sales_opportunity(
         after_state=_serialize_opportunity(updated),
     )
     if ("sales_stage" in update_data or "pipeline_stage_id" in update_data) and before_state.get("sales_stage") != updated.sales_stage:
-        safe_emit_crm_event(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            event_type="opportunity.stage_changed",
-            entity_type="sales_opportunity",
-            entity_id=updated.opportunity_id,
-            payload={
-                **actor_payload(current_user),
-                "opportunity_id": updated.opportunity_id,
-                "deal_name": updated.opportunity_name,
-                "previous_stage": before_state.get("sales_stage"),
-                "stage": updated.sales_stage,
-                "assigned_to": updated.assigned_to,
-                "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
-            },
-        )
+        _emit_stage_events(db, current_user=current_user, before_state=before_state, opportunity=updated)
     if "assigned_to" in update_data and before_state.get("assigned_to") != updated.assigned_to:
         _emit_deal_assigned_event(db, current_user=current_user, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
@@ -609,7 +656,7 @@ def update_sales_opportunity_stage(
         sales_stage=payload.sales_stage,
         pipeline_stage_id=payload.pipeline_stage_id,
     )
-    action = "close" if updated.sales_stage in OPPORTUNITY_CLOSED_STAGE_SET else "stage_change"
+    action = "close" if pipelines_services.opportunity_stage_facts(updated).is_closed else "stage_change"
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -622,23 +669,7 @@ def update_sales_opportunity_stage(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
-    safe_emit_crm_event(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        event_type="opportunity.stage_changed",
-        entity_type="sales_opportunity",
-        entity_id=updated.opportunity_id,
-        payload={
-            **actor_payload(current_user),
-            "opportunity_id": updated.opportunity_id,
-            "deal_name": updated.opportunity_name,
-            "previous_stage": before_state.get("sales_stage"),
-            "stage": updated.sales_stage,
-            "assigned_to": updated.assigned_to,
-            "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
-        },
-    )
+    _emit_stage_events(db, current_user=current_user, before_state=before_state, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
 
 

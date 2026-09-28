@@ -1031,7 +1031,12 @@ class SalesPipelineResponse(BaseModel):
 
 class OpportunityPipelineStageSummary(BaseModel):
     stage_key: str
+    # None for the Unstaged bucket.
+    stage_id: int | None = None
     label: str
+    semantic_type: str
+    probability: float
+    is_active: bool = True
     count: int
     total_value: float
 
