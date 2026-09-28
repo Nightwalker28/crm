@@ -14,21 +14,34 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Next — see below** | |
+| **3A** | **Contact run done; Organization and Opportunity runs left — see below** | `emailContext` on the Contact page |
 | 3B onward | Not started | |
+
+## Wave 3A — Contact run (2026-09-29)
+
+The Activity projection (`record_activity.py`) and the record-send path
+(`POST /mail/records/{module_key}/{entity_id}/send`, `mail_associations.py`) were already
+module-generic. The gap was the page: the Contact header's Email was a bare `mailto:`. It now
+passes `emailContext` (`sales_contacts`), so it opens the same `RecordEmailComposer`, the send
+is filed against the contact by URL, and it lands on the contact's Timeline. An opted-out
+contact still gets no email action. No backend or persistence change, and nothing
+contact-specific in the mail domain.
+
+Verification: `test_mail_contextual_send.py` 48 of 48. `ContactContextualSendTests` re-runs the
+Lead contract with a contact fixture and adds four cases: filed against the contact, on the
+contact's activity only, another tenant's contact refused, `{{contact.*}}` rendered. Lint and
+build are clean. `contact-contextual-email.spec.ts` (new, 2), `lead-contextual-email.spec.ts`
+and `contact-organization-rollout.spec.ts` pass 12 of 12.
+
+**Next:** Wave 3A Organization run (same pattern; an Organization has no single address, so
+decide the recipient default deliberately), then the two Deferred rows due before the
+Opportunity run, then the Opportunity run with explicit participant recipients.
 
 ## Wave 2E — closed (2026-09-29)
 
 The rendered design guards (`design-rules.spec.ts` + `scroll-containers.spec.ts`,
 `--workers=1`, frontend recreated first) pass 2 of 2 in 13.5 minutes, including the new
 `/dashboard/settings/pipeline`. Wave 2E is done; its phase notes follow, newest first.
-
-**Next:** Wave 3A, the Contact run: the proven Activity projection and contextual email
-extended to Contact (runbook §4, Wave 3A; `02-communications-activity.md` +
-`03-email-integration.md`). Reuse `record_activity.py` and `mail_associations.py`; no
-module-specific persistence. Check the Deferred table first. The two rows due "after 2E"
-(participant propagation through conversion/quotes/orders; relationship summaries) are due
-before 3A's **Opportunity** run, not before the Contact run.
 
 ## Wave 2E — frontend Phase 4: a saved view remembers Table or Pipeline (2026-09-29)
 

@@ -314,6 +314,13 @@ export default function ContactDetailPage() {
               email={contact.primary_email}
               phone={fieldEnabled("contact_telephone") ? contact.contact_telephone : null}
               emailOptOut={Boolean(contact.email_opt_out)}
+              // Wave 3A: the contextual composer, as on a Lead. The mail domain decides the
+              // mailbox and files the message against this contact; the page only names it.
+              emailContext={{
+                moduleKey: "sales_contacts",
+                entityId: contact.contact_id,
+                recordLabel: contactName,
+              }}
               // WhatsApp is the tracked click-to-chat in the Timeline composer (§4.7), so the
               // header must not also offer the untracked `wa.me` fallback.
               showWhatsApp={false}

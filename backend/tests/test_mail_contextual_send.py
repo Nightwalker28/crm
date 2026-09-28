@@ -27,7 +27,7 @@ from app.modules.mail.services.mail_errors import MailSendError
 from app.modules.platform.models import MessageTemplate
 from app.modules.platform.services import record_activity
 from app.modules.platform.services.record_activity import list_record_activity
-from app.modules.sales.models import SalesLead
+from app.modules.sales.models import SalesContact, SalesLead
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Module, Role, Tenant, User, UserStatus
 
@@ -512,6 +512,62 @@ class ContextualMailSendTests(unittest.TestCase):
             self._send(template_id=3)
 
         self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+
+
+CONTACT_ID = 300
+OTHER_TENANT_CONTACT_ID = 301
+
+
+class ContactContextualSendTests(ContextualMailSendTests):
+    """Wave 3A, Contact run: the same contract from a Contact, through the same services.
+
+    Nothing contact-specific exists in the mail domain; these prove the Lead-proven path
+    carries a Contact without a parallel implementation.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.db.add_all(
+            [
+                Module(id=4, name="sales_contacts", base_route="sales_contacts", is_enabled=1),
+                SalesContact(contact_id=CONTACT_ID, tenant_id=TENANT, first_name="Grace", last_name="Hopper", primary_email="grace@example.com"),
+                SalesContact(contact_id=OTHER_TENANT_CONTACT_ID, tenant_id=OTHER_TENANT, first_name="Rival", primary_email="rival-contact@example.com"),
+            ]
+        )
+        self.db.commit()
+
+    def _send_from_contact(self, **overrides):
+        return self._send(module_key="sales_contacts", entity_id=str(CONTACT_ID), **overrides)
+
+    def test_a_contact_send_is_filed_against_the_contact(self):
+        with self._stub_delivery():
+            message = self._send_from_contact(to=["grace@example.com"])
+
+        [association] = self.db.query(MailRecordAssociation).all()
+        self.assertEqual((association.module_key, association.entity_id, association.association_type), ("sales_contacts", str(CONTACT_ID), "primary"))
+        self.assertEqual((message.source_module_key, message.source_entity_id), ("sales_contacts", str(CONTACT_ID)))
+
+    def test_a_contact_send_reaches_the_contacts_activity(self):
+        with self._stub_delivery():
+            message = self._send_from_contact(to=["grace@example.com"])
+
+        with mock.patch.object(record_activity, "PermissionPolicy", _AllowAllPolicy):
+            page = list_record_activity(self.db, user=self.user, module_key="sales_contacts", entity_id=CONTACT_ID, types="email")
+            lead_page = list_record_activity(self.db, user=self.user, module_key="sales_leads", entity_id=LEAD_ID, types="email")
+
+        self.assertEqual([item["source"]["record_id"] for item in page["items"]], [str(message.id)])
+        self.assertEqual(lead_page["items"], [])
+
+    def test_a_contact_from_another_tenant_is_not_reachable(self):
+        with self._stub_delivery() as send_mock, self.assertRaises(MailSendError) as exc:
+            self._send(module_key="sales_contacts", entity_id=str(OTHER_TENANT_CONTACT_ID))
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        send_mock.assert_not_called()
+
+    def test_contact_template_variables_resolve_from_the_contact(self):
+        with self._stub_delivery():
+            message = self._send_from_contact(to=["grace@example.com"], subject="Hi {{contact.first_name}}", body_text="Dear {{contact.first_name}}")
+        self.assertEqual(message.subject, "Hi Grace")
 
 
 if __name__ == "__main__":
