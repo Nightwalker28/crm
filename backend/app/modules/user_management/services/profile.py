@@ -1,3 +1,4 @@
+import re
 import json
 
 from fastapi import HTTPException, UploadFile, status
@@ -464,6 +465,9 @@ def _assert_saved_view_config_size(config: dict) -> None:
         raise ValueError("Saved view config is too large")
 
 
+SAVED_VIEW_DISPLAY_PATTERN = re.compile(r"[a-z][a-z_]{0,19}")
+
+
 def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     if config is not None and not isinstance(config, dict):
         raise ValueError("Saved view config must be an object")
@@ -524,10 +528,16 @@ def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     normalized_filters["search"] = search.strip() if isinstance(search, str) else ""
     sort = config.get("sort")
     normalized_sort = sort if isinstance(sort, dict) else None
+    # How the list renders the same population (04-pipelines-kanban Phase 4): `table`,
+    # `pipeline`, … An identifier the client validates against the module's own modes;
+    # anything else is dropped rather than stored, so a view never carries free text here.
+    display = config.get("display")
+    normalized_display = display.strip() if isinstance(display, str) and SAVED_VIEW_DISPLAY_PATTERN.fullmatch(display.strip()) else None
     return {
         "visible_columns": normalized_columns,
         "filters": normalized_filters,
         "sort": normalized_sort,
+        "display": normalized_display,
     }
 
 

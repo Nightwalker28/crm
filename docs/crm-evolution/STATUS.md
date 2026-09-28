@@ -13,8 +13,37 @@ Last updated 2026-09-29.
 | 2A | Done | Contact and Organization Quick Create, contextual Account → Contact / Deal |
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
-| **2E** | **Backend Phases 1–4 and frontend Phases 1–3 done; view persistence and the guard walk left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
+| **2E** | **All phases done; the closing design-guard walk left — see below** | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A onward | Not started | |
+
+## Wave 2E — frontend Phase 4: a saved view remembers Table or Pipeline (2026-09-29)
+
+- `SavedViewConfig.display` is optional (backend schema and `_normalize_saved_view_config`).
+  It is an identifier (`[a-z][a-z_]{0,19}`) or nothing; anything else is dropped, never stored.
+  The filters, columns and sort stay one definition shared by both displays.
+- `ModuleViewDefinition.displayModes` declares a module's displays. Only Deals has them for
+  now (`table`, `pipeline`, the `?display=` words). The first is the default and is stored as
+  `null`.
+- View manager (`/dashboard/views/[moduleKey]`): a **Display** tab ("Opens as") for modules
+  with display modes. The draft carries `display` through edit, duplicate and discard, and it
+  counts toward unsaved changes. `useSavedViews` seeds and compares `display` with the rest of
+  the view.
+- Deals list: selecting a view applies its display. A shared link's `?display=` outranks the
+  first view it opens on, the same rule the view's filters follow, and never outranks a view
+  chosen afterwards. The toggle itself still only changes the address; saving a display is
+  done in the view manager, where the view's other settings are.
+
+Verification: backend `test_saved_views.py` 16 of 16, including the new display
+normalization; `verify_openapi` passes. Frontend lint and build are clean; `check-design.sh`
+passes 21 of 21. `opportunities-board.spec.ts` (4, new: selecting a board view opens the board
+and the default view brings the table back), `opportunities-revamp.spec.ts` (3) and
+`view-manager-revamp.spec.ts` (8) pass 15 of 15.
+
+**Next:** close Wave 2E with the full rendered design-guard walk
+(`design-rules.spec.ts scroll-containers.spec.ts --workers=1`, frontend recreated first, routes
+warmed). It now includes `/dashboard/settings/pipeline`. Fix what fails in code. Then Wave 3A, or
+the deferred rows due "after 2E": Participants propagated through conversion and Quote/Order
+(05 backend Phase 3), then relationship summaries (05 backend Phase 4).
 
 ## Wave 2E — frontend Phase 3: the Kanban, audited (2026-09-29)
 
@@ -38,11 +67,6 @@ Verification: lint and build are clean; `check-design.sh` passes 21 of 21. New
 `opportunities-board.spec.ts` passes 3 of 3 (pipeline columns with an occupied inactive column
 and no move into it, `fields` includes `sales_stage`, a keyboard move saves, a refused move
 rolls back with its reason). `opportunities-revamp.spec.ts` passes 3 of 3.
-
-**Next:** Wave 2E frontend Phase 4. A saved view remembers List/Board: persist the display in
-the saved-view config (backend saved views store arbitrary config? check `useSavedViews` /
-`SavedViewConfig`), keep `?display=` as the address, and apply a view's display when it is
-selected. Then the full rendered design-guard walk, which closes Wave 2E.
 
 ## Wave 2E — Phase 4: the legacy constraint goes, tenants can add stages (2026-09-29)
 

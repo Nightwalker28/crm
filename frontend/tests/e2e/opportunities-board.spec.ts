@@ -109,3 +109,35 @@ test.describe("the deal board", () => {
     await expect(column(page, "closed_lost").getByText("Alpha deal")).toHaveCount(0);
   });
 });
+
+test.describe("a saved view remembers its display", () => {
+  test.slow();
+
+  test("selecting a board view opens the board, and the table view brings the table back", async ({ page }) => {
+    await loginAsAdmin(page);
+    await stubBoard(page);
+    const baseConfig = {
+      visible_columns: ["opportunity_name", "sales_stage"],
+      filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+      sort: null,
+    };
+    await page.route("**/api/v1/users/saved-views/sales_opportunities?**", (route) => route.fulfill(json({
+      views: [
+        { id: null, module_key: "sales_opportunities", name: "All deals", is_default: true, is_system: true, config: { ...baseConfig, display: null } },
+        { id: 4401, module_key: "sales_opportunities", name: "Pipeline board", is_default: false, is_system: false, config: { ...baseConfig, display: "pipeline" } },
+      ],
+    })));
+
+    await page.goto("/dashboard/sales/opportunities");
+    await expect(page.getByRole("radio", { name: "Table", exact: true })).toHaveAttribute("aria-checked", "true");
+
+    await page.getByRole("tab", { name: "Pipeline board" }).click();
+    await expect(page.getByRole("radio", { name: "Pipeline" })).toHaveAttribute("aria-checked", "true");
+    await expect(page).toHaveURL(/display=pipeline/);
+    await expect(column(page, "proposal").getByText("Alpha deal")).toBeVisible();
+
+    await page.getByRole("tab", { name: /All deals/ }).click();
+    await expect(page.getByRole("radio", { name: "Table", exact: true })).toHaveAttribute("aria-checked", "true");
+    await expect(page).not.toHaveURL(/display=/);
+  });
+});

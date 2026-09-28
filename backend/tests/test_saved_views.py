@@ -165,6 +165,17 @@ class SavedViewConfigTests(unittest.TestCase):
                 self.assertEqual(views[0]["module_key"], module_key)
                 self.assertEqual(views[0]["id"], 9)
 
+    def test_a_view_remembers_its_display_as_an_identifier_only(self):
+        """04-pipelines-kanban Phase 4: List and Board are two displays of one saved view."""
+
+        config = profile._normalize_saved_view_config("sales_opportunities", {"display": "pipeline"})
+        self.assertEqual(config["display"], "pipeline")
+        for bad in ("Board View", "<script>", "x" * 21, 7, ["pipeline"], None, ""):
+            self.assertIsNone(
+                profile._normalize_saved_view_config("sales_opportunities", {"display": bad})["display"],
+                repr(bad),
+            )
+
     def test_normalize_saved_view_config_rejects_deep_nested_json(self):
         nested = current = {}
         for index in range(profile.SAVED_VIEW_MAX_DEPTH + 1):

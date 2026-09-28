@@ -16,6 +16,8 @@ export type SavedViewConfig = {
   visible_columns: string[];
   filters: SavedViewFilters;
   sort?: Record<string, unknown> | null;
+  /** How the list renders this view's population (`table`, `pipeline`). Null is the module default. */
+  display?: string | null;
 };
 
 export type SavedViewFilterLogic = "all" | "any";
@@ -104,6 +106,7 @@ function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {
   return (
     sameStringArray(left.visible_columns, right.visible_columns) &&
     sameSort(left.sort ?? null, right.sort ?? null) &&
+    (left.display ?? null) === (right.display ?? null) &&
     canonicalSavedViewFiltersKey(left.filters) === canonicalSavedViewFiltersKey(right.filters)
   );
 }
@@ -246,6 +249,7 @@ export function useSavedViews(
           ...(selectedView.config.filters ?? {}),
         },
         sort: selectedView.config.sort ?? null,
+        display: selectedView.config.display ?? null,
       };
       const viewKey = [
         selectedView.id ?? "system-default",

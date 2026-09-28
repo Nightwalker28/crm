@@ -537,6 +537,8 @@ class SavedViewConfig(BaseModel):
     visible_columns: list[str] = []
     filters: dict[str, Any] = {}
     sort: dict[str, Any] | None = None
+    # List vs board (etc.) for the same filtered population; `None` is the module's default.
+    display: str | None = Field(default=None, max_length=20)
 
 
 class SavedViewResponse(BaseModel):

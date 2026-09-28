@@ -69,7 +69,8 @@ export default function ManageModuleViewPage() {
   const baseFilters = saved.selectedView ? resolveSavedViewFilters(safeDefinition, saved.selectedView.config.filters) : safeDefinition.defaultConfig.filters;
   const baseName = saved.selectedView?.name ?? "";
   const editDirty = mode === "edit" && Boolean(saved.selectedView) && (name !== baseName || !sameColumns(visibleColumns, baseColumns) || canonicalSavedViewFiltersKey(safeFilters) !== canonicalSavedViewFiltersKey(baseFilters) || !sameSort(saved.draftConfig.sort, saved.selectedView?.config.sort));
-  const isDirty = editDirty || mode === "duplicate" || mode === "create";
+  const displayDirty = mode === "edit" && (saved.draftConfig.display ?? null) !== (saved.selectedView?.config.display ?? null);
+  const isDirty = editDirty || displayDirty || mode === "duplicate" || mode === "create";
   const editable = mode !== "view";
   useUnsavedChangesGuard(isDirty, saved.isSaving);
 
@@ -88,7 +89,7 @@ export default function ManageModuleViewPage() {
     if (saved.selectedViewId !== requestedViewId && !(requestedViewId === "system-default" && saved.selectedView?.is_system)) saved.setSelectedViewId(requestedViewId);
   }, [requestedViewId, saved]);
 
-  function setConfig(config: SavedViewConfig) { saved.setDraftConfig({ visible_columns: [...config.visible_columns], filters: { ...config.filters }, sort: config.sort ? { ...config.sort } : null }); }
+  function setConfig(config: SavedViewConfig) { saved.setDraftConfig({ visible_columns: [...config.visible_columns], filters: { ...config.filters }, sort: config.sort ? { ...config.sort } : null, display: config.display ?? null }); }
   function startEdit() { if (!saved.selectedView || saved.selectedView.is_system) return; setName(saved.selectedView.name); setMode("edit"); setActionError(null); }
   function startDuplicate() { if (!saved.selectedView) return; setName(`${saved.selectedView.name} copy`); setConfig({ ...saved.draftConfig, visible_columns: visibleColumns, filters: safeFilters }); setMode("duplicate"); setActionError(null); }
   function startCreate() { setName(""); setConfig(safeDefinition.defaultConfig); setMode("create"); setActionError(null); }
@@ -163,6 +164,27 @@ export default function ManageModuleViewPage() {
 
   const sortPanel = <div className="grid gap-4 md:grid-cols-2"><div><Label>Sort column</Label><Select value={sortKey} disabled={!editable} onValueChange={(key) => saved.setDraftConfig((current) => ({ ...current, sort: key === "__none__" ? null : { key, direction: sortDirection } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">Module default</SelectItem>{safeDefinition.columns.map((column) => <SelectItem key={column.key} value={column.key}>{column.label}</SelectItem>)}</SelectContent></Select></div><div><Label>Direction</Label><Select value={sortDirection} disabled={!editable || sortKey === "__none__"} onValueChange={(direction) => saved.setDraftConfig((current) => ({ ...current, sort: sortKey === "__none__" ? null : { key: sortKey, direction } }))}><SelectTrigger className="mt-2"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="asc">Ascending</SelectItem><SelectItem value="desc">Descending</SelectItem></SelectContent></Select></div></div>;
 
+  // 04-pipelines-kanban Phase 4: a view can open as a table or a board. The same filters,
+  // columns and sort apply to both, so the display is one more setting of the view, not a
+  // second definition of it. The module's first mode is the default and is stored as none.
+  const displayModes = safeDefinition.displayModes ?? [];
+  const displayPanel = displayModes.length ? (
+    <div className="max-w-md">
+      <Label htmlFor="view-display">Opens as</Label>
+      <Select
+        value={saved.draftConfig.display ?? displayModes[0].value}
+        disabled={!editable}
+        onValueChange={(value) => saved.setDraftConfig((current) => ({ ...current, display: value === displayModes[0].value ? null : value }))}
+      >
+        <SelectTrigger id="view-display" className="mt-2"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {displayModes.map((modeOption) => <SelectItem key={modeOption.value} value={modeOption.value}>{modeOption.label}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <p className="mt-2 text-p-xs text-copy-muted">Selecting this view switches the list to this display. Filters, columns and sort apply to both.</p>
+    </div>
+  ) : null;
+
   return <PageShell
    title={viewManagerTitle}
    actions={(
@@ -186,6 +208,7 @@ export default function ManageModuleViewPage() {
           { id: "columns", label: "Columns", content: columnsPanel },
           { id: "filters", label: "Filters", content: filtersPanel },
           { id: "sort", label: "Sort", content: sortPanel },
+          ...(displayPanel ? [{ id: "display", label: "Display", content: displayPanel }] : []),
         ]}
       />
       {/* R3's eleventh save bar. The census marks this file done at 5.3, which rebuilt its

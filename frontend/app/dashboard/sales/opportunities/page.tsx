@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Columns3, Plus, RotateCcw, Table2 } from "lucide-react";
 import { toast } from "sonner";
@@ -70,11 +70,25 @@ export default function OpportunitiesPage() {
         : field),
     };
   }, [customFields, moduleFields, pipelineQuery.data]); const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS.sales_opportunities;
-  const { views, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_opportunities", defaultConfig); const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig); const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
+  const { views, selectedView, selectedViewId, setSelectedViewId, draftConfig, setDraftConfig } = useSavedViews("sales_opportunities", defaultConfig); const visibleColumns = resolveVisibleColumns(definition, draftConfig, defaultConfig); const activeFilters = resolveSavedViewFilters(definition, draftConfig.filters);
   const activeFiltersKey = useMemo(() => canonicalSavedViewFiltersKey(activeFilters), [activeFilters]); const activeSort = useMemo<OpportunitySortState>(() => { const sort = draftConfig.sort; return sort && typeof sort.key === "string" ? { key: sort.key, direction: sort.direction === "desc" ? "desc" : "asc" } : null; }, [draftConfig.sort]);
   // The board groups by stage, so it always asks for the stage even when the table has hidden
   // that column; otherwise every card would land in Unstaged.
   const [displayMode, setDisplayMode] = useListDisplay(["table", "pipeline"]);
+  // A saved view remembers Table or Pipeline (04 Phase 4). Selecting a view applies its display;
+  // a shared link's `?display=` outranks the view it opened on, but only on that first view,
+  // the same rule the saved view's filters follow.
+  const searchParams = useSearchParams();
+  const appliedDisplayViewRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!selectedView) return;
+    const viewKey = String(selectedView.id ?? "system-default");
+    if (appliedDisplayViewRef.current === viewKey) return;
+    const isFirstView = appliedDisplayViewRef.current === null;
+    appliedDisplayViewRef.current = viewKey;
+    if (isFirstView && searchParams.get("display")) return;
+    setDisplayMode(selectedView.config.display === "pipeline" ? "pipeline" : "table");
+  }, [searchParams, selectedView, setDisplayMode]);
   const listColumns = useMemo(
     () => (displayMode === "pipeline" && !visibleColumns.includes("sales_stage") ? [...visibleColumns, "sales_stage"] : visibleColumns),
     [displayMode, visibleColumns],

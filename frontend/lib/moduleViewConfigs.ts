@@ -28,6 +28,8 @@ export type ModuleFilterField = {
   recordType?: "user" | "team";
 };
 
+export type ModuleViewDisplayMode = { value: string; label: string };
+
 export type ModuleViewDefinition = {
   key: string;
   label: string;
@@ -35,6 +37,12 @@ export type ModuleViewDefinition = {
   columns: TableColumnOption[];
   filterFields: ModuleFilterField[];
   defaultConfig: SavedViewConfig;
+  /**
+   * Displays of the same filtered population a saved view can remember (04-pipelines-kanban
+   * Phase 4). The first is the default and is stored as no display at all. The values are the
+   * list page's `?display=` words.
+   */
+  displayModes?: ModuleViewDisplayMode[];
 };
 
 export const CUSTOM_FIELD_COLUMN_PREFIX = "custom:";
@@ -491,6 +499,10 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     key: "sales_opportunities",
     label: "Deals",
     route: "/dashboard/sales/opportunities",
+    displayModes: [
+      { value: "table", label: "Table" },
+      { value: "pipeline", label: "Pipeline" },
+    ],
     columns: OPPORTUNITY_COLUMNS,
     filterFields: [
       { key: "opportunity_name", label: "Deal", type: "text", operators: TEXT_OPERATORS },
