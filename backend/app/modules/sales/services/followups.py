@@ -84,7 +84,7 @@ def _require_task_create_access(db: Session, *, current_user) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
-def _create_follow_up_task(
+def create_record_follow_up_task(
     db: Session,
     *,
     current_user,
@@ -94,13 +94,21 @@ def _create_follow_up_task(
     channel: str,
     due_at,
     note: str | None,
+    title: str | None = None,
 ):
+    """Create the reminder that follows a contact attempt, linked to the record it is about.
+
+    Shared by every channel that records an outreach — the follow-up log here and the
+    WhatsApp click-to-chat — so a reminder is always gated by the same department and role
+    checks, always appears on the record's Tasks, and never commits on its own: the caller
+    commits it with the attempt it follows, or not at all.
+    """
     _require_task_create_access(db, current_user=current_user)
     channel_label = CHANNEL_LABELS[channel]
     task, added_keys = create_task(
         db,
         payload={
-            "title": f"Follow up with {source_label}",
+            "title": (title or "").strip() or f"Follow up with {source_label}",
             "description": note or f"{channel_label} follow-up for {source_label}.",
             "status": "todo",
             "priority": "medium",
@@ -189,7 +197,7 @@ def log_contact_follow_up(db: Session, *, contact, payload: dict, current_user) 
             occurred_at=contacted_at,
         )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_contacts",
@@ -257,7 +265,7 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
             occurred_at=contacted_at,
         )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_leads",
@@ -324,7 +332,7 @@ def log_opportunity_follow_up(db: Session, *, opportunity, payload: dict, curren
             occurred_at=contacted_at,
         )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_opportunities",
@@ -386,7 +394,7 @@ def log_quote_follow_up(db: Session, *, quote, payload: dict, current_user) -> d
             occurred_at=contacted_at,
         )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_quotes",

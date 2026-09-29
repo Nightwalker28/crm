@@ -5,6 +5,8 @@ import { toast } from "sonner";
 
 import RecordEmailAction, { type RecordEmailContext } from "@/components/mail/RecordEmailAction";
 import { Button } from "@/components/ui/button";
+import { useWhatsAppCapabilities } from "@/hooks/useWhatsAppCapabilities";
+import { WHATSAPP_NUMBER_MESSAGES, whatsAppChatTarget, whatsAppChatUrl } from "@/lib/whatsapp";
 
 /**
  * The record header's channel row: the actions that *perform* a conversation.
@@ -24,6 +26,9 @@ import { Button } from "@/components/ui/button";
  * - **A channel with no address is not drawn**, rather than drawn disabled. A contact with
  *   no phone is the common case, and the header's most frequent state was two inert
  *   buttons beside one live one.
+ *
+ * WhatsApp here is external click-to-chat (`lib/whatsapp.ts`): it opens the chat and
+ * records nothing, and it is offered only while the workspace allows that mode.
  */
 
 type Props = {
@@ -46,10 +51,6 @@ type Props = {
   showWhatsApp?: boolean;
 };
 
-function phoneDigits(phone: string) {
-  return phone.replace(/\D/g, "");
-}
-
 export default function CommunicationActions({
   email,
   phone,
@@ -57,18 +58,18 @@ export default function CommunicationActions({
   emailContext,
   showWhatsApp = true,
 }: Props) {
+  const { canOpenExternally } = useWhatsAppCapabilities();
   const canEmail = Boolean(email) && !emailOptOut;
   const canCall = Boolean(phone);
-  const canWhatsApp = showWhatsApp && Boolean(phone);
+  const canWhatsApp = showWhatsApp && canOpenExternally && Boolean(phone);
 
   function handleWhatsAppClick() {
-    if (!phone) return;
-    const digits = phoneDigits(phone);
-    if (!digits) {
-      toast.error("Add a valid phone number before opening WhatsApp.");
+    const target = whatsAppChatTarget(phone);
+    if (!target.ok) {
+      toast.error(WHATSAPP_NUMBER_MESSAGES[target.reason]);
       return;
     }
-    window.open(`https://wa.me/${digits}`, "_blank", "noopener,noreferrer");
+    window.open(whatsAppChatUrl(target.digits), "_blank", "noopener,noreferrer");
   }
 
   return (

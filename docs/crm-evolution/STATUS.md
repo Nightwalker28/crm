@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-09-29.
+Last updated 2026-09-30.
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -15,7 +15,92 @@ Last updated 2026-09-29.
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A | Done (closed 2026-09-29): Lead, Contact, Organization and Opportunity runs; 05 backend Phases 3–4, frontend Phases 3–4. See below | `RecordEmailComposer` recipient candidates; `related_contact_ids` on `POST /mail/records/{module}/{id}/send`; `related_access` on the summaries |
-| **3B onward** | **Not started — next is 3B** | |
+| 3B | Done (2026-09-30): 06 Phase 1, external-mode contract. See below | `GET /whatsapp/capabilities`, `resolve_whatsapp_capabilities`, `lib/whatsapp.ts`, `useWhatsAppCapabilities`; `test_whatsapp_external_mode.py`, `whatsapp-external-mode.spec.ts` |
+| **3C onward** | **Not started — next is 3C** | |
+
+## Wave 3B — WhatsApp external mode, 06 Phase 1 (2026-09-30)
+
+**Inventory first.** Three paths already opened WhatsApp, all external click-to-chat:
+
+1. The record header (`CommunicationActions`, Lead and Account): `wa.me/<digits>`, not logged.
+2. The Timeline composer's WhatsApp follow-up (Lead, Deal, Quote): `POST …/follow-up` with
+   `channel: whatsapp` writes a `RecordFollowUp`, then opened `wa.me/<digits>` *after* the await.
+3. The contact's tracked mode: `POST /whatsapp/contacts/{id}/click` renders a template, normalizes
+   the number with the contact's or the company's country, builds a `web.whatsapp.com/send` URL,
+   writes a `WhatsAppInteraction`, stamps `whatsapp_last_contacted_at`, audits `whatsapp_click`,
+   and can create a reminder. The Activity adapter already titled these "WhatsApp message
+   prepared" with `status: external_link`.
+
+**Decision (06 §8, option 1):** `whatsapp_interactions` stays the record of external mode and
+only that mode. Meta messages (Phase 3) get their own tables; no row is rewritten. No migration:
+`sent_at` keeps its name and is documented as "when the chat was prepared".
+
+Backend:
+
+- **Mode contract.** `whatsapp_services`: delivery modes `external_link` / `meta_cloud_api`,
+  default choices add `ask_each_time`. `resolve_whatsapp_capabilities(policy, meta_configured)`
+  returns `default_mode`, `effective_mode` and per mode `enabled` / `available` /
+  `unavailable_reason` / `sends_from_crm` / `tracks_delivery` / `receives_inbound`. Rules: the
+  default if usable; `ask_each_time` only with two usable modes; else the one usable mode; else
+  null. It never picks a mode the policy did not enable, and a connected provider does not
+  become the default by itself. `get_tenant_whatsapp_policy` is the single read point for a
+  stored policy; none exists yet (Phase 5 adds the screen and storage), so every tenant is
+  external-only, external by default. `is_meta_cloud_api_configured` is always false (Phase 2).
+- `GET /whatsapp/capabilities`: `require_user` only. It is workspace policy and names no record;
+  each WhatsApp action keeps its own record's gates.
+- **Click flow tightened.** Needs `edit` on contacts (was `view`, for a write), like the contact's
+  follow-up log and like the UI already gated it. The reminder now goes through the follow-up
+  helper, `followups.create_record_follow_up_task` (renamed from private, takes an optional
+  `title`): department and role checks on tasks (it skipped department, and mapped a missing
+  module to 500), **linked to the contact** so it shows on the contact's Tasks (it was not),
+  audited like every follow-up task, and committed **in one transaction** with the interaction and
+  the audit entry (it committed on its own before). The response and the audit `after_state`
+  carry `mode: external_link`, `status: prepared`. A policy without external mode refuses with 403
+  before anything is written.
+- `WhatsAppInteraction.id` gains the SQLite variant other models use (no Postgres change).
+
+Frontend:
+
+- `lib/whatsapp.ts`: one number rule (`whatsAppChatTarget`: `00` prefix dropped; a number starting
+  with 0 without `+`/`00` is national, and no country code starts with 0, so it is refused with
+  "Add the country code…"; the 7-digit floor matches the server) and one popup-safe window
+  (`openPendingWhatsAppWindow`, opened before the first await, `go(url)` or `cancel()`).
+- The header uses it: a national number now gets a toast instead of a chat opened onto WhatsApp's
+  "invalid number" screen.
+- The follow-up mode opens its window before logging (it opened after the await, a popup the
+  browser may block), closes it if the log fails, and never closes a chat that already opened
+  because a refresh failed afterwards. A national number is still logged, with a line under the
+  button saying WhatsApp will not open.
+- The tracked mode uses the same window helper, shows the server's reason on a refusal
+  ("…needs a country code for WhatsApp", no template, no task access) instead of a generic line,
+  and its footnote now reads "You send the message in WhatsApp. Lynk records that the chat was
+  opened, not whether it was sent, delivered or read."
+- `useWhatsAppCapabilities` feeds `CommunicationActions` and the composer: WhatsApp is offered
+  only while external mode is available. Its placeholder, and its fallback on error, is
+  external-only, so the button never flickers in and a failed request never removes it.
+- design.md §4.7 gains the rule: external WhatsApp says what Lynk knows, that a chat was opened.
+
+Verification: `test_whatsapp_external_mode.py` (new, 23 cases): the click end to end (prepared,
+normalized with company country and contact country, rendered template, interaction, stamp, audit
+with mode/status, no provider claims), reminder linked and in the same transaction, custom title,
+no task access / no phone / national number with no country / other tenant's contact / binned
+contact / other tenant's template / wrong channel / no active template / external disabled by
+policy all refuse **before anything is written**; the resolver's six rules; the click needs
+`edit` and the capabilities route is sign-in only. Backend suite 1249 of 1249 with Redis up;
+compileall clean; `verify_openapi` 363 paths. Frontend lint and build clean; `check-design.sh`
+21 of 21. `whatsapp-external-mode.spec.ts` (new, 8): header opens `wa.me/<digits>`; national
+number explained, not opened; follow-up window opened before the log and pointed at the chat;
+failed log closes it; national number logged, not opened; tracked chat opens the server's URL;
+refused tracked chat names the reason and closes its window; external disabled → no header
+button and no composer mode. 8 of 8 (needed `test.slow()`, like the other record-page specs).
+Neighbours that render the two changed components: the lead, contact, account and deal email
+specs pass 13 of 13, and `contacts-revamp` 2 of 3. Its failure is the inherited one in the Deferred
+table (the edit form's Email, line 165); its WhatsApp assertions (160–161) pass just before it. A
+first run lost three contact tests to cold compiles of the contact routes (30 s budget, no assertion
+reached); they pass on warm routes. `generate-contracts.sh --check` is up to date.
+
+**Next:** Wave 3C, README Wave 3 item 16: `07-telephony.md` Phase 1 (`tel:` fallback and manual
+call logs). Check the Deferred table first.
 
 ## Wave 3A — closed (2026-09-29)
 
@@ -623,4 +708,6 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | When the quote form is next touched, or the picker gains a participant filter (the rail did not touch the quote form) |
 | `contacts-revamp.spec.ts` "shared workflow" fails: the Contact **edit** form's Email field is empty (inherited, reproduces with 05 frontend Phase 4 stashed) | Not caused by the rail; unread beyond attribution | The next slice that touches the Contact edit form |
 | Offering an account's contacts as email recipients from the Account page | Owner decision 2026-09-29: a separate follow-up; the Account emails its own address only (design.md §4.7) | When the owner asks for it; reuse `recipientCandidates` and a server rule like the deal's |
+| The untracked WhatsApp paths (header, follow-up) refuse a national number instead of adding the workspace country, as the tracked contact path does | Adding it means either a second copy of the server's normalizer in TypeScript or a request before every header click; 3B chose the truthful refusal | When the untracked paths gain a server call anyway (06 frontend Phase 1 chooser, or tracked interactions for Lead/Deal) |
+| Contact click-to-chat stamps `whatsapp_last_contacted_at` only, not `last_contacted_at` / `last_contacted_channel` as the follow-up log does | Pre-existing; changing what "last contacted" means was not 3B's scope | When contact recency is next touched, or tracked interactions extend past contacts |
 | A typed address of an opted-out contact who is *not* a participant is not refused when mailing from a deal | The composer only knows participants, and the server links by id, never by address | If opt-out becomes a send-time rule across all mail (the inbox composer has the same gap) |

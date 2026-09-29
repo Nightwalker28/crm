@@ -965,6 +965,14 @@ Contract:
   `CommunicationActions` keeps its raw `wa.me` button only on records with no tracked
   endpoint — offering both on one page means the same action logs itself half the time,
   and the operator cannot tell which button did which.
+- **External WhatsApp says what Lynk knows: that a chat was opened.** Every WhatsApp surface
+  today is `external_link` mode (click-to-chat): the operator presses send inside WhatsApp and
+  Lynk learns nothing after that. So its copy says *prepared* or *opened*, never *sent*,
+  *delivered* or *read*, and the feed entry says delivery is not tracked. Sent/delivered/read
+  belong to a provider-backed mode that reports them (06-whatsapp-business.md). The action is
+  offered only while the workspace allows external mode (`GET /whatsapp/capabilities`), and a
+  number WhatsApp cannot dial — no country code — gets a sentence saying so rather than a chat
+  opened onto WhatsApp's "invalid number" screen (`lib/whatsapp.ts`).
 - **A message is filed against every CRM record whose address it uses.** Lead, contact and
   account carry `primary_email` / `phone` columns, so their headers offer Email, WhatsApp and
   Call on their own address. The failure this rule exists to prevent is one conversation split

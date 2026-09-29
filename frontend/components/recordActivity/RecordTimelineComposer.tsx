@@ -18,8 +18,15 @@ import {
 } from "@/components/ui/select";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Textarea } from "@/components/ui/textarea";
+import { useWhatsAppCapabilities } from "@/hooks/useWhatsAppCapabilities";
 import { apiFetch } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import {
+  WHATSAPP_NUMBER_MESSAGES,
+  openPendingWhatsAppWindow,
+  whatsAppChatTarget,
+  whatsAppChatUrl,
+} from "@/lib/whatsapp";
 import type { RecordModuleKey } from "@/types/record-activity";
 
 /**
@@ -117,12 +124,17 @@ export default function RecordTimelineComposer({
   whatsApp,
   className,
 }: Props) {
+  // Both WhatsApp modes are external click-to-chat; neither is offered once the
+  // workspace no longer allows that mode.
+  const { canOpenExternally } = useWhatsAppCapabilities();
   const modes: { id: string; label: string; icon: typeof StickyNote }[] = [
     ...(canAddNote ? [{ id: "note", label: "Note", icon: StickyNote }] : []),
     ...(reply ? [{ id: "reply", label: reply.label, icon: Mail }] : []),
     ...(followUp ? [{ id: "call", label: "Call", icon: Phone }] : []),
     ...(followUp ? [{ id: "email", label: "Email", icon: Mail }] : []),
-    ...(followUp || whatsApp ? [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }] : []),
+    ...((followUp || whatsApp) && canOpenExternally
+      ? [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }]
+      : []),
   ];
   const [mode, setMode] = useState(modes[0]?.id ?? "note");
 
@@ -366,9 +378,16 @@ function FollowUpMode({
   const fieldId = `record-follow-up-note-${channel}`;
   const shouldCreateReminder = Boolean(config.canCreateTask) && createReminder;
   const target = channel === "email" ? config.email : config.phone;
+  // WhatsApp opens only for a number it can dial. A national number is still logged —
+  // the operator may have messaged from their phone — but the chat is not opened onto
+  // WhatsApp's "invalid number" screen.
+  const chat = channel === "whatsapp" && target ? whatsAppChatTarget(target) : null;
 
   async function logFollowUp() {
     if (logging) return;
+    // Before the first await, or the browser may block it (`lib/whatsapp.ts`).
+    const pendingChat = chat?.ok ? openPendingWhatsAppWindow() : null;
+    let logged = false;
     try {
       setLogging(true);
       const res = await apiFetch(config.endpoint, {
@@ -383,11 +402,10 @@ function FollowUpMode({
       });
       const body = await res.json().catch(() => null);
       if (!res.ok) throw new Error("not-logged");
+      logged = true;
       if (channel === "email" && config.email) window.location.href = `mailto:${config.email}`;
       if (channel === "call" && config.phone) window.location.href = `tel:${config.phone}`;
-      if (channel === "whatsapp" && config.phone) {
-        window.open(`https://wa.me/${config.phone.replace(/\D/g, "")}`, "_blank", "noopener,noreferrer");
-      }
+      if (pendingChat && chat?.ok) pendingChat.go(whatsAppChatUrl(chat.digits));
       setNote("");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
@@ -402,6 +420,10 @@ function FollowUpMode({
       );
       await config.onLogged?.();
     } catch {
+      // Logged already: the chat is open and the row exists, so a failed refresh is not
+      // a failed log.
+      if (logged) return;
+      pendingChat?.cancel();
       toast.error(`The ${CHANNEL_LABELS[channel]} follow-up could not be logged. Try again.`);
     } finally {
       setLogging(false);
@@ -447,6 +469,10 @@ function FollowUpMode({
           <p className="text-p-xs text-copy-muted">
             No {channel === "email" ? "email address" : "phone number"} is recorded for this record.
           </p>
+        ) : chat && !chat.ok ? (
+          <p className="text-p-xs text-copy-muted">
+            {WHATSAPP_NUMBER_MESSAGES[chat.reason]} Logging still records the follow-up.
+          </p>
         ) : null}
         <Button type="button" size="sm" disabled={logging || !target} onClick={() => void logFollowUp()}>
           {logging ? "Logging…" : `Log ${CHANNEL_LABELS[channel].toLocaleLowerCase()}`}
@@ -466,8 +492,11 @@ function FollowUpMode({
  * channels already live (§4.7).
  *
  * The blank window is opened synchronously on the click and only then pointed at the URL
- * the server returns. Opening it after the `await` is a popup the browser blocks, which is
- * the behaviour the panel already had and the reason it is preserved here.
+ * the server returns (`openPendingWhatsAppWindow`). The server builds that URL because it
+ * can add the workspace country to a national number; the untracked paths cannot.
+ *
+ * External mode: the operator sends the message in WhatsApp. What this records, and what
+ * the feed shows, is that the chat was prepared and opened — never that it was sent.
  */
 function WhatsAppMode({
   moduleKey,
@@ -506,11 +535,8 @@ function WhatsAppMode({
   async function openChat() {
     if (blocked) return;
     // Synchronously, before any await — see the note above.
-    const pending =
-      typeof window !== "undefined" && typeof window.open === "function"
-        ? window.open("about:blank", "_blank")
-        : null;
-    if (pending) pending.opener = null;
+    const pending = openPendingWhatsAppWindow();
+    let opened = false;
 
     try {
       setSending(true);
@@ -524,9 +550,13 @@ function WhatsAppMode({
         }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok || !body?.whatsapp_url) throw new Error("not-opened");
-      if (pending) pending.location.href = body.whatsapp_url;
-      else window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
+      if (!res.ok || !body?.whatsapp_url) {
+        // A refusal names its cause (no phone, no country code, no template, no task
+        // access); a server fault does not, and gets the generic line.
+        throw new Error(res.status < 500 && typeof body?.detail === "string" ? body.detail : "");
+      }
+      pending.go(body.whatsapp_url);
+      opened = true;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
@@ -537,9 +567,12 @@ function WhatsAppMode({
         body.follow_up_task ? "WhatsApp chat opened and reminder created." : "WhatsApp chat opened.",
       );
       await config.onLogged?.();
-    } catch {
-      pending?.close();
-      toast.error("WhatsApp chat could not be started. Check the phone number and try again.");
+    } catch (error) {
+      // Once the chat is open, a failed refresh must not close it or report it unopened.
+      if (opened) return;
+      pending.cancel();
+      const detail = error instanceof Error && error.message ? `${error.message}.` : "Check the phone number and try again.";
+      toast.error(`WhatsApp chat could not be started. ${detail}`);
     } finally {
       setSending(false);
     }
@@ -611,7 +644,8 @@ function WhatsAppMode({
         </Button>
       </div>
       <p className="text-p-xs text-copy-muted">
-        Lynk opens the chat in WhatsApp and records it here. Delivery is not tracked.
+        You send the message in WhatsApp. Lynk records that the chat was opened, not whether
+        it was sent, delivered or read.
       </p>
     </div>
   );
