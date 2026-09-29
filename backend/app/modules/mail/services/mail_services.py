@@ -56,6 +56,10 @@ from app.modules.platform.services.message_templates import (
     render_template_text,
 )
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization, SalesQuote
+from app.modules.sales.services.opportunity_contacts_services import (
+    contact_display_name,
+    is_contact_on_opportunity,
+)
 from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -1027,7 +1031,7 @@ def _mail_template_values(db: Session, *, current_user: User, payload: dict) -> 
         organization = db.query(SalesOrganization).filter(SalesOrganization.tenant_id == current_user.tenant_id, SalesOrganization.org_id == int(entity_id), SalesOrganization.deleted_at.is_(None)).first()
     elif module_key == "sales_opportunities" and entity_id:
         opportunity = db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == current_user.tenant_id, SalesOpportunity.opportunity_id == int(entity_id), SalesOpportunity.deleted_at.is_(None)).first()
-        contact = opportunity.contact if opportunity else None
+        contact = _template_contact_for_deal(db, current_user=current_user, opportunity=opportunity, chosen=payload.get("related_contact_ids") or [])
         organization = opportunity.organization if opportunity else None
     elif module_key == "sales_quotes" and entity_id:
         quote = db.query(SalesQuote).filter(SalesQuote.tenant_id == current_user.tenant_id, SalesQuote.quote_id == int(entity_id), SalesQuote.deleted_at.is_(None)).first()
@@ -1053,6 +1057,38 @@ def _mail_template_values(db: Session, *, current_user: User, payload: dict) -> 
     values.setdefault("opportunity", _opportunity_token_values(opportunity))
     values.setdefault("quote", _quote_token_values(quote))
     return values
+
+
+def _template_contact_for_deal(db: Session, *, current_user: User, opportunity, chosen: list) -> SalesContact | None:
+    """Whose name `{{contact.*}}` renders when mailing from a deal.
+
+    The person the email is to, not whoever is primary: one chosen participant is that
+    participant; several render the primary only if the primary is among them, and
+    otherwise nobody (a greeting naming one of several recipients is wrong for the rest).
+    With no participant chosen the deal's primary is used, as before participants.
+    Ids reaching here were validated by `_resolve_participant_recipients`.
+    """
+
+    if opportunity is None:
+        return None
+    if not chosen:
+        return opportunity.contact
+    ids = [int(value) for value in chosen]
+    if len(ids) == 1:
+        target_id = ids[0]
+    elif opportunity.contact_id in ids:
+        target_id = opportunity.contact_id
+    else:
+        return None
+    return (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.tenant_id == current_user.tenant_id,
+            SalesContact.contact_id == target_id,
+            SalesContact.deleted_at.is_(None),
+        )
+        .first()
+    )
 
 
 def _render_mail_template_variables(db: Session, *, current_user: User, payload: dict) -> dict:
@@ -1102,6 +1138,92 @@ def _resolve_mail_source_context(
         # permission, unsupported module, deleted record. Separating them would
         # confirm that a record id exists somewhere the user cannot see.
         raise MailSendError(VALIDATION, "Mail source is not available.") from exc
+
+
+UNAVAILABLE_PARTICIPANT_DETAIL = "A chosen recipient is not a participant on this deal."
+
+
+def _resolve_participant_recipients(
+    db: Session,
+    *,
+    current_user: User,
+    source_context: dict | None,
+    payload: dict,
+) -> list[dict]:
+    """Validate the deal participants a message is addressed to, as link targets.
+
+    Wave 3A, Opportunity run. Mailing from a deal files the deal as primary and each
+    chosen participant as related, so the conversation is on the deal and on each
+    person's own Timeline. The client names the contacts; this proves each one:
+
+    - the source is a deal (participants mean nothing elsewhere);
+    - the contact is on it — legacy primary or active participant — and is itself
+      active, in this tenant, and viewable by the sender (`resolve_link_target`);
+    - the contact has not opted out of email;
+    - the contact's address is actually among the recipients, so a message is never
+      filed against someone it was not sent to.
+
+    Every "not on this deal" reason shares one message, as the source check does. An
+    address that belongs to no chosen participant is simply not linked: nothing here
+    matches addresses to contacts on its own.
+    """
+
+    raw_ids = payload.get("related_contact_ids") or []
+    contact_ids: list[int] = []
+    for value in raw_ids:
+        contact_id = int(value)
+        if contact_id not in contact_ids:
+            contact_ids.append(contact_id)
+    if not contact_ids:
+        return []
+    if not source_context or source_context["module_key"] != "sales_opportunities":
+        raise MailSendError(VALIDATION, "Recipients can be chosen from participants only when sending from a deal.")
+
+    opportunity = (
+        db.query(SalesOpportunity)
+        .filter(
+            SalesOpportunity.tenant_id == current_user.tenant_id,
+            SalesOpportunity.opportunity_id == int(source_context["entity_id"]),
+            SalesOpportunity.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if opportunity is None:
+        raise MailSendError(VALIDATION, "Mail source is not available.")
+
+    recipients = {
+        str(address).strip().lower()
+        for address in [*(payload.get("to") or []), *(payload.get("cc") or []), *(payload.get("bcc") or [])]
+    }
+    targets = []
+    for contact_id in contact_ids:
+        contact = (
+            db.query(SalesContact)
+            .filter(
+                SalesContact.tenant_id == current_user.tenant_id,
+                SalesContact.contact_id == contact_id,
+                SalesContact.deleted_at.is_(None),
+            )
+            .first()
+        )
+        if contact is None or not is_contact_on_opportunity(db, opportunity=opportunity, contact_id=contact_id):
+            raise MailSendError(VALIDATION, UNAVAILABLE_PARTICIPANT_DETAIL)
+        try:
+            target = mail_associations.resolve_link_target(
+                db,
+                current_user=current_user,
+                module_key="sales_contacts",
+                entity_id=str(contact_id),
+            )
+        except HTTPException as exc:
+            raise MailSendError(VALIDATION, UNAVAILABLE_PARTICIPANT_DETAIL) from exc
+        name = contact_display_name(contact) or "This contact"
+        if contact.email_opt_out:
+            raise MailSendError(VALIDATION, f"{name} has opted out of email.")
+        if not contact.primary_email or contact.primary_email.strip().lower() not in recipients:
+            raise MailSendError(VALIDATION, f"{name} is not among the recipients.")
+        targets.append(target)
+    return targets
 
 
 def _resolve_mail_template(db: Session, *, current_user: User, template_id) -> int | None:
@@ -1483,6 +1605,7 @@ def _claim_outbound_message(
     template_id: int | None,
     attachment_manifest: list[dict] | None,
     idempotency_key: str | None,
+    related_contexts: list[dict] | None = None,
 ) -> tuple[MailMessage, bool]:
     """Persist the outbound message and its linkage *before* the provider call.
 
@@ -1559,6 +1682,16 @@ def _claim_outbound_message(
             message=message,
             target=source_context,
             association_type=mail_associations.PRIMARY,
+        )
+    for related_context in related_contexts or []:
+        # The deal participants the message is addressed to. Same transaction as the
+        # primary, so a claimed send is never on the deal but missing from a person.
+        mail_associations.upsert_association(
+            db,
+            current_user=current_user,
+            message=message,
+            target=related_context,
+            association_type=mail_associations.RELATED,
         )
     try:
         db.commit()
@@ -1688,6 +1821,12 @@ def send_mail_message(
         payload=payload,
         required=require_source_context,
     )
+    related_contexts = _resolve_participant_recipients(
+        db,
+        current_user=current_user,
+        source_context=source_context,
+        payload=payload,
+    )
     template_id = _resolve_mail_template(db, current_user=current_user, template_id=payload.get("template_id"))
     attachments = _resolve_mail_attachments(
         db,
@@ -1712,6 +1851,7 @@ def send_mail_message(
         template_id=template_id,
         attachment_manifest=_attachment_manifest(attachments),
         idempotency_key=idempotency_key,
+        related_contexts=related_contexts,
     )
     if is_replay:
         # A concurrent request won the claim and completed it while this one was

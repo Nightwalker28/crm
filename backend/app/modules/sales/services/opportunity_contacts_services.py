@@ -225,18 +225,28 @@ def ensure_contact_on_opportunity(
     row is missing still behaves exactly as it did before participants existed.
     """
 
-    if contact_id is None or contact_id == opportunity.contact_id:
-        return
-    if opportunity_contacts_repository.is_active_participant(
-        db,
-        tenant_id=opportunity.tenant_id,
-        opportunity_id=opportunity.opportunity_id,
-        contact_id=contact_id,
-    ):
+    if contact_id is None or is_contact_on_opportunity(db, opportunity=opportunity, contact_id=contact_id):
         return
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
         detail=f"{record_label} contact must be a participant on the linked opportunity",
+    )
+
+
+def is_contact_on_opportunity(db: Session, *, opportunity: SalesOpportunity, contact_id: int) -> bool:
+    """The one rule for "this contact is on the deal": the legacy primary, or an active participant.
+
+    Shared by quote/order linkage and by the deal's email recipients. It says nothing about
+    whether the contact itself is deleted; callers that need the contact load it tenant-scoped.
+    """
+
+    if contact_id == opportunity.contact_id:
+        return True
+    return opportunity_contacts_repository.is_active_participant(
+        db,
+        tenant_id=opportunity.tenant_id,
+        opportunity_id=opportunity.opportunity_id,
+        contact_id=contact_id,
     )
 
 

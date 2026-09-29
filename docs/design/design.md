@@ -965,15 +965,30 @@ Contract:
   `CommunicationActions` keeps its raw `wa.me` button only on records with no tracked
   endpoint — offering both on one page means the same action logs itself half the time,
   and the operator cannot tell which button did which.
-- **A record offers a channel only if the channel is its own.** Lead, contact and account
-  carry `primary_email` / `phone` columns, so their headers offer Email, WhatsApp and Call.
-  A deal and a quote have no channel columns at all — they were passing the *linked
-  contact's* address into their own header and then filing the resulting interaction against
-  themselves, so the conversation landed on the deal and the contact's Timeline had a hole in
-  it. One conversation split across two records is worse than one extra click. The contact
-  sits in `Connected`, one click away, on a record that can perform the action and file it
-  correctly. The test is not "would this be convenient" but **"does this record own the
-  address you are about to use?"**
+- **A message is filed against every CRM record whose address it uses.** Lead, contact and
+  account carry `primary_email` / `phone` columns, so their headers offer Email, WhatsApp and
+  Call on their own address. The failure this rule exists to prevent is one conversation split
+  across two records: a deal once passed the linked contact's address into its own header and
+  filed the result against the deal only, so the contact's Timeline had a hole in it.
+
+  A deal has no address of its own, but it does have people. Following Salesforce (email with
+  *Who* = contact and *What* = opportunity), Dynamics (email *Regarding* the opportunity, with
+  recipients as activity parties) and HubSpot (email associated with the deal, contact and
+  company), a deal's Email is addressed to its **participants**, and the send files the deal as
+  `primary` and each participant it is sent to as `related`. The conversation is then on the
+  deal *and* on each person's Timeline. Changed for Wave 3A's Opportunity run (owner decision,
+  2026-09-29); before that, a deal offered no channel at all. The deal's Email:
+
+  - appears only when at least one participant has an address and has not opted out;
+  - prefills the one such participant, and leaves To empty when there are several, so the
+    choice is the user's (the primary contact is never picked silently);
+  - lists opted-out participants with the reason and does not let them be chosen;
+  - files a typed address that belongs to no chosen participant against the deal alone.
+    Nothing is linked because an address happened to match a contact.
+
+  An account's Email still uses the account's own address only; offering its contacts from
+  there is a separate decision. A quote offers no channel. The test is **"is the message filed
+  against every record whose address it uses?"**, not "would this be convenient".
 - **Audit history is not a tab.** It hangs off the spine's `Updated` line and opens in a
   sheet. Two reasons, and the second is the load-bearing one. First, it is a reference
   surface consulted occasionally, and a tab that is always present but rarely opened is

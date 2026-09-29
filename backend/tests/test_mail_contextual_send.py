@@ -28,7 +28,7 @@ from app.modules.mail.services.mail_errors import MailSendError
 from app.modules.platform.models import MessageTemplate
 from app.modules.platform.services import record_activity
 from app.modules.platform.services.record_activity import list_record_activity
-from app.modules.sales.models import SalesContact, SalesLead, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOpportunityContact, SalesOrganization
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Module, Role, Tenant, User, UserStatus
 
@@ -633,6 +633,213 @@ class OrganizationContextualSendTests(ContextualMailSendTests):
         with self._stub_delivery():
             message = self._send_from_organization(to=["hello@acme.example"], subject="{{organization.name}} renewal", body_text="Dear {{organization.name}} team")
         self.assertEqual(message.subject, "Acme Corp renewal")
+
+
+DEAL_ID = 500
+DEAL_ORG_ID = 410
+ADA_ID, GRACE_ID, LINUS_ID, MIA_ID, OPTED_ID, GONE_ID, OUTSIDER_ID, RIVAL_ID = range(510, 518)
+
+
+class OpportunityContextualSendTests(ContextualMailSendTests):
+    """Wave 3A, Opportunity run: mail from a deal, addressed to its participants.
+
+    Owner decision (STATUS.md, 2026-09-29): the send files the deal as primary and each
+    chosen participant as related, so the email is on the deal and on each person's own
+    Timeline. The server proves every chosen contact is on the deal, active, in the tenant,
+    viewable, not opted out, and actually a recipient. Addresses alone link nothing.
+    """
+
+    def setUp(self):
+        super().setUp()
+        removed = datetime(2026, 9, 1, tzinfo=timezone.utc)
+
+        def contact(contact_id, name, **kwargs):
+            return SalesContact(
+                contact_id=contact_id,
+                tenant_id=kwargs.pop("tenant_id", TENANT),
+                first_name=name,
+                primary_email=f"{name.lower()}@acme.example",
+                **kwargs,
+            )
+
+        self.db.add_all(
+            [
+                Module(id=4, name="sales_contacts", base_route="sales_contacts", is_enabled=1),
+                Module(id=6, name="sales_opportunities", base_route="sales_opportunities", is_enabled=1),
+                SalesOrganization(org_id=DEAL_ORG_ID, tenant_id=TENANT, org_name="Acme Corp"),
+                contact(ADA_ID, "Ada"),
+                contact(GRACE_ID, "Grace"),
+                contact(LINUS_ID, "Linus"),
+                contact(MIA_ID, "Mia"),
+                contact(OPTED_ID, "Otto", email_opt_out=True),
+                contact(GONE_ID, "Zoe", deleted_at=removed),
+                contact(OUTSIDER_ID, "Olga"),
+                contact(RIVAL_ID, "Rival", tenant_id=OTHER_TENANT),
+                SalesOpportunity(
+                    opportunity_id=DEAL_ID,
+                    tenant_id=TENANT,
+                    opportunity_name="Acme Pilot",
+                    client="Ada",
+                    contact_id=ADA_ID,
+                    organization_id=DEAL_ORG_ID,
+                ),
+            ]
+        )
+        self.db.flush()
+
+        def link(contact_id, role_key, **kwargs):
+            return SalesOpportunityContact(
+                tenant_id=kwargs.pop("tenant_id", TENANT),
+                opportunity_id=DEAL_ID,
+                contact_id=contact_id,
+                role_key=role_key,
+                **kwargs,
+            )
+
+        # Ada is the legacy primary with no association row, as on older deals.
+        self.db.add_all(
+            [
+                link(GRACE_ID, "champion"),
+                link(LINUS_ID, "finance"),
+                link(MIA_ID, "legal", deleted_at=removed),
+                link(OPTED_ID, "technical"),
+                link(GONE_ID, "procurement"),
+            ]
+        )
+        self.db.commit()
+
+    def _send_from_deal(self, **overrides):
+        return self._send(module_key="sales_opportunities", entity_id=str(DEAL_ID), **overrides)
+
+    def _links(self):
+        return sorted(
+            (row.module_key, row.entity_id, row.association_type)
+            for row in self.db.query(MailRecordAssociation).all()
+        )
+
+    def _refused(self, **overrides):
+        with self._stub_delivery() as send_mock, self.assertRaises(MailSendError) as exc:
+            self._send_from_deal(**overrides)
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        send_mock.assert_not_called()
+        self.assertEqual(self.db.query(MailMessage).count(), 0)
+        return exc.exception
+
+    def test_chosen_participants_are_filed_beside_the_deal(self):
+        with self._stub_delivery():
+            message = self._send_from_deal(
+                to=["grace@acme.example"],
+                cc=["Linus@Acme.example"],
+                related_contact_ids=[GRACE_ID, LINUS_ID],
+            )
+        self.assertEqual(
+            self._links(),
+            [
+                ("sales_contacts", str(GRACE_ID), "related"),
+                ("sales_contacts", str(LINUS_ID), "related"),
+                ("sales_opportunities", str(DEAL_ID), "primary"),
+            ],
+        )
+        # The deal stays the message's source record.
+        self.assertEqual((message.source_module_key, message.source_entity_id), ("sales_opportunities", str(DEAL_ID)))
+
+    def test_the_email_reaches_the_deal_and_each_chosen_contact_timeline(self):
+        with self._stub_delivery():
+            message = self._send_from_deal(to=["grace@acme.example"], related_contact_ids=[GRACE_ID])
+
+        with mock.patch.object(record_activity, "PermissionPolicy", _AllowAllPolicy):
+            def ids(module_key, entity_id):
+                page = list_record_activity(self.db, user=self.user, module_key=module_key, entity_id=entity_id, types="email")
+                return [item["source"]["record_id"] for item in page["items"]]
+
+            self.assertEqual(ids("sales_opportunities", DEAL_ID), [str(message.id)])
+            self.assertEqual(ids("sales_contacts", GRACE_ID), [str(message.id)])
+            # Not chosen, so not linked, although Linus is on the deal.
+            self.assertEqual(ids("sales_contacts", LINUS_ID), [])
+
+    def test_the_legacy_primary_without_a_row_can_be_chosen(self):
+        with self._stub_delivery():
+            self._send_from_deal(to=["ada@acme.example"], related_contact_ids=[ADA_ID])
+        self.assertIn(("sales_contacts", str(ADA_ID), "related"), self._links())
+
+    def test_a_typed_address_that_is_no_participant_files_against_the_deal_only(self):
+        with self._stub_delivery():
+            self._send_from_deal(to=["olga@acme.example", "someone@elsewhere.example"])
+        self.assertEqual(self._links(), [("sales_opportunities", str(DEAL_ID), "primary")])
+
+    def test_a_participants_address_alone_links_nothing(self):
+        # Grace's address without Grace chosen: nothing is inferred from the address.
+        with self._stub_delivery():
+            self._send_from_deal(to=["grace@acme.example"])
+        self.assertEqual(self._links(), [("sales_opportunities", str(DEAL_ID), "primary")])
+
+    def test_a_contact_not_on_the_deal_is_refused(self):
+        error = self._refused(to=["olga@acme.example"], related_contact_ids=[OUTSIDER_ID])
+        self.assertEqual(error.message, mail_services.UNAVAILABLE_PARTICIPANT_DETAIL)
+
+    def test_a_removed_participant_is_refused(self):
+        self._refused(to=["mia@acme.example"], related_contact_ids=[MIA_ID])
+
+    def test_a_recycle_binned_contact_is_refused(self):
+        self._refused(to=["zoe@acme.example"], related_contact_ids=[GONE_ID])
+
+    def test_another_tenants_contact_is_refused_with_the_same_message(self):
+        error = self._refused(to=["rival@acme.example"], related_contact_ids=[RIVAL_ID])
+        self.assertEqual(error.message, mail_services.UNAVAILABLE_PARTICIPANT_DETAIL)
+
+    def test_an_opted_out_participant_is_refused(self):
+        error = self._refused(to=["otto@acme.example"], related_contact_ids=[OPTED_ID])
+        self.assertIn("opted out", error.message)
+
+    def test_a_chosen_participant_must_be_a_recipient(self):
+        error = self._refused(to=["grace@acme.example"], related_contact_ids=[GRACE_ID, LINUS_ID])
+        self.assertIn("not among the recipients", error.message)
+
+    def test_a_sender_who_cannot_view_contacts_cannot_file_against_one(self):
+        real = mail_services.mail_associations.require_role_module_action_access
+
+        def deny_contacts(db, *, user, module_key, action):
+            if module_key == "sales_contacts":
+                raise PermissionError("no contacts")
+            return real(db, user=user, module_key=module_key, action=action)
+
+        with mock.patch.object(mail_services.mail_associations, "require_role_module_action_access", deny_contacts):
+            self._refused(to=["grace@acme.example"], related_contact_ids=[GRACE_ID])
+
+    def test_participants_can_be_chosen_only_from_a_deal(self):
+        with self._stub_delivery() as send_mock, self.assertRaises(MailSendError):
+            self._send(to=["grace@acme.example"], related_contact_ids=[GRACE_ID])
+        send_mock.assert_not_called()
+
+    def test_a_repeated_id_is_filed_once(self):
+        with self._stub_delivery():
+            self._send_from_deal(to=["grace@acme.example"], related_contact_ids=[GRACE_ID, GRACE_ID])
+        self.assertEqual(len(self._links()), 2)
+
+    def test_contact_variables_name_the_one_chosen_participant(self):
+        with self._stub_delivery():
+            message = self._send_from_deal(
+                to=["linus@acme.example"],
+                related_contact_ids=[LINUS_ID],
+                subject="Hi {{contact.first_name}} — {{opportunity.name}}",
+            )
+        self.assertTrue(message.subject.startswith("Hi Linus"), message.subject)
+
+    def test_contact_variables_name_nobody_when_several_non_primary_are_chosen(self):
+        with self._stub_delivery():
+            message = self._send_from_deal(
+                to=["grace@acme.example", "linus@acme.example"],
+                related_contact_ids=[GRACE_ID, LINUS_ID],
+                subject="Hi {{contact.first_name}}",
+            )
+        self.assertNotIn("Grace", message.subject)
+        self.assertNotIn("Linus", message.subject)
+        self.assertNotIn("Ada", message.subject)
+
+    def test_contact_variables_fall_back_to_the_primary_when_nobody_is_chosen(self):
+        with self._stub_delivery():
+            message = self._send_from_deal(to=["someone@elsewhere.example"], subject="Hi {{contact.first_name}}")
+        self.assertEqual(message.subject, "Hi Ada")
 
 
 if __name__ == "__main__":

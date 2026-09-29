@@ -3,7 +3,10 @@
 import { useRef, useState } from "react";
 import { Mail } from "lucide-react";
 
-import RecordEmailComposer from "@/components/mail/RecordEmailComposer";
+import RecordEmailComposer, {
+  isUsableCandidate,
+  type RecipientCandidate,
+} from "@/components/mail/RecordEmailComposer";
 import { Button } from "@/components/ui/button";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useMailContext } from "@/hooks/useMail";
@@ -30,6 +33,12 @@ export type RecordEmailContext = {
 type Props = RecordEmailContext & {
   email?: string | null;
   emailOptOut?: boolean;
+  /**
+   * A deal's participants. Given instead of `email`: the action appears when at least one can
+   * be emailed, one such participant is prefilled, and several leave To empty so the choice is
+   * the user's — the primary contact is never picked silently.
+   */
+  recipientCandidates?: RecipientCandidate[];
 };
 
 export default function RecordEmailAction({
@@ -38,6 +47,7 @@ export default function RecordEmailAction({
   recordLabel,
   email,
   emailOptOut = false,
+  recipientCandidates,
 }: Props) {
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [open, setOpen] = useState(false);
@@ -57,12 +67,18 @@ export default function RecordEmailAction({
   // draws it as `Opted out`, which is a better place to learn a compliance fact than a
   // control that cannot be pressed. `CommunicationActions` gates this too; the guard is
   // repeated because this component has its own call path.
-  if (!email || emailOptOut) return null;
+  const usableCandidates = (recipientCandidates ?? []).filter(isUsableCandidate);
+  const prefill = recipientCandidates
+    ? usableCandidates.length === 1
+      ? usableCandidates[0].email
+      : null
+    : email;
+  if (recipientCandidates ? usableCandidates.length === 0 : !email || emailOptOut) return null;
 
   if (!canCompose) {
     return (
       <Button asChild size="sm" variant="outline">
-        <a href={`mailto:${email}`}>
+        <a href={`mailto:${prefill ?? ""}`}>
           <Mail />
           Email
         </a>
@@ -92,7 +108,8 @@ export default function RecordEmailAction({
         moduleKey={moduleKey}
         entityId={entityId}
         recordLabel={recordLabel}
-        defaultRecipient={email}
+        defaultRecipient={prefill}
+        recipientCandidates={recipientCandidates}
         returnFocusRef={triggerRef}
       />
     </>

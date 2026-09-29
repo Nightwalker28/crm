@@ -15,10 +15,12 @@ import { Button } from "@/components/ui/button";
  *
  * Two rules shape what is rendered here, and both are 4.7's:
  *
- * - **A channel appears only if this record owns the address.** Only lead, contact and
- *   account carry `primary_email` / phone columns, so only they mount this. A deal and a
- *   quote used to pass the linked *contact's* address into their own header and file the
- *   result against themselves, which split one conversation across two records.
+ * - **The message is filed against every record whose address it uses.** Lead, contact
+ *   and account own their `primary_email` / phone, so they mount this with their own
+ *   address. A deal has no address of its own: it offers `RecordEmailAction` with its
+ *   participants as candidates instead, and the send files each chosen participant beside
+ *   the deal. What must not come back is a record using someone else's address and filing
+ *   the conversation against itself alone.
  * - **A channel with no address is not drawn**, rather than drawn disabled. A contact with
  *   no phone is the common case, and the header's most frequent state was two inert
  *   buttons beside one live one.

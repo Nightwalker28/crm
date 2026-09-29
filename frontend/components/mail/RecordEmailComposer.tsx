@@ -47,14 +47,37 @@ import type { RecordModuleKey } from "@/types/record-activity";
  * `POST /mail/records/{module_key}/{entity_id}/send`.
  */
 
+/**
+ * A person the message may be addressed to because of their relationship to this record — a
+ * deal's participants. Choosing one is deliberate: its address goes into To, and the send
+ * files the message against that contact as well as the record.
+ */
+export type RecipientCandidate = {
+  contactId: number;
+  name: string;
+  email: string | null;
+  roleLabel?: string | null;
+  isPrimary?: boolean;
+  optedOut?: boolean;
+};
+
+export function isUsableCandidate(candidate: RecipientCandidate) {
+  return Boolean(candidate.email) && !candidate.optedOut;
+}
+
 type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   moduleKey: RecordModuleKey;
   entityId: string | number;
   recordLabel: string;
-  /** Prefilled recipient — the record's own address. */
+  /** Prefilled recipient — the record's own address, or a deal's one usable participant. */
   defaultRecipient?: string | null;
+  /**
+   * The record's people, offered as recipients. Given, the composer lists them under To with
+   * their roles; opted-out ones are shown but cannot be chosen.
+   */
+  recipientCandidates?: RecipientCandidate[];
   returnFocusRef?: React.RefObject<HTMLElement | null>;
 };
 
@@ -80,6 +103,10 @@ function parseRecipients(value: string) {
     .filter(Boolean);
 }
 
+function sameAddress(a: string | null | undefined, b: string) {
+  return Boolean(a) && (a ?? "").trim().toLowerCase() === b.trim().toLowerCase();
+}
+
 function invalidRecipient(value: string) {
   return parseRecipients(value).find((entry) => !EMAIL_PATTERN.test(entry));
 }
@@ -98,6 +125,7 @@ export default function RecordEmailComposer({
   entityId,
   recordLabel,
   defaultRecipient,
+  recipientCandidates,
   returnFocusRef,
 }: Props) {
   const contextQuery = useMailContext();
@@ -156,6 +184,17 @@ export default function RecordEmailComposer({
     });
   }
 
+  const toRecipients = parseRecipients(to);
+  const candidates = recipientCandidates ?? [];
+
+  /** Ticking a participant writes its address into To; unticking takes it out. */
+  function toggleCandidate(candidate: RecipientCandidate, checked: boolean) {
+    if (!candidate.email) return;
+    const rest = toRecipients.filter((entry) => !sameAddress(candidate.email, entry));
+    setTo((checked ? [...rest, candidate.email] : rest).join(", "));
+    if (recipientError) setRecipientError(null);
+  }
+
   function insertTemplate(value: string) {
     const template = templates.find((entry) => String(entry.id) === value);
     if (!template) return;
@@ -185,6 +224,19 @@ export default function RecordEmailComposer({
       setCopyError(`Enter a valid email address for ${badCopy}.`);
       return;
     }
+    const everyone = [...recipients, ...ccRecipients, ...bccRecipients];
+    // Typed rather than ticked still counts: an opted-out participant is not emailed from here.
+    const optedOut = candidates.find(
+      (candidate) => candidate.optedOut && everyone.some((entry) => sameAddress(candidate.email, entry)),
+    );
+    if (optedOut) {
+      setRecipientError(`${optedOut.name} has opted out of email.`);
+      return;
+    }
+    // The participants this message is actually addressed to. Each is filed beside the record.
+    const relatedContactIds = candidates
+      .filter((candidate) => isUsableCandidate(candidate) && everyone.some((entry) => sameAddress(candidate.email, entry)))
+      .map((candidate) => candidate.contactId);
     if (!provider) {
       // Reachable if the mailbox is disconnected while the composer is open.
       // Say so rather than letting Send quietly do nothing.
@@ -212,6 +264,7 @@ export default function RecordEmailComposer({
         template_id: templateId,
         attachment_document_ids: attachmentIds,
         idempotency_key: idempotencyKey,
+        ...(relatedContactIds.length ? { related_contact_ids: relatedContactIds } : {}),
       });
       toast.success(`Email sent to ${recordLabel}.`);
       onOpenChange(false);
@@ -259,7 +312,11 @@ export default function RecordEmailComposer({
       open={open}
       onOpenChange={onOpenChange}
       title={`Email ${recordLabel}`}
-      description="Send from a connected mailbox. The message is filed against this record."
+      description={
+        recipientCandidates
+          ? "Send from a connected mailbox. The message is filed against this record and each participant it is sent to."
+          : "Send from a connected mailbox. The message is filed against this record."
+      }
       onSubmit={handleSend}
       isDirty={isDirty}
       isPending={sendMutation.isPending}
@@ -353,6 +410,53 @@ export default function RecordEmailComposer({
             <FieldDescription>Separate multiple recipients with commas.</FieldDescription>
             <FieldError>{recipientError}</FieldError>
           </Field>
+
+          {candidates.length ? (
+            <Field>
+              <FieldLabel>Participants</FieldLabel>
+              {/* The same divided checklist as Attachments below: many from a set (§7.15). */}
+              <ul aria-label="Participants" className="divide-y divide-line-subtle border-y border-line-subtle">
+                {candidates.map((candidate) => {
+                  const usable = isUsableCandidate(candidate);
+                  const checked = usable && toRecipients.some((entry) => sameAddress(candidate.email, entry));
+                  const meta = [
+                    candidate.roleLabel,
+                    candidate.isPrimary ? "Primary contact" : null,
+                    candidate.optedOut ? "Opted out of email" : candidate.email ?? "No email address",
+                  ].filter(Boolean).join(" · ");
+                  return (
+                    <li key={candidate.contactId}>
+                      <label
+                        className={
+                          usable
+                            ? "flex cursor-pointer items-start gap-3 py-2"
+                            : "flex cursor-not-allowed items-start gap-3 py-2"
+                        }
+                      >
+                        <Checkbox
+                          checked={checked}
+                          disabled={!usable}
+                          aria-label={candidate.name}
+                          onCheckedChange={(value) => toggleCandidate(candidate, value === true)}
+                        />
+                        <span className="min-w-0">
+                          <span className={usable ? "block truncate text-p-sm text-copy-primary" : "block truncate text-p-sm text-copy-muted"}>
+                            {candidate.name}
+                          </span>
+                          <span className="block text-p-xs text-copy-muted">{meta}</span>
+                        </span>
+                      </label>
+                    </li>
+                  );
+                })}
+              </ul>
+              <FieldDescription>
+                {candidates.filter(isUsableCandidate).length > 1
+                  ? "Choose who this is to. Each participant you email also sees it on their own timeline."
+                  : "Each participant you email also sees it on their own timeline."}
+              </FieldDescription>
+            </Field>
+          ) : null}
 
           {/* Cc and Bcc were one `Field` holding two labels and two inputs, so the error under them
               belonged to neither. Two fields; the error sits under the second, and both inputs

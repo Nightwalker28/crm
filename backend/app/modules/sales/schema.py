@@ -795,6 +795,8 @@ class ContactCompactSummary(BaseModel):
     primary_email: str | None = None
     contact_telephone: str | None = None
     current_title: str | None = None
+    # Lets a deal's composer list an opted-out participant as not selectable.
+    email_opt_out: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 

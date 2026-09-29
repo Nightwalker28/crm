@@ -51,6 +51,7 @@ export type OpportunityParticipant = {
     last_name?: string | null;
     primary_email?: string | null;
     current_title?: string | null;
+    email_opt_out?: boolean | null;
   };
 };
 

@@ -171,6 +171,13 @@ class MailSendRequest(MailComposeRequest):
 class MailRecordSendRequest(MailComposeRequest):
     """Contextual send. The source record comes from the route path."""
 
+    # Sending from a deal: the participants the user chose as recipients. Each
+    # is filed as a `related` association beside the deal, so the email also
+    # lands on that contact's Timeline. The server checks every id is an active
+    # participant whose address is among the recipients; nothing is inferred
+    # from addresses alone (see `mail_associations`).
+    related_contact_ids: list[int] = Field(default_factory=list, max_length=50)
+
 
 class MailProviderConnectResponse(BaseModel):
     provider: MailProvider

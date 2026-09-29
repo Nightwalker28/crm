@@ -64,6 +64,11 @@ export type RecordMailSendPayload = {
   attachment_document_ids?: number[];
   /** Stable across retries of one compose attempt, so a retry never duplicates. */
   idempotency_key?: string;
+  /**
+   * Sending from a deal: the participants the message is addressed to. Each is filed beside
+   * the deal so the email also reaches that contact's Timeline; the server checks every id.
+   */
+  related_contact_ids?: number[];
 };
 
 const CODES: RecordMailErrorCode[] = [

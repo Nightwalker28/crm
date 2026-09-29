@@ -17,8 +17,10 @@ import {
   stageStatus,
   type OpportunityStageRef,
 } from "@/components/opportunities/opportunityStages";
+import RecordEmailAction from "@/components/mail/RecordEmailAction";
 import {
   OpportunityParticipants,
+  participantName,
   type OpportunityParticipant,
 } from "@/components/opportunities/OpportunityParticipants";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
@@ -345,13 +347,27 @@ export default function OpportunityDetailPage() {
       actions={deal ? (
         <>
           {/*
-            No channel buttons. A deal has no `primary_email` and no phone column — the ones
-            that used to sit here were the *linked contact's*, and the interaction was then
-            filed against the deal, so the conversation landed on a record that does not own
-            it and the contact's Timeline had a hole where it belonged. The contact is in
-            `Connected`, one click away, on a record that can perform the action and file it
-            correctly (4.7).
+            A deal has no address of its own, so its Email is addressed to its participants
+            (Wave 3A, Opportunity run; design.md §4.7). The message is filed against the deal
+            *and* each participant it is sent to, so it lands on every record whose address
+            it uses. One participant who can be emailed is prefilled; several leave To empty
+            for the user to choose. Participants are hidden with Contacts, and so is this.
           */}
+          {summary?.can_view_contacts ? (
+            <RecordEmailAction
+              moduleKey="sales_opportunities"
+              entityId={deal.opportunity_id}
+              recordLabel={dealName}
+              recipientCandidates={summary.participant_contacts.map((participant) => ({
+                contactId: participant.contact_id,
+                name: participantName(participant),
+                email: participant.contact.primary_email ?? null,
+                roleLabel: participant.role_label,
+                isPrimary: participant.is_primary,
+                optedOut: Boolean(participant.contact.email_opt_out),
+              }))}
+            />
+          ) : null}
           {canEditDeal ? (
             <Button asChild variant="outline">
               <Link href={editHref}>

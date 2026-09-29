@@ -14,8 +14,89 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Contact and Organization runs done; 05 backend Phases 3–4 and frontend Phase 4 done; the Opportunity run left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity`; `related_access` on the summaries; `relationship-rail.spec.ts` |
+| **3A** | **All runs built (Lead, Contact, Organization, Opportunity; 05 backend Phases 3–4, frontend Phases 3–4). Not closed: the design-rule audit must pass on a quiet host — see below** | `RecordEmailComposer` recipient candidates; `related_contact_ids` on `POST /mail/records/{module}/{id}/send`; `related_access` on the summaries |
 | 3B onward | Not started | |
+
+## Wave 3A — Opportunity run (2026-09-29)
+
+Built to the owner's decision recorded under the Organization run below (Salesforce, Dynamics,
+HubSpot: a deal's email is addressed to its participants and filed against the deal and each
+of them). This also completes 05 frontend Phase 3 (contextual recipient selection).
+
+**Verified first:** `record_activity._fetch_emails` does not filter on `association_type`, so a
+`related` link already reaches the contact's Timeline. No adapter change.
+
+Backend (`mail_services`, no schema or migration change):
+
+- `MailRecordSendRequest.related_contact_ids` (optional, max 50). `_resolve_participant_recipients`
+  checks each id before anything is claimed or sent: the source is a deal; the contact is on it
+  (the legacy primary or an active participant, through the new shared
+  `opportunity_contacts_services.is_contact_on_opportunity`, which `ensure_contact_on_opportunity`
+  now uses as well); the contact is active, in this tenant and viewable by the sender
+  (`resolve_link_target`); it has not opted out; and its address is actually among To/Cc/Bcc. Every
+  "not on this deal" reason returns the same message.
+- `_claim_outbound_message` writes each as a `related` association in the same transaction as
+  the deal's `primary`, through the existing `upsert_association`. A typed address that
+  belongs to no chosen participant files against the deal only. Nothing is linked because an
+  address happened to match (the `mail_associations` invariant stands).
+- `{{contact.*}}` from a deal resolves to the person the email is to: one chosen participant is
+  that participant; several give the primary only if the primary is among them, otherwise nobody;
+  with nobody chosen it falls back to the deal's primary, as before.
+- `ContactCompactSummary.email_opt_out` (additive) so the deal summary's participants carry it.
+
+Frontend:
+
+- The deal header has **Email** again (`RecordEmailAction` with `recipientCandidates` from
+  `participant_contacts`), shown only when the reader can view Contacts and at least one participant
+  has an address and has not opted out. One such participant is prefilled. With several, To
+  starts empty. The mailto fallback (no connected mailbox) follows the same rule.
+- `RecordEmailComposer` lists the candidates under To as a **Participants** checklist, with role,
+  "Primary contact" and the address. Ticking one writes its address into To and unticking removes
+  it; To stays editable. Opted-out participants are listed, disabled, with "Opted out of email".
+  An opted-out participant's address typed by hand is refused before the send. On send, the
+  participants whose addresses are in the message go in `related_contact_ids`.
+- design.md §4.7 is rewritten: the rule is now **"the message is filed against every CRM record
+  whose address it uses"**, replacing "does this record own the address". The deal's rules and the
+  CRMs behind them are written there. The `CommunicationActions` doc comment follows it. Account and
+  Quote are unchanged: an account still emails its own address only, and a quote offers no channel.
+
+Verification: `test_mail_contextual_send.py` 92 of 92. `OpportunityContextualSendTests` re-runs the
+Lead contract from a deal and adds 17 cases: participants filed beside the deal and on each
+contact's activity only when chosen; legacy primary without a row; typed non-participant → deal
+only; a participant's address alone links nothing; not on the deal, removed participant,
+recycle-binned contact, other tenant (same message), opted out, not a recipient, no Contacts view,
+non-deal source are all refused before anything is sent; a repeated id is filed once; the three
+`{{contact.*}}` cases. The backend suite passes 1226 of 1226 with Redis up. `verify_openapi` passes (362 paths),
+compileall is clean, and `generate-contracts.sh --check` is up to date. Frontend lint and build are
+clean; `check-design.sh` passes 21 of 21. `opportunity-contextual-email.spec.ts` (new, 5: several
+participants → To empty, pick, payload names the pick, lands on the Timeline; untick removes the
+address; one usable participant prefilled; a typed opted-out address refused; no usable participant
+means no Email) passes 5 of 5. The lead, contact and account email specs, `opportunity-participants` and
+`opportunities-revamp` pass 16 of 16. Browser pass: the composer screenshotted in both themes
+(background `rgb(11, 13, 16)` → `rgb(247, 248, 250)`), and a real deal checked against the live API:
+its participant carries `email_opt_out: false`, and with no connected mailbox the header shows the
+mailto fallback with the single participant prefilled. No real email was sent.
+
+**Wave close: not yet.** The rendered guards were run once with the frontend recreated first.
+`scroll-containers.spec.ts` passes. `design-rules.spec.ts` failed after 17.6 minutes (13.5 the last
+time it passed). It reported every settings page as "not reachable from the rail" and six list
+routes (`/dashboard/sales/organizations`, `…/opportunities`, `…/orders`, `/dashboard/finance/pos`,
+`/dashboard/catalog/services`, `/dashboard/settings/modules`) as unreachable. Neither the rail nor
+those pages were touched. At the end of the run the host was thrashing from other work: load
+11.4 on 8 cores, 8.9 GB of swap in use, `kswapd0` at 96%. The frontend was not OOM-killed and sat
+idle. This is the navigation-failure pattern recorded before, but it has **not** been shown to be
+that. Re-running an 18-minute audit on an overloaded host would break the 65% ceiling, so the stack
+was stopped instead.
+
+Left open (added to Deferred): offering an account's contacts as recipients from the Account page
+(owner: a separate follow-up); a manually typed address of an opted-out *non-participant*
+contact is not checked (only candidates are known to the composer, and the server links by id
+only).
+
+**Next:** on a quiet host, recreate the frontend and re-run `design-rules.spec.ts` (`--workers=1`).
+If it passes, Wave 3A is closed. If the same routes fail, attribute them with a stashed baseline before
+changing any code. Then Wave 3B, README Wave 3 item 15: `06-whatsapp-business.md` Phase 1, which formalizes and
+regression-tests the existing external `wa.me` mode. Check the Deferred table first.
 
 ## Wave 3A prerequisite — 05 frontend Phase 4: relationship rail on Contact and Account (2026-09-29)
 
@@ -520,7 +601,6 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 
 | Item | Why it waits | Build it when |
 |---|---|---|
-| Contextual email recipient selection from deal participants (05 frontend Phase 3) | Needs the Opportunity email rollout to consume it | **Wave 3A, Opportunity run** — explicit candidates, deliberate selection when more than one |
 | A view of removed participants (`/participants/recycle` has no UI) | Undo covers the immediate case | When an operator needs to restore a participant after the Undo toast is gone, or with a shared record-level recycle view |
 | Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`) | Filed by rebuild 5.3 as its own slice | A standalone slice; not tied to a wave |
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
@@ -531,3 +611,5 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Partial quote/order update that sends only `contact_id` is not checked against the record's stored deal | Predates 05 Phase 3; `_ensure_linked_records` validates only submitted fields | When quote/order updates are next touched: validate against the effective (submitted or stored) deal |
 | Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | When the quote form is next touched, or the picker gains a participant filter (the rail did not touch the quote form) |
 | `contacts-revamp.spec.ts` "shared workflow" fails: the Contact **edit** form's Email field is empty (inherited, reproduces with 05 frontend Phase 4 stashed) | Not caused by the rail; unread beyond attribution | The next slice that touches the Contact edit form |
+| Offering an account's contacts as email recipients from the Account page | Owner decision 2026-09-29: a separate follow-up; the Account emails its own address only (design.md §4.7) | When the owner asks for it; reuse `recipientCandidates` and a server rule like the deal's |
+| A typed address of an opted-out contact who is *not* a participant is not refused when mailing from a deal | The composer only knows participants, and the server links by id, never by address | If opt-out becomes a send-time rule across all mail (the inbox composer has the same gap) |
