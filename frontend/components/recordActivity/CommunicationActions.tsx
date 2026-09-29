@@ -76,7 +76,7 @@ export default function CommunicationActions({
       {canEmail && emailContext ? (
         <RecordEmailAction {...emailContext} email={email} emailOptOut={emailOptOut} />
       ) : canEmail ? (
-        <Button asChild size="sm" variant="outline">
+        <Button asChild variant="outline">
           <a href={`mailto:${email}`}>
             <Mail />
             Email
@@ -85,14 +85,14 @@ export default function CommunicationActions({
       ) : null}
 
       {canWhatsApp ? (
-        <Button type="button" size="sm" variant="outline" onClick={handleWhatsAppClick}>
+        <Button type="button" variant="outline" onClick={handleWhatsAppClick}>
           <MessageCircle />
           WhatsApp
         </Button>
       ) : null}
 
       {canCall ? (
-        <Button asChild size="sm" variant="outline">
+        <Button asChild variant="outline">
           <a href={`tel:${phone}`}>
             <Phone />
             Call

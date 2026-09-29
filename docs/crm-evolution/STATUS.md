@@ -14,8 +14,30 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **All runs built (Lead, Contact, Organization, Opportunity; 05 backend Phases 3–4, frontend Phases 3–4). Not closed: the design-rule audit must pass on a quiet host — see below** | `RecordEmailComposer` recipient candidates; `related_contact_ids` on `POST /mail/records/{module}/{id}/send`; `related_access` on the summaries |
-| 3B onward | Not started | |
+| 3A | Done (closed 2026-09-29): Lead, Contact, Organization and Opportunity runs; 05 backend Phases 3–4, frontend Phases 3–4. See below | `RecordEmailComposer` recipient candidates; `related_contact_ids` on `POST /mail/records/{module}/{id}/send`; `related_access` on the summaries |
+| **3B onward** | **Not started — next is 3B** | |
+
+## Wave 3A — closed (2026-09-29)
+
+The rendered guards pass: `design-rules.spec.ts` audited 106 routes with none unreachable (8.0
+minutes, run on a freshly restarted dev server), and `scroll-containers.spec.ts` passed earlier in the
+wave. Getting there took four more audit runs, and each result was a real finding:
+
+1. **Settings rail (A8) and six list routes unreachable.** The host was thrashing (load 11.4,
+   `kswapd0` at 96%). A re-run on a quiet host did not repeat it. Environmental.
+2. **R4, a real bug from this wave.** The deal header's Email was `size="sm"` (32px) beside the
+   38px Edit. `RecordEmailAction` and `CommunicationActions` no longer hard-code a size, so every
+   record header's Email, WhatsApp and Call are `default`, like the buttons beside them. The Lead,
+   Contact and Account headers had the same mismatch, hidden from the guard because
+   `CommunicationActions` wraps its buttons in its own row.
+3. **A different set of lists "unreachable" every run.** A harness bug: `discoverRecord` waited for
+   any `tbody tr` and resolved on `ModuleTableLoading`'s eight skeleton rows, so lists whose data
+   came slowest were dropped. It now waits for a row with no `[data-slot="skeleton"]`.
+4. **Deals unreachable on a cold server.** Deal rows have no link, so the audit opens one by click or
+   Enter, then waited a fixed 1.8 s. The deal record route compiles on first visit and took longer.
+   `waitForRecordUrl` now waits (up to 20 s) for the URL to become a record.
+
+After the size fix the four record-email specs pass 13 of 13; lint is clean.
 
 ## Wave 3A — Opportunity run (2026-09-29)
 
@@ -77,25 +99,14 @@ means no Email) passes 5 of 5. The lead, contact and account email specs, `oppor
 its participant carries `email_opt_out: false`, and with no connected mailbox the header shows the
 mailto fallback with the single participant prefilled. No real email was sent.
 
-**Wave close: not yet.** The rendered guards were run once with the frontend recreated first.
-`scroll-containers.spec.ts` passes. `design-rules.spec.ts` failed after 17.6 minutes (13.5 the last
-time it passed). It reported every settings page as "not reachable from the rail" and six list
-routes (`/dashboard/sales/organizations`, `…/opportunities`, `…/orders`, `/dashboard/finance/pos`,
-`/dashboard/catalog/services`, `/dashboard/settings/modules`) as unreachable. Neither the rail nor
-those pages were touched. At the end of the run the host was thrashing from other work: load
-11.4 on 8 cores, 8.9 GB of swap in use, `kswapd0` at 96%. The frontend was not OOM-killed and sat
-idle. This is the navigation-failure pattern recorded before, but it has **not** been shown to be
-that. Re-running an 18-minute audit on an overloaded host would break the 65% ceiling, so the stack
-was stopped instead.
+The wave close is recorded in the section above.
 
 Left open (added to Deferred): offering an account's contacts as recipients from the Account page
 (owner: a separate follow-up); a manually typed address of an opted-out *non-participant*
 contact is not checked (only candidates are known to the composer, and the server links by id
 only).
 
-**Next:** on a quiet host, recreate the frontend and re-run `design-rules.spec.ts` (`--workers=1`).
-If it passes, Wave 3A is closed. If the same routes fail, attribute them with a stashed baseline before
-changing any code. Then Wave 3B, README Wave 3 item 15: `06-whatsapp-business.md` Phase 1, which formalizes and
+**Next:** Wave 3B, README Wave 3 item 15: `06-whatsapp-business.md` Phase 1, which formalizes and
 regression-tests the existing external `wa.me` mode. Check the Deferred table first.
 
 ## Wave 3A prerequisite — 05 frontend Phase 4: relationship rail on Contact and Account (2026-09-29)

@@ -77,7 +77,7 @@ export default function RecordEmailAction({
 
   if (!canCompose) {
     return (
-      <Button asChild size="sm" variant="outline">
+      <Button asChild variant="outline">
         <a href={`mailto:${prefill ?? ""}`}>
           <Mail />
           Email
@@ -91,7 +91,7 @@ export default function RecordEmailAction({
       <Button
         ref={triggerRef}
         type="button"
-        size="sm"
+        // No size: the record header's buttons are `default`, and one row has one height (R4).
         variant="outline"
         onClick={() => {
           setComposeSession((session) => session + 1);

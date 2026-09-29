@@ -583,15 +583,30 @@ async function measureActiveOption(page: Page, trigger: string, content: string,
   return measured;
 }
 
+/**
+ * Wait for a row's open gesture to land on its record, not a fixed interval. On a freshly
+ * started dev server the record route compiles on first visit, and the deal page took longer
+ * than the 1.8s this used to wait: the Deals list was then dropped as unreachable in some runs
+ * and not others (Wave 3A close, 2026-09-29).
+ */
+async function waitForRecordUrl(page: Page, re: string) {
+  const pattern = new RegExp(re);
+  await page.waitForURL((url) => pattern.test(url.pathname), { timeout: 20000 }).catch(() => {});
+}
+
 async function discoverRecord(page: Page, list: string, re: string) {
   await page.goto(list, { waitUntil: "domcontentloaded", timeout: 45000 });
   // Wait for a row rather than a fixed 1500ms. The five largest lists (contacts,
   // organizations, opportunities, POS, leads) were reporting *unreachable* on a warm
   // server purely because their first row had not painted yet — which silently dropped
   // every `/[id]` and `/[id]/edit` route behind them from the audit.
+  //
+  // A *data* row: `ModuleTableLoading` paints eight skeleton rows first, and waiting for any
+  // `tbody tr` resolved on those. The lists whose data arrived slowest in a run were then
+  // dropped as unreachable — a different set every run (Wave 3A close, 2026-09-29).
   await page.waitForFunction((src) => {
     const pattern = new RegExp(src);
-    return Boolean(document.querySelector("main tbody tr")) ||
+    return Array.from(document.querySelectorAll("main tbody tr")).some((row) => !row.querySelector('[data-slot="skeleton"]')) ||
       Array.from(document.querySelectorAll("a")).some((x) => pattern.test(new URL(x.href, location.origin).pathname));
   }, re, { timeout: 20000 }).catch(() => {});
   await page.waitForTimeout(600);
@@ -606,7 +621,7 @@ async function discoverRecord(page: Page, list: string, re: string) {
     if (await cell.count()) {
       try {
         await cell.click({ timeout: 8000 });
-        await page.waitForTimeout(1800);
+        await waitForRecordUrl(page, re);
         const path = new URL(page.url()).pathname;
         if (new RegExp(re).test(path)) href = path;
       } catch { /* ignore */ }
@@ -621,7 +636,7 @@ async function discoverRecord(page: Page, list: string, re: string) {
       try {
         await recordRow.focus({ timeout: 4000 });
         await page.keyboard.press("Enter");
-        await page.waitForTimeout(1800);
+        await waitForRecordUrl(page, re);
         const path = new URL(page.url()).pathname;
         if (new RegExp(re).test(path)) href = path;
       } catch { /* ignore */ }
