@@ -555,8 +555,8 @@ function QuoteRecordFormEditor({
                   }}
                 />
                 <FieldDescription>
-                  When linked, the server verifies the contact and account match
-                  this deal.
+                  When linked, the contact must be one of this deal&apos;s
+                  participants and the account must match the deal.
                 </FieldDescription>
               </Field>
             ) : null}

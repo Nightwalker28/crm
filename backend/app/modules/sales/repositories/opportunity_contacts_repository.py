@@ -182,3 +182,17 @@ def get_active_contact(db: Session, *, tenant_id: int, contact_id: int) -> Sales
         )
         .first()
     )
+
+
+def is_active_participant(db: Session, *, tenant_id: int, opportunity_id: int, contact_id: int) -> bool:
+    """Whether the contact is currently on the deal: link not removed, contact not deleted."""
+
+    return bool(
+        _base_query(db, tenant_id=tenant_id, include_deleted_contacts=False)
+        .filter(
+            SalesOpportunityContact.opportunity_id == opportunity_id,
+            SalesOpportunityContact.contact_id == contact_id,
+            SalesOpportunityContact.deleted_at.is_(None),
+        )
+        .first()
+    )

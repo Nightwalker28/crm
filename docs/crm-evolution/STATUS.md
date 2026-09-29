@@ -14,8 +14,53 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Contact and Organization runs done; Opportunity run left — see below** | `emailContext` on the Contact and Account pages |
+| **3A** | **Contact and Organization runs done; 05 backend Phase 3 (downstream propagation) done; Opportunity run left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity` |
 | 3B onward | Not started | |
+
+## Wave 3A prerequisite — 05 backend Phase 3: relationship context downstream (2026-09-29)
+
+The Deferred row "participants propagated through Lead conversion and Quote/Order creation",
+due before the Opportunity run.
+
+Inventory. **Lead conversion** already did the right thing: it links only the contact it
+converts, as the primary participant (`sync_primary_contact_association`), and copies none of
+the account's other contacts. That was covered by a test already, and one more now pins the
+"not every contact" half. **Quotes and orders** were the gap. A quote or order linked to a deal
+had to name the deal's *primary* contact or be refused ("must match the linked opportunity"),
+so a proposal to the deal's finance participant could not be recorded against the deal.
+
+Change. `opportunity_contacts_services.ensure_contact_on_opportunity`, used by both
+`quotes_services._ensure_linked_records` and `orders_services._ensure_linked_records`:
+
+- no contact given: the primary is used, as before;
+- any **active** participant may be chosen (link not removed, contact not in the recycle bin);
+- anyone else is refused with "Quote/Order contact must be a participant on the linked
+  opportunity", never silently swapped for the primary;
+- the legacy primary (`contact_id`) is accepted even without an association row, so older
+  data behaves as before;
+- the account rule is unchanged (must match the deal); a quote→order conversion carries the
+  quote's contact, which can now be a non-primary participant (before, that failed).
+
+Each downstream record still carries exactly one contact; nothing copies the participant list.
+No schema, no migration, no response-shape change; only the refusal message changed. The quote
+form's hint under Deal now says the contact must be one of the deal's participants.
+
+Verification: new `test_participant_propagation.py` (14: primary default, participant accepted,
+non-participant / removed / recycle-binned / other-tenant refused, update uses the same rule,
+legacy primary without a row, quote→order with a participant, manual orders, account rule,
+conversion links one contact only). Backend suite 1173 tests, only the four known Redis
+rate-limit tests fail without Redis, and those three modules pass 61 of 61 with Redis up.
+Frontend lint and build are clean; `check-design.sh` passes 21 of 21. No browser run (a
+one-line copy change).
+
+Left open (added to Deferred): a **partial** quote/order update that sends only `contact_id`
+is not checked against the deal already stored on the record (it predates this change; only
+the submitted fields are validated). And the quote form's Deal picker filters by the *primary*
+contact (`contact_id is`), so picking a non-primary participant first hides that deal; picking
+the deal first and then the contact works.
+
+**Next:** the remaining Deferred row before the Opportunity run, the relationship summaries
+(05 backend Phase 4, then the frontend relationship rail), then the Opportunity run.
 
 ## Wave 3A — Organization run (2026-09-29)
 
@@ -394,7 +439,6 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 |---|---|---|
 | Contextual email recipient selection from deal participants (05 frontend Phase 3) | Needs the Opportunity email rollout to consume it | **Wave 3A, Opportunity run** — explicit candidates, deliberate selection when more than one |
 | Broader relationship rail on Contact/Account: related deals, quotes, orders, tasks, documents with permission-aware counts (05 frontend Phase 4) | Depends on relationship summaries (05 backend Phase 4), which is unbuilt | After 2E, as its own slice, backend Phase 4 first |
-| Participants propagated through Lead conversion and Quote/Order creation (05 backend Phase 3) | A downstream behaviour change; out of 2D's scope | Its own slice after 2E, before 3A's Opportunity run |
 | A view of removed participants (`/participants/recycle` has no UI) | Undo covers the immediate case | When an operator needs to restore a participant after the Undo toast is gone, or with a shared record-level recycle view |
 | Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`) | Filed by rebuild 5.3 as its own slice | A standalone slice; not tied to a wave |
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
@@ -402,3 +446,5 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | 2E frontend Phase 1, the first 2E slice that touches the list page |
 | Automation *Stage* condition options are the six seeded keys (`automation_registry.py`), so a tenant-added stage cannot be picked there | The registry is static per module; making one field's options tenant-dynamic is a registry contract change | When automation conditions gain tenant-resolved options; until then *Stage outcome* (semantic type) covers "a deal was won/lost" |
 | Tenant restore of pipeline configuration and stage ids | Backups export pipelines, stages and each deal's stage ids; restore reads no sales files yet | When tenant restore gains sales-module restore: stage ids must be remapped, not copied |
+| Partial quote/order update that sends only `contact_id` is not checked against the record's stored deal | Predates 05 Phase 3; `_ensure_linked_records` validates only submitted fields | When quote/order updates are next touched: validate against the effective (submitted or stored) deal |
+| Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | With 05 frontend Phase 4 (relationship rail), or when the picker gains a participant filter |

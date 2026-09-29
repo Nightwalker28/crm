@@ -206,6 +206,40 @@ def list_removed_opportunity_participants(
     )
 
 
+def ensure_contact_on_opportunity(
+    db: Session,
+    *,
+    opportunity: SalesOpportunity,
+    contact_id: int | None,
+    record_label: str,
+) -> None:
+    """Phase 3: a quote or order linked to a deal is addressed to one of its participants.
+
+    The deal's primary contact is what a downstream record gets when it names no
+    contact (the callers default it), but any active participant may be chosen
+    instead — the economic buyer rather than the champion, say. Nothing is copied
+    across: the downstream record still carries exactly one contact. A contact
+    who is not on the deal is refused rather than silently swapped for the primary.
+
+    The legacy primary is accepted on its own terms, so a deal whose association
+    row is missing still behaves exactly as it did before participants existed.
+    """
+
+    if contact_id is None or contact_id == opportunity.contact_id:
+        return
+    if opportunity_contacts_repository.is_active_participant(
+        db,
+        tenant_id=opportunity.tenant_id,
+        opportunity_id=opportunity.opportunity_id,
+        contact_id=contact_id,
+    ):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail=f"{record_label} contact must be a participant on the linked opportunity",
+    )
+
+
 def legacy_client_name(contact: SalesContact | None) -> str:
     """`sales_opportunities.client` exactly as the legacy create/update path writes it.
 
