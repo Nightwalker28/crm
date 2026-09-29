@@ -14,8 +14,57 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Contact run done; Organization and Opportunity runs left — see below** | `emailContext` on the Contact page |
+| **3A** | **Contact and Organization runs done; Opportunity run left — see below** | `emailContext` on the Contact and Account pages |
 | 3B onward | Not started | |
+
+## Wave 3A — Organization run (2026-09-29)
+
+Same gap as the Contact run: the Account header's Email was a bare `mailto:`. It now passes
+`emailContext` (`sales_organizations`), so it opens `RecordEmailComposer`, the send is filed
+against the account, and it lands on the account's Timeline. No backend or persistence change.
+
+**Recipient decision.** 03 §10 asks for "known recipients, deliberate selection when
+ambiguous". design.md §4.7 is narrower: a record offers a channel only for an address it owns.
+Following §4.7, the composer is prefilled with the account's own `primary_email` (a
+system-locked field) and never with one of its contacts' addresses. A contact is emailed from
+the contact's record, so the conversation lands on that person's Timeline instead of being split
+across two records. An account with no address of its own shows no Email action, however many
+contacts it has. `To` stays editable, as it is on every record. The account has no opt-out
+column, so there is no opt-out gate; `secondary_email` is not offered.
+
+Verification: `test_mail_contextual_send.py` 75 of 75. `OrganizationContextualSendTests`
+re-runs the Lead contract with an account fixture and adds five cases: filed against the
+account, on the account's activity only, another tenant's account refused, a soft-deleted
+account refused, `{{organization.*}}` rendered. Lint and build are clean; `check-design.sh`
+passes 21 of 21. `organization-contextual-email.spec.ts` (new, 2: To holds only the account's
+address although it has two contacts; no address means no Email action),
+`contact-contextual-email.spec.ts`, `lead-contextual-email.spec.ts` and
+`contact-organization-rollout.spec.ts` pass 14 of 14. The first run failed two Contact tests on
+the 30s timeout while the dev server was still compiling (the send had succeeded); both pass
+re-run warm.
+
+**Next:** the two Deferred rows due before the Opportunity run, then the Opportunity run.
+
+**Decided (owner, 2026-09-29): the Opportunity run follows the major CRMs, not §4.7's ban.**
+Salesforce (email activity with Who = contact and What = opportunity), Dynamics (email
+*Regarding* the opportunity, recipients as activity parties) and HubSpot (email associated
+with the deal, contact and company) all send from the deal. So:
+
+- The deal offers Email when at least one participant has a usable address (not opted out).
+- One such participant is prefilled. Several: To starts empty and the user picks from the
+  participants, with role labels. The primary contact is not silently prefilled.
+- Opted-out participants are listed but cannot be picked, and the reason is shown.
+- The send files the deal as `primary` and each chosen participant contact as `related`,
+  through the existing `upsert_association`, with no new storage. The server checks each chosen
+  contact is a participant in the tenant. A typed address that matches no participant files
+  against the deal only.
+- **Verify first:** that `_fetch_emails` in `record_activity.py` reads `related` associations,
+  not only the primary. If it doesn't, extend the adapter so the email reaches the contact's
+  Timeline.
+- design.md §4.7 is rewritten in that run: the test becomes "the message is filed against every
+  CRM record whose address it uses", replacing "does this record own the address". Quotes are
+  unchanged. Offering an account's contacts as recipients from the Account page is a separate
+  follow-up.
 
 ## Wave 3A — Contact run (2026-09-29)
 
@@ -32,10 +81,6 @@ Lead contract with a contact fixture and adds four cases: filed against the cont
 contact's activity only, another tenant's contact refused, `{{contact.*}}` rendered. Lint and
 build are clean. `contact-contextual-email.spec.ts` (new, 2), `lead-contextual-email.spec.ts`
 and `contact-organization-rollout.spec.ts` pass 12 of 12.
-
-**Next:** Wave 3A Organization run (same pattern; an Organization has no single address, so
-decide the recipient default deliberately), then the two Deferred rows due before the
-Opportunity run, then the Opportunity run with explicit participant recipients.
 
 ## Wave 2E — closed (2026-09-29)
 

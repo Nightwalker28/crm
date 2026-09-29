@@ -12,6 +12,7 @@ The contract under test:
   reads it rather than storing its own copy.
 """
 
+from datetime import datetime, timezone
 import unittest
 from unittest import mock
 
@@ -27,7 +28,7 @@ from app.modules.mail.services.mail_errors import MailSendError
 from app.modules.platform.models import MessageTemplate
 from app.modules.platform.services import record_activity
 from app.modules.platform.services.record_activity import list_record_activity
-from app.modules.sales.models import SalesContact, SalesLead
+from app.modules.sales.models import SalesContact, SalesLead, SalesOrganization
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Module, Role, Tenant, User, UserStatus
 
@@ -568,6 +569,70 @@ class ContactContextualSendTests(ContextualMailSendTests):
         with self._stub_delivery():
             message = self._send_from_contact(to=["grace@example.com"], subject="Hi {{contact.first_name}}", body_text="Dear {{contact.first_name}}")
         self.assertEqual(message.subject, "Hi Grace")
+
+
+ORG_ID = 400
+OTHER_TENANT_ORG_ID = 401
+DELETED_ORG_ID = 402
+
+
+class OrganizationContextualSendTests(ContextualMailSendTests):
+    """Wave 3A, Organization run: the same contract from an Account, through the same services.
+
+    The account's Email is prefilled with the account's own address only (design.md §4.7), so
+    what needs proving is that the generic send path files against the account and nowhere else.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.db.add_all(
+            [
+                Module(id=5, name="sales_organizations", base_route="sales_organizations", is_enabled=1),
+                SalesOrganization(org_id=ORG_ID, tenant_id=TENANT, org_name="Acme Corp", primary_email="hello@acme.example", industry="Robotics"),
+                SalesOrganization(org_id=OTHER_TENANT_ORG_ID, tenant_id=OTHER_TENANT, org_name="Rival Corp", primary_email="hello@rival.example"),
+                SalesOrganization(org_id=DELETED_ORG_ID, tenant_id=TENANT, org_name="Gone Corp", primary_email="hello@gone.example", deleted_at=datetime(2026, 9, 1, tzinfo=timezone.utc)),
+            ]
+        )
+        self.db.commit()
+
+    def _send_from_organization(self, **overrides):
+        return self._send(module_key="sales_organizations", entity_id=str(ORG_ID), **overrides)
+
+    def test_an_account_send_is_filed_against_the_account(self):
+        with self._stub_delivery():
+            message = self._send_from_organization(to=["hello@acme.example"])
+
+        [association] = self.db.query(MailRecordAssociation).all()
+        self.assertEqual((association.module_key, association.entity_id, association.association_type), ("sales_organizations", str(ORG_ID), "primary"))
+        self.assertEqual((message.source_module_key, message.source_entity_id), ("sales_organizations", str(ORG_ID)))
+
+    def test_an_account_send_reaches_the_accounts_activity_only(self):
+        with self._stub_delivery():
+            message = self._send_from_organization(to=["hello@acme.example"])
+
+        with mock.patch.object(record_activity, "PermissionPolicy", _AllowAllPolicy):
+            page = list_record_activity(self.db, user=self.user, module_key="sales_organizations", entity_id=ORG_ID, types="email")
+            lead_page = list_record_activity(self.db, user=self.user, module_key="sales_leads", entity_id=LEAD_ID, types="email")
+
+        self.assertEqual([item["source"]["record_id"] for item in page["items"]], [str(message.id)])
+        self.assertEqual(lead_page["items"], [])
+
+    def test_an_account_from_another_tenant_is_not_reachable(self):
+        with self._stub_delivery() as send_mock, self.assertRaises(MailSendError) as exc:
+            self._send(module_key="sales_organizations", entity_id=str(OTHER_TENANT_ORG_ID))
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        send_mock.assert_not_called()
+
+    def test_a_deleted_account_is_not_reachable(self):
+        with self._stub_delivery() as send_mock, self.assertRaises(MailSendError) as exc:
+            self._send(module_key="sales_organizations", entity_id=str(DELETED_ORG_ID))
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        send_mock.assert_not_called()
+
+    def test_account_template_variables_resolve_from_the_account(self):
+        with self._stub_delivery():
+            message = self._send_from_organization(to=["hello@acme.example"], subject="{{organization.name}} renewal", body_text="Dear {{organization.name}} team")
+        self.assertEqual(message.subject, "Acme Corp renewal")
 
 
 if __name__ == "__main__":

@@ -354,6 +354,14 @@ export default function OrganizationDetailPage() {
             <CommunicationActions
               email={org.primary_email}
               phone={fieldEnabled("primary_phone") ? org.primary_phone : null}
+              // Wave 3A: the contextual composer, prefilled with the account's own address
+              // only. Its contacts are emailed from their own records, so the conversation
+              // lands on the Timeline of the person it was with (design.md §4.7).
+              emailContext={{
+                moduleKey: "sales_organizations",
+                entityId: org.org_id,
+                recordLabel: accountName,
+              }}
             />
             {canEditOrganization ? (
               <Button asChild variant="outline">
