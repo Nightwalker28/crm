@@ -88,8 +88,23 @@ class SummaryHydrationTests(unittest.TestCase):
         hydrate_one.assert_not_called()
 
 
+class AllowEverythingPolicy:
+    def __init__(self, db=None, user=None):
+        pass
+
+    def can_view_module(self, module_key):
+        return True
+
+    def can_perform_action(self, module_key, action):
+        return True
+
+
 class SummaryRelatedQuoteTests(unittest.TestCase):
     def setUp(self):
+        policy_patch = patch.object(summary_services, "PermissionPolicy", AllowEverythingPolicy)
+        policy_patch.start()
+        self.addCleanup(policy_patch.stop)
+        self.reader = SimpleNamespace(id=1, tenant_id=10)
         engine = create_engine("sqlite:///:memory:")
         Base.metadata.create_all(engine)
         self.SessionLocal = sessionmaker(bind=engine)
@@ -199,7 +214,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
     def test_contact_summary_returns_active_tenant_quotes(self):
         contact = self.db.query(SalesContact).filter(SalesContact.contact_id == 30).one()
 
-        summary = summary_services.build_contact_summary(self.db, contact)
+        summary = summary_services.build_contact_summary(self.db, contact, current_user=self.reader)
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
         self.assertEqual(summary["quote_count"], 1)
@@ -207,7 +222,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
     def test_organization_summary_returns_active_tenant_quotes(self):
         organization = self.db.query(SalesOrganization).filter(SalesOrganization.org_id == 20).one()
 
-        summary = summary_services.build_organization_summary(self.db, organization)
+        summary = summary_services.build_organization_summary(self.db, organization, current_user=self.reader)
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
         self.assertEqual(summary["quote_count"], 1)
@@ -215,7 +230,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
     def test_organization_summary_returns_tenant_scoped_orders_and_active_invoices(self):
         organization = self.db.query(SalesOrganization).filter(SalesOrganization.org_id == 20).one()
 
-        summary = summary_services.build_organization_summary(self.db, organization)
+        summary = summary_services.build_organization_summary(self.db, organization, current_user=self.reader)
 
         self.assertEqual([order.id for order in summary["related_orders"]], [50])
         self.assertEqual([invoice.id for invoice in summary["related_invoices"]], [60])
@@ -228,7 +243,7 @@ class SummaryRelatedQuoteTests(unittest.TestCase):
     def test_opportunity_summary_returns_explicitly_linked_quotes(self):
         opportunity = self.db.query(SalesOpportunity).filter(SalesOpportunity.opportunity_id == 35).one()
 
-        summary = summary_services.build_opportunity_summary(self.db, opportunity, current_user=None)
+        summary = summary_services.build_opportunity_summary(self.db, opportunity, current_user=self.reader)
 
         self.assertEqual([quote.quote_id for quote in summary["related_quotes"]], [40])
 

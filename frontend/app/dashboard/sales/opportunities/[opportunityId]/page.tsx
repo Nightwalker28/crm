@@ -58,6 +58,7 @@ import {
   type ResolvedRecordLayout as ResolvedRecordLayoutContract,
 } from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
+import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -121,9 +122,12 @@ type OpportunitySummary = {
   organization?: { org_id: number; org_name: string } | null;
   participant_contacts: OpportunityParticipant[];
   can_view_contacts: boolean;
+  related_access?: RelatedRecordAccess;
   related_quotes: RelatedQuote[];
   related_insertion_orders: RelatedInsertionOrder[];
   inferred_services: string[];
+  /** Total linked quotes; `related_quotes` holds the most recent few. */
+  quote_count?: number;
   insertion_order_count: number;
 };
 
@@ -427,15 +431,17 @@ export default function OpportunityDetailPage() {
                 {canViewQuotes ? (
                   <RecordSpineCollection
                     label="Quotes"
-                    count={summary.related_quotes.length}
+                    count={summary.quote_count ?? summary.related_quotes.length}
                     href={relatedHref}
                   />
                 ) : null}
-                <RecordSpineCollection
-                  label="Insertion orders"
-                  count={summary.insertion_order_count}
-                  href={relatedHref}
-                />
+                {canViewRelated(summary.related_access, "insertion_orders") ? (
+                  <RecordSpineCollection
+                    label="Insertion orders"
+                    count={summary.insertion_order_count}
+                    href={relatedHref}
+                  />
+                ) : null}
               </RecordSpineBlock>
 
               {summary.inferred_services.length ? (
@@ -609,16 +615,18 @@ function RelatedRecords({
           ))}
         </RecordRelatedCard>
       ) : null}
-      <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
-        {summary.related_insertion_orders.map((order) => (
-          <RecordRelatedLink
-            key={order.id}
-            href={`/dashboard/finance/insertion-orders/${order.id}`}
-            title={order.io_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
-          />
-        ))}
-      </RecordRelatedCard>
+      {canViewRelated(summary.related_access, "insertion_orders") ? (
+        <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
+          {summary.related_insertion_orders.map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/finance/insertion-orders/${order.id}`}
+              title={order.io_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
     </RecordRelatedList>
   );
 }

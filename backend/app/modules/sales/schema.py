@@ -644,8 +644,29 @@ class RelatedOpportunitySummary(BaseModel):
     probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None
     currency_type: str | None = None
+    # Set only on a contact's related deals: the role that contact plays on the deal.
+    # `contact_role_key` is null when the contact is the legacy primary without a
+    # participant row.
+    contact_role_key: str | None = None
+    contact_role_label: str | None = None
+    is_primary_contact: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RelatedRecordAccess(BaseModel):
+    """Which related sections of a summary the reader may view.
+
+    False means the section is hidden by permission, so its list is empty and its
+    count is zero whatever exists. Sections a summary does not carry are omitted.
+    """
+
+    contacts: bool | None = None
+    opportunities: bool | None = None
+    quotes: bool | None = None
+    orders: bool | None = None
+    invoices: bool | None = None
+    insertion_orders: bool | None = None
 
 
 class QuoteSummaryResponse(BaseModel):
@@ -718,12 +739,17 @@ class OrganizationCompactSummary(BaseModel):
 class ContactSummaryResponse(BaseModel):
     contact: SalesContactResponse
     organization: OrganizationCompactSummary | None = None
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
+    # The contact's deals: as primary contact or as a participant, with its role.
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
+    related_orders: list[RelatedOrderSummary] = Field(default_factory=list)
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
+    # Counts are totals; the lists above hold the most recent few.
     opportunity_count: int
     quote_count: int
+    order_count: int = 0
     insertion_order_count: int
 
 
@@ -745,6 +771,7 @@ class FollowUpActionResponse(BaseModel):
 
 class OrganizationSummaryResponse(BaseModel):
     organization: SalesOrganizationResponse
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
     related_contacts: list[SalesContactResponse]
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
@@ -757,6 +784,7 @@ class OrganizationSummaryResponse(BaseModel):
     quote_count: int
     order_count: int
     invoice_count: int
+    # Counts are totals; the lists above hold the most recent few.
     insertion_order_count: int
 
 
@@ -1003,9 +1031,11 @@ class OpportunitySummaryResponse(BaseModel):
     # False when the reader may not view Contacts; the participant lists are then
     # empty because they are hidden, not because the deal has no participants.
     can_view_contacts: bool = True
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
     related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
+    quote_count: int = 0
     insertion_order_count: int
 
 

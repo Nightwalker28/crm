@@ -51,6 +51,7 @@ import {
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
 
 type RelatedOpportunity = {
   opportunity_id: number;
@@ -98,6 +99,7 @@ type ContactSummary = {
     primary_email?: string | null;
     website?: string | null;
   } | null;
+  related_access?: RelatedRecordAccess;
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
   inferred_services: string[];
@@ -393,11 +395,13 @@ export default function ContactDetailPage() {
                       href={`${recordHref}?tab=related`}
                     />
                   ) : null}
-                  <RecordSpineCollection
-                    label="Quotes"
-                    count={summary.quote_count}
-                    href={`${recordHref}?tab=related`}
-                  />
+                  {canViewRelated(summary.related_access, "quotes") ? (
+                    <RecordSpineCollection
+                      label="Quotes"
+                      count={summary.quote_count}
+                      href={`${recordHref}?tab=related`}
+                    />
+                  ) : null}
                 </RecordSpineBlock>
   
                 {summary.inferred_services.length ? (
@@ -624,30 +628,32 @@ function RelatedRecords({
           </div>
         </Card>
       ) : null}
-      <Card className="p-6">
-        <h2 className="text-base font-semibold text-copy-primary">Related quotes</h2>
-        <div className="mt-4 space-y-3">
-          {summary.related_quotes.length ? (
-            summary.related_quotes.map((quote) => (
-              <Link
-                key={quote.quote_id}
-                href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
-              >
-                <div className="text-sm font-semibold text-copy-primary">{quote.quote_number}</div>
-                <div className="mt-1 text-sm text-copy-muted">
-                  {quote.title || quote.customer_name} · {quote.status || "Unknown status"}
-                </div>
-                <div className="mt-2 text-sm text-copy-secondary">
-                  <Money amount={quote.total_amount} currency={quote.currency} />
-                </div>
-              </Link>
-            ))
-          ) : (
-            <p className="text-sm text-copy-muted">No related quotes yet.</p>
-          )}
-        </div>
-      </Card>
+      {canViewRelated(summary.related_access, "quotes") ? (
+        <Card className="p-6">
+          <h2 className="text-base font-semibold text-copy-primary">Related quotes</h2>
+          <div className="mt-4 space-y-3">
+            {summary.related_quotes.length ? (
+              summary.related_quotes.map((quote) => (
+                <Link
+                  key={quote.quote_id}
+                  href={`/dashboard/sales/quotes/${quote.quote_id}`}
+                  className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
+                >
+                  <div className="text-sm font-semibold text-copy-primary">{quote.quote_number}</div>
+                  <div className="mt-1 text-sm text-copy-muted">
+                    {quote.title || quote.customer_name} · {quote.status || "Unknown status"}
+                  </div>
+                  <div className="mt-2 text-sm text-copy-secondary">
+                    <Money amount={quote.total_amount} currency={quote.currency} />
+                  </div>
+                </Link>
+              ))
+            ) : (
+              <p className="text-sm text-copy-muted">No related quotes yet.</p>
+            )}
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }

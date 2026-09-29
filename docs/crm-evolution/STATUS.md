@@ -14,8 +14,52 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Contact and Organization runs done; 05 backend Phase 3 (downstream propagation) done; Opportunity run left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity` |
+| **3A** | **Contact and Organization runs done; 05 backend Phases 3–4 done; 05 frontend Phase 4 (relationship rail), then the Opportunity run, left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity`; `related_access` on the summaries |
 | 3B onward | Not started | |
+
+## Wave 3A prerequisite — 05 backend Phase 4: relationship summaries (2026-09-29)
+
+No new endpoint (01 §7: prefer the existing summaries). The Contact, Account and Deal
+summaries (`summary_services.build_*_summary`) already carried related records, with four gaps:
+
+1. **Leak.** They returned related deals, quotes, orders, invoices, insertion orders and (on an
+   account) contacts whatever the reader's permissions. The pages hid some, but the API response
+   carried everything. Now each section is checked with `related_access` (module availability
+   plus the role `view` action, the `require_linked_record_access` bar) and a hidden section is
+   **not queried**: empty list, zero count, `related_access.<section> = false`. No reader means
+   nothing related. `_can_view_contacts` on the deal summary now goes through the same helper,
+   and the deal's quotes and insertion orders are gated too.
+2. **Counts were list lengths** (capped at 8–12). They are now true totals (`count()` on the same
+   query); the lists stay the most recent few. The deal summary gains `quote_count`.
+3. **A contact's deals** were only those with it as legacy primary. They now include deals it is an
+   active participant on (removed links, deleted deals and other tenants' deals excluded, a
+   corrupt cross-tenant link row matches nothing), each with `contact_role_key`,
+   `contact_role_label` and `is_primary_contact`.
+4. **A contact had no orders.** `related_orders` / `order_count` added, matched by the same rule
+   as its quotes (its account or itself), so a quote and its converted order appear together.
+
+All response changes are additive (`related_access`, the role fields, `related_orders`,
+`order_count`, `quote_count` have defaults). The pages read `related_access` through
+`lib/related-access.ts` (`canViewRelated`) so a hidden Quotes/Orders/Invoices/Insertion orders
+section is left out of the spine and the Related tab instead of showing "0". The deal spine's
+Quotes count uses `quote_count`. That is the whole frontend change. Roles on a contact's deals,
+a contact's orders and contextual create are for frontend Phase 4.
+
+Verification: new `test_relationship_summaries.py` (14, including route tests that the API
+response itself is filtered), and `test_summary_services.py` updated to pass a reader. 25 of 25.
+`verify_openapi` passes (362 paths). Backend suite 1187 tests: only the four known Redis
+rate-limit tests fail, and none of their modules was touched. Frontend lint and build are clean;
+`check-design.sh` passes 21 of 21. No browser run in this slice; the frontend Phase 4 run owns
+the rendered pass.
+
+Not done (for frontend Phase 4, or noted): task and document **counts** in the summaries. The
+Tasks and Files tabs already load through their own permission-gated endpoints, so they are
+not duplicated here. The contact/deal's own `organization` / `contact` compact fields are the
+record's own link and are not gated, as before.
+
+**Next:** 05 frontend Phase 4, the relationship rail on Contact and Account: a contact's deals
+with its role, its orders, "hidden" vs "none", contextual create where permitted, and a browser
+pass. Then the Opportunity run.
 
 ## Wave 3A prerequisite — 05 backend Phase 3: relationship context downstream (2026-09-29)
 
@@ -438,7 +482,7 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Item | Why it waits | Build it when |
 |---|---|---|
 | Contextual email recipient selection from deal participants (05 frontend Phase 3) | Needs the Opportunity email rollout to consume it | **Wave 3A, Opportunity run** — explicit candidates, deliberate selection when more than one |
-| Broader relationship rail on Contact/Account: related deals, quotes, orders, tasks, documents with permission-aware counts (05 frontend Phase 4) | Depends on relationship summaries (05 backend Phase 4), which is unbuilt | After 2E, as its own slice, backend Phase 4 first |
+| Broader relationship rail on Contact/Account: related deals (with role), quotes, orders, tasks, documents with permission-aware counts (05 frontend Phase 4) | Backend Phase 4 landed 2026-09-29 (`related_access`, true counts, participant deals) | **Next run**, before 3A's Opportunity run |
 | A view of removed participants (`/participants/recycle` has no UI) | Undo covers the immediate case | When an operator needs to restore a participant after the Undo toast is gone, or with a shared record-level recycle view |
 | Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`) | Filed by rebuild 5.3 as its own slice | A standalone slice; not tied to a wave |
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |

@@ -37,6 +37,7 @@ import {
   RecordSpineField,
   RecordSpineMeta,
 } from "@/components/ui/RecordSpine";
+import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { useOpportunityStageLabel } from "@/hooks/sales/useOpportunityPipeline";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -132,6 +133,7 @@ type OrganizationSummary = {
     created_time?: string | null;
     updated_at?: string | null;
   };
+  related_access?: RelatedRecordAccess;
   related_contacts: RelatedContact[];
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
@@ -427,26 +429,34 @@ export default function OrganizationDetailPage() {
                       href={relatedHref}
                     />
                   ) : null}
-                  <RecordSpineCollection
-                    label="Quotes"
-                    count={summary.quote_count}
-                    href={relatedHref}
-                  />
-                  <RecordSpineCollection
-                    label="Orders"
-                    count={summary.order_count}
-                    href={relatedHref}
-                  />
-                  <RecordSpineCollection
-                    label="Invoices"
-                    count={summary.invoice_count}
-                    href={relatedHref}
-                  />
-                  <RecordSpineCollection
-                    label="Insertion orders"
-                    count={summary.insertion_order_count}
-                    href={relatedHref}
-                  />
+                  {canViewRelated(summary.related_access, "quotes") ? (
+                    <RecordSpineCollection
+                      label="Quotes"
+                      count={summary.quote_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "orders") ? (
+                    <RecordSpineCollection
+                      label="Orders"
+                      count={summary.order_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "invoices") ? (
+                    <RecordSpineCollection
+                      label="Invoices"
+                      count={summary.invoice_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "insertion_orders") ? (
+                    <RecordSpineCollection
+                      label="Insertion orders"
+                      count={summary.insertion_order_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
                 </RecordSpineBlock>
 
                 {summary.inferred_services.length ? (
@@ -692,46 +702,54 @@ function RelatedRecords({
           ))}
         </RecordRelatedCard>
       ) : null}
-      <RecordRelatedCard title="Quotes" empty="No related quotes yet.">
-        {summary.related_quotes.map((quote) => (
-          <RecordRelatedLink
-            key={quote.quote_id}
-            href={`/dashboard/sales/quotes/${quote.quote_id}`}
-            title={quote.quote_number}
-            detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
-          />
-        ))}
-      </RecordRelatedCard>
-      <RecordRelatedCard title="Orders" empty="No related orders yet.">
-        {summary.related_orders.map((order) => (
-          <RecordRelatedLink
-            key={order.id}
-            href={`/dashboard/sales/orders/${order.id}`}
-            title={order.order_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
-          />
-        ))}
-      </RecordRelatedCard>
-      <RecordRelatedCard title="Invoices" empty="No related invoices yet.">
-        {summary.related_invoices.map((invoice) => (
-          <RecordRelatedLink
-            key={invoice.id}
-            href={`/dashboard/finance/pos/${invoice.id}`}
-            title={invoice.invoice_number}
-            detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
-          />
-        ))}
-      </RecordRelatedCard>
-      <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
-        {summary.related_insertion_orders.map((order) => (
-          <RecordRelatedLink
-            key={order.id}
-            href={`/dashboard/finance/insertion-orders/${order.id}`}
-            title={order.io_number}
-            detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
-          />
-        ))}
-      </RecordRelatedCard>
+      {canViewRelated(summary.related_access, "quotes") ? (
+        <RecordRelatedCard title="Quotes" empty="No related quotes yet.">
+          {summary.related_quotes.map((quote) => (
+            <RecordRelatedLink
+              key={quote.quote_id}
+              href={`/dashboard/sales/quotes/${quote.quote_id}`}
+              title={quote.quote_number}
+              detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "orders") ? (
+        <RecordRelatedCard title="Orders" empty="No related orders yet.">
+          {summary.related_orders.map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/sales/orders/${order.id}`}
+              title={order.order_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "invoices") ? (
+        <RecordRelatedCard title="Invoices" empty="No related invoices yet.">
+          {summary.related_invoices.map((invoice) => (
+            <RecordRelatedLink
+              key={invoice.id}
+              href={`/dashboard/finance/pos/${invoice.id}`}
+              title={invoice.invoice_number}
+              detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "insertion_orders") ? (
+        <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
+          {summary.related_insertion_orders.map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/finance/insertion-orders/${order.id}`}
+              title={order.io_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
     </RecordRelatedList>
   );
 }

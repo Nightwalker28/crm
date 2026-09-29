@@ -529,7 +529,7 @@ def get_contact_summary(
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
-    return build_contact_summary(db, contact)
+    return build_contact_summary(db, contact, current_user=current_user)
 
 
 @router.post("/{contact_id}/follow-up", response_model=FollowUpActionResponse)
