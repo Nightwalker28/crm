@@ -56,7 +56,7 @@ import {
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 
 type RelatedContact = {
@@ -231,6 +231,10 @@ export default function OrganizationDetailPage() {
   const recordHref = `/dashboard/sales/organizations/${params.orgId}`;
   const editHref = useRecordTabHref(`${recordHref}/edit`);
   const relatedHref = `${recordHref}?tab=related`;
+  // The server's `related_access` is the truth for what the summary carries; the module
+  // list is kept as well so a stale summary never outruns a revoked role.
+  const showContacts = canViewContacts && canViewRelated(summary?.related_access, "contacts");
+  const showDeals = canViewOpportunities && canViewRelated(summary?.related_access, "opportunities");
 
   /** The account's one state field. Optimistic, and rolled back if the write fails (R1). */
   async function updateCustomerGroup(next: string) {
@@ -415,14 +419,14 @@ export default function OrganizationDetailPage() {
                 </RecordSpineBlock>
 
                 <RecordSpineBlock title="Connected">
-                  {canViewContacts ? (
+                  {showContacts ? (
                     <RecordSpineCollection
                       label="Contacts"
                       count={summary.contact_count}
                       href={relatedHref}
                     />
                   ) : null}
-                  {canViewOpportunities ? (
+                  {showDeals ? (
                     <RecordSpineCollection
                       label="Deals"
                       count={summary.opportunity_count}
@@ -526,8 +530,8 @@ export default function OrganizationDetailPage() {
             content: (
               <RelatedRecords
                 summary={summary}
-                canViewContacts={canViewContacts}
-                canViewOpportunities={canViewOpportunities}
+                showContacts={showContacts}
+                showDeals={showDeals}
                 canCreateContact={canCreateContactHere}
                 canCreateOpportunity={canCreateOpportunityHere}
                 onCreateContact={() => setContactQuickCreateOpen(true)}
@@ -631,31 +635,32 @@ function AccountOverview({
 
 function RelatedRecords({
   summary,
-  canViewContacts,
-  canViewOpportunities,
+  showContacts,
+  showDeals,
   canCreateContact,
   canCreateOpportunity,
   onCreateContact,
   onCreateOpportunity,
 }: {
   summary: OrganizationSummary;
-  canViewContacts: boolean;
-  canViewOpportunities: boolean;
+  showContacts: boolean;
+  showDeals: boolean;
   canCreateContact: boolean;
   canCreateOpportunity: boolean;
   onCreateContact: () => void;
   onCreateOpportunity: () => void;
 }) {
-  const stageLabel = useOpportunityStageLabel(canViewOpportunities);
+  const stageLabel = useOpportunityStageLabel(showDeals);
   return (
     <RecordRelatedList>
-      {canViewContacts ? (
+      {showContacts ? (
         <RecordRelatedCard
           title="Contacts"
+          total={summary.contact_count}
           empty={
             canCreateContact
-              ? "No contacts linked yet. Add the first one — this account is filled in for you."
-              : "No contacts linked yet."
+              ? "No contacts at this account yet. Add the first one — the account is filled in for you."
+              : "No contacts at this account yet."
           }
           action={
             canCreateContact ? (
@@ -679,10 +684,15 @@ function RelatedRecords({
           ))}
         </RecordRelatedCard>
       ) : null}
-      {canViewOpportunities ? (
+      {showDeals ? (
         <RecordRelatedCard
           title="Deals"
-          empty="No related deals yet."
+          total={summary.opportunity_count}
+          empty={
+            canCreateOpportunity
+              ? "No deals with this account yet. Add the first one — the account is filled in for you."
+              : "No deals with this account yet."
+          }
           action={
             canCreateOpportunity ? (
               <Button type="button" size="sm" variant="outline" onClick={onCreateOpportunity}>
@@ -697,13 +707,13 @@ function RelatedRecords({
               key={deal.opportunity_id}
               href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
               title={deal.opportunity_name}
-              detail={`${stageLabel(deal.sales_stage)}${deal.expected_close_date ? ` · closes ${deal.expected_close_date}` : ""}`}
+              detail={`${stageLabel(deal.sales_stage)}${deal.expected_close_date ? ` · closes ${formatDateOnly(deal.expected_close_date)}` : ""}`}
             />
           ))}
         </RecordRelatedCard>
       ) : null}
       {canViewRelated(summary.related_access, "quotes") ? (
-        <RecordRelatedCard title="Quotes" empty="No related quotes yet.">
+        <RecordRelatedCard title="Quotes" total={summary.quote_count} empty="No quotes for this account yet.">
           {summary.related_quotes.map((quote) => (
             <RecordRelatedLink
               key={quote.quote_id}
@@ -715,7 +725,7 @@ function RelatedRecords({
         </RecordRelatedCard>
       ) : null}
       {canViewRelated(summary.related_access, "orders") ? (
-        <RecordRelatedCard title="Orders" empty="No related orders yet.">
+        <RecordRelatedCard title="Orders" total={summary.order_count} empty="No orders for this account yet.">
           {summary.related_orders.map((order) => (
             <RecordRelatedLink
               key={order.id}
@@ -727,7 +737,7 @@ function RelatedRecords({
         </RecordRelatedCard>
       ) : null}
       {canViewRelated(summary.related_access, "invoices") ? (
-        <RecordRelatedCard title="Invoices" empty="No related invoices yet.">
+        <RecordRelatedCard title="Invoices" total={summary.invoice_count} empty="No invoices for this account yet.">
           {summary.related_invoices.map((invoice) => (
             <RecordRelatedLink
               key={invoice.id}
@@ -739,7 +749,11 @@ function RelatedRecords({
         </RecordRelatedCard>
       ) : null}
       {canViewRelated(summary.related_access, "insertion_orders") ? (
-        <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
+        <RecordRelatedCard
+          title="Insertion orders"
+          total={summary.insertion_order_count}
+          empty="No insertion orders for this account yet."
+        >
           {summary.related_insertion_orders.map((order) => (
             <RecordRelatedLink
               key={order.id}

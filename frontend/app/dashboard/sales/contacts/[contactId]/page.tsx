@@ -14,6 +14,11 @@ import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
 import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import {
+  RecordRelatedCard,
+  RecordRelatedLink,
+  RecordRelatedList,
+} from "@/components/recordWorkspace/RecordRelatedList";
 import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
 import {
   RecordWorkspace,
@@ -23,7 +28,6 @@ import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
-import { Money } from "@/components/ui/Money";
 import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
   RecordSpine,
@@ -50,7 +54,9 @@ import {
   type CustomerGroup,
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
 
 type RelatedOpportunity = {
@@ -60,6 +66,23 @@ type RelatedOpportunity = {
   expected_close_date?: string | null;
   total_cost_of_project?: string | null;
   currency_type?: string | null;
+  /** The role this contact plays on the deal; null for a legacy primary with no role. */
+  contact_role_label?: string | null;
+  is_primary_contact?: boolean | null;
+};
+type RelatedOrder = {
+  id: number;
+  order_number: string;
+  status: string;
+  currency: string;
+  grand_total: number | string;
+};
+type RelatedInsertionOrder = {
+  id: number;
+  io_number: string;
+  status?: string | null;
+  total_amount?: number | null;
+  currency?: string | null;
 };
 type RelatedQuote = {
   quote_id: number;
@@ -102,9 +125,14 @@ type ContactSummary = {
   related_access?: RelatedRecordAccess;
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
+  related_orders?: RelatedOrder[];
+  related_insertion_orders?: RelatedInsertionOrder[];
   inferred_services: string[];
+  // Totals; the lists above hold the most recent few.
   opportunity_count: number;
   quote_count: number;
+  order_count?: number;
+  insertion_order_count?: number;
 };
 
 /**
@@ -191,6 +219,7 @@ export default function ContactDetailPage() {
     : "Contact";
   const recordHref = `/dashboard/sales/contacts/${params.contactId}`;
   const editHref = useRecordTabHref(`${recordHref}/edit`);
+  const relatedHref = `${recordHref}?tab=related`;
 
   /**
    * The one state field a contact has. Same shape as the lead's status commit: optimistic,
@@ -388,18 +417,32 @@ export default function ContactDetailPage() {
                       }
                     />
                   ) : null}
-                  {canViewOpportunities ? (
+                  {canViewOpportunities && canViewRelated(summary.related_access, "opportunities") ? (
                     <RecordSpineCollection
                       label="Deals"
                       count={summary.opportunity_count}
-                      href={`${recordHref}?tab=related`}
+                      href={relatedHref}
                     />
                   ) : null}
                   {canViewRelated(summary.related_access, "quotes") ? (
                     <RecordSpineCollection
                       label="Quotes"
                       count={summary.quote_count}
-                      href={`${recordHref}?tab=related`}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "orders") ? (
+                    <RecordSpineCollection
+                      label="Orders"
+                      count={summary.order_count ?? 0}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "insertion_orders") ? (
+                    <RecordSpineCollection
+                      label="Insertion orders"
+                      count={summary.insertion_order_count ?? 0}
+                      href={relatedHref}
                     />
                   ) : null}
                 </RecordSpineBlock>
@@ -593,68 +636,86 @@ function RelatedRecords({
   canCreateOpportunity: boolean;
   onCreateOpportunity: () => void;
 }) {
-  const stageLabel = useOpportunityStageLabel(canViewOpportunities);
+  const showDeals = canViewOpportunities && canViewRelated(summary.related_access, "opportunities");
+  const stageLabel = useOpportunityStageLabel(showDeals);
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      {canViewOpportunities ? (
-        <Card className="p-6">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="text-base font-semibold text-copy-primary">Related deals</h2>
-            {canCreateOpportunity ? (
+    <RecordRelatedList>
+      {showDeals ? (
+        <RecordRelatedCard
+          title="Deals"
+          total={summary.opportunity_count}
+          empty={
+            canCreateOpportunity
+              ? "This contact is on no deals yet. Add the first one — the contact is filled in for you."
+              : "This contact is on no deals yet."
+          }
+          action={
+            canCreateOpportunity ? (
               <Button type="button" size="sm" variant="outline" onClick={onCreateOpportunity}>
                 <Plus />
                 Deal
               </Button>
-            ) : null}
-          </div>
-          <div className="mt-4 space-y-3">
-            {summary.related_opportunities.length ? (
-              summary.related_opportunities.map((opportunity) => (
-                <Link
-                  key={opportunity.opportunity_id}
-                  href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`}
-                  className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
-                >
-                  <div className="text-sm font-semibold text-copy-primary">{opportunity.opportunity_name}</div>
-                  <div className="mt-1 text-sm text-copy-muted">
-                    {stageLabel(opportunity.sales_stage)}
-                    {opportunity.expected_close_date ? ` · closes ${opportunity.expected_close_date}` : ""}
-                  </div>
-                </Link>
-              ))
-            ) : (
-              <p className="text-sm text-copy-muted">No related deals yet.</p>
-            )}
-          </div>
-        </Card>
+            ) : null
+          }
+        >
+          {summary.related_opportunities.map((deal) => (
+            <RecordRelatedLink
+              key={deal.opportunity_id}
+              href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
+              title={deal.opportunity_name}
+              // The contact's part in the deal comes first: it is what this page adds that
+              // the deal list does not. Same wording as the deal's own participant list.
+              detail={[
+                deal.contact_role_label,
+                deal.is_primary_contact ? "Primary contact" : null,
+                stageLabel(deal.sales_stage),
+                deal.expected_close_date ? `closes ${formatDateOnly(deal.expected_close_date)}` : null,
+              ].filter(Boolean).join(" · ")}
+            />
+          ))}
+        </RecordRelatedCard>
       ) : null}
       {canViewRelated(summary.related_access, "quotes") ? (
-        <Card className="p-6">
-          <h2 className="text-base font-semibold text-copy-primary">Related quotes</h2>
-          <div className="mt-4 space-y-3">
-            {summary.related_quotes.length ? (
-              summary.related_quotes.map((quote) => (
-                <Link
-                  key={quote.quote_id}
-                  href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                  className="block rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-muted"
-                >
-                  <div className="text-sm font-semibold text-copy-primary">{quote.quote_number}</div>
-                  <div className="mt-1 text-sm text-copy-muted">
-                    {quote.title || quote.customer_name} · {quote.status || "Unknown status"}
-                  </div>
-                  <div className="mt-2 text-sm text-copy-secondary">
-                    <Money amount={quote.total_amount} currency={quote.currency} />
-                  </div>
-                </Link>
-              ))
-            ) : (
-              <p className="text-sm text-copy-muted">No related quotes yet.</p>
-            )}
-          </div>
-        </Card>
+        <RecordRelatedCard title="Quotes" total={summary.quote_count} empty="No quotes for this contact yet.">
+          {summary.related_quotes.map((quote) => (
+            <RecordRelatedLink
+              key={quote.quote_id}
+              href={`/dashboard/sales/quotes/${quote.quote_id}`}
+              title={quote.quote_number}
+              detail={`${quote.title || quote.customer_name} · ${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
       ) : null}
-    </div>
+      {canViewRelated(summary.related_access, "orders") ? (
+        <RecordRelatedCard title="Orders" total={summary.order_count} empty="No orders for this contact yet.">
+          {(summary.related_orders ?? []).map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/sales/orders/${order.id}`}
+              title={order.order_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "insertion_orders") ? (
+        <RecordRelatedCard
+          title="Insertion orders"
+          total={summary.insertion_order_count}
+          empty="No insertion orders for this contact yet."
+        >
+          {(summary.related_insertion_orders ?? []).map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/finance/insertion-orders/${order.id}`}
+              title={order.io_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+    </RecordRelatedList>
   );
 }
 

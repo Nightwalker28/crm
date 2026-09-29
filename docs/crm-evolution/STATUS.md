@@ -14,8 +14,49 @@ Last updated 2026-09-29.
 | 2B–2C | Done | `sales_opportunity_contacts`, `opportunity_participants_routes.py` |
 | 2D | Done | Opportunity Quick Create (rebuild 5.4 A3); participant display and management |
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
-| **3A** | **Contact and Organization runs done; 05 backend Phases 3–4 done; 05 frontend Phase 4 (relationship rail), then the Opportunity run, left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity`; `related_access` on the summaries |
+| **3A** | **Contact and Organization runs done; 05 backend Phases 3–4 and frontend Phase 4 done; the Opportunity run left — see below** | `emailContext` on the Contact and Account pages; `ensure_contact_on_opportunity`; `related_access` on the summaries; `relationship-rail.spec.ts` |
 | 3B onward | Not started | |
+
+## Wave 3A prerequisite — 05 frontend Phase 4: relationship rail on Contact and Account (2026-09-29)
+
+The Contact and Account pages already had a spine **Connected** block and a **Related records**
+tab. This phase finishes them against the filtered summaries from backend Phase 4.
+
+- **A contact's deals carry its role.** Each row reads `Decision maker · Primary contact ·
+  Proposal · closes Oct 1, 2026`: the role first, because it is what this page adds over the
+  deal list, in the same words as the deal's own participant list.
+- **A contact has Orders and Insertion orders** in the spine and the tab (the summary already
+  carried both). The Contact page's hand-built cards were replaced by the shared
+  `RecordRelatedList` the Account and Deal pages use.
+- **Hidden vs none.** A section the reader may not view is **left out everywhere**: no card, no
+  spine row, not even a zero. The page cannot tell "your role can't view quotes" from "quotes
+  aren't enabled here" (`/users/me/modules` lists only role-visible modules), and Salesforce,
+  HubSpot and Dynamics all omit inaccessible related lists silently, so a "hidden" notice was not
+  added. "None" is a real empty state in the module's own words, and it offers the create
+  action where one is allowed. Every section now follows `related_access`, including Deals and
+  (on an account) Contacts, which used the module list only. The module list is still checked
+  too, so a stale summary can't show a section after the role is revoked.
+- **True totals.** `RecordRelatedCard` takes `total`. When the summary's count is higher than the
+  rows it sends, the card says "Showing the 8 most recent of 12."
+- **Contextual create:** Deal from a Contact; Contact and Deal from an Account (existing Quick
+  Creates, now offered in the empty states as well). **Quote and Order creation stays on the Deal
+  and the Quote**, following the major CRMs (Salesforce and HubSpot create quotes only from the
+  opportunity; Lynk orders come from converting a quote). Tasks and Files keep the create
+  actions their own tabs already had.
+- Close dates are rendered through `formatDateOnly` (they were raw ISO).
+
+Verification: lint and build are clean; `check-design.sh` passes 21 of 21.
+`relationship-rail.spec.ts` (new, 4: role and primary on a contact's deals, true total on
+orders, hidden sections absent from spine and tab, empty state with and without the create
+right, account following `related_access`) passes 4 of 4. Browser pass: both pages screenshotted
+in both themes (the body background changed from `rgb(11, 13, 16)` to `rgb(247, 248, 250)`, so both
+themes were actually shown), plus one live contact against the real API (`Other · Primary contact · Lead
+· closes Sep 14, 2026`; spine `Deals 1 ; Quotes 0 ; Orders 0 ; Insertion orders 1`). The page specs
+`contact-contextual-email`, `organization-contextual-email`, `contact-organization-rollout`,
+`accounts-revamp` and `contacts-revamp` pass 16 of 18 first time. `accounts-revamp` "shared
+workflow" timed out once on the cold compile and passes 2 of 2 re-run. `contacts-revamp` "shared
+workflow" fails on the **edit** form's Email field being empty, and fails the same way with this
+change stashed (added to Deferred). Rendered design guards: run at the Wave 3A close.
 
 ## Wave 3A prerequisite — 05 backend Phase 4: relationship summaries (2026-09-29)
 
@@ -57,9 +98,7 @@ Tasks and Files tabs already load through their own permission-gated endpoints, 
 not duplicated here. The contact/deal's own `organization` / `contact` compact fields are the
 record's own link and are not gated, as before.
 
-**Next:** 05 frontend Phase 4, the relationship rail on Contact and Account: a contact's deals
-with its role, its orders, "hidden" vs "none", contextual create where permitted, and a browser
-pass. Then the Opportunity run.
+**Next:** 05 frontend Phase 4 (done, above), then the Opportunity run.
 
 ## Wave 3A prerequisite — 05 backend Phase 3: relationship context downstream (2026-09-29)
 
@@ -482,7 +521,6 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Item | Why it waits | Build it when |
 |---|---|---|
 | Contextual email recipient selection from deal participants (05 frontend Phase 3) | Needs the Opportunity email rollout to consume it | **Wave 3A, Opportunity run** — explicit candidates, deliberate selection when more than one |
-| Broader relationship rail on Contact/Account: related deals (with role), quotes, orders, tasks, documents with permission-aware counts (05 frontend Phase 4) | Backend Phase 4 landed 2026-09-29 (`related_access`, true counts, participant deals) | **Next run**, before 3A's Opportunity run |
 | A view of removed participants (`/participants/recycle` has no UI) | Undo covers the immediate case | When an operator needs to restore a participant after the Undo toast is gone, or with a shared record-level recycle view |
 | Catalog ↔ quote/order line items (`catalog_product_id` / `catalog_service_id`) | Filed by rebuild 5.3 as its own slice | A standalone slice; not tied to a wave |
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
@@ -491,4 +529,5 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Automation *Stage* condition options are the six seeded keys (`automation_registry.py`), so a tenant-added stage cannot be picked there | The registry is static per module; making one field's options tenant-dynamic is a registry contract change | When automation conditions gain tenant-resolved options; until then *Stage outcome* (semantic type) covers "a deal was won/lost" |
 | Tenant restore of pipeline configuration and stage ids | Backups export pipelines, stages and each deal's stage ids; restore reads no sales files yet | When tenant restore gains sales-module restore: stage ids must be remapped, not copied |
 | Partial quote/order update that sends only `contact_id` is not checked against the record's stored deal | Predates 05 Phase 3; `_ensure_linked_records` validates only submitted fields | When quote/order updates are next touched: validate against the effective (submitted or stored) deal |
-| Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | With 05 frontend Phase 4 (relationship rail), or when the picker gains a participant filter |
+| Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | When the quote form is next touched, or the picker gains a participant filter (the rail did not touch the quote form) |
+| `contacts-revamp.spec.ts` "shared workflow" fails: the Contact **edit** form's Email field is empty (inherited, reproduces with 05 frontend Phase 4 stashed) | Not caused by the rail; unread beyond attribution | The next slice that touches the Contact edit form |

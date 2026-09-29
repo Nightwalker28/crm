@@ -21,19 +21,30 @@ export function RecordRelatedList({ children }: { children: ReactNode }) {
   return <div className="grid gap-4 lg:grid-cols-2">{children}</div>;
 }
 
+/**
+ * One related module. A section the reader may not view is not drawn at all (the page
+ * leaves it out), so an empty card always means "none", never "hidden" — the same rule
+ * Salesforce, HubSpot and Dynamics follow for related lists (05 frontend Phase 4).
+ */
 export function RecordRelatedCard({
   title,
   empty,
   action,
+  total,
   children,
 }: {
   title: string;
   /** What "none" means for *this* relationship, in the module's own words (§7.4). */
   empty: string;
   action?: ReactNode;
+  /**
+   * The true count, when the rows are only the most recent few. A summary caps its lists but
+   * counts every record, so without this a card of eight reads as "eight".
+   */
+  total?: number;
   children: ReactNode;
 }) {
-  const items = Array.isArray(children) ? children : [children];
+  const items = (Array.isArray(children) ? children : [children]).filter(Boolean);
   return (
     <Card className="p-6">
       <div className="flex items-start justify-between gap-3">
@@ -41,8 +52,13 @@ export function RecordRelatedCard({
         {action}
       </div>
       <div className="mt-4 space-y-3">
-        {items.length && items.some(Boolean) ? children : <p className="text-sm text-copy-muted">{empty}</p>}
+        {items.length ? children : <p className="text-p-sm text-copy-muted">{empty}</p>}
       </div>
+      {items.length && total !== undefined && total > items.length ? (
+        <p className="mt-3 text-p-xs text-copy-muted">
+          Showing the {items.length} most recent of <span className="tabular-nums">{total}</span>.
+        </p>
+      ) : null}
     </Card>
   );
 }
