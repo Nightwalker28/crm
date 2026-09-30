@@ -32,6 +32,7 @@ export type ActivityItem = {
 export const RECORD_ACTIVITY_TYPES = [
   // Kept in the order the backend registers its adapters.
   "case_reply",
+  "call",
   "email",
   "follow_up",
   "meeting",

@@ -285,6 +285,9 @@ test("record-search failures stay recoverable without exposing backend details",
 });
 
 test("routes administrator actions to their addressable create workflows", async ({ page }) => {
+  // Four round trips through the full dashboard, each loading every widget: about 8s apiece
+  // against the capped local stack, so the default 30s budget is too tight for the loop.
+  test.setTimeout(60_000);
   const workflows = [
     { label: "Create user", path: "/dashboard/settings/users?action=create-user" },
     { label: "Create team", path: "/dashboard/settings/teams?action=create-team" },
@@ -454,7 +457,8 @@ test("hides payment recording without invoice edit permission", async ({ page })
   );
   await page.evaluate(() => window.sessionStorage.clear());
   await page.reload();
-  await page.keyboard.press("Control+K");
+  // Not Control+K: straight after a reload it can land before the listener attaches.
+  await page.getByRole("button", { name: "Open command palette" }).filter({ visible: true }).click();
 
   await expect(page.getByText("Create invoice", { exact: true })).toBeVisible();
   await expect(page.getByText("Record payment", { exact: true })).toBeHidden();

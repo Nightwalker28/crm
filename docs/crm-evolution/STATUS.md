@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-09-30.
+Last updated 2026-10-01.
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -16,7 +16,202 @@ Last updated 2026-09-30.
 | 2E | Done | Configurable pipelines: `sales_pipelines`, stage references, semantic business logic, stage pickers, settings page with add/reorder, board audit, saved-view display. See below | `sales_pipelines`, `pipelines_services.py`, `GET /sales/opportunities/pipeline`, `sales_opportunities.pipeline_stage_id`, `useOpportunityPipeline`, `OpportunityStageSelect`; inventory in `04a-stage-inventory.md` |
 | 3A | Done (closed 2026-09-29): Lead, Contact, Organization and Opportunity runs; 05 backend Phases 3–4, frontend Phases 3–4. See below | `RecordEmailComposer` recipient candidates; `related_contact_ids` on `POST /mail/records/{module}/{id}/send`; `related_access` on the summaries |
 | 3B | Done (2026-09-30): 06 Phase 1, external-mode contract. See below | `GET /whatsapp/capabilities`, `resolve_whatsapp_capabilities`, `lib/whatsapp.ts`, `useWhatsAppCapabilities`; `test_whatsapp_external_mode.py`, `whatsapp-external-mode.spec.ts` |
-| **3C onward** | **Not started — next is 3C** | |
+| 3C | Done (2026-09-30): 07 Phase 1, `tel:` fallback and manual call logs. See below | `call_logs`, `POST /telephony/records/{module}/{id}/calls`, the `call` Activity adapter, `lib/calls.ts`, the composer's `CallMode`; `test_call_logs.py`, `call-logs.spec.ts` |
+| 3D | Not started: needs an explicit provider request (README Wave 3 item 17) | |
+| 4A | Phase 1 done (2026-10-01): 08 event inventory and external contract. **Awaiting the owner's approval of the contract before Phase 2.** See below | `08a-webhook-event-contract.md`, `webhook_events.py`, `crm_events.public_id`, `GET /admin/webhooks/event-types`; `test_webhook_event_contract.py` |
+| **4A Phase 2 onward** | **Not started. Next: 08 Phase 2 (subscriptions), once 08a is approved** | |
+
+## Wave 4A — webhook event contract, 08 Phase 1 (2026-10-01)
+
+**Inventory first.** There is already an event stream: `crm_events` (`CrmEvent`), written
+by `emit_crm_event` and consumed by automations and the Slack/Teams alerts
+(`CrmEventDelivery`). Webhooks become a third consumer. There is no new bus, and the
+alert delivery table is not reused. The inventory is `08a-webhook-event-contract.md` §2.
+It found:
+
+1. **Contact creation emits `lead.created`** (entity `sales_contact`), for the Slack alert.
+2. **20 automation triggers are never emitted**, so rules on them never run (Deferred).
+3. **Only HTTP routes emit.** Imports, bookings, POS and automation actions write records
+   silently (Deferred).
+4. **`crm_events.id` is sequential across tenants**, so it cannot be an external ID.
+5. Support and contract events exist, but those modules are out of scope.
+
+**Decisions** (08a §3–§6):
+
+- **External names are mapped, not copied.** A catalogue entry names the internal
+  `(event_type, entity_type)` pair it reads. Contact creation goes out as `contact.created`
+  and `deal.assigned` as `opportunity.assigned`, and no internal event is renamed.
+  17 types are exported. Support, contracts and the never-emitted triggers are not.
+- **Envelope:** `id`, `type`, `version` (per type, bumped only on removal, rename or
+  retype; receivers ignore unknown keys), `occurred_at` (UTC `Z`), `actor` (`user` with ID,
+  `client_portal`, or `system`; no staff names), `record` (external type and ID), `data`.
+  **No tenant identity**: each subscription is per tenant with its own secret.
+- **`id` is a new random `crm_events.public_id`**, stable across replays. Migration
+  `20260821_crm_event_public_id` adds the column and a unique index, with no backfill. Older
+  events predate every subscription, so they are never built into envelopes.
+- **Fields are allowlisted and typed.** Every declared field is present. A value that is
+  not its kind is sent as null, and money is sent as a decimal string. `_automation*`,
+  `href`, staff display names, the portal's free-text message and `client_account_id`
+  never leave. Stage labels go out only as `stage_label`, for display.
+- **Each type names its gating module** (Phase 2 refuses it, and the Phase 3 worker skips
+  it, when disabled). The builder reads only the event row, never a reference.
+
+Backend: `platform/services/webhook_events.py` (catalogue, `build_webhook_envelope`,
+`list_webhook_event_types`), `GET /admin/webhooks/event-types` (`require_admin`, the same
+for every tenant), and `public_id` on `CrmEvent` and in the admin event history
+(`CrmEventResponse`). Automations, alerts and internal payloads are unchanged. There is no
+frontend: 08 §10's settings UI starts with subscriptions.
+
+Verification: `test_webhook_event_contract.py` (new, 24 cases). The catalogue: every source
+is a defined event, names and sources are one-to-one, names match their record type, each
+type is gated by a seeded module, fields are typed and read no internal or display-only key,
+support and contract events stay internal, and the list validates through its response
+model. The envelope: the exact documented shape for `lead.created`; no tenant key; only
+declared fields leave (injected `_automation`, `href` and token keys do not); the stored
+payload is untouched; contact → `contact.created`; `deal.assigned` →
+`opportunity.assigned` with a string amount; won and stage_changed share stable stage
+identity; a portal response is `client_portal` with the message dropped; a scheduled event
+is `system`, with its time normalised to UTC; wrong-kind values become null; naive
+timestamps are read as UTC; unmapped and pre-webhook events are not built. The public ID:
+a UUID per event, the envelope's `id`, and shown in admin history. The route: a GET behind
+`require_admin`.
+
+**Whole-suite pass (covering 3C and 4A together).** `codex-check.sh` passed: compileall,
+`verify_migrations` at `20260821_crm_event_public_id`, `verify_openapi` 365 paths, contract
+drift, **backend 1299 of 1299** (with Redis up), `check-design.sh`, lint and build. The
+**full Playwright suite**, less support and contracts, ran at `--workers=1` in parts on a
+fresh dev server each. **326 of 328 passed** on the first pass. The two failures were both
+in `command-palette-actions.spec.ts`, which neither wave touched, and both reproduced warm:
+1. *Routes administrator actions* needs about 33s against a 30s budget: four round trips
+   through the full dashboard.
+2. *Hides payment recording* pressed Control+K straight after `reload()`, the hydration race
+   the spec already documents.
+
+The fix is in the spec: a 60s budget with its reason, and opening the palette through its
+button. The spec file then passed 19 of 19, and the whole suite is green. Two parts first
+ran under a 5g frontend cap and were OOM-killed (every test refused a connection). They were
+rerun at 6g, part 3 in chunks of about 7 specs and each route-walking guard alone:
+115 of 115, `design-rules` and `scroll-containers` pass.
+
+**Next:** the owner reviews and approves `08a-webhook-event-contract.md`. Then 08 Phase 2:
+subscriptions (admin CRUD, event-pattern validation against the catalogue, module gating,
+destination validation with SSRF rules, signing-secret generation and rotation). Delivery
+(Phase 3) stays closed until Phase 2 lands.
+
+## Wave 3C — telephony fallback and manual call logs, 07 Phase 1 (2026-09-30)
+
+**Inventory first.** No telephony code existed: no provider, no call model, no secrets.
+Calls touched the product in two places:
+
+1. The record header (`CommunicationActions`, Lead, Contact, Account): a raw `tel:${phone}` link.
+2. The Timeline composer's Call mode (Lead, Contact, Deal, Quote): `POST …/follow-up` with
+   `channel: call` wrote a `RecordFollowUp` **before** navigating to `tel:`. So every attempt
+   was logged as a call made, with no outcome, direction or duration. On a deal and a quote it
+   dialled the primary or quote contact without asking, and filed the row on the deal or quote
+   only. The feed said "Call follow-up logged".
+
+**Decisions.**
+
+- **One provider-neutral table, `call_logs`, in a new `telephony` area.** 07 §8 wants one
+  CallLog with provider identity "where applicable". `capture` says how a row came to exist:
+  `manual` is the only value. A provider phase adds its own value and the provider columns
+  beside it, and never rewrites a manual row. There is no `TelephonyProvider` protocol yet,
+  because an interface with no implementation would be speculation (Phase 2 adds it with the
+  first adapter).
+- **Record-scoped permissions, like the follow-ups it replaces.** Logging needs the record
+  module's three layers plus `edit`, checked in the service because the module is a path
+  parameter. The Activity adapter inherits the record's `view`. 07 §11's separate
+  call-initiation, call-history and recording permissions arrive with Phase 2, when there is
+  provider configuration to separate them from.
+- **Who was on the line is explicit, never inferred.** A contact's call is with that contact.
+  A lead's call names no one. A deal's call may name a participant (legacy primary or active
+  participant, active, same tenant, viewable). A quote's call may name the quote's contact.
+  The named contact is `contact_id`, and the adapter shows the call on that contact's
+  Timeline too: design.md §4.7's "filed against every record whose address it uses", the
+  same rule as the deal's Email.
+- **The phone number is the record's, copied server-side.** The request has no
+  `phone_number` and no provider field (`extra="forbid"`). It is stored as held, not
+  normalized, because nothing dials or matches on it in this phase (Phase 4's caller
+  matching will need normalization).
+- **Old Call follow-ups stay follow-ups (07 §15).** No migration touches them, and the feed
+  still renders them as "Call follow-up logged". `FollowUpActionRequest` still accepts
+  `channel: call`, as a bounded compatibility layer. No UI writes it any more. Removal
+  criteria are in the Deferred table.
+
+Backend:
+
+- `telephony/models.py` `CallLog`: tenant, actor, `source_module_key`/`source_entity_id`,
+  `contact_id` (FK, SET NULL), `capture`, `direction` (outbound/inbound), `outcome` (HubSpot's
+  defaults: connected, left_voicemail, left_message, no_answer, busy, wrong_number),
+  `phone_number`, `occurred_at`, `duration_seconds` (≥ 0), `note`, `follow_up_task_id` (soft
+  ref). Check constraints on the enums and duration. Indexes: `(tenant, source module, source
+  id, occurred_at, id)` and `(tenant, contact_id, occurred_at, id)`, one per adapter lookup.
+  Migration `20260820_call_logs` only adds the table.
+- `services/call_logs.log_record_call`: refuses before anything is written. Unsupported module
+  → 404. No module/department/`edit` → 403. Another tenant's, binned or missing record → 404.
+  A call more than 5 minutes in the future → 422. A contact the record cannot name → 422, one
+  message per record kind. It then writes the call. It stamps `last_contacted_*` on
+  lead/contact/deal **only forward** (a backdated log never rewinds a later stamp). It creates
+  the optional reminder through `followups.create_record_follow_up_task` (task department +
+  role checks, linked to the record; a lead also gets `next_follow_up_at`, like its follow-up
+  log). It audits `call.logged` on the record. All of this is one commit.
+- `POST /telephony/records/{module_key}/{entity_id}/calls` → 201 `CallLogResponse`.
+- `record_activity`: a `call` adapter for leads, contacts, deals and quotes, which are the
+  records with a Call mode (`available_types` offers "call" nowhere else). The title is
+  "Outbound call" / "Inbound call", `status` is the reported outcome, and `meta` carries
+  `capture`, outcome, duration, number, the named contact (not on the contact's own
+  Timeline), and `logged_on_*` when the call reached a contact from a deal or quote.
+
+Frontend:
+
+- `lib/calls.ts`: outcomes and labels, `formatCallDuration`, `telHref` (keeps `+`, digits,
+  `*`, `#`), `callLogEndpoint`. The header's Call now uses `telHref`, so `+44 (20) 7946-0003`
+  dials as `tel:+442079460003`.
+- The composer's Call mode is `CallMode`, configured by a new `call` prop (`followUp` keeps
+  Email and WhatsApp). It shows direction (segmented), outcome (required), when (optional, blank
+  = now, future refused inline), duration in whole minutes (0–1440, validated inline), note
+  (2000, matching the server), and the reminder. Dialling is a separate `Call <number>` link:
+  submitting never navigates. On a deal it asks "Who was on the call", listing participants
+  plus "Someone not listed"; one participant is preselected, and several must be chosen
+  before logging. A quote preselects its contact when the viewer can see Contacts. Refusals
+  show the server's reason and keep what was typed; success clears the form and refreshes the
+  record's feed and the named contact's.
+- `RecordTimeline`: a `Calls` filter, a `Phone` icon, and an entry with Outcome / With / Number
+  / Duration, the note, the reminder line, "Logged on a deal." where relevant, and "Logged by
+  hand. Lynk did not place or track this call."
+- design.md §4.7 gains the rule: a logged call says what the operator reported.
+
+Verification: `test_call_logs.py` (new, 26 cases). Recorded fields and trimmed number;
+stamp and audit; a backdated call does not rewind the stamp; future refused, and skew
+tolerated; contact, lead, deal (primary, participant, none; not-on-deal, binned, other
+tenant, missing all refused with one message) and quote rules; unsupported modules; other
+tenant's, binned and missing records; view-only and module-unavailable refused; reminder
+linked and committed with the call; no task access writes nothing. The request rejects bad
+outcome/direction/duration, a provider and a phone number. The route is a 201 POST. Activity:
+the entry's fields; a deal call is on the deal and on the named participant's Timeline, not
+on the primary's; tenants never cross; cursor paging; `call` offered only on the four
+modules; old Call follow-ups stay `follow_up`. Backend suite 1275: 1271 pass, and the 4
+failures are the known Redis-less rate-limit tests, which pass with Redis up (61 of 61 in
+those modules). compileall clean; `verify_migrations` passes at head `20260820_call_logs`;
+`verify_openapi` 364 paths. Frontend lint and build clean; `check-design.sh` 21 of 21;
+`generate-contracts.sh --check` up to date. `call-logs.spec.ts` (new): 7 of 7. It covers:
+the header dials the normalized number; Log call stays disabled until there is an outcome;
+the posted body; the page never navigates; the form clears; a refusal keeps the text and
+names its reason; future time and fractional duration are caught with nothing sent; several
+participants must be chosen, and the pick is posted with its dial link; "Someone not listed"
+posts null; one participant is preselected; the feed entry reads as a report and the Calls
+filter shows. Neighbours that render the changed components: `whatsapp-external-mode`,
+all four contextual-email specs, `opportunity-participants` and `quotes-revamp` pass (30 of
+31 with `contacts-revamp`, whose one failure is the inherited edit-form Email, line 165, in
+the Deferred table). `leads-revamp` passes 16 of 16, including the journey baseline.
+Screenshots of the deal's Call mode at 1440 and 390, in both themes (backgrounds logged
+`rgb(11, 13, 16)` / `rgb(247, 248, 250)`), and of the lead Timeline at both widths, showed
+no horizontal page overflow.
+
+**Next:** README Wave 3 item 17 (3D, Meta or telephony provider) opens only on an explicit
+provider request that names the provider and the routing/consent/retention decisions. Without
+one, the next wave is 4A: `08-webhooks-events.md`, starting with the safe event inventory.
+Check the Deferred table first.
 
 ## Wave 3B — WhatsApp external mode, 06 Phase 1 (2026-09-30)
 
@@ -709,5 +904,13 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | `contacts-revamp.spec.ts` "shared workflow" fails: the Contact **edit** form's Email field is empty (inherited, reproduces with 05 frontend Phase 4 stashed) | Not caused by the rail; unread beyond attribution | The next slice that touches the Contact edit form |
 | Offering an account's contacts as email recipients from the Account page | Owner decision 2026-09-29: a separate follow-up; the Account emails its own address only (design.md §4.7) | When the owner asks for it; reuse `recipientCandidates` and a server rule like the deal's |
 | The untracked WhatsApp paths (header, follow-up) refuse a national number instead of adding the workspace country, as the tracked contact path does | Adding it means either a second copy of the server's normalizer in TypeScript or a request before every header click; 3B chose the truthful refusal | When the untracked paths gain a server call anyway (06 frontend Phase 1 chooser, or tracked interactions for Lead/Deal) |
-| Contact click-to-chat stamps `whatsapp_last_contacted_at` only, not `last_contacted_at` / `last_contacted_channel` as the follow-up log does | Pre-existing; changing what "last contacted" means was not 3B's scope | When contact recency is next touched, or tracked interactions extend past contacts |
+| `FollowUpActionRequest` still accepts `channel: call` (3C compatibility layer) | No UI writes it after 3C, but it is a public request shape, and old rows must keep reading | Remove `call` from the request pattern (not from the table's check, and not from the feed) once a release has shipped with no caller, or with 07 Phase 2 at the latest |
+| A call log cannot be corrected or removed once written | Follow-ups have neither either; 07 §9 puts "update notes/outcome" with the integrated call detail | 07 Phase 3's call detail, or sooner if operators ask to fix a mis-logged call. It needs a recoverable delete, not a hard one |
+| Accounts log no calls: the header dials the account's number, but the Timeline has no Call mode | Accounts have no follow-up mode or last-contacted stamp today, and the call adapter does not apply to them | When accounts gain contact-attempt logging, add `sales_organizations` to the call log modules and to the adapter's `applies_to` together |
+| The composer's mode strip (Note · Call · Email · WhatsApp) clips its last mode at 390px | Predates 3C: the same four modes rendered before; seen in 3C's screenshots | The next slice that touches `RecordTimelineComposer`'s mode strip, or a SegmentedControl overflow rule for narrow widths |
+| Contact click-to-chat stamps `whatsapp_last_contacted_at` only, not `last_contacted_at` / `last_contacted_channel` as the follow-up log does | Pre-existing; changing what "last contacted" means was not 3B's scope. 3C has the same shape: a call logged on a deal stamps the deal, not the participant it names | When contact recency is next touched, or tracked interactions extend past contacts |
 | A typed address of an opted-out contact who is *not* a participant is not refused when mailing from a deal | The composer only knows participants, and the server links by id, never by address | If opt-out becomes a send-time rule across all mail (the inbox composer has the same gap) |
+| 20 automation triggers are offered in the rule builder but never emitted (`lead.status_changed`, `lead.assigned`, `opportunity.created`, `quote.sent/accepted/rejected/expired`, `order.*` beyond created, `booking.*`, `ticket.*`, `document.*`, `task.overdue`); a rule on one never runs | Found by 4A's inventory (08a §2). Emitting them is domain work in each module, not the webhook contract's | Per module, when its events are next touched; each one that starts emitting also gets a webhook catalogue entry. Until then the builder should stop offering them, which is a small separate fix |
+| Records created outside the HTTP routes emit no event: CSV import, bookings and POS/finance flows creating contacts or leads, automation actions | Events are emitted in routes, after the commit (08a §2) | When a webhook consumer needs "every lead", move emission into the domain services, one module at a time |
+| `task.assigned` / `task.due_today` webhooks carry no assignee identities: the internal payload has only display labels | Adding `assignee_user_ids` changes the internal payload, which 4A kept untouched | With 08 Phase 2, or when a consumer asks: add the IDs to the internal payload (additive) and to the catalogue |
+| Webhooks have no tenant public identifier in the envelope | 08 §9 allows one only if product policy does; each subscription is per tenant and signs with its own secret | If the owner wants one endpoint to serve several workspaces; it is an additive envelope key |

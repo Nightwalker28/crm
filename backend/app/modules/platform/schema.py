@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -527,6 +527,7 @@ class CrmEventDeliveryResponse(BaseModel):
 
 class CrmEventResponse(BaseModel):
     id: int
+    public_id: str | None = None
     actor_user_id: int | None = None
     event_type: str
     entity_type: str
@@ -534,6 +535,24 @@ class CrmEventResponse(BaseModel):
     payload: dict[str, Any] | None = None
     created_at: datetime
     deliveries: list[CrmEventDeliveryResponse] = Field(default_factory=list)
+
+
+class WebhookEventFieldResponse(BaseModel):
+    name: str
+    kind: Literal["id", "string", "integer", "decimal", "boolean", "date", "datetime", "string_list"]
+
+
+class WebhookEventTypeResponse(BaseModel):
+    type: str
+    version: int
+    record_type: str
+    module_key: str
+    description: str
+    fields: list[WebhookEventFieldResponse]
+
+
+class WebhookEventTypeListResponse(BaseModel):
+    results: list[WebhookEventTypeResponse]
 
 
 class CrmEventListResponse(BaseModel):

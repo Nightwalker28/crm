@@ -9,6 +9,7 @@ import {
   Mail,
   MessageCircle,
   MessagesSquare,
+  Phone,
   PhoneCall,
   StickyNote,
   Trash2,
@@ -25,6 +26,7 @@ import { ListRow, RowList } from "@/components/ui/ListRow";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useRecordActivity } from "@/hooks/useRecordActivity";
 import { apiFetch } from "@/lib/api";
+import { callOutcomeLabel, formatCallDuration } from "@/lib/calls";
 import { formatDateTime } from "@/lib/datetime";
 import type {
   RecordActivityEnvelope,
@@ -66,6 +68,7 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: "note", label: "Notes" },
   { id: "case_reply", label: "Replies" },
   { id: "email", label: "Email" },
+  { id: "call", label: "Calls" },
   { id: "whatsapp", label: "WhatsApp" },
   { id: "follow_up", label: "Follow-ups" },
   { id: "meeting", label: "Meetings" },
@@ -74,6 +77,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
   case_reply: MessagesSquare,
+  call: Phone,
   email: Mail,
   follow_up: PhoneCall,
   meeting: CalendarDays,
@@ -84,6 +88,7 @@ const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
 
 const TYPE_LABELS: Record<RecordActivityType, string> = {
   case_reply: "Reply",
+  call: "Call",
   email: "Email",
   follow_up: "Follow-up",
   meeting: "Meeting",
@@ -96,6 +101,12 @@ const CHANNEL_LABELS: Record<string, string> = {
   whatsapp: "WhatsApp",
   email: "Email",
   call: "Call",
+};
+
+/** A call reaches a contact's Timeline from the record it was logged on. */
+const LOGGED_ON_LABELS: Record<string, string> = {
+  sales_opportunities: "a deal",
+  sales_quotes: "a quote",
 };
 
 function metaString(item: RecordActivityEnvelope, key: string): string | null {
@@ -152,6 +163,31 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
           <p className="mt-1 text-p-xs text-copy-muted">
             Opened in WhatsApp from Lynk. Delivery is not tracked in this mode.
           </p>
+        </div>
+      );
+    }
+    case "call": {
+      const outcome = callOutcomeLabel(metaString(item, "outcome") ?? item.status);
+      const contactName = metaString(item, "contact_name");
+      const phone = metaString(item, "phone_number");
+      const duration = typeof item.meta.duration_seconds === "number" ? item.meta.duration_seconds : null;
+      const loggedOn = LOGGED_ON_LABELS[metaString(item, "logged_on_module_key") ?? ""] ?? null;
+      return (
+        <div className="grid gap-1">
+          {outcome ? <DetailLine label="Outcome" value={outcome} /> : null}
+          {contactName ? <DetailLine label="With" value={contactName} /> : null}
+          {phone ? <DetailLine label="Number" value={phone} /> : null}
+          {duration !== null ? <DetailLine label="Duration" value={formatCallDuration(duration)} /> : null}
+          {item.summary ? <p className="mt-1 text-p-sm text-copy-secondary">{item.summary}</p> : null}
+          {item.meta.follow_up_task_id ? (
+            <p className="mt-1 text-p-xs text-copy-muted">A reminder task was created.</p>
+          ) : null}
+          {loggedOn ? <p className="mt-1 text-p-xs text-copy-muted">Logged on {loggedOn}.</p> : null}
+          {/* A manual log is a person's account of the call; nothing on it came from a
+              phone system (07 Phase 1). */}
+          {item.meta.capture === "manual" ? (
+            <p className="mt-1 text-p-xs text-copy-muted">Logged by hand. Lynk did not place or track this call.</p>
+          ) : null}
         </div>
       );
     }

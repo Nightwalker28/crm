@@ -38,6 +38,7 @@ from app.modules.platform.models import RecordComment, RecordFollowUp
 from app.modules.platform.services.record_comments import get_record_reference
 from app.modules.support.models import SupportCaseComment
 from app.modules.tasks.models import Task
+from app.modules.telephony.models import CallLog
 from app.modules.user_management.models import User
 from app.modules.whatsapp.models import WhatsAppInteraction
 
@@ -212,6 +213,76 @@ def _fetch_follow_ups(db, *, tenant_id, module_key, entity_id, limit, cursor, vi
             )
         )
     return items
+
+
+CALL_LOG_MODULE_KEYS = frozenset({"sales_leads", "sales_contacts", "sales_opportunities", "sales_quotes"})
+CALL_DIRECTION_LABELS = {"outbound": "Outbound call", "inbound": "Inbound call"}
+
+
+def _fetch_calls(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
+    """Call logs (07). A call is on the record it was logged on, and — through its
+    explicit ``contact_id`` — on the Timeline of the person who was on the line."""
+
+    occurred = CallLog.occurred_at
+    linkage = and_(CallLog.source_module_key == module_key, CallLog.source_entity_id == entity_id)
+    if module_key == "sales_contacts":
+        try:
+            linkage = or_(linkage, CallLog.contact_id == int(entity_id))
+        except (TypeError, ValueError):
+            pass
+    query = (
+        db.query(CallLog)
+        .options(joinedload(CallLog.actor), joinedload(CallLog.contact))
+        .filter(CallLog.tenant_id == tenant_id, linkage)
+    )
+    predicate = _keyset_filter(occurred, CallLog.id, item_type="call", cursor=cursor)
+    if predicate is not None:
+        query = query.filter(predicate)
+    rows = query.order_by(None).order_by(occurred.desc(), CallLog.id.desc()).limit(limit).all()
+
+    items = []
+    for row in rows:
+        logged_here = row.source_module_key == module_key and row.source_entity_id == entity_id
+        contact = row.contact if row.contact is not None and row.contact.deleted_at is None else None
+        items.append(
+            ActivityItem(
+                type="call",
+                source_id=row.id,
+                source_module_key="telephony",
+                occurred_at=_as_utc(row.occurred_at),
+                title=CALL_DIRECTION_LABELS.get(row.direction, "Call"),
+                summary=_clip(row.note),
+                actor_user_id=row.actor_user_id,
+                actor_name=_user_label(row.actor),
+                direction=row.direction,
+                # The outcome the operator reported. `meta.capture` says who reported it:
+                # `manual` means a person, never a phone system.
+                status=row.outcome,
+                capabilities=("open_task",) if row.follow_up_task_id else (),
+                meta={
+                    "capture": row.capture,
+                    "outcome": row.outcome,
+                    "duration_seconds": row.duration_seconds,
+                    "phone_number": row.phone_number,
+                    # Who was on the line, named only where the record is not that person.
+                    "contact_id": row.contact_id if contact is not None and module_key != "sales_contacts" else None,
+                    "contact_name": _contact_label(contact) if module_key != "sales_contacts" else None,
+                    # Set when the call was logged on another record (a deal, a quote) and
+                    # reaches this contact through the person named on it.
+                    "logged_on_module_key": None if logged_here else row.source_module_key,
+                    "logged_on_entity_id": None if logged_here else row.source_entity_id,
+                    "follow_up_task_id": row.follow_up_task_id,
+                },
+            )
+        )
+    return items
+
+
+def _contact_label(contact) -> str | None:
+    if contact is None:
+        return None
+    name = " ".join(part for part in [contact.first_name, contact.last_name] if part).strip()
+    return name or contact.primary_email
 
 
 def _fetch_notes(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
@@ -489,6 +560,10 @@ ADAPTERS: tuple[_Adapter, ...] = (
     # Record-scoped: the thread belongs to the case, so it inherits the case's own
     # permission and the adapter is inert for every other module.
     _Adapter("case_reply", _fetch_case_replies, None, frozenset({SUPPORT_CASES_MODULE_KEY})),
+    # Record-scoped like follow-ups, whose Call mode it replaces: a call log is record data
+    # and inherits the record's permission. There is no telephony module to gate on until a
+    # provider exists (07 Phase 2).
+    _Adapter("call", _fetch_calls, None, CALL_LOG_MODULE_KEYS),
     _Adapter("email", _fetch_emails, "mail"),
     _Adapter("follow_up", _fetch_follow_ups, None),
     _Adapter("meeting", _fetch_meetings, "calendar"),

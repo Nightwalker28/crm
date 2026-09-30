@@ -208,6 +208,7 @@ export default function QuoteDetailPage() {
   const orderActions = moduleActions("sales_orders");
   const taskActions = moduleActions("tasks");
   const documentActions = moduleActions("documents");
+  const canViewContacts = Boolean(moduleActions("sales_contacts")?.can_view);
   const canEdit = Boolean(quoteActions?.can_edit);
   const canDelete = Boolean(quoteActions?.can_delete);
   const canCreateOrders = Boolean(orderActions?.can_create);
@@ -472,6 +473,26 @@ export default function QuoteDetailPage() {
                   endpoint: `/sales/quotes/${quote.quote_id}/follow-up`,
                   email: summary?.contact?.primary_email,
                   phone: summary?.contact?.contact_telephone,
+                  canCreateTask: canViewTasks && canCreateTasks,
+                  onLogged: async () => {
+                    await summaryQuery.refetch();
+                  },
+                }
+              : undefined,
+            // The quote's call names its contact, preselected, so it lands on that
+            // contact's Timeline too.
+            call: canEdit
+              ? {
+                  people: summary?.contact && canViewContacts
+                    ? [{
+                        contactId: summary.contact.contact_id,
+                        name:
+                          [summary.contact.first_name, summary.contact.last_name].filter(Boolean).join(" ")
+                          || summary.contact.primary_email
+                          || "Contact",
+                        phone: summary.contact.contact_telephone ?? null,
+                      }]
+                    : [],
                   canCreateTask: canViewTasks && canCreateTasks,
                   onLogged: async () => {
                     await summaryQuery.refetch();

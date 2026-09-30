@@ -50,6 +50,7 @@ export type OpportunityParticipant = {
     first_name?: string | null;
     last_name?: string | null;
     primary_email?: string | null;
+    contact_telephone?: string | null;
     current_title?: string | null;
     email_opt_out?: boolean | null;
   };

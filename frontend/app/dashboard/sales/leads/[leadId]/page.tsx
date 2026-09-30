@@ -408,6 +408,15 @@ export default function LeadDetailPage() {
                   },
                 }
               : undefined,
+            call: canEditLead
+              ? {
+                  phone: fieldEnabled("phone") ? lead.phone : null,
+                  canCreateTask: canViewTasks && canCreateTasks,
+                  onLogged: async () => {
+                    await summaryQuery.refetch();
+                  },
+                }
+              : undefined,
           }}
         />
       ) : undefined}

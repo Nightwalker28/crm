@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import RecordEmailAction, { type RecordEmailContext } from "@/components/mail/RecordEmailAction";
 import { Button } from "@/components/ui/button";
 import { useWhatsAppCapabilities } from "@/hooks/useWhatsAppCapabilities";
+import { telHref } from "@/lib/calls";
 import { WHATSAPP_NUMBER_MESSAGES, whatsAppChatTarget, whatsAppChatUrl } from "@/lib/whatsapp";
 
 /**
@@ -60,7 +61,9 @@ export default function CommunicationActions({
 }: Props) {
   const { canOpenExternally } = useWhatsAppCapabilities();
   const canEmail = Boolean(email) && !emailOptOut;
-  const canCall = Boolean(phone);
+  // External dialling: the call happens on the operator's phone, and the Timeline's Call
+  // mode is where it is logged afterwards (07 Phase 1).
+  const callHref = telHref(phone);
   const canWhatsApp = showWhatsApp && canOpenExternally && Boolean(phone);
 
   function handleWhatsAppClick() {
@@ -92,9 +95,9 @@ export default function CommunicationActions({
         </Button>
       ) : null}
 
-      {canCall ? (
+      {callHref ? (
         <Button asChild variant="outline">
-          <a href={`tel:${phone}`}>
+          <a href={callHref}>
             <Phone />
             Call
           </a>

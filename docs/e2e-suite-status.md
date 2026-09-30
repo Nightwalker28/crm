@@ -1,17 +1,17 @@
 # E2E Suite Status
 
-**Current: 299 of 300 pass** — rebuild 5.10 close-out, 2026-09-25. The full suite ran
-293 / 7 at `--workers=1`, and the six in-scope failures were then fixed and re-run with their
-whole spec files. **The one failure left is `support-revamp`**, which is out of the rebuild
-programme (`docs/design/rebuild.md` scoping decision 8). Every failure from the 5.10 *before*
-run (210 / 90) was read against a page snapshot and fixed in the code or the spec. Each fix is
-listed in `rebuild.md` 5.10 batch 3. **Treat any new red as new.**
+**Current: 328 of 328 pass**, excluding support and contracts (out of scope). Measured at
+the crm-evolution Wave 4A close-out, 2026-10-01. The first pass was 326 / 2, and both
+failures were in `command-palette-actions.spec.ts`: a four-workflow test over its 30s budget,
+and a Control+K sent before hydration. Both were fixed in the spec (`STATUS.md` Wave 4A).
+The 5.10 snapshot (299 / 300) is superseded. **Treat any new red as new.**
 
 **How to run it without losing the run to memory.** The dev server keeps every compiled route
 in memory, and warmed across the whole app it sits near 6 GiB. Under a container memory cap
 it gets OOM-killed partway, and every later test then fails on `ERR_CONNECTION_REFUSED`: a
-wholesale failure that says nothing about the code. Run the suite in three parts of about 20
-spec files. Recreate `frontend` before each part (`up -d --no-deps --force-recreate frontend`),
+wholesale failure that says nothing about the code. Run the suite in parts of about 7 spec files under the 6g container cap
+(20-file parts were OOM-killed at 5g on 2026-10-01), and run `design-rules` and
+`scroll-containers` each alone. Recreate `frontend` before each part (`up -d --no-deps --force-recreate frontend`),
 and warm only the routes that part's specs `goto`. Check `docker inspect crm-frontend-1
 --format '{{.State.OOMKilled}}'` before reading any wholesale failure.
 

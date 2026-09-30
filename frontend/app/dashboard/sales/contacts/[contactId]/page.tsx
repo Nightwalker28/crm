@@ -493,6 +493,15 @@ export default function ContactDetailPage() {
                     },
                   }
                 : undefined,
+              call: canEditContact
+                ? {
+                    phone: fieldEnabled("contact_telephone") ? contact.contact_telephone : null,
+                    canCreateTask: canViewTasks && canCreateTasks,
+                    onLogged: async () => {
+                      await summaryQuery.refetch();
+                    },
+                  }
+                : undefined,
               // The pre-5.3 WhatsApp panel. Tracked click-to-chat, so it replaces the generic
               // channel mode rather than sitting beside it (§4.7).
               whatsApp: canEditContact && fieldEnabled("contact_telephone")

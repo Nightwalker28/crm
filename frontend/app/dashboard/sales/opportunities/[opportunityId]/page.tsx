@@ -512,6 +512,25 @@ export default function OpportunityDetailPage() {
                   },
                 }
               : undefined,
+            // A deal has no number of its own: its call names the participant on the line,
+            // and lands on that person's Timeline too. Participants are hidden with
+            // Contacts, and then the call is logged on the deal alone.
+            call: canEditDeal
+              ? {
+                  people: summary?.can_view_contacts
+                    ? summary.participant_contacts.map((participant) => ({
+                        contactId: participant.contact_id,
+                        name: participantName(participant),
+                        phone: participant.contact.contact_telephone ?? null,
+                        roleLabel: participant.role_label,
+                      }))
+                    : [],
+                  canCreateTask: canViewTasks && canCreateTasks,
+                  onLogged: async () => {
+                    await summaryQuery.refetch();
+                  },
+                }
+              : undefined,
           }}
         />
       ) : undefined}

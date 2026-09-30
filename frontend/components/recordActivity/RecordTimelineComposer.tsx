@@ -20,6 +20,14 @@ import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedContro
 import { Textarea } from "@/components/ui/textarea";
 import { useWhatsAppCapabilities } from "@/hooks/useWhatsAppCapabilities";
 import { apiFetch } from "@/lib/api";
+import {
+  CALL_OUTCOMES,
+  CALL_OUTCOME_LABELS,
+  callLogEndpoint,
+  telHref,
+  type CallDirection,
+  type CallOutcome,
+} from "@/lib/calls";
 import { cn } from "@/lib/utils";
 import {
   WHATSAPP_NUMBER_MESSAGES,
@@ -65,6 +73,27 @@ type ReplyConfig = {
   onReplied?: () => Promise<void> | void;
 };
 
+/** A person who may have been on a call logged on this record (a deal's participant). */
+export type CallPerson = {
+  contactId: number;
+  name: string;
+  phone: string | null;
+  roleLabel?: string | null;
+};
+
+type CallConfig = {
+  /** The record's own number: a lead's or a contact's. */
+  phone?: string | null;
+  /**
+   * Who the call can be with, where the record is not itself a person — a deal's
+   * participants, a quote's contact. One is preselected; several leave the choice to the
+   * operator, as the deal's Email does (§4.7).
+   */
+  people?: CallPerson[];
+  canCreateTask?: boolean;
+  onLogged?: () => Promise<void> | void;
+};
+
 type WhatsAppConfig = {
   /** Click-to-chat. Records the interaction and returns the URL to open. */
   endpoint: string;
@@ -78,8 +107,10 @@ type Props = {
   entityId: string | number;
   /** Note mode. Omitted when the operator cannot write to the record. */
   canAddNote?: boolean;
-  /** Channel modes. Omitted where the record has no follow-up endpoint. */
+  /** Email and WhatsApp follow-up modes. Omitted where the record has no follow-up endpoint. */
   followUp?: FollowUpConfig;
+  /** Call mode: a call log (07). Omitted where calls are not logged or the operator cannot. */
+  call?: CallConfig;
   /** The support case's customer-facing reply. Appended as its own mode. */
   reply?: ReplyConfig;
   /**
@@ -101,12 +132,11 @@ type MessageTemplate = {
   variables: string[];
 };
 
-type Channel = "whatsapp" | "email" | "call";
+type Channel = "whatsapp" | "email";
 
 const CHANNEL_LABELS: Record<Channel, string> = {
   whatsapp: "WhatsApp",
   email: "Email",
-  call: "Call",
 };
 
 function toIsoOrNull(value: string) {
@@ -120,6 +150,7 @@ export default function RecordTimelineComposer({
   entityId,
   canAddNote = false,
   followUp,
+  call,
   reply,
   whatsApp,
   className,
@@ -130,7 +161,7 @@ export default function RecordTimelineComposer({
   const modes: { id: string; label: string; icon: typeof StickyNote }[] = [
     ...(canAddNote ? [{ id: "note", label: "Note", icon: StickyNote }] : []),
     ...(reply ? [{ id: "reply", label: reply.label, icon: Mail }] : []),
-    ...(followUp ? [{ id: "call", label: "Call", icon: Phone }] : []),
+    ...(call ? [{ id: "call", label: "Call", icon: Phone }] : []),
     ...(followUp ? [{ id: "email", label: "Email", icon: Mail }] : []),
     ...((followUp || whatsApp) && canOpenExternally
       ? [{ id: "whatsapp", label: "WhatsApp", icon: MessageCircle }]
@@ -174,6 +205,8 @@ export default function RecordTimelineComposer({
           <NoteMode moduleKey={moduleKey} entityId={entityId} />
         ) : activeMode === "reply" && reply ? (
           <ReplyMode moduleKey={moduleKey} entityId={entityId} config={reply} />
+        ) : activeMode === "call" && call ? (
+          <CallMode moduleKey={moduleKey} entityId={entityId} config={call} />
         ) : activeMode === "whatsapp" && whatsApp ? (
           <WhatsAppMode moduleKey={moduleKey} entityId={entityId} config={whatsApp} />
         ) : followUp ? (
@@ -404,7 +437,6 @@ function FollowUpMode({
       if (!res.ok) throw new Error("not-logged");
       logged = true;
       if (channel === "email" && config.email) window.location.href = `mailto:${config.email}`;
-      if (channel === "call" && config.phone) window.location.href = `tel:${config.phone}`;
       if (pendingChat && chat?.ok) pendingChat.go(whatsAppChatUrl(chat.digits));
       setNote("");
       await Promise.all([
@@ -478,6 +510,273 @@ function FollowUpMode({
           {logging ? "Logging…" : `Log ${CHANNEL_LABELS[channel].toLocaleLowerCase()}`}
         </Button>
       </div>
+    </div>
+  );
+}
+
+const NOT_LISTED = "not-listed";
+// The server allows five minutes of clock skew; the form is stricter than that only by
+// not offering it.
+const FUTURE_TOLERANCE_MS = 5 * 60_000;
+const MAX_DURATION_MINUTES = 1440;
+
+/**
+ * Call mode — the call log (07-telephony.md Phase 1).
+ *
+ * It records a call that already happened; it does not place one. That is the change from
+ * the Call follow-up it replaces, which wrote its row *before* opening `tel:` and so logged
+ * every call as made, with no outcome, whether or not anyone picked up. Dialling is now its
+ * own link, and logging asks what the operator knows: direction, outcome, when, how long.
+ *
+ * On a deal or a quote the call names who was on the line, so it lands on that person's
+ * Timeline too. One candidate is preselected; several are left for the operator to choose,
+ * as the deal's Email does — the primary contact is never picked silently (§4.7).
+ */
+function CallMode({
+  moduleKey,
+  entityId,
+  config,
+}: {
+  moduleKey: RecordModuleKey;
+  entityId: string | number;
+  config: CallConfig;
+}) {
+  const queryClient = useQueryClient();
+  const people = config.people ?? [];
+  const [personId, setPersonId] = useState(people.length === 1 ? String(people[0].contactId) : "");
+  const [direction, setDirection] = useState<CallDirection>("outbound");
+  const [outcome, setOutcome] = useState<CallOutcome | "">("");
+  const [occurredAt, setOccurredAt] = useState("");
+  const [durationMinutes, setDurationMinutes] = useState("");
+  const [note, setNote] = useState("");
+  const [createReminder, setCreateReminder] = useState(true);
+  const [dueAt, setDueAt] = useState("");
+  const [logging, setLogging] = useState(false);
+  const fieldId = `record-call-${moduleKey}-${entityId}`;
+  const shouldCreateReminder = Boolean(config.canCreateTask) && createReminder;
+
+  const person = people.find((item) => String(item.contactId) === personId) ?? null;
+  const dialHref = telHref(people.length ? person?.phone : config.phone);
+  const dialNumber = people.length ? person?.phone : config.phone;
+
+  const needsPerson = people.length > 0 && !personId;
+  const when = occurredAt ? new Date(occurredAt) : null;
+  const whenError =
+    when && (Number.isNaN(when.getTime()) || when.getTime() > Date.now() + FUTURE_TOLERANCE_MS)
+      ? "A call cannot be logged in the future."
+      : null;
+  const minutes = durationMinutes.trim() ? Number(durationMinutes) : null;
+  const durationError =
+    minutes !== null && (!Number.isInteger(minutes) || minutes < 0 || minutes > MAX_DURATION_MINUTES)
+      ? `Enter whole minutes, from 0 to ${MAX_DURATION_MINUTES}.`
+      : null;
+  const blocked = logging || !outcome || needsPerson || Boolean(whenError || durationError);
+
+  function reset() {
+    setDirection("outbound");
+    setOutcome("");
+    setOccurredAt("");
+    setDurationMinutes("");
+    setNote("");
+    setDueAt("");
+    if (people.length !== 1) setPersonId("");
+  }
+
+  async function logCall() {
+    if (blocked) return;
+    let logged = false;
+    try {
+      setLogging(true);
+      const res = await apiFetch(callLogEndpoint(moduleKey, entityId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          direction,
+          outcome,
+          occurred_at: toIsoOrNull(occurredAt),
+          duration_seconds: minutes === null ? null : minutes * 60,
+          note: note.trim() || null,
+          contact_id: person ? person.contactId : null,
+          create_follow_up_task: shouldCreateReminder,
+          follow_up_due_at: shouldCreateReminder ? toIsoOrNull(dueAt) : null,
+        }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        // A refusal names its cause (not on this deal, no task access, in the future); a
+        // server fault does not, and gets the generic line.
+        throw new Error(res.status < 500 && typeof body?.detail === "string" ? body.detail : "");
+      }
+      logged = true;
+      reset();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+        ...(person
+          ? [queryClient.invalidateQueries({ queryKey: ["record-activity", "sales_contacts", String(person.contactId)] })]
+          : []),
+        queryClient.invalidateQueries({ queryKey: ["tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["record-tasks"] }),
+        queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
+      ]);
+      toast.success(body?.follow_up_task_id ? "Call logged and reminder created." : "Call logged.");
+      await config.onLogged?.();
+    } catch (error) {
+      // Logged already: a failed refresh is not a failed log, and the form was cleared.
+      if (logged) return;
+      const detail = error instanceof Error && error.message ? `${error.message}` : "Try again.";
+      toast.error(`The call could not be logged. ${detail}`);
+    } finally {
+      setLogging(false);
+    }
+  }
+
+  return (
+    <div className="grid gap-3">
+      {people.length ? (
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-person`}>Who was on the call</FieldLabel>
+          <Select value={personId} onValueChange={setPersonId}>
+            <SelectTrigger id={`${fieldId}-person`}>
+              <SelectValue placeholder="Choose a person" />
+            </SelectTrigger>
+            <SelectContent>
+              {people.map((item) => (
+                <SelectItem key={item.contactId} value={String(item.contactId)}>
+                  {item.roleLabel ? `${item.name} · ${item.roleLabel}` : item.name}
+                </SelectItem>
+              ))}
+              <SelectItem value={NOT_LISTED}>Someone not listed</SelectItem>
+            </SelectContent>
+          </Select>
+          <FieldDescription>
+            The call is also added to that person&apos;s timeline.
+          </FieldDescription>
+        </Field>
+      ) : null}
+
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <SegmentedControl
+          value={direction}
+          onValueChange={(value) => setDirection(value as CallDirection)}
+          aria-label="Call direction"
+        >
+          <SegmentedItem value="outbound">Outbound</SegmentedItem>
+          <SegmentedItem value="inbound">Inbound</SegmentedItem>
+        </SegmentedControl>
+        {dialHref ? (
+          <Button asChild variant="outline" size="sm">
+            <a href={dialHref}>
+              <Phone />
+              Call {dialNumber}
+            </a>
+          </Button>
+        ) : null}
+      </div>
+
+      <Field>
+        <FieldLabel htmlFor={`${fieldId}-outcome`}>Outcome</FieldLabel>
+        <Select value={outcome} onValueChange={(value) => setOutcome(value as CallOutcome)}>
+          <SelectTrigger id={`${fieldId}-outcome`}>
+            <SelectValue placeholder="Choose an outcome" />
+          </SelectTrigger>
+          <SelectContent>
+            {CALL_OUTCOMES.map((value) => (
+              <SelectItem key={value} value={value}>
+                {CALL_OUTCOME_LABELS[value]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </Field>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-when`}>When</FieldLabel>
+          <Input
+            id={`${fieldId}-when`}
+            type="datetime-local"
+            value={occurredAt}
+            onChange={(event) => setOccurredAt(event.target.value)}
+            aria-invalid={Boolean(whenError)}
+            aria-describedby={`${fieldId}-when-help`}
+          />
+          <FieldDescription id={`${fieldId}-when-help`}>
+            {whenError ? (
+              <span role="alert" className="text-state-danger">{whenError}</span>
+            ) : (
+              "Leave blank for just now."
+            )}
+          </FieldDescription>
+        </Field>
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-duration`}>Duration in minutes</FieldLabel>
+          <Input
+            id={`${fieldId}-duration`}
+            type="number"
+            inputMode="numeric"
+            min={0}
+            max={MAX_DURATION_MINUTES}
+            step={1}
+            value={durationMinutes}
+            onChange={(event) => setDurationMinutes(event.target.value)}
+            aria-invalid={Boolean(durationError)}
+            aria-describedby={`${fieldId}-duration-help`}
+          />
+          <FieldDescription id={`${fieldId}-duration-help`}>
+            {durationError ? (
+              <span role="alert" className="text-state-danger">{durationError}</span>
+            ) : (
+              "Optional."
+            )}
+          </FieldDescription>
+        </Field>
+      </div>
+
+      <Field>
+        <FieldLabel htmlFor={`${fieldId}-note`}>Call note</FieldLabel>
+        <Textarea
+          id={`${fieldId}-note`}
+          rows={3}
+          maxLength={2000}
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="What was discussed, and what happens next."
+        />
+      </Field>
+      {config.canCreateTask ? (
+        <label className="flex items-center gap-2 text-sm text-copy-secondary">
+          <Checkbox
+            checked={createReminder}
+            onCheckedChange={(checked) => setCreateReminder(checked === true)}
+          />
+          Create reminder task
+        </label>
+      ) : null}
+      {shouldCreateReminder ? (
+        <Field>
+          <FieldLabel htmlFor={`${fieldId}-due`}>Reminder due</FieldLabel>
+          <Input
+            id={`${fieldId}-due`}
+            type="datetime-local"
+            value={dueAt}
+            onChange={(event) => setDueAt(event.target.value)}
+          />
+          <FieldDescription>Leave blank to create the reminder without a due time.</FieldDescription>
+        </Field>
+      ) : null}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {needsPerson ? (
+          <p className="text-p-xs text-copy-muted">Choose who was on the call.</p>
+        ) : !outcome ? (
+          <p className="text-p-xs text-copy-muted">Choose an outcome to log the call.</p>
+        ) : null}
+        <Button type="button" size="sm" disabled={blocked} onClick={() => void logCall()}>
+          {logging ? "Logging…" : "Log call"}
+        </Button>
+      </div>
+      <p className="text-p-xs text-copy-muted">
+        This records the call you describe. Lynk does not place, time or record calls.
+      </p>
     </div>
   );
 }

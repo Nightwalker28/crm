@@ -215,6 +215,7 @@ def serialize_crm_event_delivery(delivery: CrmEventDelivery) -> dict[str, Any]:
 def serialize_crm_event(event: CrmEvent, deliveries: list[CrmEventDelivery] | None = None) -> dict[str, Any]:
     return {
         "id": event.id,
+        "public_id": event.public_id,
         "actor_user_id": event.actor_user_id,
         "event_type": event.event_type,
         "entity_type": event.entity_type,

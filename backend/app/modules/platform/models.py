@@ -1,3 +1,5 @@
+import uuid
+
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship, validates
 
@@ -426,6 +428,10 @@ class CrmEvent(Base):
     entity_id = Column(String(100), nullable=False, index=True)
     # ORM callers use event.payload; the persisted column remains payload_json.
     payload = Column("payload_json", JSON, nullable=True)
+    # The identity an outside system sees (webhook envelope `id`). Random, so it neither
+    # reveals event volume nor changes on replay. Null on events recorded before webhooks
+    # existed: no subscription could have matched them, so they are never delivered.
+    public_id = Column(String(36), nullable=True, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     actor = relationship("User")

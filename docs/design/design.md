@@ -973,6 +973,16 @@ Contract:
   offered only while the workspace allows external mode (`GET /whatsapp/capabilities`), and a
   number WhatsApp cannot dial — no country code — gets a sentence saying so rather than a chat
   opened onto WhatsApp's "invalid number" screen (`lib/whatsapp.ts`).
+- **A logged call says what the operator reported.** No phone system is connected, so the
+  header's Call is a `tel:` link and the call happens on the operator's own phone. The
+  composer's Call mode records it afterwards — direction, outcome, when, duration, note — and
+  never dials on submit. The Call follow-up it replaced logged the call *before* opening
+  `tel:`, so every attempt read as a call made, with no outcome. The feed entry says the call
+  was logged by hand and that Lynk did not place or track it (`lib/calls.ts`,
+  07-telephony.md Phase 1). On a deal the call names the participant on the line, preselected
+  when there is one and the operator's choice when there are several, and it lands on that
+  person's Timeline too, like the deal's Email. A quote's call names the quote's contact. Calls
+  logged earlier as Call follow-ups stay follow-ups.
 - **A message is filed against every CRM record whose address it uses.** Lead, contact and
   account carry `primary_email` / `phone` columns, so their headers offer Email, WhatsApp and
   Call on their own address. The failure this rule exists to prevent is one conversation split
