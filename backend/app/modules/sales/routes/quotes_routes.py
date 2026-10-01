@@ -14,6 +14,7 @@ from app.modules.platform.services.activity_logs import safe_log_activity as log
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event, safe_publish_crm_event
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
 from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
+from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -160,6 +161,7 @@ def create_quote(payload: SalesQuoteCreateRequest, replace_duplicates: bool = Fa
     items = raw_payload.pop("items", [])
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=raw_payload)
     if "items" in payload.model_fields_set:
+        require_catalog_line_link_access(db, user=current_user, lines=items)
         sanitized_payload["items"] = items
     created = create_sales_quote(db, sanitized_payload, current_user, replace_duplicates, skip_duplicates, create_new_records)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=created.quote_id, action="create", description=f"Created quote {_display_quote_name(created)}", after_state=_serialize_quote(created))
@@ -323,6 +325,7 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     items = update_data.pop("items", None)
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data)
     if items is not None:
+        require_catalog_line_link_access(db, user=current_user, lines=items, existing_links=catalog_links_of(quote.items))
         update_data["items"] = items
     before_state = _serialize_quote(quote)
     updated = update_sales_quote(db, quote, update_data)

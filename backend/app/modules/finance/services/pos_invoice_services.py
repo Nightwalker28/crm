@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, build_paged_response
+from app.modules.catalog.services.line_links import PRODUCT_LINK_FIELD, SERVICE_LINK_FIELD, normalize_catalog_line_links
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso, finance_datetime_to_iso
@@ -171,9 +172,10 @@ def _resolve_organization(
     return organization
 
 
-def _apply_lines(invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Decimal:
+def _apply_lines(db: Session, invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Decimal:
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line item is required")
+    catalog_links = normalize_catalog_line_links(db, tenant_id=invoice.tenant_id, lines=lines)
     existing_by_id = {line.id: line for line in invoice.lines if line.id is not None}
     updated_lines: list[FinancePosInvoiceLine] = []
     subtotal = Decimal("0")
@@ -193,8 +195,8 @@ def _apply_lines(invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Dec
         invoice_line = existing_by_id.pop(int(line_id), None) if line_id is not None else None
         if invoice_line is None:
             invoice_line = FinancePosInvoiceLine()
-        invoice_line.catalog_product_id = line.get("catalog_product_id")
-        invoice_line.catalog_service_id = line.get("catalog_service_id")
+        invoice_line.catalog_product_id = catalog_links[index][PRODUCT_LINK_FIELD]
+        invoice_line.catalog_service_id = catalog_links[index][SERVICE_LINK_FIELD]
         invoice_line.description = description
         invoice_line.quantity = quantity
         invoice_line.unit_price = unit_price
@@ -430,7 +432,7 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any]) -> Financ
         payment_terms=_normalize_text(payload.get("payment_terms")),
         notes=_normalize_text(payload.get("notes")),
     )
-    subtotal = _apply_lines(invoice, payload.get("lines") or [])
+    subtotal = _apply_lines(db, invoice, payload.get("lines") or [])
     _apply_totals(invoice, subtotal, payload)
     _assign_sqlite_test_ids(db, invoice)
     db.add(invoice)
@@ -496,7 +498,7 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
         invoice.currency = _normalize_allowed_currency(db, current_user, payload.get("currency"))
     subtotal = _money(sum((line.line_total for line in invoice.lines), Decimal("0")))
     if "lines" in payload:
-        subtotal = _apply_lines(invoice, payload.get("lines") or [])
+        subtotal = _apply_lines(db, invoice, payload.get("lines") or [])
     total_payload = {
         "discount_amount": invoice.discount_amount,
         "tax_rate": invoice.tax_rate,

@@ -101,6 +101,8 @@ type QuoteSummary = {
     custom_fields?: Record<string, unknown> | null;
     items?: Array<{
       id: number;
+      catalog_product_id?: number | null;
+      catalog_service_id?: number | null;
       name: string;
       description?: string | null;
       quantity: string | number;
@@ -589,7 +591,7 @@ function QuoteOverview({
         }
       />
       {quote.items?.length ? (
-        <TransactionLineItemsTable items={quote.items} currency={quote.currency} />
+        <TransactionLineItemsTable items={quote.items} currency={quote.currency} linkCatalogItems />
       ) : null}
     </div>
   );

@@ -20,6 +20,7 @@ import {
   calculateTransactionTotals,
   createTransactionLineItem,
   serializeTransactionItems,
+  transactionCatalogLink,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
@@ -126,6 +127,7 @@ function orderSeed(order?: Order): OrderSeed {
     items: order.items?.length
       ? order.items.map((item) => ({
           ...createTransactionLineItem("order"),
+          ...transactionCatalogLink(item),
           name: item.name,
           description: item.description ?? "",
           quantity: String(item.quantity),

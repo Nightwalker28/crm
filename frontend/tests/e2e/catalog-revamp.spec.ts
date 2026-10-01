@@ -277,7 +277,9 @@ test("Service creation uses the shared form without product inventory fields", a
   await page.goto("/dashboard/catalog/services/new");
 
   await expect(page.getByRole("heading", { name: "Create service" })).toBeVisible();
-  await expect(page.getByLabel("SKU")).toHaveCount(0);
+  // ERP E1: services carry a SKU (Odoo's internal reference), but never a barcode or stock.
+  await expect(page.getByLabel("SKU")).toBeVisible();
+  await expect(page.getByLabel("Barcode")).toHaveCount(0);
   await expect(page.getByLabel("Stock status")).toHaveCount(0);
   await expect(page.getByLabel("Public unit price")).toBeVisible();
 });
@@ -325,7 +327,8 @@ test("Product detail uses the shared responsive summary and explains recoverable
   await page.goto(`/dashboard/catalog/products/${productId}`);
 
   await expect(page.locator("[data-record-workspace-title]")).toHaveText("Camera kit");
-  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+  // ERP E1 appends Sales: the quote and order lines picked from this item.
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files", "Sales"]);
 
   // The three State fields are the rail's, and two of them are booleans whose values are
   // named states — a closed set the operator picks from, so they edit in place (design.md §4.7).
@@ -465,7 +468,8 @@ test("The record archetype's Timeline, Tasks and Files tabs replace the nested a
 
   // One strip, four tabs, nothing nested — `CrmRecordActivitySection` supplied a second
   // strip inside the page's own, and it is gone with its last three consumers.
-  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+  // ERP E1 appends Sales: the quote and order lines picked from this item.
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files", "Sales"]);
   await expect(page.getByRole("tab", { name: "Notes" })).toHaveCount(0);
 
   // The composer sits above the feed it writes to, and a note is one of the feed's entries

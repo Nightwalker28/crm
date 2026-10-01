@@ -314,6 +314,8 @@ class LeadConversionResponse(BaseModel):
 
 
 class SalesQuoteItemBase(BaseModel):
+    catalog_product_id: int | None = Field(default=None, gt=0)
+    catalog_service_id: int | None = Field(default=None, gt=0)
     name: str = Field(min_length=1, max_length=500)
     description: str | None = None
     quantity: Decimal = Field(default=Decimal("1"), gt=0)
@@ -515,6 +517,8 @@ class ClientQuoteActionRequest(BaseModel):
 
 
 class SalesOrderItemBase(BaseModel):
+    catalog_product_id: int | None = Field(default=None, gt=0)
+    catalog_service_id: int | None = Field(default=None, gt=0)
     name: str = Field(min_length=1, max_length=500)
     description: str | None = None
     quantity: Decimal = Field(default=Decimal("1"), gt=0)

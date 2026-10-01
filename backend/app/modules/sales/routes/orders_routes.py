@@ -9,6 +9,7 @@ from app.core.security import require_user
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.crm_events import safe_publish_crm_event
 from app.modules.sales.schema import SalesOrderCreateRequest, SalesOrderListItem, SalesOrderListResponse, SalesOrderResponse, SalesOrderUpdateRequest
+from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
 from app.modules.sales.services.orders_services import create_sales_order, get_order_or_404, list_sales_orders, update_sales_order
 
 
@@ -97,7 +98,9 @@ def create_order(
     require_module=Depends(require_module_access("sales_orders")),
     require_permission=Depends(require_action_access("sales_orders", "create")),
 ):
-    created = create_sales_order(db, payload.model_dump(), current_user)
+    order_payload = payload.model_dump()
+    require_catalog_line_link_access(db, user=current_user, lines=order_payload.get("items"))
+    created = create_sales_order(db, order_payload, current_user)
     safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -142,8 +145,10 @@ def update_order(
     require_permission=Depends(require_action_access("sales_orders", "edit")),
 ):
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    update_payload = payload.model_dump(exclude_unset=True)
+    require_catalog_line_link_access(db, user=current_user, lines=update_payload.get("items"), existing_links=catalog_links_of(order.items))
     before_state = _serialize_order(order)
-    updated = update_sales_order(db, order, payload.model_dump(exclude_unset=True))
+    updated = update_sales_order(db, order, update_payload)
     safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,

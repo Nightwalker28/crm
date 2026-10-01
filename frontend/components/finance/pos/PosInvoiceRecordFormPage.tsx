@@ -18,6 +18,7 @@ import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
+  transactionCatalogLink,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
@@ -161,6 +162,7 @@ function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
     lines: invoice.lines?.length
       ? invoice.lines.map((line) => ({
           ...createTransactionLineItem("invoice"),
+          ...transactionCatalogLink(line),
           name: line.description,
           description: "",
           quantity: String(line.quantity),
@@ -350,6 +352,7 @@ function PosInvoiceRecordFormEditor({
             payment_terms: form.payment_terms.trim() || null,
             notes: form.notes.trim() || null,
             lines: lines.map((line) => ({
+              ...transactionCatalogLink(line),
               description: line.name.trim(),
               quantity: numberValue(line.quantity),
               unit_price: numberValue(line.unit_price),

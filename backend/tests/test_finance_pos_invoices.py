@@ -335,7 +335,9 @@ class FinancePosInvoiceTests(unittest.TestCase):
         )
         invoice.lines = [existing]
 
+        # No line carries a catalog link, so the link check never touches the session.
         subtotal = pos_invoice_services._apply_lines(
+            None,
             invoice,
             [
                 {"id": 7, "description": "Updated", "quantity": 2, "unit_price": 15},

@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/Card";
 import { Money } from "@/components/ui/Money";
 import { RecordTable, type RecordRowId } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { TextLink } from "@/components/ui/TextLink";
+import { DASHBOARD_ROUTES } from "@/lib/routes";
 
 /**
  * A line-item document's items, once saved (design.md §4.7 archetype 2, §7.10).
@@ -29,7 +31,15 @@ export type TransactionLineItemRow = {
   discount_amount?: number | string | null;
   tax_amount?: number | string | null;
   line_total: number | string | null;
+  catalog_product_id?: number | null;
+  catalog_service_id?: number | null;
 };
+
+function catalogHref(item: TransactionLineItemRow) {
+  if (item.catalog_product_id) return `${DASHBOARD_ROUTES.products}/${item.catalog_product_id}`;
+  if (item.catalog_service_id) return `${DASHBOARD_ROUTES.services}/${item.catalog_service_id}`;
+  return null;
+}
 
 export function TransactionLineItemsTable({
   items,
@@ -39,6 +49,11 @@ export function TransactionLineItemsTable({
   /** POS lines carry no per-line discount or tax, so those two columns are not drawn. */
   showAdjustments = true,
   title = "Line items",
+  /**
+   * Link each catalog line to its product or service. CRM pages only: the client portal
+   * draws the same table and its customers cannot open catalog records.
+   */
+  linkCatalogItems = false,
 }: {
   items: TransactionLineItemRow[];
   /** Nullable because a document's currency is: `Money` renders the bare figure without one. */
@@ -46,6 +61,7 @@ export function TransactionLineItemsTable({
   itemLabel?: string;
   showAdjustments?: boolean;
   title?: string;
+  linkCatalogItems?: boolean;
 }) {
   return (
     // `min-w-0` for the same reason `FormSection` carries it: this card is a grid item on
@@ -68,7 +84,11 @@ export function TransactionLineItemsTable({
               size: "lg",
               render: (item) => (
                 <>
-                  <div className="font-medium text-copy-primary">{item.name}</div>
+                  <div className="font-medium text-copy-primary">
+                    {linkCatalogItems && catalogHref(item) ? (
+                      <TextLink href={catalogHref(item) as string}>{item.name}</TextLink>
+                    ) : item.name}
+                  </div>
                   {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
                 </>
               ),

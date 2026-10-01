@@ -359,10 +359,13 @@ function InvoiceOverview({
             quantity: line.quantity,
             unit_price: line.unit_price,
             line_total: line.line_total ?? line.quantity * line.unit_price,
+            catalog_product_id: line.catalog_product_id,
+            catalog_service_id: line.catalog_service_id,
           }))}
           currency={invoice.currency}
           itemLabel="Description"
           showAdjustments={false}
+          linkCatalogItems
         />
       ) : null}
     </div>

@@ -7,6 +7,7 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import get_current_user
+from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
 from app.modules.finance.schema import (
     PosInvoiceCreateRequest,
     PosInvoiceListResponse,
@@ -102,7 +103,9 @@ def create_pos_invoice(
     require_module=Depends(require_module_access("finance_pos")),
     require_permission=Depends(require_action_access("finance_pos", "create")),
 ):
-    invoice = pos_invoice_services.create_invoice(db, current_user, payload.model_dump())
+    invoice_payload = payload.model_dump()
+    require_catalog_line_link_access(db, user=current_user, lines=invoice_payload.get("lines"))
+    invoice = pos_invoice_services.create_invoice(db, current_user, invoice_payload)
     return pos_invoice_services.serialize_invoice(invoice, current_user=current_user)
 
 
@@ -127,11 +130,15 @@ def update_pos_invoice(
     require_module=Depends(require_module_access("finance_pos")),
     require_permission=Depends(require_action_access("finance_pos", "edit")),
 ):
+    update_payload = payload.model_dump(exclude_unset=True)
+    if update_payload.get("lines") is not None:
+        existing = pos_invoice_services.get_invoice_or_404(db, current_user, invoice_id)
+        require_catalog_line_link_access(db, user=current_user, lines=update_payload["lines"], existing_links=catalog_links_of(existing.lines))
     invoice = pos_invoice_services.update_invoice(
         db,
         current_user,
         invoice_id,
-        payload.model_dump(exclude_unset=True),
+        update_payload,
     )
     return pos_invoice_services.serialize_invoice(invoice, current_user=current_user)
 

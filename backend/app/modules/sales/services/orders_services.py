@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.module_filters import apply_filter_conditions
 from app.modules.platform.services.numbering import allocate_business_number
+from app.modules.catalog.services.line_links import normalize_catalog_line_links
 from app.modules.sales.models import SalesOrder, SalesOrderItem, SalesQuote
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
@@ -134,7 +135,15 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
     return data
 
 
-def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int) -> SalesOrderItem:
+def _normalize_items(db: Session, items: list[dict], *, tenant_id: int) -> list[SalesOrderItem]:
+    catalog_links = normalize_catalog_line_links(db, tenant_id=tenant_id, lines=items)
+    return [
+        _normalize_item_payload(item, tenant_id=tenant_id, sort_order=index, catalog_link=catalog_links[index])
+        for index, item in enumerate(items)
+    ]
+
+
+def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int, catalog_link: dict[str, int | None]) -> SalesOrderItem:
     name = _coerce_optional(item.get("name"))
     if not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item name is required")
@@ -152,6 +161,7 @@ def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int) -> S
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item discount cannot exceed its value and tax")
     return SalesOrderItem(
         tenant_id=tenant_id,
+        **catalog_link,
         name=name,
         description=_coerce_optional(item.get("description")),
         quantity=quantity,
@@ -257,10 +267,7 @@ def get_order_by_quote(db: Session, *, tenant_id: int, quote_id: int) -> SalesOr
 def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     items_payload = payload.pop("items", []) or []
     data = _normalize_order_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
-    normalized_items = [
-        _normalize_item_payload(item, tenant_id=current_user.tenant_id, sort_order=index)
-        for index, item in enumerate(items_payload)
-    ]
+    normalized_items = _normalize_items(db, items_payload, tenant_id=current_user.tenant_id)
     if normalized_items:
         data.update(
             {
@@ -304,6 +311,8 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
         "owner_id": quote.assigned_to or (current_user.id if current_user else None),
         "items": [
             {
+                "catalog_product_id": item.catalog_product_id,
+                "catalog_service_id": item.catalog_service_id,
                 "name": item.name,
                 "description": item.description,
                 "quantity": item.quantity,
@@ -335,10 +344,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict) -> SalesOr
     data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True)
     normalized_items = None
     if items_payload is not None:
-        normalized_items = [
-            _normalize_item_payload(item, tenant_id=order.tenant_id, sort_order=index)
-            for index, item in enumerate(items_payload)
-        ]
+        normalized_items = _normalize_items(db, items_payload, tenant_id=order.tenant_id)
         data.update(
             {
                 "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),

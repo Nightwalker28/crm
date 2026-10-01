@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
+import { CatalogItemSalesPanel } from "@/components/catalog/CatalogItemSalesPanel";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
@@ -78,7 +79,7 @@ const VISIBILITY_OPTIONS: InlineFieldEditOption[] = [
  */
 const SPINE_OWNED_FIELDS = ["name", "is_active", "is_public", "stock_status"] as const;
 
-const MONEY_FIELDS = new Set(["public_unit_price"]);
+const MONEY_FIELDS = new Set(["public_unit_price", "cost_price"]);
 
 export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const queryClient = useQueryClient();
@@ -240,6 +241,13 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
           createActionVariant="outline"
         />
       ) : undefined}
+      extraTabs={record ? [
+        {
+          id: "sales",
+          label: "Sales",
+          content: <CatalogItemSalesPanel kind={kind} itemId={record.id} unit={record.unit ?? "unit"} />,
+        },
+      ] : []}
       files={record && canViewDocuments ? (
         <RecordDocumentsPanel
           moduleKey={moduleKey}

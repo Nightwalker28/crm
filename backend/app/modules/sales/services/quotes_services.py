@@ -23,6 +23,7 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.catalog.services.line_links import normalize_catalog_line_links
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteItem, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
@@ -165,11 +166,12 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
     return normalized
 
 
-def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
+def _normalize_quote_items(db: Session, items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
     normalized_items: list[SalesQuoteItem] = []
     subtotal = Decimal("0")
     discount_total = Decimal("0")
     tax_total = Decimal("0")
+    catalog_links = normalize_catalog_line_links(db, tenant_id=tenant_id, lines=items)
     for index, item in enumerate(items):
         name = _coerce_required(item.get("name"), "Quote item name")
         quantity = _coerce_decimal(item.get("quantity", "1"))
@@ -187,6 +189,7 @@ def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[S
         normalized_items.append(
             SalesQuoteItem(
                 tenant_id=tenant_id,
+                **catalog_links[index],
                 name=name,
                 description=_coerce_optional(item.get("description")),
                 quantity=quantity,
@@ -430,7 +433,7 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
     ensure_single_duplicate_action(replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     data = dict(payload)
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
+    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
     explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields", None))
     data = _normalize_quote_payload(data)
@@ -486,7 +489,7 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
 
 def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote:
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
+    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(db, tenant_id=quote.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields"), existing=load_custom_field_values_with_fallback(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, fallback=quote.custom_data))

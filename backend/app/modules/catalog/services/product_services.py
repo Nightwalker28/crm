@@ -11,7 +11,10 @@ from app.modules.catalog.models import CatalogProduct
 from app.modules.catalog.repositories import product_repository
 from app.modules.catalog.schema import CatalogProductResponse
 from app.modules.catalog.services.common import (
+    catalog_detail_payload,
     catalog_media_payload,
+    normalize_catalog_code,
+    normalize_catalog_detail_fields,
     coerce_catalog_bool,
     normalize_catalog_currency,
     normalize_catalog_slug,
@@ -72,6 +75,8 @@ def serialize_product(product: CatalogProduct) -> dict:
         "public_unit_price": product.public_unit_price,
         "stock_status": product.stock_status,
         "stock_quantity": product.stock_quantity,
+        **catalog_detail_payload(product),
+        "barcode": product.barcode,
         "is_public": bool(product.is_public),
         "is_active": bool(product.is_active),
         **catalog_media_payload(product),
@@ -162,7 +167,9 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         name=str(payload["name"]).strip(),
         slug=slug,
         description=(payload.get("description") or "").strip() or None,
-        sku=(payload.get("sku") or "").strip() or None,
+        sku=normalize_catalog_code(payload.get("sku")),
+        barcode=normalize_catalog_code(payload.get("barcode")),
+        **normalize_catalog_detail_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
         currency=normalize_catalog_currency(payload.get("currency")),
         public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
         stock_status=_normalize_stock_status(payload.get("stock_status")),
@@ -177,7 +184,7 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug or SKU already exists.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug, SKU or barcode already exists.") from exc
     db.refresh(product)
     log_activity(
         db,
@@ -201,12 +208,15 @@ def update_product(
     payload: dict,
 ) -> CatalogProduct:
     before_state = _product_state(product)
+    for field, value in normalize_catalog_detail_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
+        setattr(product, field, value)
     required_fields = {"name", "currency", "public_unit_price", "stock_status"}
     for field in [
         "name",
         "slug",
         "description",
         "sku",
+        "barcode",
         "currency",
         "public_unit_price",
         "stock_status",
@@ -222,8 +232,10 @@ def update_product(
         if field == "slug":
             value = normalize_catalog_slug(value, fallback=product.name)
             _ensure_slug_available(db, tenant_id=product.tenant_id, slug=value, product_id=product.id)
-        elif field in {"description", "sku"}:
+        elif field == "description":
             value = (value or "").strip() or None
+        elif field in {"sku", "barcode"}:
+            value = normalize_catalog_code(value)
         elif field == "name" and value is not None:
             value = str(value).strip()
         elif field == "currency" and value is not None:
@@ -241,7 +253,7 @@ def update_product(
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug or SKU already exists.") from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug, SKU or barcode already exists.") from exc
     db.refresh(product)
     log_activity(
         db,

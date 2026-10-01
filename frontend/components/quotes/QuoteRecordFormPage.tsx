@@ -21,6 +21,7 @@ import {
   calculateTransactionTotals,
   createTransactionLineItem,
   serializeTransactionItems,
+  transactionCatalogLink,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
@@ -115,6 +116,8 @@ type QuoteEditSource = {
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
     items?: Array<{
+      catalog_product_id?: number | null;
+      catalog_service_id?: number | null;
       name: string;
       description?: string | null;
       quantity: string | number;
@@ -180,6 +183,7 @@ function quoteSeed(source?: QuoteEditSource): QuoteSeed {
     items: quote.items?.length
       ? quote.items.map((item) => ({
           ...createTransactionLineItem("quote"),
+          ...transactionCatalogLink(item),
           name: item.name,
           description: item.description ?? "",
           quantity: String(item.quantity),

@@ -20,6 +20,12 @@ export type CatalogRecord = {
   public_unit_price: number | string;
   stock_status?: "untracked" | "in_stock" | "out_of_stock" | "preorder";
   stock_quantity?: number | string | null;
+  /** Products only. */
+  barcode?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  cost_price?: number | string | null;
+  unit?: string;
   is_public: boolean;
   is_active: boolean;
   media_url?: string | null;
@@ -38,6 +44,10 @@ export type CatalogRecordPayload = {
   public_unit_price: number;
   stock_status?: string;
   stock_quantity?: number | null;
+  barcode?: string | null;
+  category_id?: number | null;
+  cost_price?: number | null;
+  unit?: string;
   is_public: boolean;
   is_active: boolean;
 };
@@ -288,6 +298,41 @@ export function useCatalogRecord(kind: CatalogKind, id: number | null) {
     queryKey: ["catalog", kind, id],
     queryFn: () => fetchCatalogRecord(kind, id as number),
     enabled: id != null,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export type CatalogItemSalesLine = {
+  document_type: "quote" | "order";
+  document_id: number;
+  document_number: string;
+  customer_name?: string | null;
+  status: string;
+  currency: string;
+  quantity: number | string;
+  unit_price: number | string;
+  line_total: number | string;
+  document_date?: string | null;
+};
+
+export type CatalogItemSales = {
+  results: CatalogItemSalesLine[];
+  quote_line_count: number;
+  order_line_count: number;
+  ordered_quantity: number | string;
+  can_view_quotes: boolean;
+  can_view_orders: boolean;
+};
+
+/** The quote and order lines that use one catalog item: the record's Sales tab. */
+export function useCatalogItemSales(kind: CatalogKind, id: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ["catalog", kind, id, "sales"],
+    queryFn: async (): Promise<CatalogItemSales> => {
+      const res = await apiFetch(pathFor(kind, `/${id}/sales`));
+      return parseJsonResponse<CatalogItemSales>(res, `Failed to load sales (${res.status})`);
+    },
+    enabled: enabled && id != null,
     refetchOnWindowFocus: false,
   });
 }

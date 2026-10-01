@@ -8,6 +8,8 @@ import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 export type OrderItem = {
   id: number;
   order_id: number;
+  catalog_product_id?: number | null;
+  catalog_service_id?: number | null;
   name: string;
   description: string | null;
   quantity: string | number;

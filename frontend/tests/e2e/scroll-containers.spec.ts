@@ -66,6 +66,7 @@ const ROUTES = [
   "/dashboard/settings/backups",
   "/dashboard/settings/calendar-booking",
   "/dashboard/settings/customer-groups",
+  "/dashboard/settings/catalog-categories",
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",
   "/dashboard/settings/record-layouts",

@@ -1,10 +1,15 @@
 from __future__ import annotations
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.module_filters import apply_filter_conditions
-from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.catalog.models import CatalogCategory, CatalogProduct, CatalogService
+
+# The category's own name, for filtering and sorting a list without a join.
+PRODUCT_CATEGORY_NAME = (
+    select(CatalogCategory.name).where(CatalogCategory.id == CatalogProduct.category_id).correlate(CatalogProduct).scalar_subquery()
+)
 
 
 PRODUCT_SORT_FIELDS = {
@@ -15,6 +20,10 @@ PRODUCT_SORT_FIELDS = {
     "public_unit_price": CatalogProduct.public_unit_price,
     "stock_status": CatalogProduct.stock_status,
     "stock_quantity": CatalogProduct.stock_quantity,
+    "category_name": PRODUCT_CATEGORY_NAME,
+    "cost_price": CatalogProduct.cost_price,
+    "unit": CatalogProduct.unit,
+    "barcode": CatalogProduct.barcode,
     "is_public": CatalogProduct.is_public,
     "is_active": CatalogProduct.is_active,
     "created_at": CatalogProduct.created_at,
@@ -84,6 +93,7 @@ def list_products(
             or_(
                 CatalogProduct.name.ilike(pattern),
                 CatalogProduct.sku.ilike(pattern),
+                CatalogProduct.barcode.ilike(pattern),
                 CatalogProduct.description.ilike(pattern),
             )
         )
@@ -95,6 +105,11 @@ def list_products(
         "public_unit_price": {"expression": CatalogProduct.public_unit_price, "type": "number"},
         "stock_status": {"expression": CatalogProduct.stock_status, "type": "text"},
         "stock_quantity": {"expression": CatalogProduct.stock_quantity, "type": "number"},
+        "category_id": {"expression": CatalogProduct.category_id, "type": "number"},
+        "category_name": {"expression": PRODUCT_CATEGORY_NAME, "type": "text"},
+        "cost_price": {"expression": CatalogProduct.cost_price, "type": "number"},
+        "unit": {"expression": CatalogProduct.unit, "type": "text"},
+        "barcode": {"expression": CatalogProduct.barcode, "type": "text"},
         "is_public": {"expression": CatalogProduct.is_public, "type": "boolean"},
         "is_active": {"expression": CatalogProduct.is_active, "type": "boolean"},
         "created_at": {"expression": CatalogProduct.created_at, "type": "date"},
@@ -128,6 +143,7 @@ def list_products_cursor(
             or_(
                 CatalogProduct.name.ilike(pattern),
                 CatalogProduct.sku.ilike(pattern),
+                CatalogProduct.barcode.ilike(pattern),
                 CatalogProduct.description.ilike(pattern),
             )
         )

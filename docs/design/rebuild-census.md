@@ -273,6 +273,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/record-layouts/page.tsx` | 57 | 5.6 | rebuild | The **only** page with `PermissionDeniedState`. Leaks from the IA split | **done, batches 1 + 7c** — the IA leak closed in 1; the page's own Title Case title fixed in 7c |
 | `settings/pipeline/page.tsx` | 140 | — | new | crm-evolution Wave 2E, added after the programme closed | **born on the system** — archetype 4: `PageShell variant="settings"`, one `FormSection`, `SortableList` rows, autosave per row (R1), order's own `SaveStateIndicator` |
 | `settings/customer-groups/page.tsx` | 514 | 5.6 | rebuild | Raw `Table` | **done, batches 4a + 7a** — `RecordTable` with sortable columns, three page-local states deleted; then `EditorPanel` |
+| `settings/catalog-categories/page.tsx` | 300 | — | new | crm-evolution ERP E1 (`12-erp-inventory.md` §5.1), added after the programme closed | **born on the system** — archetype 4, the customer-groups shape: `RecordTable` + `EditorPanel`, subcategories indented under their parent |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **done, batches 3 + 5 + 7d** — denied state, then the address vocabulary; in 7d the page-local `RouteLoadingState` and `Card`+`EmptyState` moved onto `AutomationRunsTable`, which has owned both states since 4a |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **done, batches 3 + 7d** — denied state; **audited clean in 7d** |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **done, batches 3 + 7d** — it had re-created `Pill`: a nested ternary painting a coloured capsule per domain. `StatusValue` + `Chip`, the prose loading line → `PanelLoading`, the panel heading → `SectionHeading` |
@@ -357,6 +358,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/message-templates/MessageTemplateRecordFormPage.tsx` | 232 | 5.4 | rebuild | Verbatim copy of the sticky-footer classes (`:205`) | **done, batch 4** — sticky deleted, on `FormFooter`, and its coloured dirty line dropped (R5) |
 | `finance/payments/RecordPaymentPage.tsx` | 209 | 5.4 | rebuild | **A7** — the slower of two paths | **done, close-out** — archetype 3; A7 remains a 5.5 workflow decision with the faster dialog path |
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
+| `catalog/CatalogItemSalesPanel.tsx` | 100 | — | new | crm-evolution ERP E1: the product and service record's *Sales* tab, through `extraTabs` | **born on the system** — `Card` + `SectionHeading`, `FactList` counts, a read-only `RecordTable` with all four states |
 
 ### 2.3 Tables and lists (20) — owner 5.5
 
@@ -378,7 +380,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `finance/pos/InvoicesTable.tsx` | 187 | 5.5 | adopt | | **done, batch 4** — selection props removed (**A6**) |
 | `finance/payments/PaymentsTable.tsx` | 192 | 5.5 | adopt | The AR list — needs the **derived** overdue tone (R5) | **batch 4** — selection props removed (**A6**); the row action was always the verb. The overdue tone is still open |
 | `customModules/CustomModuleRecordsTable.tsx` | 137 | 5.5 | adopt | | **done, batches 2–3 — unchanged, deliberately.** Already on `RecordTable`; its list workflow came from the hooks above it |
-| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now |
+| `transactions/TransactionLineItemsEditor.tsx` | 38 | 5.5 | rebuild | → `variant="lineItems"` (R10) | **done** — batch 1. The app's only editable grid; the two hardcoded `min-w-[Npx]` are derived now. **ERP E1:** the item cell is a `LinkedRecordPicker` over the catalog when the user can see it, and each line carries its catalog link |
 | `transactions/TransactionTotals.tsx` | 69 | 5.4 | new | The line-item document's money ledger | **done, batch 5** — replaces three private `SummaryRow`s |
 | `transactions/TransactionLineItemsTable.tsx` | 118 | 5.5 | new | The line-item document's items, once saved — `variant="readOnly"` | **done, batch 1** — replaces the same table hand-written on quote, order and POS invoice; gained `min-w-0` in the close-out |
 | `client-portal/ClientPagesTable.tsx` | 160 | 5.5 | new | Extracted from the page | **done, batch 6** |
@@ -452,7 +454,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
-| `crm/LinkedRecordPicker.tsx` | 389 | 5.1 | rebuild | The canonical relationship control; the spine's Connected block uses it | **done** (E) — audited against the Connected-block role; already compliant, no change needed. The link-display mode is built with its Connected block in 5.3, per scoping decision 4 |
+| `crm/LinkedRecordPicker.tsx` | 389 | 5.1 | rebuild | The canonical relationship control; the spine's Connected block uses it | **done** (E) — audited against the Connected-block role; already compliant, no change needed. The link-display mode is built with its Connected block in 5.3, per scoping decision 4. **ERP E1:** the result list moved from an absolutely positioned child into a `Popover` anchored to the field, so a scroll region around it (the line-items grid, an `EditorPanel`) cannot clip it; same classes, roles and keyboard path. Gains the `catalog_item` type |
 | `crm/RecordTagInput.tsx` | 217 | 5.1 | adopt | Tags are not statuses — no tone (R5) | **done** (E) — its hand-rolled `rounded-full` chip now renders through `Chip` (§4.3) |
 | `customFields/CustomFieldInputs.tsx` | 131 | 5.4 | adopt | | **done, close-out** — supplies the shared layout-driven renderer |
 | `customModules/CustomModuleFieldInput.tsx` | 172 | 5.4 | adopt | | **done, close-out** — audited; separate custom-module form renderer |

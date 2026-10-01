@@ -1,15 +1,23 @@
 from __future__ import annotations
 
-from sqlalchemy import or_
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.core.module_filters import apply_filter_conditions
-from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.catalog.models import CatalogCategory, CatalogProduct, CatalogService
+
+SERVICE_CATEGORY_NAME = (
+    select(CatalogCategory.name).where(CatalogCategory.id == CatalogService.category_id).correlate(CatalogService).scalar_subquery()
+)
 
 
 SERVICE_SORT_FIELDS = {
     "name": CatalogService.name,
     "slug": CatalogService.slug,
+    "sku": CatalogService.sku,
+    "category_name": SERVICE_CATEGORY_NAME,
+    "cost_price": CatalogService.cost_price,
+    "unit": CatalogService.unit,
     "currency": CatalogService.currency,
     "public_unit_price": CatalogService.public_unit_price,
     "is_public": CatalogService.is_public,
@@ -77,10 +85,15 @@ def list_services(
         query = query.filter(CatalogService.is_active == 1)
     if search and search.strip():
         pattern = f"%{search.strip()}%"
-        query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.description.ilike(pattern)))
+        query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.sku.ilike(pattern), CatalogService.description.ilike(pattern)))
     field_map = {
         "name": {"expression": CatalogService.name, "type": "text"},
         "slug": {"expression": CatalogService.slug, "type": "text"},
+        "sku": {"expression": CatalogService.sku, "type": "text"},
+        "category_id": {"expression": CatalogService.category_id, "type": "number"},
+        "category_name": {"expression": SERVICE_CATEGORY_NAME, "type": "text"},
+        "cost_price": {"expression": CatalogService.cost_price, "type": "number"},
+        "unit": {"expression": CatalogService.unit, "type": "text"},
         "currency": {"expression": CatalogService.currency, "type": "text"},
         "public_unit_price": {"expression": CatalogService.public_unit_price, "type": "number"},
         "is_public": {"expression": CatalogService.is_public, "type": "boolean"},
@@ -112,7 +125,7 @@ def list_services_cursor(
         query = query.filter(CatalogService.is_active == 1)
     if search and search.strip():
         pattern = f"%{search.strip()}%"
-        query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.description.ilike(pattern)))
+        query = query.filter(or_(CatalogService.name.ilike(pattern), CatalogService.sku.ilike(pattern), CatalogService.description.ilike(pattern)))
     if cursor is not None:
         query = query.filter(CatalogService.id < cursor)
     return query.order_by(None).order_by(CatalogService.id.desc()).limit(limit + 1).all()

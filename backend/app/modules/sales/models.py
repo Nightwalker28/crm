@@ -5,6 +5,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
 from app.core.database import Base
+from app.modules.catalog.models import CatalogProduct, CatalogService  # noqa: F401 - line items point at the catalog
 from app.modules.client_portal.models import CustomerGroup  # noqa: F401
 from app.modules.sales.opportunity_contact_roles import (
     DEFAULT_OPPORTUNITY_CONTACT_ROLE,
@@ -420,12 +421,20 @@ class SalesQuoteItem(Base):
         CheckConstraint("discount_amount >= 0", name="ck_sales_quote_items_discount_nonnegative"),
         CheckConstraint("tax_amount >= 0", name="ck_sales_quote_items_tax_nonnegative"),
         CheckConstraint("line_total >= 0", name="ck_sales_quote_items_total_nonnegative"),
+        CheckConstraint(
+            "catalog_product_id IS NULL OR catalog_service_id IS NULL",
+            name="ck_sales_quote_items_one_catalog_link",
+        ),
         Index("ix_sales_quote_items_tenant_quote", "tenant_id", "quote_id"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, autoincrement=True)
     tenant_id = Column(BigInteger, nullable=False)
     quote_id = Column(BigInteger, nullable=False)
+    # The catalog item the line was picked from. The line keeps its own name and price, so a
+    # catalog change never rewrites a sent quote; a free-text line has neither link.
+    catalog_product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="SET NULL"), nullable=True, index=True)
+    catalog_service_id = Column(BigInteger, ForeignKey("catalog_services.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     quantity = Column(Numeric(18, 4), nullable=False, server_default="1")
@@ -576,11 +585,17 @@ class SalesOrderItem(Base):
     __tablename__ = "sales_order_items"
     __table_args__ = (
         Index("ix_sales_order_items_tenant_order", "tenant_id", "order_id"),
+        CheckConstraint(
+            "catalog_product_id IS NULL OR catalog_service_id IS NULL",
+            name="ck_sales_order_items_one_catalog_link",
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="CASCADE"), nullable=False, index=True)
+    catalog_product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="SET NULL"), nullable=True, index=True)
+    catalog_service_id = Column(BigInteger, ForeignKey("catalog_services.id", ondelete="SET NULL"), nullable=True, index=True)
     name = Column(Text, nullable=False)
     description = Column(Text, nullable=True)
     quantity = Column(Numeric(18, 4), nullable=False, server_default="1")

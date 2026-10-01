@@ -341,7 +341,7 @@ function OrderOverview({
         }
       />
       {order.items?.length ? (
-        <TransactionLineItemsTable items={order.items} currency={order.currency} />
+        <TransactionLineItemsTable items={order.items} currency={order.currency} linkCatalogItems />
       ) : null}
     </div>
   );

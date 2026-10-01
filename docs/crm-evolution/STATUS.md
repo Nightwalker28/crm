@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-01.
+Last updated 2026-10-02.
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -22,7 +22,96 @@ Last updated 2026-10-01.
 | **4A Phase 2 onward** | **Not started. Next: 08 Phase 2 (subscriptions), once 08a is approved** | |
 | Owner fixes (2026-10-01) | Done: automation made to work end to end (stays in Settings); settings' second nav rail removed. See below | `automation_records.py`, derived triggers and templates in `automation_registry.py`; `test_automation_triggers.py` |
 | Reports rebuild | **Phases 1–3 done (2026-10-01)**: engine v2, library, viewer, builder, shared dashboards, scheduled email and XLSX. Phase 4 deferred. See below | `11-reports.md`, `report_engine.py`, `report_dashboards.py`, `report_subscriptions.py`, `test_report_engine.py`, `test_report_subscriptions.py`, `reports-revamp.spec.ts` |
-| **Next, owner-set order** | **ERP modules one at a time, starting with a written plan** | |
+| ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
+| ERP E1 | **Done (2026-10-02): products and services, first class.** See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
+| **Next, owner-set order** | **E2 Phase 1: the inventory ledger (`12-erp-inventory.md` §4.2, §5.2–§5.7, §6). Starts with E2's own benchmark check against the major players (owner rule)** | |
+
+## ERP E1 — products and services, first class (2026-10-02)
+
+Benchmark `12-erp-inventory.md` §4.1 (Salesforce, HubSpot, Dynamics, Zoho, Odoo); design §5.1.
+The owner accepted every §7 recommendation and ruled that each ERP module is benchmarked
+before it is built and follows Lynk's existing design.
+
+**Backend.**
+- Migration `20260825_catalog_first_class`: `catalog_categories` (one level of nesting);
+  `category_id`, `cost_price`, `unit` on products and services; `barcode` on products and `sku`
+  on services (unique among active items per tenant); `catalog_product_id` /
+  `catalog_service_id` on `sales_quote_items` and `sales_order_items` (at most one, `SET NULL`).
+  Nothing is backfilled: existing lines stay free text.
+- `catalog/services/line_links.py`: the one tenant check for line links, used by quotes,
+  orders, quote → order conversion and invoices. **This closes the invoice defect** (§3 item 2:
+  invoice lines accepted another tenant's product ID). Retired and binned items stay linkable,
+  so old documents still save. Routes require catalog `view` only for links a write *adds*.
+- `GET /catalog/items/search` (the line picker: name or SKU contains, barcode exact, exact
+  codes first, active only, optional currency); `GET /catalog/{products|services}/{id}/sales`
+  (quote and order lines, only the document types the viewer can open; ordered quantity
+  excludes cancelled orders); `/catalog/categories` CRUD (`view` or `configure` on either
+  catalog module; delete refused while anything, binned items included, uses the category).
+  Category writes are in the activity log.
+- Product and service lists search and filter the new fields; record layouts show category,
+  unit, cost, barcode and SKU.
+
+**Frontend.**
+- `LinkedRecordPicker` gains `catalog_item`, and its result list now renders in a `Popover`
+  anchored to the field, so a scroll region (the line-items grid) cannot clip it. Same
+  classes, roles and keyboard path; 41 picker-using e2e tests pass unchanged.
+- `TransactionLineItemsEditor`: the item cell searches the catalog in the document's
+  currency; choosing fills name, the description's first line and price; typing without
+  choosing is a custom line; *Unlink* drops the link. Users without catalog access get the old
+  text cell. Quote, order and invoice forms seed and send the links; their read-only line
+  tables link catalog lines to the item (not on the client portal).
+- Catalog records gain a *Sales* tab (`CatalogItemSalesPanel`); the form gains category,
+  unit, cost, barcode (products) and SKU (services); lists gain the columns and filters.
+- Settings → Catalog categories (customer-groups pattern). Census rows added.
+
+**Verification.**
+- compileall; `alembic upgrade head` on the dev database; `verify_migrations` at head
+  `20260825_catalog_first_class`; `verify_openapi` (382 paths); `generate-contracts.sh --check`;
+  `check-design.sh` (21 rules); lint; production build.
+- Backend: `test_catalog_first_class.py` (17 cases); the whole suite passes 1379 of 1379.
+- e2e at `--workers=1 --timeout=90000`: `catalog-line-items` 4 of 4 (after three fixes, all in
+  the new spec: price format, a route glob matching the page URL, the table's region name);
+  `quotes`, `orders`, `invoices`, `catalog`, `documents`, `contacts`, `accounts` revamp specs
+  47 of 47 after updating `catalog-revamp` for two intended changes (services now have a SKU;
+  records have a Sales tab); `client-portal`, `opportunities`, `opportunity-participants`,
+  `insertion-orders`, `tasks`, `leads` 41 of 41.
+- Rendered guards, each alone on a fresh dev server capped at 6g. The new settings page is
+  added to both guards' route lists. **The full `design-rules` walk was OOM-killed at the 6g
+  cap** partway through (`ERR_CONNECTION_RESET`, `OOMKilled=true`), so it has no verdict. A
+  scratch copy scoped to E1's 22 routes (the catalog lists, forms and records, Settings and
+  Catalog categories, the quote, order and invoice forms) passed, none unreachable, both
+  themes; the copy was deleted. `scroll-containers` walked every route: no height-cap finding;
+  its two failures are `/client/bookings` and `/client/catalog` NAV-FAILED (pages that did not
+  load, portal surfaces E1 does not touch; see the NAV-FAILED memory).
+- **Not checked:** the full `design-rules` walk (needs more than 6g, or a split run); a
+  PostgreSQL run of the category name filter's correlated subquery (SQLite tests cover it).
+
+**Deferred:** price books (their own benchmark and plan, §4.1); unit conversion; grouping order
+lines in a report (needs a line-level report source); catalog in tenant backups (it was never
+in the backup set, which is unchanged here).
+
+## ERP programme — plan (2026-10-01)
+
+The owner asked for ERP modules one at a time with a written plan first. The plan is
+`12-erp-inventory.md`: the programme order (§2), what exists (§3), a benchmark of Odoo,
+Business Central, NetSuite, Zoho Inventory and ERPNext (§4), and the detailed design and
+phases for E1 and E2 (§5, §6). No code changed.
+
+What reading the code found (§3):
+
+- Quote and order lines are free text, with no product or service link, so stock and
+  sales-by-product cannot be computed.
+- **Invoice lines accept another tenant's product or service ID** (`pos_invoice_services.py`
+  copies them unchecked). Nothing leaks, but it is E1's first commit.
+- Stock is one overwritable number on the product with no history. Website orders decrement
+  it under a lock; the product form writes anything; order status never moves it.
+
+Decisions (§7): fulfilment or purchasing first; several
+warehouses from the start; negative stock; whether *Fulfilled* takes stock out until E3;
+costing method; vendors as flagged Accounts; lots and serials. **The owner accepted every
+recommendation (2026-10-01)**, and ruled that each ERP module gets its own benchmark of the major
+players before it is built, and follows Lynk's existing design and primitives. E1's benchmark is
+§4.1.
 
 ## Reports rebuild request (owner request, 2026-10-01)
 

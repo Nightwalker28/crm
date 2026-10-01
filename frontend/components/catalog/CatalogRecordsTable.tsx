@@ -43,6 +43,10 @@ const PRODUCT_SORTABLE_COLUMNS = new Set([
   "public_unit_price",
   "stock_status",
   "stock_quantity",
+  "category_name",
+  "cost_price",
+  "unit",
+  "barcode",
   "is_public",
   "is_active",
   "created_at",
@@ -52,6 +56,10 @@ const PRODUCT_SORTABLE_COLUMNS = new Set([
 const SERVICE_SORTABLE_COLUMNS = new Set([
   "name",
   "slug",
+  "sku",
+  "category_name",
+  "cost_price",
+  "unit",
   "currency",
   "public_unit_price",
   "is_public",
@@ -69,9 +77,12 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   is_public: "sm",
   media_url: "sm",
   stock_quantity: "sm",
+  cost_price: "sm",
+  unit: "sm",
+  barcode: "sm",
 };
 
-const PRODUCT_ONLY_COLUMNS = new Set(["sku", "stock_status", "stock_quantity"]);
+const PRODUCT_ONLY_COLUMNS = new Set(["barcode", "stock_status", "stock_quantity"]);
 
 // Empty string rather than a placeholder: both call sites already branch on it to decide
 // what to render instead. Formatting is lib/currency.ts's (design.md 7.1).
@@ -134,11 +145,23 @@ export default function CatalogRecordsTable({
             </div>
           );
         case "sku":
-          return isProduct ? (
+          return (
             <span className="rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted px-2 py-0.5 text-xs text-copy-secondary">
               {record.sku || <span className="text-copy-disabled">—</span>}
             </span>
-          ) : null;
+          );
+        case "barcode":
+          return isProduct ? <span className="text-xs tabular-nums text-copy-secondary">{record.barcode || "—"}</span> : null;
+        case "category_name":
+          return <span className="text-sm text-copy-secondary">{record.category_name || "—"}</span>;
+        case "unit":
+          return <span className="text-sm text-copy-secondary">{record.unit || "unit"}</span>;
+        case "cost_price":
+          return (
+            <span className="text-sm tabular-nums text-copy-secondary">
+              {formatAmount(record.cost_price, record.currency) || "—"}
+            </span>
+          );
         case "slug":
           return <span className="text-xs text-copy-secondary">{record.slug || "—"}</span>;
         case "description":
