@@ -20,6 +20,7 @@ Check whether the change has adequate validation for:
 - soft-delete/recovery paths where relevant
 - migrations/backfills when schema changed
 - frontend render/dialog/table/detail-page behavior
+- design conformance when UI changed: ./scripts/check-design.sh, the design-rules.spec.ts and scroll-containers.spec.ts browser guards, and a both-themes pass (docs/design/design.md §10)
 - cache/job/retry/failure behavior when relevant
 - docs/skills state updates only when direction or status materially changed
 

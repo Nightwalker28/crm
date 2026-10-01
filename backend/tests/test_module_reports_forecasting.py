@@ -2,6 +2,7 @@ import unittest
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -36,6 +37,10 @@ class FakeSavedReportQuery:
                 id=2,
                 module_key="sales_leads",
                 name="Lead Report",
+                description=None,
+                visibility="private",
+                user_id=1,
+                user=None,
                 config={},
                 created_at=datetime(2026, 1, 1),
                 updated_at=datetime(2026, 1, 2),
@@ -55,12 +60,13 @@ class SavedReportListTests(unittest.TestCase):
     def test_saved_reports_apply_sort_before_fetching(self):
         query = FakeSavedReportQuery()
 
-        results = module_reports.list_saved_reports(
-            FakeSavedReportDB(query),
-            SimpleNamespace(id=1, tenant_id=10),
-            sort_by="name",
-            sort_direction="asc",
-        )
+        with patch.object(module_reports.report_catalog, "resolve_source", return_value=(SimpleNamespace(label="Leads"), [])):
+            results = module_reports.list_saved_reports(
+                FakeSavedReportDB(query),
+                SimpleNamespace(id=1, tenant_id=10),
+                sort_by="name",
+                sort_direction="asc",
+            )
 
         self.assertEqual(results[0]["name"], "Lead Report")
         self.assertEqual(query.operations, ["filter", "order_by_reset", "order_by", "all"])

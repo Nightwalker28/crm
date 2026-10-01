@@ -4,12 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
-import { canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
+import { usePageAddress } from "@/hooks/usePageAddress";
+import {
+  canonicalSavedViewFiltersKey,
+  LIST_ADDRESS_KEYS,
+  readSavedViewConfigFromAddress,
+  writeSavedViewConfigToAddress,
+} from "@/lib/savedViewQuery";
 
 export type SavedViewConfig = {
   visible_columns: string[];
   filters: SavedViewFilters;
   sort?: Record<string, unknown> | null;
+  /** How the list renders this view's population (`table`, `pipeline`). Null is the module default. */
+  display?: string | null;
 };
 
 export type SavedViewFilterLogic = "all" | "any";
@@ -98,6 +106,7 @@ function sameAppliedConfig(left: SavedViewConfig, right: SavedViewConfig) {
   return (
     sameStringArray(left.visible_columns, right.visible_columns) &&
     sameSort(left.sort ?? null, right.sort ?? null) &&
+    (left.display ?? null) === (right.display ?? null) &&
     canonicalSavedViewFiltersKey(left.filters) === canonicalSavedViewFiltersKey(right.filters)
   );
 }
@@ -139,14 +148,38 @@ async function deleteSavedView(moduleKey: string, viewId: number) {
   if (!res.ok) throw await savedViewError(res, "The saved view could not be deleted.");
 }
 
+/**
+ * A1 — the draft view lives in the address (rebuild.md 5.5).
+ *
+ * The selected view, the search, the conditions, the sort and the visible columns are the
+ * four fields of `SavedViewConfig` plus the view it started from, and they are held in the
+ * URL rather than in React state. That is the whole of A1's list half: a record opened from
+ * page 4 of a filtered list comes back to page 4 of the filtered list, because the state
+ * was never in a component that unmounted. `usePagedList` holds the other two params.
+ *
+ * Only divergence from the selected view is written, so a list sitting on its default view
+ * has a clean URL and "Save view" is visibly the promotion of what the address already
+ * says.
+ *
+ * Pass `address = false` where a saved-view surface is not the route's subject — a picker
+ * inside a dialog, or a second list on one page — so it cannot fight the real list for the
+ * query string.
+ */
 export function useSavedViews(
   moduleKey: string,
   defaultConfig: SavedViewConfig,
   enabled = true,
+  address = true,
 ) {
   const queryClient = useQueryClient();
-  const [selectedViewId, setSelectedViewId] = useState<string>("");
+  const { params: addressParams, updateAddress } = usePageAddress(address);
+  const [selectedViewId, setSelectedViewId] = useState<string>(
+    () => (address ? addressParams.get(LIST_ADDRESS_KEYS.view) : null) ?? "",
+  );
   const [draftConfig, setDraftConfig] = useState<SavedViewConfig>(defaultConfig);
+  /** The address is layered onto the *first* view that resolves, and never again. */
+  const addressSeededRef = useRef(!address);
+  const lastWrittenAddressRef = useRef<string | null>(null);
   const lastAppliedViewKeyRef = useRef<string | null>(null);
   const lastResolvedSelectedViewIdRef = useRef<string | null>(null);
   const selectedViewIdRef = useRef(selectedViewId);
@@ -216,6 +249,7 @@ export function useSavedViews(
           ...(selectedView.config.filters ?? {}),
         },
         sort: selectedView.config.sort ?? null,
+        display: selectedView.config.display ?? null,
       };
       const viewKey = [
         selectedView.id ?? "system-default",
@@ -226,10 +260,39 @@ export function useSavedViews(
         return;
       }
       lastAppliedViewKeyRef.current = viewKey;
+      // A shared link's state outranks the view it started from, but only once: switching
+      // views afterwards must show that view, not re-apply a URL the operator has moved on
+      // from. The write effect below puts the new divergence back in the address.
+      const seeded = addressSeededRef.current ? nextConfig : readSavedViewConfigFromAddress(addressParams, nextConfig);
+      addressSeededRef.current = true;
       // eslint-disable-next-line react-hooks/set-state-in-effect
-      setDraftConfig((current) => (sameAppliedConfig(current, nextConfig) ? current : nextConfig));
+      setDraftConfig((current) => (sameAppliedConfig(current, seeded) ? current : seeded));
     }
-  }, [defaultVisibleColumns, selectedView]);
+  }, [addressParams, defaultVisibleColumns, selectedView]);
+
+  const defaultViewId = useMemo(() => {
+    const defaultView = views.find((view) => view.is_default) ?? views[0];
+    return defaultView ? String(defaultView.id ?? "system-default") : "";
+  }, [views]);
+
+  const baselineConfig = selectedView?.config ?? defaultConfig;
+  const addressSignature = `${selectedViewId}|${canonicalSavedViewFiltersKey(draftConfig.filters)}|${JSON.stringify(draftConfig.sort ?? null)}|${(draftConfig.visible_columns ?? []).join(",")}`;
+  useEffect(() => {
+    if (!address || !selectedView) return;
+    if (lastWrittenAddressRef.current === addressSignature) return;
+    // The first pass adopts the address instead of writing it. The draft was seeded *from*
+    // the URL a moment ago, and writing in the same pass would replace a shared link's
+    // state with the view's own defaults.
+    const isFirstPass = lastWrittenAddressRef.current === null;
+    lastWrittenAddressRef.current = addressSignature;
+    if (isFirstPass) return;
+    updateAddress((next) => {
+      const resolvedViewId = String(selectedView.id ?? "system-default");
+      if (resolvedViewId && resolvedViewId !== defaultViewId) next.set(LIST_ADDRESS_KEYS.view, resolvedViewId);
+      else next.delete(LIST_ADDRESS_KEYS.view);
+      writeSavedViewConfigToAddress(next, draftConfig, baselineConfig);
+    });
+  }, [address, addressSignature, baselineConfig, defaultViewId, draftConfig, selectedView, updateAddress]);
 
   const invalidate = async () => {
     await queryClient.invalidateQueries({ queryKey: ["saved-views", moduleKey] });

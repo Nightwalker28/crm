@@ -2,219 +2,330 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { FileDown, Pencil } from "lucide-react";
 
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { Card, CardBody, CardHeader } from "@/components/ui/Card";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
+import {
+  RecordWorkspace,
+  useRecordTabHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/Pill";
-import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
-import { useInsertionOrder } from "@/hooks/finance/useInsertionOrders";
+import { Card } from "@/components/ui/Card";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import {
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+  RecordSpineTrack,
+} from "@/components/ui/RecordSpine";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { useInsertionOrder, type InsertionOrder } from "@/hooks/finance/useInsertionOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
-import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getInsertionOrderStatusStyle } from "@/lib/statusStyles";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
+import { apiFetch } from "@/lib/api";
+import { formatMoney } from "@/lib/currency";
+import { formatDateTime } from "@/lib/datetime";
+import { getInsertionOrderStatus } from "@/lib/statusStyles";
 
-function formatMoney(amount?: number | null, currency?: string | null) {
-  if (amount == null) return "Not set";
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
+const IO_STATUS_VALUES = ["draft", "issued", "active", "completed", "cancelled", "imported"] as const;
+
+const IO_STATUS_OPTIONS: InlineFieldEditOption[] = IO_STATUS_VALUES.map((value) => ({
+  value,
+  ...getInsertionOrderStatus(value),
+}));
+
+/**
+ * `cancelled` ends the order without completing it, and `imported` is where a spreadsheet
+ * row arrives rather than a step an operator moves through — so neither is on the track,
+ * the same rule the lead, deal, quote and order tracks follow.
+ */
+const IO_TRACK_VALUES = ["draft", "issued", "active", "completed"] as const;
+
+const IO_TRACK_STEPS = IO_TRACK_VALUES.map((value) => ({
+  id: value,
+  label: getInsertionOrderStatus(value).label,
+}));
+
+/**
+ * Fields `Details` must not draw a second time (design.md §4.7): the header owns the IO
+ * number and the customer, and the spine owns the status.
+ */
+const SPINE_OWNED_FIELDS = ["io_number", "customer_name", "status"] as const;
+
+/** Money fields in the seeded layout, which render through the order's own currency. */
+const MONEY_FIELDS = new Set(["subtotal_amount", "tax_amount", "total_amount"]);
+
+/**
+ * An import writes a placeholder filename ending `.manual` when there was no real upload,
+ * so a truthy `file_url` is not on its own evidence that there is a file to download.
+ */
+function attachmentHref(order: InsertionOrder) {
+  const usable =
+    order.file_url && order.file_name && !order.file_name.toLowerCase().endsWith(".manual");
+  return usable ? order.file_url : null;
 }
 
 export default function InsertionOrderDetailPage() {
   const params = useParams<{ ioId: string }>();
+  const queryClient = useQueryClient();
   const { modules } = useAccessibleModules();
-  const orderQuery = useInsertionOrder(params.ioId);
-  const order = orderQuery.data;
-  const canEdit = Boolean(modules.find((module) => module.name === "finance_io")?.actions?.can_edit);
 
-  if (orderQuery.isLoading) {
-    return <RouteLoadingState label="insertion order" />;
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const orderActions = moduleActions("finance_io");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const canEdit = Boolean(orderActions?.can_edit);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+
+  const orderQuery = useInsertionOrder(params.ioId);
+  const detailLayoutQuery = useResolvedRecordLayout("finance_io", "detail");
+
+  const order = orderQuery.data ?? null;
+  const orderName = order?.io_number || "Insertion order";
+  const recordHref = `/dashboard/finance/insertion-orders/${params.ioId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
+  const download = order ? attachmentHref(order) : null;
+
+  async function updateStatus(next: string) {
+    if (!order || order.status === next) return;
+    const res = await apiFetch(`/finance/insertion-orders/${params.ioId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    if (!res.ok) throw new Error("The insertion order status could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "finance_io", params.ioId],
+      }),
+      orderQuery.refetch(),
+    ]);
   }
 
-  if (orderQuery.error) {
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/finance/insertion-orders/${params.ioId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ user_id: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The insertion order owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "finance_io", params.ioId],
+      }),
+      orderQuery.refetch(),
+    ]);
+  }
+
+  return (
+    <RecordWorkspace
+      title={orderName}
+      description="Review the insertion order's delivery period, commercial terms, and activity."
+      backHref="/dashboard/finance/insertion-orders"
+      backLabel="Insertion orders"
+      isLoading={orderQuery.isLoading || (!order && !orderQuery.error)}
+      hasError={Boolean(orderQuery.error)}
+      onRetry={() => void orderQuery.refetch()}
+      status={
+        order ? (
+          <StatusValue status={getInsertionOrderStatus(order.status)} context="record" />
+        ) : null
+      }
+      subtitle={order ? (
+        <>
+          {order.customer_name ? <span>{order.customer_name}</span> : null}
+          {formatMoney(order.total_amount, order.currency) ? (
+            <span>{formatMoney(order.total_amount, order.currency)}</span>
+          ) : null}
+        </>
+      ) : null}
+      /*
+       * No filled button: an insertion order moves forward by changing its status, and the
+       * rail owns that field (§4.7). §2.2's one fill is simply unspent.
+       */
+      actions={order && canEdit ? (
+        <Button asChild variant="outline">
+          <Link href={editHref}>
+            <Pencil />
+            Edit
+          </Link>
+        </Button>
+      ) : null}
+      /*
+       * The source file is a rare action on an imported record rather than a field, so it is
+       * in the overflow — and it is rendered only when there is a file, the same rule the
+       * quote's `Convert to order` follows (A12).
+       */
+      overflowActions={download ? (
+        <DropdownMenuItem asChild>
+          <a href={download}>
+            <FileDown />
+            Download source file
+          </a>
+        </DropdownMenuItem>
+      ) : undefined}
+      spine={
+        <RecordSpine>
+          {order ? (
+            <>
+              {IO_TRACK_VALUES.includes(order.status as (typeof IO_TRACK_VALUES)[number]) ? (
+                <RecordSpineTrack
+                  steps={IO_TRACK_STEPS}
+                  currentId={order.status}
+                  label="Insertion order lifecycle"
+                />
+              ) : null}
+
+              <RecordSpineBlock title="State">
+                <RecordSpineField label="Status">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Status"
+                      value={order.status}
+                      options={IO_STATUS_OPTIONS}
+                      onCommit={(next) => updateStatus(next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getInsertionOrderStatus(order.status)} context="record" />
+                  )}
+                </RecordSpineField>
+                <RecordOwnerField
+                  moduleKey="finance_io"
+                  ownerId={order.user_id}
+                  ownerName={order.user_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
+              </RecordSpineBlock>
+
+              <RecordSpineBlock title="Connected">
+                {/* One customer, held as either a contact or an account. The account wins
+                    where both are set, because that is the party the order is against. */}
+                {order.customer_organization_id ? (
+                  <RecordSpineLink
+                    label="Account"
+                    value={order.customer_name}
+                    href={`/dashboard/sales/organizations/${order.customer_organization_id}`}
+                  />
+                ) : (
+                  <RecordSpineLink
+                    label="Contact"
+                    value={order.customer_name}
+                    href={order.customer_contact_id ? `/dashboard/sales/contacts/${order.customer_contact_id}` : null}
+                  />
+                )}
+              </RecordSpineBlock>
+
+              <RecordSpineMeta
+                createdLabel={order.created_at ? `Created ${formatDateTime(order.created_at)}` : undefined}
+                updatedLabel={order.updated_at ? `Updated ${formatDateTime(order.updated_at)}` : undefined}
+                history={<RecordAuditHistory moduleKey="finance_io" entityId={order.id} />}
+              />
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={order ? (
+        <InsertionOrderOverview
+          order={order}
+          layout={detailLayoutQuery.data}
+          isLayoutLoading={detailLayoutQuery.isLoading}
+          layoutError={detailLayoutQuery.error}
+          onRetryLayout={() => void detailLayoutQuery.refetch()}
+        />
+      ) : null}
+      timeline={order ? (
+        // Note-only: an insertion order has no follow-up endpoint, and inventing channels
+        // here would offer the operator buttons that post nowhere.
+        <RecordTimeline moduleKey="finance_io" entityId={order.id} canEdit={canEdit} />
+      ) : undefined}
+      tasks={order && canViewTasks ? (
+        <RecordTasksPanel
+          moduleKey="finance_io"
+          entityId={order.id}
+          sourceLabel={orderName}
+          canCreate={Boolean(taskActions?.can_create)}
+          canEdit={Boolean(taskActions?.can_edit)}
+          createActionVariant="outline"
+        />
+      ) : undefined}
+      files={order && canViewDocuments ? (
+        <RecordDocumentsPanel
+          moduleKey="finance_io"
+          entityId={order.id}
+          canUpload={Boolean(documentActions?.can_create) && canEdit}
+          canEdit={Boolean(documentActions?.can_edit) && canEdit}
+          canDelete={Boolean(documentActions?.can_delete) && canEdit}
+        />
+      ) : undefined}
+    />
+  );
+}
+
+/**
+ * `Details` for an insertion order: the resolved layout, and nothing else.
+ *
+ * The page used to draw three private panels here — a details grid, a commercial summary and
+ * a `Custom fields` card. The first two are the layout's `References` / `Dates` / `Totals`
+ * sections, and the third is what `_append_detail_custom_fields` merges into the same layout,
+ * so the tenant's custom fields now sit beside the system ones instead of below them.
+ */
+function InsertionOrderOverview({
+  order,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
+}: {
+  order: InsertionOrder;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
+}) {
+  if (isLayoutLoading || !layout) {
     return (
-      <RouteErrorState
-        title="Unable to load insertion order"
-        description="This insertion order could not be loaded. Check your connection and try again."
-        reset={() => void orderQuery.refetch()}
-        backHref="/dashboard/finance/insertion-orders"
-        backLabel="Back to insertion orders"
-      />
+      <Card className="p-6">
+        {layoutError ? (
+          <PanelError
+            message="The insertion order details layout could not be loaded."
+            onRetry={onRetryLayout}
+          />
+        ) : (
+          <PanelLoading label="Loading insertion order details…" />
+        )}
+      </Card>
     );
   }
 
-  if (!order) {
-    return <RouteNotFoundState recordLabel="Insertion order" backHref="/dashboard/finance/insertion-orders" backLabel="Back to insertion orders" />;
-  }
-
-  const status = getInsertionOrderStatusStyle(order.status);
-  const customerHref = order.customer_organization_id
-    ? `/dashboard/sales/organizations/${order.customer_organization_id}`
-    : order.customer_contact_id
-      ? `/dashboard/sales/contacts/${order.customer_contact_id}`
-      : null;
-  const customFields = Object.entries(order.custom_fields ?? {}).filter(([, value]) => value !== null && value !== undefined && value !== "");
-  const attachmentAvailable = Boolean(
-    order.file_url
-    && order.file_name
-    && !order.file_name.toLowerCase().endsWith(".manual"),
-  );
-
   return (
-    <div className="flex flex-col gap-6">
-      <RecordPageHeader
-        backHref="/dashboard/finance/insertion-orders"
-        backLabel="Back to insertion orders"
-        title={order.io_number}
-        description={order.customer_name || "Finance insertion order"}
-        primaryAction={canEdit ? (
-          <Button asChild>
-            <Link href={`/dashboard/finance/insertion-orders/${order.id}/edit`}><Pencil />Edit insertion order</Link>
-          </Button>
-        ) : undefined}
-      />
-
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Card role="region" aria-labelledby="insertion-order-details-heading">
-          <CardHeader>
-            <div>
-              <h2 id="insertion-order-details-heading" className="text-lg font-semibold text-copy-primary">Insertion order details</h2>
-              <p className="mt-1 text-sm text-copy-muted">Customer references, delivery period, and ownership.</p>
-            </div>
-          </CardHeader>
-          <CardBody>
-            <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2">
-              <DetailField label="Customer" value={order.customer_name || "Not set"} href={customerHref} />
-              <DetailField label="External reference" value={order.external_reference || "Not set"} />
-              <DetailField label="Counterparty reference" value={order.counterparty_reference || "Not set"} />
-              <DetailField label="Assigned to" value={order.user_name || "Unassigned"} />
-              <DetailField label="Issue date" value={formatOptionalDate(order.issue_date)} />
-              <DetailField label="Effective date" value={formatOptionalDate(order.effective_date)} />
-              <DetailField label="Due date" value={formatOptionalDate(order.due_date)} />
-              <DetailField label="Start date" value={formatOptionalDate(order.start_date)} />
-              <DetailField label="End date" value={formatOptionalDate(order.end_date)} />
-            </dl>
-            {order.notes ? (
-              <div className="mt-6 border-t border-line-subtle pt-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-copy-muted">Notes</h3>
-                <p className="mt-2 whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm leading-6 text-copy-secondary">
-                  {order.notes}
-                </p>
-              </div>
-            ) : null}
-          </CardBody>
-        </Card>
-
-        <div className="grid content-start gap-6">
-          <Card role="region" aria-labelledby="insertion-order-commercial-heading">
-            <CardHeader>
-              <div>
-                <h2 id="insertion-order-commercial-heading" className="text-lg font-semibold text-copy-primary">Commercial summary</h2>
-                <p className="mt-1 text-sm text-copy-muted">Current status and order value.</p>
-              </div>
-              <Pill bg={status.bg} text={status.text} border={status.border}>{status.label}</Pill>
-            </CardHeader>
-            <CardBody>
-              <dl className="grid gap-3 text-sm">
-                <MoneyRow label="Subtotal" value={formatMoney(order.subtotal_amount, order.currency)} />
-                <MoneyRow label="Tax" value={formatMoney(order.tax_amount, order.currency)} />
-                <MoneyRow label="Total" value={formatMoney(order.total_amount, order.currency)} total />
-              </dl>
-              {order.updated_at ? <p className="mt-4 text-xs text-copy-muted">Updated {formatDateTime(order.updated_at)}</p> : null}
-            </CardBody>
-          </Card>
-
-          {attachmentAvailable ? (
-            <Card role="region" aria-labelledby="insertion-order-attachment-heading">
-              <CardHeader>
-                <div>
-                  <h2 id="insertion-order-attachment-heading" className="text-lg font-semibold text-copy-primary">Attachment</h2>
-                  <p className="mt-1 text-sm text-copy-muted">Original imported order file.</p>
-                </div>
-              </CardHeader>
-              <CardBody className="pt-4">
-                <Button asChild variant="outline" className="w-full justify-start">
-                  <a href={order.file_url ?? undefined}>
-                    <FileDown />
-                    <span className="truncate">{order.file_name}</span>
-                  </a>
-                </Button>
-              </CardBody>
-            </Card>
-          ) : null}
-        </div>
-      </div>
-
-      {customFields.length ? (
-        <Card role="region" aria-labelledby="insertion-order-custom-fields-heading">
-          <CardHeader>
-            <div>
-              <h2 id="insertion-order-custom-fields-heading" className="text-lg font-semibold text-copy-primary">Custom fields</h2>
-              <p className="mt-1 text-sm text-copy-muted">Tenant-defined information recorded for this order.</p>
-            </div>
-          </CardHeader>
-          <CardBody>
-            <dl className="grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
-              {customFields.map(([key, value]) => (
-                <DetailField key={key} label={readableLabel(key)} value={formatCustomFieldValue(value)} />
-              ))}
-            </dl>
-          </CardBody>
-        </Card>
-      ) : null}
-
-      <CrmRecordActivitySection
-        moduleKey="finance_io"
-        entityId={order.id}
-        recordLabel="Insertion order"
-        taskSourceLabel={order.io_number}
-      />
-    </div>
-  );
-}
-
-function formatOptionalDate(value?: string | null) {
-  return value ? formatDateOnly(value) : "Not set";
-}
-
-function readableLabel(value: string) {
-  return value.replace(/^custom:/, "").replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
-}
-
-function formatCustomFieldValue(value: unknown) {
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "string" || typeof value === "number") return String(value);
-  if (Array.isArray(value)) {
-    const values = value.filter((entry) => typeof entry === "string" || typeof entry === "number");
-    return values.length ? values.join(", ") : "Recorded";
-  }
-  return "Recorded";
-}
-
-function DetailField({ label, value, href }: { label: string; value: string; href?: string | null }) {
-  return (
-    <div>
-      <dt className="text-xs font-medium uppercase tracking-wide text-copy-muted">{label}</dt>
-      <dd className="mt-1 text-sm text-copy-primary">
-        {href ? (
-          <Link href={href} className="rounded-sm text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-            {value}
-          </Link>
-        ) : value}
-      </dd>
-    </div>
-  );
-}
-
-function MoneyRow({ label, value, total = false }: { label: string; value: string; total?: boolean }) {
-  return (
-    <div className={`flex items-center justify-between gap-3 ${total ? "border-t border-line-subtle pt-3 text-base font-semibold text-copy-primary" : "text-copy-secondary"}`}>
-      <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
-    </div>
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={order as unknown as Record<string, unknown>}
+      customValues={order.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) =>
+        MONEY_FIELDS.has(field.field_key)
+          ? formatMoney(value as string | number | null, order.currency) ?? undefined
+          : undefined
+      }
+    />
   );
 }

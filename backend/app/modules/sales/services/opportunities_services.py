@@ -20,8 +20,12 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_SET
-from app.modules.sales.repositories import opportunities_repository
+from app.modules.sales.repositories import opportunities_repository, pipelines_repository
+from app.modules.sales.services import pipelines_services
+from app.modules.sales.services.opportunity_contacts_services import (
+    legacy_client_name,
+    sync_primary_contact_association,
+)
 from app.modules.sales.services.time_utils import utc_now
 from app.modules.user_management.services.profile import get_company_operating_currencies
 
@@ -130,11 +134,6 @@ def list_all_opportunities(
     )
 
 
-def _normalize_stage(stage: str | None) -> str:
-    normalized = (stage or "").strip().lower().replace(" ", "_")
-    return normalized or "unstaged"
-
-
 def _parse_numeric_value(raw_value: str | None) -> Decimal:
     if raw_value is None:
         return Decimal("0")
@@ -147,8 +146,9 @@ def _parse_numeric_value(raw_value: str | None) -> Decimal:
         return Decimal("0")
 
 def _contact_display_name(contact: SalesContact) -> str:
-    full_name = " ".join(part for part in [contact.first_name, contact.last_name] if part).strip()
-    return full_name or contact.primary_email or "Unnamed Contact"
+    # Shared with the participant service so a primary contact changed from either
+    # side writes the same denormalized `client` value.
+    return legacy_client_name(contact)
 
 
 def _get_allowed_currencies(db: Session, current_user) -> tuple[str, ...]:
@@ -262,40 +262,64 @@ def summarize_opportunity_pipeline(
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
 ) -> dict:
-    summary = {
-        stage: {"stage_key": stage, "label": OPPORTUNITY_STAGE_LABELS[stage], "count": 0, "total_value": Decimal("0")}
-        for stage in OPPORTUNITY_STAGE_ORDER
-    }
-    summary["unstaged"] = {
-        "stage_key": "unstaged",
-        "label": OPPORTUNITY_STAGE_LABELS["unstaged"],
-        "count": 0,
-        "total_value": Decimal("0"),
-    }
+    """Counts and value per stage of the tenant's pipeline, over the filtered deals.
 
-    total_count = 0
-    for sales_stage, count, total_value in opportunities_repository.summarize_pipeline(
+    Columns come from the pipeline, not a hardcoded list: every active stage in
+    board order, an inactive stage only while deals still sit in it, then
+    Unstaged. Buckets are keyed by stage row, so a renamed label moves nothing.
+    """
+
+    pipeline = pipelines_services.ensure_default_opportunity_pipeline(db, tenant_id)
+    buckets: dict[str, dict] = {}
+    for stage in sorted(pipeline.stages, key=lambda item: (item.position, item.id)):
+        buckets[stage.key] = {"facts": pipelines_services.stage_facts(stage), "is_active": bool(stage.is_active), "count": 0, "total_value": Decimal("0")}
+    unstaged = pipelines_services.UNSTAGED_FACTS
+    buckets[unstaged.key] = {"facts": unstaged, "is_active": True, "count": 0, "total_value": Decimal("0")}
+
+    rows = opportunities_repository.summarize_pipeline(
         db,
         tenant_id=tenant_id,
         search=search,
         all_filter_conditions=all_filter_conditions,
         any_filter_conditions=any_filter_conditions,
-    ):
-        stage_key = _normalize_stage(sales_stage)
-        bucket = summary.get(stage_key) or summary["unstaged"]
-        bucket["count"] += int(count or 0)
-        bucket["total_value"] += Decimal(str(total_value or 0))
+    )
+    foreign_stage_ids = {row[0] for row in rows if row[0] is not None and not any(b["facts"].stage_id == row[0] for b in buckets.values())}
+    foreign_stages = {
+        stage.id: stage
+        for stage in pipelines_repository.list_stages_by_ids(db, tenant_id=tenant_id, stage_ids=foreign_stage_ids)
+    }
+    stage_keys_by_id = {bucket["facts"].stage_id: key for key, bucket in buckets.items() if bucket["facts"].stage_id is not None}
+
+    total_count = 0
+    for stage_id, sales_stage, count, total_value in rows:
+        if stage_id in stage_keys_by_id:
+            key = stage_keys_by_id[stage_id]
+        elif stage_id in foreign_stages:
+            # A stage of a non-default pipeline: shown as its own column after the board.
+            facts = pipelines_services.stage_facts(foreign_stages[stage_id])
+            key = f"{facts.key}#{facts.stage_id}"
+            buckets.setdefault(key, {"facts": facts, "is_active": bool(foreign_stages[stage_id].is_active), "count": 0, "total_value": Decimal("0")})
+        else:
+            key = pipelines_services.legacy_stage_facts(sales_stage).key
+            if key not in buckets:
+                key = unstaged.key
+        buckets[key]["count"] += int(count or 0)
+        buckets[key]["total_value"] += Decimal(str(total_value or 0))
         total_count += int(count or 0)
 
-    ordered_keys = [*OPPORTUNITY_STAGE_ORDER, "unstaged"]
     stages = [
         {
-            "stage_key": key,
-            "label": summary[key]["label"],
-            "count": summary[key]["count"],
-            "total_value": float(summary[key]["total_value"]),
+            "stage_key": bucket["facts"].key,
+            "stage_id": bucket["facts"].stage_id,
+            "label": bucket["facts"].label,
+            "semantic_type": bucket["facts"].semantic_type,
+            "probability": float(bucket["facts"].probability),
+            "is_active": bucket["is_active"],
+            "count": bucket["count"],
+            "total_value": float(bucket["total_value"]),
         }
-        for key in ordered_keys
+        for bucket in buckets.values()
+        if bucket["is_active"] or bucket["count"]
     ]
     return {
         "total_count": total_count,
@@ -394,9 +418,20 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
     if "currency_type" in data:
         data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
+    sales_stage = data.pop("sales_stage", None)
+    pipeline_stage_id = data.pop("pipeline_stage_id", None)
     data["tenant_id"] = current_user.tenant_id
     opportunity = SalesOpportunity(**data)
+    pipelines_services.assign_opportunity_stage(
+        db, opportunity, sales_stage=sales_stage, pipeline_stage_id=pipeline_stage_id
+    )
     db.add(opportunity)
+    db.flush()
+    sync_primary_contact_association(
+        db,
+        opportunity=opportunity,
+        actor_user_id=getattr(current_user, "id", None),
+    )
     db.commit()
     db.refresh(opportunity)
     save_custom_field_values(
@@ -449,8 +484,19 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
     if "currency_type" in data and data["currency_type"] is not None:
         data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
 
+    stage_changes = {key: data.pop(key) for key in ("sales_stage", "pipeline_stage_id") if key in data}
     for field, value in data.items():
         setattr(opportunity, field, value)
+    if stage_changes:
+        pipelines_services.assign_opportunity_stage(db, opportunity, **stage_changes)
+
+    if "contact_id" in data:
+        db.flush()
+        sync_primary_contact_association(
+            db,
+            opportunity=opportunity,
+            actor_user_id=getattr(current_user, "id", None),
+        )
 
     db.commit()
     db.refresh(opportunity)
@@ -476,13 +522,14 @@ def update_opportunity_stage(
     db: Session,
     opportunity: SalesOpportunity,
     *,
-    sales_stage: str,
+    sales_stage: str | None = None,
+    pipeline_stage_id: int | None = None,
 ) -> SalesOpportunity:
-    normalized_stage = _normalize_stage(sales_stage)
-    if normalized_stage not in OPPORTUNITY_STAGE_SET:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported opportunity stage")
-
-    opportunity.sales_stage = normalized_stage
+    if sales_stage is None and pipeline_stage_id is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A stage is required")
+    pipelines_services.assign_opportunity_stage(
+        db, opportunity, sales_stage=sales_stage, pipeline_stage_id=pipeline_stage_id
+    )
     db.commit()
     db.refresh(opportunity)
     return hydrate_custom_field_record(

@@ -4,9 +4,9 @@ import { useMemo, useState } from "react";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import { Button } from "@/components/ui/button";
+import { TextField } from "@/components/forms/TextField";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { isModuleFieldEnabled, pickEnabledModulePayload, useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
@@ -57,18 +57,15 @@ export default function __Module__Form({ initialRecord, submitLabel, isSubmittin
     <Card className="px-5 py-5">
       <form onSubmit={submit} className="space-y-4">
         {error ? <div className="rounded-md border border-red-800 bg-red-950/40 px-4 py-3 text-sm text-red-200">{error}</div> : null}
-        <FieldGroup className="grid gap-4 md:grid-cols-2">
+        <FieldGroup columns={2}>
           {fieldEnabled("name") ? (
-            <Field>
-              <FieldLabel>Name</FieldLabel>
-              <Input value={form.name} onChange={(event) => setForm((current) => ({ ...current, name: event.target.value }))} />
-            </Field>
+            <TextField id="__module__-name" label="Name" value={form.name} onChange={(name) => setForm((current) => ({ ...current, name }))} />
           ) : null}
           {fieldEnabled("status") ? (
             <Field>
-              <FieldLabel>Status</FieldLabel>
+              <FieldLabel htmlFor="__module__-status">Status</FieldLabel>
               <Select value={form.status} onValueChange={(value) => setForm((current) => ({ ...current, status: value }))}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectTrigger id="__module__-status"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="active">Active</SelectItem>
                   <SelectItem value="inactive">Inactive</SelectItem>
@@ -78,10 +75,7 @@ export default function __Module__Form({ initialRecord, submitLabel, isSubmittin
           ) : null}
         </FieldGroup>
         {fieldEnabled("description") ? (
-          <Field>
-            <FieldLabel>Description</FieldLabel>
-            <Input value={form.description} onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))} />
-          </Field>
+          <TextField id="__module__-description" label="Description" value={form.description} onChange={(description) => setForm((current) => ({ ...current, description }))} />
         ) : null}
         <CustomFieldInputs
           definitions={customFieldsQuery.data ?? []}

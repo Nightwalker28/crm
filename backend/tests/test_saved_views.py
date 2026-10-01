@@ -66,6 +66,9 @@ class SavedViewListDB:
     def commit(self):
         self.commits += 1
 
+    def refresh(self, _value):
+        return None
+
 
 class SavedViewListQuery(FakeQuery):
     def all(self):
@@ -162,6 +165,17 @@ class SavedViewConfigTests(unittest.TestCase):
                 self.assertEqual(views[0]["module_key"], module_key)
                 self.assertEqual(views[0]["id"], 9)
 
+    def test_a_view_remembers_its_display_as_an_identifier_only(self):
+        """04-pipelines-kanban Phase 4: List and Board are two displays of one saved view."""
+
+        config = profile._normalize_saved_view_config("sales_opportunities", {"display": "pipeline"})
+        self.assertEqual(config["display"], "pipeline")
+        for bad in ("Board View", "<script>", "x" * 21, 7, ["pipeline"], None, ""):
+            self.assertIsNone(
+                profile._normalize_saved_view_config("sales_opportunities", {"display": bad})["display"],
+                repr(bad),
+            )
+
     def test_normalize_saved_view_config_rejects_deep_nested_json(self):
         nested = current = {}
         for index in range(profile.SAVED_VIEW_MAX_DEPTH + 1):
@@ -198,7 +212,9 @@ class SavedViewConfigTests(unittest.TestCase):
             user_id=7,
             module_key="tasks",
             name=profile.SYSTEM_DEFAULT_VIEW_NAME,
-            config={"_meta": {"system_default": True}},
+            # Already matches the defaults below, so the only commit this counts is the one
+            # that promotes the system view to default.
+            config={"visible_columns": ["title", "status"], "_meta": {"system_default": True}},
             is_default=0,
         )
         custom_view = UserSavedView(
@@ -223,6 +239,28 @@ class SavedViewConfigTests(unittest.TestCase):
         self.assertEqual(db.commits, 1)
         self.assertEqual(views[0]["id"], 9)
         self.assertTrue(views[0]["is_default"])
+
+    def test_list_saved_views_renames_a_stored_title_case_system_view(self):
+        # Rebuild 5.10 moved the platform's label to sentence case. A system view stored under
+        # the old name is renamed on its next read, with its columns left alone.
+        system_view = UserSavedView(
+            id=9,
+            user_id=7,
+            module_key="tasks",
+            name="Default View",
+            config={"visible_columns": ["title", "status"], "_meta": {"system_default": True}},
+            is_default=1,
+        )
+        db = SavedViewListDB([system_view])
+        user = SimpleNamespace(id=7, tenant_id=1)
+
+        views = profile.list_saved_views(db, user, "tasks", default_visible_columns=["title", "status"])
+
+        self.assertEqual(profile.SYSTEM_DEFAULT_VIEW_NAME, "Default view")
+        self.assertEqual(system_view.name, "Default view")
+        self.assertEqual(views[0]["name"], "Default view")
+        self.assertEqual(system_view.config["visible_columns"], ["title", "status"])
+        self.assertEqual(db.commits, 1)
 
     def test_system_view_cannot_be_renamed_or_reconfigured(self):
         system_view = UserSavedView(
@@ -261,6 +299,97 @@ class SavedViewConfigTests(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "cannot be deleted"):
             profile.delete_saved_view(db, user, "tasks", 9)
+
+
+class SystemSavedViewResyncTests(unittest.TestCase):
+    """A system default view is a copy of the platform defaults, so it has to track them.
+
+    update_saved_view refuses edits to a system view, so nothing in its stored config can
+    represent a choice the user made. Left alone, a copy written before a column rename keeps
+    naming keys the module no longer defines; the client drops them as unknown and the list
+    degrades to whatever survives.
+    """
+
+    def _system_view(self, columns):
+        return UserSavedView(
+            id=9,
+            user_id=7,
+            module_key="catalog_products",
+            name=profile.SYSTEM_DEFAULT_VIEW_NAME,
+            config={"visible_columns": list(columns), "_meta": {"system_default": True}},
+            is_default=1,
+        )
+
+    def test_stale_system_view_is_rebuilt_from_the_current_defaults(self):
+        # The shape this actually shipped as: a legacy generic ['name', 'status'] copy left
+        # on catalog, contracts, finance and support views.
+        system_view = self._system_view(["name", "status"])
+        db = SavedViewListDB([system_view])
+        current_defaults = ["name", "slug", "sku", "is_public", "is_active"]
+
+        views = profile.list_saved_views(
+            db,
+            SimpleNamespace(id=7, tenant_id=1),
+            "catalog_products",
+            default_visible_columns=current_defaults,
+        )
+
+        self.assertEqual(views[0]["config"]["visible_columns"], current_defaults)
+        self.assertTrue(views[0]["is_system"])
+        self.assertGreaterEqual(db.commits, 1)
+
+    def test_matching_system_view_is_left_alone(self):
+        current_defaults = ["name", "slug", "sku"]
+        system_view = self._system_view(current_defaults)
+        db = SavedViewListDB([system_view])
+
+        profile.list_saved_views(
+            db,
+            SimpleNamespace(id=7, tenant_id=1),
+            "catalog_products",
+            default_visible_columns=current_defaults,
+        )
+
+        self.assertEqual(db.commits, 0)
+
+    def test_absent_defaults_never_blank_a_stored_view(self):
+        # fetchSavedViews omits default_columns when it has none to send, and an empty
+        # parameter must not be read as "this module has no columns".
+        system_view = self._system_view(["name", "slug"])
+        db = SavedViewListDB([system_view])
+
+        views = profile.list_saved_views(
+            db,
+            SimpleNamespace(id=7, tenant_id=1),
+            "catalog_products",
+            default_visible_columns=[],
+        )
+
+        self.assertEqual(views[0]["config"]["visible_columns"], ["name", "slug"])
+        self.assertEqual(db.commits, 0)
+
+    def test_user_created_views_are_not_resynced(self):
+        user_view = UserSavedView(
+            id=11,
+            user_id=7,
+            module_key="catalog_products",
+            name="My columns",
+            config={"visible_columns": ["name"]},
+            is_default=1,
+        )
+        system_view = self._system_view(["name", "slug"])
+        db = SavedViewListDB([user_view, system_view])
+
+        views = profile.list_saved_views(
+            db,
+            SimpleNamespace(id=7, tenant_id=1),
+            "catalog_products",
+            default_visible_columns=["name", "slug"],
+        )
+
+        stored = next(view for view in views if view["id"] == 11)
+        self.assertEqual(stored["config"]["visible_columns"], ["name"])
+        self.assertFalse(stored["is_system"])
 
 
 if __name__ == "__main__":

@@ -125,17 +125,20 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/fields");
 
-  await expect(page.getByRole("heading", { name: "Field Config", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "disabled", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Field config", exact: true })).toBeVisible();
+  // The status filter is a segmented control (radios), labelled in sentence case.
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
   await expect(page.getByText("LinkedIn", { exact: true })).toBeVisible();
   await expect(page.getByText("Contract Term", { exact: true })).toBeHidden();
 
-  await page.getByRole("button", { name: "required", exact: true }).click();
-  await page.getByRole("button", { name: /Contract Term/ }).click();
+  await page.getByRole("radio", { name: "Required", exact: true }).click();
+  // The catalogue is a `RecordTable` now (rebuild 5.6 batch 6b), so a field is a row
+  // with the table's one open gesture rather than a `<button>` wrapping the whole row.
+  await page.getByRole("row", { name: "Edit Contract Term" }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Disabled", exact: true }).click();
-  await page.getByLabel("Label", { exact: true }).fill("Agreement Term");
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Agreement Term");
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   await page.getByRole("button", { name: "Close field editor" }).click();
@@ -145,32 +148,33 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
 
   const customUpdate = page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/admin/custom-fields/301"));
-  await page.getByRole("button", { name: "Save Field" }).click();
+  await page.getByRole("button", { name: "Save field" }).click();
   const request = await customUpdate;
   expect(request.postDataJSON()).toMatchObject({ label: "Agreement Term", is_required: true, is_active: false });
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
   await page.getByRole("button", { name: "Close field editor" }).click();
 
-  await page.getByRole("button", { name: "all", exact: true }).click();
-  await page.getByRole("button", { name: /Email System.*Protected/ }).click();
-  await expect(page.getByText(/protected field stays enabled/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toBeDisabled();
-  await expect(page.getByRole("button", { name: "Disabled", exact: true })).toBeDisabled();
+  await page.getByRole("radio", { name: "All", exact: true }).click();
+  await page.getByRole("row", { name: "Edit Email" }).click();
+  await expect(page.getByText(/This field stays enabled because/)).toBeVisible();
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toBeDisabled();
+  await expect(page.getByRole("radio", { name: "Disabled", exact: true })).toBeDisabled();
 });
 
 test("creates a required custom field and opens it in the inspector", async ({ page }) => {
   await page.goto("/dashboard/settings/fields");
-  await page.getByRole("button", { name: "New Field" }).click();
+  await page.getByRole("button", { name: "Create field" }).click();
   await expect(page.getByRole("dialog", { name: "Create custom field" })).toBeVisible();
-  await page.getByLabel("Label", { exact: true }).fill("Renewal Window");
-  await expect(page.getByLabel("Field Key")).toHaveValue("renewal_window");
-  await page.getByLabel("Require a value when records are saved").click();
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Renewal Window");
+  await expect(page.getByLabel("Field key")).toHaveValue("renewal_window");
+  // Ruling 4: the lone `Checkbox` is a `SegmentedBoolean` now.
+  await page.getByRole("group", { name: "Value required" }).getByRole("radio", { name: "Required" }).click();
 
   const createRequest = page.waitForRequest((request) => request.method() === "POST" && request.url().endsWith("/admin/custom-fields/sales_contacts"));
-  await page.getByRole("button", { name: "Create Field" }).click();
+  await page.getByRole("button", { name: "Create field" }).click();
   const request = await createRequest;
   expect(request.postDataJSON()).toMatchObject({ field_key: "renewal_window", label: "Renewal Window", is_required: true });
 
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
-  await expect(page.getByLabel("Label", { exact: true })).toHaveValue("Renewal Window");
+  await expect(page.getByRole("textbox", { name: "Label", exact: true })).toHaveValue("Renewal Window");
 });

@@ -8,11 +8,19 @@ from unittest.mock import patch
 from fastapi import HTTPException
 from pydantic import ValidationError
 
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from app.core.database import Base
+from app.modules.catalog import models as catalog_models  # noqa: F401
+from app.modules.documents import models as document_models  # noqa: F401
+from app.modules.finance.models import FinanceIO
 from app.modules.finance.routes import io_search_routes
 from app.modules.finance.schema import InsertionOrderCreateRequest, InsertionOrderUpdateRequest
 from app.modules.finance.services import io_search_api
 from app.modules.finance.repositories import io_repository
 from app.modules.finance.services import io_search_services
+from app.modules.user_management.models import Tenant, User, UserStatus
 
 
 class FakeFinanceQuery:
@@ -376,6 +384,83 @@ class FinanceInsertionOrderListTests(unittest.TestCase):
         payload = item.model_dump(exclude_none=True)
 
         self.assertEqual(payload, {"id": 1, "io_number": "IO-001"})
+
+
+class FinanceInsertionOrderOwnerTests(unittest.TestCase):
+    """The insertion order was the one record type of the nine whose update contract could not
+    carry a reassignment, so design.md 4.7's editable Owner needed the column made writable."""
+
+    def setUp(self):
+        engine = create_engine("sqlite:///:memory:")
+        Base.metadata.create_all(engine)
+        self.db = sessionmaker(bind=engine)()
+        self.db.add_all(
+            [
+                Tenant(id=10, slug="default", name="Default"),
+                Tenant(id=99, slug="other", name="Other"),
+                User(id=1, tenant_id=10, email="ada@example.test", first_name="Ada", last_name="Lovelace", is_active=UserStatus.active),
+                User(id=2, tenant_id=10, email="grace@example.test", first_name="Grace", last_name="Hopper", is_active=UserStatus.active),
+                User(id=3, tenant_id=99, email="other@example.test", first_name="Other", last_name="Tenant", is_active=UserStatus.active),
+            ]
+        )
+        self.record = FinanceIO(
+            id=1,
+            tenant_id=10,
+            module_id=1,
+            user_id=1,
+            io_number="IO-1",
+            file_name="io.pdf",
+            customer_name="Acme",
+            status="draft",
+            currency="USD",
+        )
+        self.db.add(self.record)
+        self.db.commit()
+
+    def tearDown(self):
+        self.db.close()
+
+    def test_owner_can_be_reassigned_within_the_tenant(self):
+        updated = io_search_services.update_insertion_order(
+            self.db,
+            record=self.record,
+            current_user=SimpleNamespace(id=1, tenant_id=10),
+            data={"user_id": 2},
+        )
+
+        self.assertEqual(updated.user_id, 2)
+
+    def test_owner_can_be_cleared(self):
+        updated = io_search_services.update_insertion_order(
+            self.db,
+            record=self.record,
+            current_user=SimpleNamespace(id=1, tenant_id=10),
+            data={"user_id": None},
+        )
+
+        self.assertIsNone(updated.user_id)
+
+    def test_owner_cannot_be_set_to_another_tenants_user(self):
+        with self.assertRaises(HTTPException) as caught:
+            io_search_services.update_insertion_order(
+                self.db,
+                record=self.record,
+                current_user=SimpleNamespace(id=1, tenant_id=10),
+                data={"user_id": 3},
+            )
+
+        self.assertEqual(caught.exception.status_code, 400)
+        self.db.rollback()
+        self.assertEqual(self.db.query(FinanceIO).one().user_id, 1)
+
+    def test_detail_response_carries_the_owner_id(self):
+        payload = io_search_api._serialize_finance_record_response(
+            self.record,
+            request=None,
+            current_user=SimpleNamespace(id=1),
+        )
+
+        self.assertEqual(payload["user_id"], 1)
 
 
 class FinanceInsertionOrderValidationTests(unittest.TestCase):

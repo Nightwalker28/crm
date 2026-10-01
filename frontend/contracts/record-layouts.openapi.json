@@ -1,0 +1,321 @@
+{
+  "components": {
+    "schemas": {
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "ResolvedRecordLayoutField": {
+        "additionalProperties": false,
+        "properties": {
+          "field_key": {
+            "title": "Field Key",
+            "type": "string"
+          },
+          "field_source": {
+            "enum": [
+              "system",
+              "custom_field"
+            ],
+            "title": "Field Source",
+            "type": "string"
+          },
+          "field_type": {
+            "title": "Field Type",
+            "type": "string"
+          },
+          "help_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Help Text"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "placeholder": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Placeholder"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "readonly": {
+            "title": "Readonly",
+            "type": "boolean"
+          },
+          "required": {
+            "title": "Required",
+            "type": "boolean"
+          },
+          "visible": {
+            "title": "Visible",
+            "type": "boolean"
+          },
+          "width": {
+            "enum": [
+              "full",
+              "half"
+            ],
+            "title": "Width",
+            "type": "string"
+          }
+        },
+        "required": [
+          "field_key",
+          "label",
+          "field_type",
+          "field_source",
+          "position",
+          "width",
+          "visible",
+          "required",
+          "readonly"
+        ],
+        "title": "ResolvedRecordLayoutField",
+        "type": "object"
+      },
+      "ResolvedRecordLayoutResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "can_customize": {
+            "default": false,
+            "title": "Can Customize",
+            "type": "boolean"
+          },
+          "layout_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Id"
+          },
+          "module_key": {
+            "title": "Module Key",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedRecordLayoutSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "source": {
+            "enum": [
+              "system",
+              "tenant"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "surface": {
+            "enum": [
+              "quick_create",
+              "detail",
+              "full_form"
+            ],
+            "title": "Surface",
+            "type": "string"
+          },
+          "version": {
+            "title": "Version",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "module_key",
+          "surface",
+          "name",
+          "source",
+          "version",
+          "sections"
+        ],
+        "title": "ResolvedRecordLayoutResponse",
+        "type": "object"
+      },
+      "ResolvedRecordLayoutSection": {
+        "additionalProperties": false,
+        "properties": {
+          "collapsed_by_default": {
+            "title": "Collapsed By Default",
+            "type": "boolean"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/components/schemas/ResolvedRecordLayoutField"
+            },
+            "title": "Fields",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "region": {
+            "enum": [
+              "main",
+              "sidebar"
+            ],
+            "title": "Region",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "position",
+          "region",
+          "collapsed_by_default",
+          "fields"
+        ],
+        "title": "ResolvedRecordLayoutSection",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "ctx": {
+            "title": "Context",
+            "type": "object"
+          },
+          "input": {
+            "title": "Input"
+          },
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Lynk record layout contract",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/record-layouts/{module_key}/{surface}/resolved": {
+      "get": {
+        "operationId": "get_resolved_record_layout_api_v1_record_layouts__module_key___surface__resolved_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "module_key",
+            "required": true,
+            "schema": {
+              "title": "Module Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "surface",
+            "required": true,
+            "schema": {
+              "title": "Surface",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolvedRecordLayoutResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Get Resolved Record Layout",
+        "tags": [
+          "Record Layouts"
+        ]
+      }
+    }
+  }
+}

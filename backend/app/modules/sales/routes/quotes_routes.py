@@ -342,6 +342,7 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
                 "customer_name": updated.customer_name,
                 "previous_status": before_state.get("status"),
                 "status": updated.status,
+                "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
                 "total_amount": str(updated.total_amount),
                 "href": f"/dashboard/sales/quotes/{updated.quote_id}",
             },

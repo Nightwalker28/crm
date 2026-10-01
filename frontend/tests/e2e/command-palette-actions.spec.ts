@@ -208,7 +208,7 @@ test("shows only permitted module actions and opens routed create workflows", as
   await expect(page.getByText("Build report", { exact: true })).toBeVisible();
   await expect(page.getByText("Create message template", { exact: true })).toBeVisible();
   await expect(page.getByText("Configure integration", { exact: true })).toBeVisible();
-  await expect(page.getByText("Add user", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create user", { exact: true })).toBeVisible();
   await expect(page.getByText("Create team", { exact: true })).toBeVisible();
   await expect(page.getByText("Create department", { exact: true })).toBeVisible();
   await expect(page.getByText("Create role", { exact: true })).toBeVisible();
@@ -217,7 +217,7 @@ test("shows only permitted module actions and opens routed create workflows", as
 
   await page.getByText("Create lead", { exact: true }).click();
   await expect(page).toHaveURL(/\/dashboard\/sales\/leads\/new$/);
-  await expect(page.getByRole("heading", { name: "Create lead" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create lead", level: 1 })).toBeVisible();
 });
 
 test("exposes every accessible module destination and supports Arrow and Enter navigation", async ({ page }) => {
@@ -277,14 +277,19 @@ test("record-search failures stay recoverable without exposing backend details",
   await page.keyboard.press("Control+K");
   await page.getByLabel("Search records and modules").fill("private failure");
 
-  await expect(page.getByText("Search is temporarily unavailable. Check your connection and try again.")).toBeVisible();
+  // `PanelError` prints the failure and its recovery line separately (rebuild 5.7 batch 8a).
+  await expect(page.getByText("Search is temporarily unavailable.")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("database_connection=private-secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
 
 test("routes administrator actions to their addressable create workflows", async ({ page }) => {
+  // Four round trips through the full dashboard, each loading every widget: about 8s apiece
+  // against the capped local stack, so the default 30s budget is too tight for the loop.
+  test.setTimeout(60_000);
   const workflows = [
-    { label: "Add user", path: "/dashboard/settings/users?action=create-user" },
+    { label: "Create user", path: "/dashboard/settings/users?action=create-user" },
     { label: "Create team", path: "/dashboard/settings/teams?action=create-team" },
     { label: "Create department", path: "/dashboard/settings/teams?action=create-department" },
     { label: "Create role", path: "/dashboard/settings/permissions?action=create-role" },
@@ -292,7 +297,9 @@ test("routes administrator actions to their addressable create workflows", async
 
   for (const workflow of workflows) {
     await page.goto("/dashboard");
-    await page.keyboard.press("Control+K");
+    // The shortcut listener attaches on hydration; a Control+K sent straight after `goto`
+    // can land first and open nothing. The button waits for the palette to be ready.
+    await page.getByRole("button", { name: "Open command palette" }).filter({ visible: true }).click();
     await page.getByText(workflow.label, { exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`${workflow.path.replace(/[?]/g, "\\?")}$`));
   }
@@ -380,7 +387,7 @@ test("opens mail composition as a routed full-page workflow", async ({ page }) =
   await page.getByText("Compose email", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/mail\/compose$/);
-  await expect(page.getByRole("heading", { name: "Compose email" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Compose email", level: 1 })).toBeVisible();
 });
 
 test("opens client-page creation as a routed full-page workflow", async ({ page }) => {
@@ -388,7 +395,7 @@ test("opens client-page creation as a routed full-page workflow", async ({ page 
   await page.getByText("Create client page", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/client-portal\/pages\/new$/);
-  await expect(page.getByRole("heading", { name: "Create client page" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create client page", level: 1 })).toBeVisible();
 });
 
 test("opens insertion-order creation as a routed full-page workflow", async ({ page }) => {
@@ -406,7 +413,7 @@ test("opens insertion-order creation as a routed full-page workflow", async ({ p
   await page.getByText("Create insertion order", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/finance\/insertion-orders\/new$/);
-  await expect(page.getByRole("heading", { name: "Create insertion order" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create insertion order", level: 1 })).toBeVisible();
 });
 
 test("opens payment recording as an edit-authorized routed workflow", async ({ page }) => {
@@ -430,7 +437,7 @@ test("opens payment recording as an edit-authorized routed workflow", async ({ p
   await page.getByText("Record payment", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/finance\/payments\/record$/);
-  await expect(page.getByRole("heading", { name: "Record payment" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Record payment", level: 1 })).toBeVisible();
 });
 
 test("hides payment recording without invoice edit permission", async ({ page }) => {
@@ -450,7 +457,8 @@ test("hides payment recording without invoice edit permission", async ({ page })
   );
   await page.evaluate(() => window.sessionStorage.clear());
   await page.reload();
-  await page.keyboard.press("Control+K");
+  // Not Control+K: straight after a reload it can land before the listener attaches.
+  await page.getByRole("button", { name: "Open command palette" }).filter({ visible: true }).click();
 
   await expect(page.getByText("Create invoice", { exact: true })).toBeVisible();
   await expect(page.getByText("Record payment", { exact: true })).toBeHidden();
@@ -468,37 +476,42 @@ test("opens report building as a create-authorized palette workflow", async ({ p
         results: [{
           module_key: "sales_leads",
           label: "Leads",
-          dimensions: [{ key: "status", label: "Status", field_type: "select" }],
-          metrics: [],
-          filter_fields: [],
-          default_dimension: "status",
+          fields: [{ key: "status", label: "Status", field_type: "select", groupable: true, measurable: false, filter_type: "text" }],
+          default_date_field: null,
+          default_columns: [],
+          supports_scope: true,
+          has_record_pages: true,
         }],
       }),
     }),
   );
-  await page.route("**/reports/modules/*", (route) =>
+  await page.route("**/reports/run", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         module_key: "sales_leads",
-        dimension: { key: "status", label: "Status", field_type: "select" },
-        metric: "count",
-        metric_field: null,
-        total_count: 0,
+        label: "Leads",
+        config: { version: 2, format: "summary", groupings: [{ field: "status" }], measures: [{ aggregate: "count" }], scope: "all", date_filter: null, filters: {}, columns: [], chart: { type: "column" }, sort: { by: "value", direction: "desc" }, limit: 25 },
+        groupings: [{ key: "status", label: "Status", field_type: "select", groupable: true, measurable: false, filter_type: "text", granularity: null }],
+        measures: [{ key: "count", aggregate: "count", field: null, label: "Records", field_type: "number" }],
         rows: [],
+        subtotals: [],
+        totals: { count: 0, values: [0] },
+        row_groups: [],
+        column_groups: [],
+        truncated: false,
+        records: null,
+        generated_at: "2099-01-01T00:00:00Z",
       }),
     }),
-  );
-  await page.route("**/reports/saved?**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }),
   );
   await page.keyboard.press("Control+K");
   await page.getByText("Build report", { exact: true }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\/reports#report-builder$/);
-  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
-  await expect(page.locator("#report-builder")).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard\/reports\/new$/);
+  await expect(page.getByRole("heading", { name: "New report" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Report on" })).toBeVisible();
 });
 
 test("opens message-template creation as a routed full-page workflow", async ({ page }) => {
@@ -506,7 +519,9 @@ test("opens message-template creation as a routed full-page workflow", async ({ 
   await page.getByText("Create message template", { exact: true }).click();
 
   await expect(page).toHaveURL(/\/dashboard\/settings\/message-templates\/new$/);
-  await expect(page.getByRole("heading", { name: "Create message template" })).toBeVisible();
+  // Routed settings pages carry no heading of their own; the shell header names the section.
+  await expect(page.locator("main > div > header").getByText("Templates", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Template details" })).toBeVisible();
 });
 
 test("opens integration configuration at the provider registry", async ({ page }) => {
@@ -541,6 +556,28 @@ test("hides integration configuration without configure permission", async ({ pa
 });
 
 test("hides admin-only actions from non-admin users even with module actions", async ({ page }) => {
+  // useSidebarUser revalidates from /users/me and caches whatever it gets back, so the seeded
+  // non-admin only survives the reload if the endpoint agrees with it.
+  await page.route("**/api/v1/users/me", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: 99,
+        email: "standard@example.com",
+        first_name: "Standard",
+        last_name: "User",
+        role_level: 10,
+        is_admin: false,
+      }),
+    }),
+  );
+  // Signing in leaves an in-flight /users/me write in the page. Seeding before it lands lets
+  // the real admin clobber the standard user, so wait for it first.
+  await expect
+    .poll(async () => page.evaluate(() => window.sessionStorage.getItem("lynk_user")))
+    .toContain('"is_admin":true');
+
   await page.evaluate((modules) => {
     window.sessionStorage.setItem("lynk_user", JSON.stringify({
       id: 99,
@@ -549,7 +586,7 @@ test("hides admin-only actions from non-admin users even with module actions", a
       is_admin: false,
     }));
     window.sessionStorage.setItem("lynk_user_verified_at", String(Date.now()));
-    window.sessionStorage.setItem("lynk_modules:v3", JSON.stringify(modules));
+    window.sessionStorage.setItem("lynk_modules:v4", JSON.stringify(modules));
   }, [{
     id: 14,
     name: "integrations",
@@ -564,7 +601,7 @@ test("hides admin-only actions from non-admin users even with module actions", a
   const palette = page.getByRole("dialog");
   await expect(palette.getByText("Configure integration", { exact: true })).toBeHidden();
   await expect(palette.getByText("Integrations", { exact: true })).toBeHidden();
-  await expect(palette.getByText("Add user", { exact: true })).toBeHidden();
+  await expect(palette.getByText("Create user", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create team", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create department", { exact: true })).toBeHidden();
   await expect(palette.getByText("Create role", { exact: true })).toBeHidden();

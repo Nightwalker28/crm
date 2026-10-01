@@ -25,6 +25,7 @@ from app.modules.platform.services.custom_fields import (
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteItem, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
+from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
@@ -125,8 +126,7 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
     if organization_id is not None and not quotes_repository.organization_exists(db, tenant_id=tenant_id, organization_id=organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
     if opportunity is not None:
-        if contact_id is not None and opportunity.contact_id is not None and contact_id != opportunity.contact_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote contact must match the linked opportunity")
+        ensure_contact_on_opportunity(db, opportunity=opportunity, contact_id=contact_id, record_label="Quote")
         if organization_id is not None and opportunity.organization_id is not None and organization_id != opportunity.organization_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote organization must match the linked opportunity")
         if data.get("contact_id") is None and opportunity.contact_id is not None:

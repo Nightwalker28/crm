@@ -35,7 +35,7 @@ test("failed required MFA setup returns login form to a usable state", async ({ 
   await page.getByLabel("Password").fill("correct horse battery staple");
   await page.getByRole("button", { name: "Sign in with email" }).click();
 
-  await expect(page.getByText("Failed to start MFA setup")).toBeVisible();
+  await expect(page.getByText("MFA setup could not be started. Try again.")).toBeVisible();
   await expect(page.getByText("MFA setup is temporarily unavailable")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Sign in with email" })).toBeEnabled();
   await expect(page.getByRole("button", { name: "Continue with SSO" })).toBeEnabled();
@@ -45,21 +45,25 @@ test("admin manual login and dashboard navigation works", async ({ page }) => {
   await loginAsAdmin(page);
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  await page.getByRole("link", { name: /^Teams/ }).click();
+  // The hub and the settings rail (A8) both link every page; go through the rail.
+  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: /^Teams/ }).click();
   await page.waitForURL("**/dashboard/settings/teams");
   await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Finance" }).click();
-  await page.getByRole("link", { name: "Insertion Orders" }).click();
+  await page.getByRole("link", { name: "Insertion orders" }).click();
   await page.waitForURL("**/dashboard/finance/insertion-orders");
-  await expect(page.getByRole("heading", { name: "Insertion Orders" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Insertion orders" })).toBeVisible();
 
   await page.getByRole("button", { name: "Sales" }).click();
   await page.getByRole("link", { name: "Accounts" }).click();
   await page.waitForURL("**/dashboard/sales/organizations");
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Sales" }).click();
+  // Sales is still open from Accounts, and its header is a toggle: clicking it again closes
+  // the group. Open it only if it is shut.
+  const sales = page.getByRole("button", { name: "Sales" });
+  if ((await sales.getAttribute("aria-expanded")) !== "true") await sales.click();
   await page.getByRole("link", { name: "Contacts" }).click();
   await page.waitForURL("**/dashboard/sales/contacts");
   await expect(page.getByRole("heading", { name: "Contacts" })).toBeVisible();

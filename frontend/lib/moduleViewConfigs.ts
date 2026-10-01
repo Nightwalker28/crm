@@ -8,7 +8,7 @@ import type { ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { isProtectedFieldKey } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export type ModuleFilterFieldType = "text" | "number" | "date" | "select" | "relation";
@@ -25,8 +25,10 @@ export type ModuleFilterField = {
   operators?: SavedViewFilterOperator[];
   options?: ModuleFilterFieldOption[];
   sourceModuleKey?: string;
-  recordType?: "user" | "team";
+  recordType?: "user" | "team" | "organization" | "contact";
 };
+
+export type ModuleViewDisplayMode = { value: string; label: string };
 
 export type ModuleViewDefinition = {
   key: string;
@@ -35,6 +37,12 @@ export type ModuleViewDefinition = {
   columns: TableColumnOption[];
   filterFields: ModuleFilterField[];
   defaultConfig: SavedViewConfig;
+  /**
+   * Displays of the same filtered population a saved view can remember (04-pipelines-kanban
+   * Phase 4). The first is the default and is stored as no display at all. The values are the
+   * list page's `?display=` words.
+   */
+  displayModes?: ModuleViewDisplayMode[];
 };
 
 export const CUSTOM_FIELD_COLUMN_PREFIX = "custom:";
@@ -55,14 +63,14 @@ const SELECT_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "in", "not_
 const RELATION_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "is_empty", "is_not_empty"];
 
 export const CONTACT_COLUMNS: TableColumnOption[] = [
-  { key: "first_name", label: "First Name" },
-  { key: "last_name", label: "Last Name" },
+  { key: "first_name", label: "First name" },
+  { key: "last_name", label: "Last name" },
   { key: "primary_email", label: "Email" },
   { key: "contact_telephone", label: "Phone" },
-  { key: "current_title", label: "Job Title" },
+  { key: "current_title", label: "Job title" },
   { key: "organization_name", label: "Account" },
   { key: "assigned_to_name", label: "Owner" },
-  { key: "last_contacted_at", label: "Last Activity" },
+  { key: "last_contacted_at", label: "Last activity" },
   { key: "created_time", label: "Created" },
   { key: "region", label: "Region" },
   { key: "country", label: "Country" },
@@ -71,19 +79,19 @@ export const CONTACT_COLUMNS: TableColumnOption[] = [
 
 export const LEAD_COLUMNS: TableColumnOption[] = [
   { key: "first_name", label: "Name" },
-  { key: "last_name", label: "Last Name" },
+  { key: "last_name", label: "Last name" },
   { key: "company", label: "Company" },
   { key: "score", label: "Score" },
   { key: "score_grade", label: "Grade" },
   { key: "primary_email", label: "Email" },
   { key: "phone", label: "Phone" },
-  { key: "title", label: "Job Title" },
+  { key: "title", label: "Job title" },
   { key: "source", label: "Source" },
   { key: "status", label: "Status" },
   { key: "assigned_to_name", label: "Owner" },
   { key: "team_name", label: "Team" },
   { key: "tags", label: "Tags" },
-  { key: "last_contacted_at", label: "Last Activity" },
+  { key: "last_contacted_at", label: "Last activity" },
   { key: "next_follow_up_at", label: "Next Follow-up" },
   { key: "created_time", label: "Created" },
 ];
@@ -106,29 +114,29 @@ export const OPPORTUNITY_COLUMNS: TableColumnOption[] = [
   { key: "organization_name", label: "Account" },
   { key: "contact_name", label: "Contact" },
   { key: "sales_stage", label: "Stage" },
-  { key: "expected_close_date", label: "Expected Close" },
+  { key: "expected_close_date", label: "Expected close" },
   { key: "probability_percent", label: "Probability" },
-  { key: "total_cost_of_project", label: "Project Cost" },
+  { key: "total_cost_of_project", label: "Project cost" },
   { key: "currency_type", label: "Currency" },
   { key: "assigned_to_name", label: "Owner" },
   { key: "created_time", label: "Created" },
 ];
 
 export const QUOTE_COLUMNS: TableColumnOption[] = [
-  { key: "quote_number", label: "Quote Number" },
+  { key: "quote_number", label: "Quote number" },
   { key: "customer_name", label: "Customer" },
   { key: "opportunity_id", label: "Deal ID" },
   { key: "title", label: "Title" },
   { key: "status", label: "Status" },
   { key: "total_amount", label: "Total" },
   { key: "currency", label: "Currency" },
-  { key: "issue_date", label: "Issue Date" },
-  { key: "expiry_date", label: "Expiry Date" },
+  { key: "issue_date", label: "Issue date" },
+  { key: "expiry_date", label: "Expiry date" },
   { key: "updated_at", label: "Updated" },
 ];
 
 export const ORDER_COLUMNS: TableColumnOption[] = [
-  { key: "order_number", label: "Order Number" },
+  { key: "order_number", label: "Order number" },
   { key: "status", label: "Status" },
   { key: "quote_id", label: "Quote ID" },
   { key: "organization_name", label: "Account" },
@@ -179,20 +187,20 @@ export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
 ];
 
 export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
-  { key: "io_number", label: "IO Number" },
+  { key: "io_number", label: "IO number" },
   { key: "customer_name", label: "Customer" },
   { key: "status", label: "Status" },
   { key: "currency", label: "Currency" },
   { key: "subtotal_amount", label: "Subtotal" },
   { key: "tax_amount", label: "Tax" },
   { key: "total_amount", label: "Total" },
-  { key: "issue_date", label: "Issue Date" },
+  { key: "issue_date", label: "Issue date" },
   { key: "effective_date", label: "Effective" },
-  { key: "due_date", label: "Due Date" },
-  { key: "start_date", label: "Start Date" },
-  { key: "end_date", label: "End Date" },
+  { key: "due_date", label: "Due date" },
+  { key: "start_date", label: "Start date" },
+  { key: "end_date", label: "End date" },
   { key: "external_reference", label: "Reference" },
-  { key: "counterparty_reference", label: "Counterparty Ref" },
+  { key: "counterparty_reference", label: "Counterparty ref" },
   { key: "user_name", label: "Owner" },
   { key: "updated_at", label: "Updated" },
 ];
@@ -224,7 +232,7 @@ export const USER_COLUMNS: TableColumnOption[] = [
   { key: "team_name", label: "Team" },
   { key: "role_name", label: "Role" },
   { key: "email", label: "Email" },
-  { key: "auth_mode", label: "Sign-in Mode" },
+  { key: "auth_mode", label: "Sign-in mode" },
   { key: "mfa_enabled", label: "MFA" },
   { key: "is_active", label: "Status" },
 ];
@@ -332,7 +340,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "title", label: "Title" },
       { key: "priority", label: "Priority" },
       { key: "status", label: "Status" },
-      { key: "assigned_by_name", label: "Assigned By" },
+      { key: "assigned_by_name", label: "Assigned by" },
       { key: "assigned_at", label: "Assigned" },
       { key: "due_at", label: "Due" },
       { key: "assignees", label: "Assignees" },
@@ -357,16 +365,16 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
-          { value: "todo", label: "To Do" },
-          { value: "in_progress", label: "In Progress" },
+          { value: "todo", label: "To do" },
+          { value: "in_progress", label: "In progress" },
           { value: "blocked", label: "Blocked" },
           { value: "completed", label: "Completed" },
         ],
       },
-      { key: "due_at", label: "Due Date", type: "date", operators: DATE_OPERATORS },
-      { key: "start_at", label: "Start Date", type: "date", operators: DATE_OPERATORS },
-      { key: "assigned_at", label: "Assigned At", type: "date", operators: DATE_OPERATORS },
-      { key: "created_at", label: "Created At", type: "date", operators: DATE_OPERATORS },
+      { key: "due_at", label: "Due date", type: "date", operators: DATE_OPERATORS },
+      { key: "start_at", label: "Start date", type: "date", operators: DATE_OPERATORS },
+      { key: "assigned_at", label: "Assigned at", type: "date", operators: DATE_OPERATORS },
+      { key: "created_at", label: "Created at", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.tasks,
   },
@@ -376,12 +384,12 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     route: "/dashboard/sales/leads",
     columns: LEAD_COLUMNS,
     filterFields: [
-      { key: "first_name", label: "First Name", type: "text", operators: TEXT_OPERATORS },
-      { key: "last_name", label: "Last Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "first_name", label: "First name", type: "text", operators: TEXT_OPERATORS },
+      { key: "last_name", label: "Last name", type: "text", operators: TEXT_OPERATORS },
       { key: "company", label: "Company", type: "text", operators: TEXT_OPERATORS },
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
-      { key: "title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
+      { key: "title", label: "Job title", type: "text", operators: TEXT_OPERATORS },
       { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
       {
         key: "assigned_to",
@@ -399,11 +407,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         sourceModuleKey: "sales_leads",
         recordType: "team",
       },
-      { key: "last_contacted_at", label: "Last Activity", type: "date", operators: DATE_OPERATORS },
+      { key: "last_contacted_at", label: "Last activity", type: "date", operators: DATE_OPERATORS },
       { key: "next_follow_up_at", label: "Next Follow-up", type: "date", operators: DATE_OPERATORS },
       {
         key: "has_activity",
-        label: "Has Activity",
+        label: "Has activity",
         type: "select",
         operators: ["is"],
         options: [
@@ -414,7 +422,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "score", label: "Score", type: "number", operators: NUMBER_OPERATORS },
       {
         key: "score_grade",
-        label: "Score Grade",
+        label: "Score grade",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
@@ -436,7 +444,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "converted", label: "Converted" },
         ],
       },
-      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+      { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_leads,
   },
@@ -446,11 +454,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     route: "/dashboard/sales/contacts",
     columns: CONTACT_COLUMNS,
     filterFields: [
-      { key: "first_name", label: "First Name", type: "text", operators: TEXT_OPERATORS },
-      { key: "last_name", label: "Last Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "first_name", label: "First name", type: "text", operators: TEXT_OPERATORS },
+      { key: "last_name", label: "Last name", type: "text", operators: TEXT_OPERATORS },
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "contact_telephone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
-      { key: "current_title", label: "Job Title", type: "text", operators: TEXT_OPERATORS },
+      { key: "current_title", label: "Job title", type: "text", operators: TEXT_OPERATORS },
       { key: "organization_name", label: "Account", type: "text", operators: TEXT_OPERATORS },
       {
         key: "assigned_to",
@@ -460,11 +468,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         sourceModuleKey: "sales_contacts",
         recordType: "user",
       },
-      { key: "last_contacted_at", label: "Last Activity", type: "date", operators: DATE_OPERATORS },
+      { key: "last_contacted_at", label: "Last activity", type: "date", operators: DATE_OPERATORS },
       { key: "region", label: "Region", type: "text", operators: TEXT_OPERATORS },
       { key: "country", label: "Country", type: "text", operators: TEXT_OPERATORS },
       { key: "linkedin_url", label: "LinkedIn", type: "text", operators: TEXT_OPERATORS },
-      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+      { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_contacts,
   },
@@ -482,8 +490,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "primary_phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "billing_country", label: "Country", type: "text", operators: TEXT_OPERATORS },
       { key: "assigned_to", label: "Owner", type: "relation", operators: RELATION_OPERATORS, sourceModuleKey: "sales_organizations", recordType: "user" },
-      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
-      { key: "updated_at", label: "Updated Time", type: "date", operators: DATE_OPERATORS },
+      { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
+      { key: "updated_at", label: "Updated time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_organizations,
   },
@@ -491,6 +499,10 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     key: "sales_opportunities",
     label: "Deals",
     route: "/dashboard/sales/opportunities",
+    displayModes: [
+      { value: "table", label: "Table" },
+      { value: "pipeline", label: "Pipeline" },
+    ],
     columns: OPPORTUNITY_COLUMNS,
     filterFields: [
       { key: "opportunity_name", label: "Deal", type: "text", operators: TEXT_OPERATORS },
@@ -505,16 +517,16 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "qualified", label: "Qualified" },
           { value: "proposal", label: "Proposal" },
           { value: "negotiation", label: "Negotiation" },
-          { value: "closed_won", label: "Closed Won" },
-          { value: "closed_lost", label: "Closed Lost" },
+          { value: "closed_won", label: "Closed won" },
+          { value: "closed_lost", label: "Closed lost" },
         ],
       },
-      { key: "expected_close_date", label: "Expected Close", type: "date", operators: DATE_OPERATORS },
+      { key: "expected_close_date", label: "Expected close", type: "date", operators: DATE_OPERATORS },
       { key: "probability_percent", label: "Probability", type: "number", operators: NUMBER_OPERATORS },
-      { key: "total_cost_of_project", label: "Project Cost", type: "number", operators: NUMBER_OPERATORS },
+      { key: "total_cost_of_project", label: "Project cost", type: "number", operators: NUMBER_OPERATORS },
       { key: "currency_type", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "target_geography", label: "Target Geography", type: "text", operators: TEXT_OPERATORS },
-      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+      { key: "target_geography", label: "Target geography", type: "text", operators: TEXT_OPERATORS },
+      { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_opportunities,
   },
@@ -524,7 +536,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     route: "/dashboard/sales/quotes",
     columns: QUOTE_COLUMNS,
     filterFields: [
-      { key: "quote_number", label: "Quote Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "quote_number", label: "Quote number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
       { key: "opportunity_id", label: "Deal ID", type: "number", operators: NUMBER_OPERATORS },
       { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
@@ -541,14 +553,14 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "expired", label: "Expired" },
         ],
       },
-      { key: "issue_date", label: "Issue Date", type: "date", operators: DATE_OPERATORS },
-      { key: "expiry_date", label: "Expiry Date", type: "date", operators: DATE_OPERATORS },
+      { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
+      { key: "expiry_date", label: "Expiry date", type: "date", operators: DATE_OPERATORS },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "subtotal_amount", label: "Subtotal", type: "number", operators: NUMBER_OPERATORS },
       { key: "discount_amount", label: "Discount", type: "number", operators: NUMBER_OPERATORS },
       { key: "tax_amount", label: "Tax", type: "number", operators: NUMBER_OPERATORS },
       { key: "total_amount", label: "Total", type: "number", operators: NUMBER_OPERATORS },
-      { key: "created_time", label: "Created Time", type: "date", operators: DATE_OPERATORS },
+      { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_quotes,
@@ -559,7 +571,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     route: "/dashboard/sales/orders",
     columns: ORDER_COLUMNS,
     filterFields: [
-      { key: "order_number", label: "Order Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "order_number", label: "Order number", type: "text", operators: TEXT_OPERATORS },
       { key: "quote_id", label: "Quote ID", type: "number", operators: NUMBER_OPERATORS },
       { key: "organization_id", label: "Account ID", type: "number", operators: NUMBER_OPERATORS },
       { key: "contact_id", label: "Contact ID", type: "number", operators: NUMBER_OPERATORS },
@@ -600,7 +612,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "draft", label: "Draft" },
           { value: "review", label: "Review" },
           { value: "sent", label: "Sent" },
-          { value: "partially_signed", label: "Partially Signed" },
+          { value: "partially_signed", label: "Partially signed" },
           { value: "signed", label: "Signed" },
           { value: "active", label: "Active" },
           { value: "expired", label: "Expired" },
@@ -668,11 +680,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
   finance_io: {
     key: "finance_io",
-    label: "Insertion Orders",
+    label: "Insertion orders",
     route: "/dashboard/finance/insertion-orders",
     columns: INSERTION_ORDER_COLUMNS,
     filterFields: [
-      { key: "io_number", label: "IO Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "io_number", label: "IO number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",
@@ -690,10 +702,10 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "total_amount", label: "Total", type: "number", operators: NUMBER_OPERATORS },
-      { key: "issue_date", label: "Issue Date", type: "date", operators: DATE_OPERATORS },
-      { key: "due_date", label: "Due Date", type: "date", operators: DATE_OPERATORS },
+      { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
+      { key: "due_date", label: "Due date", type: "date", operators: DATE_OPERATORS },
       { key: "external_reference", label: "Reference", type: "text", operators: TEXT_OPERATORS },
-      { key: "counterparty_reference", label: "Counterparty Ref", type: "text", operators: TEXT_OPERATORS },
+      { key: "counterparty_reference", label: "Counterparty ref", type: "text", operators: TEXT_OPERATORS },
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.finance_io,
@@ -705,23 +717,23 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     columns: [
       { key: "invoice_number", label: "Invoice" },
       { key: "customer_name", label: "Customer" },
-      { key: "status", label: "Invoice Status" },
-      { key: "payment_status", label: "Payment Status" },
-      { key: "total_amount", label: "Invoice Total" },
+      { key: "status", label: "Invoice status" },
+      { key: "payment_status", label: "Payment status" },
+      { key: "total_amount", label: "Invoice total" },
       { key: "amount_paid", label: "Paid" },
       { key: "balance_due", label: "Balance" },
-      { key: "due_date", label: "Due Date" },
-      { key: "issue_date", label: "Issue Date" },
-      { key: "payment_method", label: "Payment Method" },
+      { key: "due_date", label: "Due date" },
+      { key: "issue_date", label: "Issue date" },
+      { key: "payment_method", label: "Payment method" },
       { key: "template_id", label: "Template" },
       { key: "updated_at", label: "Updated" },
     ],
     filterFields: [
-      { key: "invoice_number", label: "Invoice Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "invoice_number", label: "Invoice number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",
-        label: "Invoice Status",
+        label: "Invoice status",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
@@ -733,22 +745,22 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       {
         key: "payment_status",
-        label: "Payment Status",
+        label: "Payment status",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
           { value: "unpaid", label: "Unpaid" },
-          { value: "partial", label: "Partially Paid" },
+          { value: "partial", label: "Partially paid" },
           { value: "paid", label: "Paid" },
           { value: "refunded", label: "Refunded" },
         ],
       },
-      { key: "payment_method", label: "Payment Method", type: "text", operators: TEXT_OPERATORS },
+      { key: "payment_method", label: "Payment method", type: "text", operators: TEXT_OPERATORS },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "total_amount", label: "Invoice Total", type: "number", operators: NUMBER_OPERATORS },
-      { key: "amount_paid", label: "Amount Paid", type: "number", operators: NUMBER_OPERATORS },
-      { key: "due_date", label: "Due Date", type: "date", operators: DATE_OPERATORS },
-      { key: "issue_date", label: "Issue Date", type: "date", operators: DATE_OPERATORS },
+      { key: "total_amount", label: "Invoice total", type: "number", operators: NUMBER_OPERATORS },
+      { key: "amount_paid", label: "Amount paid", type: "number", operators: NUMBER_OPERATORS },
+      { key: "due_date", label: "Due date", type: "date", operators: DATE_OPERATORS },
+      { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.finance_pos,
@@ -760,23 +772,23 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     columns: [
       { key: "invoice_number", label: "Invoice" },
       { key: "customer_name", label: "Customer" },
-      { key: "status", label: "Invoice Status" },
-      { key: "payment_status", label: "Payment Status" },
-      { key: "total_amount", label: "Invoice Total" },
+      { key: "status", label: "Invoice status" },
+      { key: "payment_status", label: "Payment status" },
+      { key: "total_amount", label: "Invoice total" },
       { key: "amount_paid", label: "Paid" },
       { key: "balance_due", label: "Balance" },
-      { key: "due_date", label: "Due Date" },
-      { key: "issue_date", label: "Issue Date" },
-      { key: "payment_method", label: "Payment Method" },
+      { key: "due_date", label: "Due date" },
+      { key: "issue_date", label: "Issue date" },
+      { key: "payment_method", label: "Payment method" },
       { key: "template_id", label: "Template" },
       { key: "updated_at", label: "Updated" },
     ],
     filterFields: [
-      { key: "invoice_number", label: "Invoice Number", type: "text", operators: TEXT_OPERATORS },
+      { key: "invoice_number", label: "Invoice number", type: "text", operators: TEXT_OPERATORS },
       { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
       {
         key: "status",
-        label: "Invoice Status",
+        label: "Invoice status",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
@@ -788,22 +800,22 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       {
         key: "payment_status",
-        label: "Payment Status",
+        label: "Payment status",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
           { value: "unpaid", label: "Unpaid" },
-          { value: "partial", label: "Partially Paid" },
+          { value: "partial", label: "Partially paid" },
           { value: "paid", label: "Paid" },
           { value: "refunded", label: "Refunded" },
         ],
       },
-      { key: "payment_method", label: "Payment Method", type: "text", operators: TEXT_OPERATORS },
+      { key: "payment_method", label: "Payment method", type: "text", operators: TEXT_OPERATORS },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "total_amount", label: "Invoice Total", type: "number", operators: NUMBER_OPERATORS },
-      { key: "amount_paid", label: "Amount Paid", type: "number", operators: NUMBER_OPERATORS },
-      { key: "due_date", label: "Due Date", type: "date", operators: DATE_OPERATORS },
-      { key: "issue_date", label: "Issue Date", type: "date", operators: DATE_OPERATORS },
+      { key: "total_amount", label: "Invoice total", type: "number", operators: NUMBER_OPERATORS },
+      { key: "amount_paid", label: "Amount paid", type: "number", operators: NUMBER_OPERATORS },
+      { key: "due_date", label: "Due date", type: "date", operators: DATE_OPERATORS },
+      { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.finance_payments,
@@ -821,17 +833,17 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "public_unit_price", label: "Price", type: "number", operators: NUMBER_OPERATORS },
       {
         key: "stock_status",
-        label: "Stock Status",
+        label: "Stock status",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
           { value: "untracked", label: "Untracked" },
-          { value: "in_stock", label: "In Stock" },
-          { value: "out_of_stock", label: "Out of Stock" },
+          { value: "in_stock", label: "In stock" },
+          { value: "out_of_stock", label: "Out of stock" },
           { value: "preorder", label: "Preorder" },
         ],
       },
-      { key: "stock_quantity", label: "Stock Quantity", type: "number", operators: NUMBER_OPERATORS },
+      { key: "stock_quantity", label: "Stock quantity", type: "number", operators: NUMBER_OPERATORS },
       { key: "is_public", label: "Public", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
       { key: "is_active", label: "Active", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
       { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
@@ -858,18 +870,18 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
   },
   admin_users: {
     key: "admin_users",
-    label: "User Management",
+    label: "User management",
     route: SETTINGS_ROUTES.users,
     columns: USER_COLUMNS,
     filterFields: [
-      { key: "first_name", label: "First Name", type: "text", operators: TEXT_OPERATORS },
-      { key: "last_name", label: "Last Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "first_name", label: "First name", type: "text", operators: TEXT_OPERATORS },
+      { key: "last_name", label: "Last name", type: "text", operators: TEXT_OPERATORS },
       { key: "email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "team_name", label: "Team", type: "text", operators: TEXT_OPERATORS },
       { key: "role_name", label: "Role", type: "text", operators: TEXT_OPERATORS },
       {
         key: "auth_mode",
-        label: "Sign-in Mode",
+        label: "Sign-in mode",
         type: "select",
         operators: SELECT_OPERATORS,
         options: [
@@ -941,12 +953,7 @@ export function getReadableColumnLabel(columnKey: string, columnOptions: TableCo
     return explicit.label;
   }
 
-  const rawKey = getCustomFieldKeyFromColumn(columnKey);
-  return rawKey
-    .split("_")
-    .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
+  return formatSnakeCaseLabel(getCustomFieldKeyFromColumn(columnKey));
 }
 
 export function resolveVisibleColumns(

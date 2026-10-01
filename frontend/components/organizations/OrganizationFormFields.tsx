@@ -1,11 +1,10 @@
 "use client";
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { RequiredMark } from "@/components/ui/RequiredMark";
+import { TextField } from "@/components/forms/TextField";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
@@ -66,29 +65,29 @@ export function OrganizationFormMainFields({ value, onChange, customFields, cust
   return (
     <>
       <FormSection title="Account information" description="Identify the company and its primary commercial profile.">
-        <div className="grid gap-4 md:grid-cols-2">
-          {enabled("org_name") ? <RequiredTextField id="account-name" label="Account name" value={value.org_name} onChange={(next) => update("org_name", next)} error={nameError} placeholder="Acme Inc." /> : null}
+        <FieldGroup columns={2}>
+          {enabled("org_name") ? <TextField id="account-name" label="Account name" required value={value.org_name} onChange={(next) => update("org_name", next)} error={nameError} placeholder="Acme Inc." /> : null}
           {enabled("industry") ? <TextField id="account-industry" label="Industry" value={value.industry} onChange={(next) => update("industry", next)} placeholder="Technology" /> : null}
           {enabled("website") ? <TextField id="account-website" label="Website" type="url" value={value.website} onChange={(next) => update("website", next)} placeholder="https://acme.com" /> : null}
           {enabled("annual_revenue") ? <TextField id="account-revenue" label="Annual revenue" value={value.annual_revenue} onChange={(next) => update("annual_revenue", next)} placeholder="$10M - $25M" /> : null}
-        </div>
+        </FieldGroup>
       </FormSection>
       <FormSection title="Contact details" description="Add the shared channels used to reach this account.">
-        <div className="grid gap-4 md:grid-cols-2">
-          {enabled("primary_email") ? <RequiredTextField id="account-primary-email" label="Primary email" type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="ops@acme.com" /> : null}
+        <FieldGroup columns={2}>
+          {enabled("primary_email") ? <TextField id="account-primary-email" label="Primary email" required type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="ops@acme.com" /> : null}
           {enabled("secondary_email") ? <TextField id="account-secondary-email" label="Secondary email" type="email" value={value.secondary_email} onChange={(next) => update("secondary_email", next)} /> : null}
           {enabled("primary_phone") ? <TextField id="account-primary-phone" label="Primary phone" type="tel" value={value.primary_phone} onChange={(next) => update("primary_phone", next)} /> : null}
           {enabled("secondary_phone") ? <TextField id="account-secondary-phone" label="Secondary phone" type="tel" value={value.secondary_phone} onChange={(next) => update("secondary_phone", next)} /> : null}
-        </div>
+        </FieldGroup>
       </FormSection>
       <FormSection title="Billing address" description="Keep billing and transaction documents aligned to the correct address.">
-        <div className="grid gap-4 md:grid-cols-2">
+        <FieldGroup columns={2}>
           {enabled("billing_address") ? <Field className="md:col-span-2"><FieldLabel htmlFor="account-billing-address">Address</FieldLabel><Textarea id="account-billing-address" rows={3} value={value.billing_address} onChange={(event) => update("billing_address", event.target.value)} /></Field> : null}
           {enabled("billing_city") ? <TextField id="account-billing-city" label="City" value={value.billing_city} onChange={(next) => update("billing_city", next)} /> : null}
           {enabled("billing_state") ? <TextField id="account-billing-state" label="State or province" value={value.billing_state} onChange={(next) => update("billing_state", next)} /> : null}
           {enabled("billing_postal_code") ? <TextField id="account-billing-postal" label="Postal code" value={value.billing_postal_code} onChange={(next) => update("billing_postal_code", next)} /> : null}
-          {enabled("billing_country") ? <Field><FieldLabel>Country</FieldLabel><Select value={value.billing_country || undefined} onValueChange={(billing_country) => onChange({ ...value, billing_country })}><SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger><SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent></Select></Field> : null}
-        </div>
+          {enabled("billing_country") ? <Field><FieldLabel htmlFor="account-country">Country</FieldLabel><Select value={value.billing_country || undefined} onValueChange={(billing_country) => onChange({ ...value, billing_country })}><SelectTrigger id="account-country"><SelectValue placeholder="Select country" /></SelectTrigger><SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent></Select></Field> : null}
+        </FieldGroup>
       </FormSection>
       {customFields.length ? <FormSection title="Custom fields" description="Additional information configured for your workspace."><CustomFieldInputs definitions={customFields} values={customFieldValues} onChange={onCustomFieldChange} /></FormSection> : null}
     </>
@@ -99,15 +98,7 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return (
     <FormSection title="Ownership" description="Assign responsibility for this account.">
-      {enabled("assigned_to") ? <Field><FieldLabel>Owner</FieldLabel><LinkedRecordPicker recordType="user" valueId={value.assigned_to} displayValue={value.assigned_to_name} onDisplayValueChange={(assigned_to_name) => onChange({ ...value, assigned_to: null, assigned_to_name })} onSelect={(option) => onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })} onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })} placeholder={mode === "create" ? "Search owners (defaults to you)" : "Search owners"} queryKeyPrefix="account-owner" noResultsText="No active users matched this search." sourceModuleKey="sales_organizations" sourceAction={mode} allowClear={mode === "create"} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
+      {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
     </FormSection>
   );
-}
-
-function RequiredTextField({ id, label, value, onChange, error, type = "text", placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; error?: string | null; type?: string; placeholder?: string }) {
-  return <Field data-invalid={Boolean(error)}><FieldLabel htmlFor={id}>{label} <RequiredMark /></FieldLabel><Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} aria-invalid={Boolean(error)} placeholder={placeholder} />{error ? <FieldError>{error}</FieldError> : null}</Field>;
-}
-
-function TextField({ id, label, value, onChange, type = "text", placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
-  return <Field><FieldLabel htmlFor={id}>{label}</FieldLabel><Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} /></Field>;
 }

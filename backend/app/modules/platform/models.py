@@ -1,4 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+import uuid
+
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -119,6 +121,50 @@ class ModuleFieldConfig(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
+class RecordLayoutDefinition(Base):
+    __tablename__ = "record_layout_definitions"
+    __table_args__ = (
+        CheckConstraint(
+            "surface IN ('quick_create', 'detail', 'full_form')",
+            name="ck_record_layout_definitions_surface",
+        ),
+        CheckConstraint("version >= 1", name="ck_record_layout_definitions_version"),
+        UniqueConstraint(
+            "tenant_id",
+            "module_key",
+            "surface",
+            "name",
+            name="uq_record_layout_defs_tenant_module_surface_name",
+        ),
+        Index(
+            "uq_record_layout_defs_default",
+            "tenant_id",
+            "module_key",
+            "surface",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index(
+            "ix_record_layout_defs_tenant_module_surface",
+            "tenant_id",
+            "module_key",
+            "surface",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    surface = Column(String(32), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    is_default = Column(Boolean, nullable=False, server_default="false")
+    version = Column(Integer, nullable=False, server_default="1")
+    sections = Column(JSON, nullable=False, server_default="[]")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class RecordTag(Base):
     __tablename__ = "record_tags"
     __table_args__ = (
@@ -171,18 +217,100 @@ class UserModuleReport(Base):
     __table_args__ = (
         UniqueConstraint("user_id", "module_key", "name", name="uq_user_module_reports_user_module_name"),
         Index("ix_user_module_reports_tenant_user_module", "tenant_id", "user_id", "module_key"),
+        # The library lists everyone's shared reports in a tenant.
+        Index("ix_user_module_reports_tenant_visibility", "tenant_id", "visibility"),
+        CheckConstraint("visibility IN ('private', 'everyone')", name="ck_user_module_reports_visibility"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    # The SQLite variant keeps the tests able to autoincrement it; PostgreSQL is unchanged.
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    # `private` (the owner only) or `everyone` in the tenant. Each viewer still sees only the
+    # records they may open: a report is a definition, never a copy of the data.
+    visibility = Column(String(20), nullable=False, server_default="private", default="private")
     config = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User")
+
+
+class ReportDashboard(Base):
+    """A shared or private page of saved reports (11-reports.md Phase 2).
+
+    `widgets` holds references to saved reports, never their data or definitions: each
+    viewer's dashboard runs every report as that viewer, so a dashboard shows nobody more
+    than the reports would. `filters` holds the dashboard-wide defaults (date range, Show me).
+    """
+
+    __tablename__ = "report_dashboards"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_report_dashboards_user_name"),
+        Index("ix_report_dashboards_tenant_visibility", "tenant_id", "visibility"),
+        CheckConstraint("visibility IN ('private', 'everyone')", name="ck_report_dashboards_visibility"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    visibility = Column(String(20), nullable=False, server_default="private", default="private")
+    widgets = Column(JSON, nullable=False, server_default="[]", default=list)
+    filters = Column(JSON, nullable=False, server_default="{}", default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+
+
+class ReportSubscription(Base):
+    __tablename__ = "report_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "target_type", "target_id", name="uq_report_subscription_user_target"),
+        CheckConstraint("target_type IN ('report', 'dashboard')", name="ck_report_subscription_target"),
+        CheckConstraint("frequency IN ('daily', 'weekly', 'monthly')", name="ck_report_subscription_frequency"),
+        Index("ix_report_subscriptions_due", "next_run_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_type = Column(String(20), nullable=False)
+    target_id = Column(BigInteger, nullable=False)
+    frequency = Column(String(20), nullable=False)
+    hour = Column(Integer, nullable=False)
+    minute = Column(Integer, nullable=False, server_default="0")
+    weekday = Column(Integer, nullable=True)
+    day_of_month = Column(Integer, nullable=True)
+    timezone = Column(String(100), nullable=False)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    next_run_at = Column(DateTime(timezone=True), nullable=False)
+    last_status = Column(String(20), nullable=True)
+    last_error = Column(String(255), nullable=True)
+    last_sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ReportSubscriptionDelivery(Base):
+    __tablename__ = "report_subscription_deliveries"
+    __table_args__ = (
+        UniqueConstraint("subscription_id", "scheduled_for", name="uq_report_delivery_slot"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    subscription_id = Column(BigInteger, ForeignKey("report_subscriptions.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), nullable=False, server_default="queued")
+    error = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ForecastSnapshot(Base):
@@ -382,6 +510,10 @@ class CrmEvent(Base):
     entity_id = Column(String(100), nullable=False, index=True)
     # ORM callers use event.payload; the persisted column remains payload_json.
     payload = Column("payload_json", JSON, nullable=True)
+    # The identity an outside system sees (webhook envelope `id`). Random, so it neither
+    # reveals event volume nor changes on replay. Null on events recorded before webhooks
+    # existed: no subscription could have matched them, so they are never delivered.
+    public_id = Column(String(36), nullable=True, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     actor = relationship("User")
@@ -501,8 +633,18 @@ class AutomationRuleDeadLetter(Base):
 
 class RecordComment(Base):
     __tablename__ = "record_comments"
+    __table_args__ = (
+        Index(
+            "ix_record_comments_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "created_at",
+            "id",
+        ),
+    )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module_key = Column(String(100), nullable=False, index=True)
@@ -522,6 +664,50 @@ class RecordComment(Base):
             if self.actor.email:
                 return self.actor.email
         return "Unknown user"
+
+
+class RecordFollowUp(Base):
+    """Source of truth for a logged salesperson follow-up outcome.
+
+    Follow-ups previously existed only as ``activity_logs`` rows, which mixed
+    salesperson interaction history into the immutable audit store. This table
+    owns the interaction; the audit log keeps recording the change separately.
+    ``follow_up_task_id`` is a soft reference (no FK) matching the existing
+    cross-module convention used by ``tasks.source_entity_id``.
+    """
+
+    __tablename__ = "record_follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('whatsapp', 'email', 'call')",
+            name="ck_record_follow_ups_channel",
+        ),
+        Index(
+            "ix_record_follow_ups_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "occurred_at",
+            "id",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    channel = Column(String(20), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    follow_up_task_id = Column(BigInteger, nullable=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    actor = relationship("User")
+
+    @validates("entity_id")
+    def _normalize_entity_id(self, _key, value):
+        return str(value)
 
 
 class MessageTemplate(Base):

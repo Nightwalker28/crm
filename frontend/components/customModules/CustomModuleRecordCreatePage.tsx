@@ -10,12 +10,13 @@ import {
   CustomModuleFieldInput,
   getInitialCustomModuleValues,
 } from "@/components/customModules/CustomModuleFieldInput";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
@@ -61,7 +62,7 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
   if (schema.error || moduleFields.error || !schema.data) {
     return (
       <RouteErrorState
-        title="Unable to prepare this record"
+        title="This record could not be prepared"
         description="The module configuration could not be loaded. Try again or return to the record list."
         reset={() => void Promise.all([schema.refetch(), moduleFields.refresh()])}
         backHref={`/dashboard/custom/${moduleKey}`}
@@ -157,30 +158,29 @@ function CustomModuleRecordCreateEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Create record"
-        eyebrow={moduleName}
-        description={`Add a record using the fields configured for ${moduleName}.`}
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to records
-            </Link>
-          </Button>
-        }
-      />
-
+    <PageShell
+      title="Create record"
+      eyebrow={moduleName}
+      description={`Add a record using the fields configured for ${moduleName}.`}
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to records
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not create this record.</div>
-          <div className="mt-1 text-copy-secondary">Review the fields and try again.</div>
-        </div>
+        <FormErrorBanner title="We could not create this record.">Review the fields and try again.</FormErrorBanner>
       ) : null}
 
-      <form id="custom-module-create-form" onSubmit={handleSubmit}>
+      {/* The field inputs carry the native required attribute, so without noValidate the
+          browser blocks submit and validateRequiredFields never runs: the form's own message
+          and focus handling would never be reached. */}
+      <form id="custom-module-create-form" onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title={`New ${moduleName.toLocaleLowerCase()} record`}
           sidebar={
             <FormSection title="Module context" description="This record uses your tenant-configured module schema.">
               <dl className="grid gap-4 text-sm">
@@ -205,28 +205,24 @@ function CustomModuleRecordCreateEditor({
               </dl>
             </FormSection>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">
-                {isDirty ? "You have unsaved changes." : "Complete the configured fields to create this record."}
-              </span>
-              <div className="flex items-center gap-2">
-                <Button asChild variant="outline">
-                  <Link href={backHref}>Cancel</Link>
-                </Button>
-                <Button type="submit" disabled={isSaving}>
-                  <Save />
-                  {isSaving ? "Creating…" : "Create record"}
-                </Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "Unsaved changes" : "Complete the configured fields to create this record."}
+          actions={(
+            <>
+              <Button asChild variant="outline">
+                <Link href={backHref}>Cancel</Link>
+              </Button>
+              <Button type="submit" disabled={isSaving}>
+                <Save />
+                {isSaving ? "Creating…" : "Create record"}
+              </Button>
+            </>
+          )}
         >
           <FormSection
             title="Record details"
             description="Required fields are controlled by the current module configuration."
           >
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup columns={2}>
               <Field className="sm:col-span-2">
                 <FieldLabel htmlFor="custom-record-title">Record title</FieldLabel>
                 <Input
@@ -280,6 +276,6 @@ function CustomModuleRecordCreateEditor({
           </FormSection>
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

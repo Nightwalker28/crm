@@ -161,7 +161,7 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
                 quotes_services.update_sales_quote(self.db, quote, {"opportunity_id": 40, "contact_id": 32})
 
         self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Quote contact must match the linked opportunity")
+        self.assertEqual(exc.exception.detail, "Quote contact must be a participant on the linked opportunity")
 
     def test_quote_list_sorts_before_pagination(self):
         self.db.add_all(

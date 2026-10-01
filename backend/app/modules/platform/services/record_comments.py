@@ -8,6 +8,7 @@ from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, require_role_module_ac
 from app.core.like_patterns import LIKE_ESCAPE, contains_pattern
 from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct, CatalogService
+from app.modules.contracts.models import Contract
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
 from app.modules.finance.models import FinanceIO, FinancePosInvoice
@@ -94,6 +95,13 @@ RECORD_COMMENT_MODULES = {
         "entity_type": "catalog_product",
         "label_field": "name",
         "record_path": "/dashboard/catalog/products/{entity_id}",
+    },
+    "contracts": {
+        "model": Contract,
+        "id_field": "id",
+        "entity_type": "contract",
+        "label_field": "contract_number",
+        "record_path": "/dashboard/contracts/{entity_id}",
     },
     "catalog_services": {
         "model": CatalogService,

@@ -6,7 +6,15 @@ from sqlalchemy.sql import expression
 
 from app.core.database import Base
 from app.modules.client_portal.models import CustomerGroup  # noqa: F401
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_CHECK_SQL
+from app.modules.sales.opportunity_contact_roles import (
+    DEFAULT_OPPORTUNITY_CONTACT_ROLE,
+    OPPORTUNITY_CONTACT_ROLE_CHECK_SQL,
+)
+from app.modules.sales.opportunity_stages import (
+    OPPORTUNITY_PIPELINE_MODULE_KEY,
+    PIPELINE_MODULE_CHECK_SQL,
+    PIPELINE_STAGE_SEMANTIC_CHECK_SQL,
+)
 
 
 def _get_custom_field_cache(record) -> dict | None:
@@ -368,6 +376,16 @@ class SalesQuote(Base):
     organization = relationship("SalesOrganization", lazy="selectin")
     opportunity = relationship("SalesOpportunity", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+
+    @property
+    def assigned_to_name(self) -> str | None:
+        """The owner's name, so the record spine draws a person rather than `assigned_to: 7`."""
+
+        if not self.assigned_user:
+            return None
+        return " ".join(
+            part for part in [self.assigned_user.first_name, self.assigned_user.last_name] if part
+        ).strip() or self.assigned_user.email
     items = relationship("SalesQuoteItem", back_populates="quote", cascade="all, delete-orphan", order_by="SalesQuoteItem.sort_order")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
 
@@ -542,6 +560,12 @@ class SalesOrder(Base):
         return self.opportunity.opportunity_name if self.opportunity else None
 
     @property
+    def quote_number(self) -> str | None:
+        """The originating quote's number. Without it the rail can only draw `Quote #12`."""
+
+        return self.quote.quote_number if self.quote else None
+
+    @property
     def owner_name(self) -> str | None:
         if not self.owner_user:
             return None
@@ -572,7 +596,6 @@ class SalesOrderItem(Base):
 class SalesOpportunity(Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (
-        CheckConstraint(OPPORTUNITY_STAGE_CHECK_SQL, name="ck_sales_opportunities_sales_stage"),
         CheckConstraint(
             "probability_percent IS NULL OR (probability_percent >= 0 AND probability_percent <= 100)",
             name="ck_sales_opportunities_probability_range",
@@ -581,13 +604,27 @@ class SalesOpportunity(Base):
         Index("ix_sales_opportunities_tenant_close_active", "tenant_id", "expected_close_date", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
         Index("ix_sales_opportunities_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        # Board columns and "stage in use" counts group live deals by stage row.
+        Index(
+            "ix_sales_opportunities_tenant_pipeline_stage_active",
+            "tenant_id",
+            "pipeline_stage_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
     )
 
     opportunity_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
     client = Column(Text, nullable=False)
+    # The stage's stable key, mirrored from `pipeline_stage_id` by the pipeline service.
+    # Kept for filters, search, export and the API's `sales_stage` field. Since Phase 4
+    # it is no longer pinned to the six seeded keys; the stage row is what makes it valid.
     sales_stage = Column(Text, nullable=True)
+    # Nullable during compatibility: a NULL pipeline means the tenant default, a NULL
+    # stage means unstaged. Only `pipelines_services.assign_opportunity_stage` writes them.
+    pipeline_id = Column(BigInteger, ForeignKey("sales_pipelines.id"), nullable=True, index=True)
+    pipeline_stage_id = Column(BigInteger, ForeignKey("sales_pipeline_stages.id"), nullable=True)
 
     contact_id = Column(
         BigInteger,
@@ -630,7 +667,14 @@ class SalesOpportunity(Base):
     contact = relationship("SalesContact", lazy="selectin")
     organization = relationship("SalesOrganization", lazy="selectin")
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
+    pipeline_stage = relationship("SalesPipelineStage", lazy="selectin")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
+    contact_associations = relationship(
+        "SalesOpportunityContact",
+        back_populates="opportunity",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     @property
     def custom_data(self) -> dict | None:
@@ -667,3 +711,155 @@ class SalesOpportunity(Base):
             return None
         full_name = " ".join(part for part in [self.contact.first_name, self.contact.last_name] if part).strip()
         return full_name or self.contact.primary_email
+
+
+class SalesOpportunityContact(Base):
+    """Every contact involved in a deal, with the role they play in it.
+
+    A B2B deal routinely runs through a champion, a decision maker, a technical
+    evaluator, and procurement. `sales_opportunities.contact_id` can only hold one
+    of them, so it stays as the legacy primary field and the row flagged
+    `is_primary` here mirrors it for the compatibility period. Domain services own
+    that mirror; nothing writes this table directly.
+
+    Rows are tenant-denormalized: the partial primary uniqueness index and the
+    contact -> opportunities lookup both run without joining the parent, and the
+    service validates the tenant against the opportunity on every write.
+    """
+
+    __tablename__ = "sales_opportunity_contacts"
+    __table_args__ = (
+        # A contact appears on a deal once, so a duplicate participant is rejected
+        # by the database rather than by whichever caller happens to check first.
+        UniqueConstraint("opportunity_id", "contact_id", name="uq_sales_opportunity_contacts_link"),
+        # At most one primary per opportunity, enforced in the database so two
+        # concurrent legacy `contact_id` writes cannot leave a deal with two.
+        Index(
+            "uq_sales_opportunity_contacts_primary",
+            "opportunity_id",
+            unique=True,
+            postgresql_where=text("is_primary"),
+            sqlite_where=text("is_primary"),
+        ),
+        # Contact -> deals, for the relationship rails that read from the contact side.
+        Index(
+            "ix_sales_opportunity_contacts_contact",
+            "tenant_id",
+            "contact_id",
+            "opportunity_id",
+        ),
+        CheckConstraint(OPPORTUNITY_CONTACT_ROLE_CHECK_SQL, name="ck_sales_opportunity_contacts_role"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    opportunity_id = Column(
+        BigInteger,
+        ForeignKey("sales_opportunities.opportunity_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    contact_id = Column(
+        BigInteger,
+        ForeignKey("sales_contacts.contact_id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    role_key = Column(Text, nullable=False, server_default=DEFAULT_OPPORTUNITY_CONTACT_ROLE)
+    is_primary = Column(Boolean, nullable=False, server_default=expression.false())
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    created_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+
+    # Removing a participant is recoverable: the row is retained so the link, its
+    # role, and who established it survive, and re-adding the same contact revives
+    # this row rather than creating a second one under the unique link constraint.
+    # The primary partial unique index above deliberately ignores `deleted_at`, so
+    # a removed row can never sit on the primary flag.
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    deleted_by_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+
+    opportunity = relationship("SalesOpportunity", back_populates="contact_associations")
+    contact = relationship("SalesContact", lazy="selectin")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    deleted_by = relationship("User", foreign_keys=[deleted_by_user_id])
+
+
+class SalesPipeline(Base):
+    """A tenant's configurable sales pipeline (04-pipelines-kanban, Phase 1).
+
+    Pipelines are sales-domain configuration, not generic metadata, so
+    `module_key` is constrained to the modules that have one. A pipeline is
+    deactivated rather than deleted, because historical records keep pointing at
+    its stages.
+    """
+
+    __tablename__ = "sales_pipelines"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "name", name="uq_sales_pipelines_name"),
+        # One default per tenant and module, enforced in the database so two
+        # concurrent first-use seeds cannot both win.
+        Index(
+            "uq_sales_pipelines_default",
+            "tenant_id",
+            "module_key",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default"),
+        ),
+        CheckConstraint("NOT is_default OR is_active", name="ck_sales_pipelines_default_active"),
+        CheckConstraint(PIPELINE_MODULE_CHECK_SQL, name="ck_sales_pipelines_module"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(Text, nullable=False, server_default=OPPORTUNITY_PIPELINE_MODULE_KEY)
+    name = Column(Text, nullable=False)
+    is_default = Column(Boolean, nullable=False, server_default=expression.false())
+    is_active = Column(Boolean, nullable=False, server_default=expression.true())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    stages = relationship(
+        "SalesPipelineStage",
+        back_populates="pipeline",
+        order_by="(SalesPipelineStage.position, SalesPipelineStage.id)",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class SalesPipelineStage(Base):
+    """One stage of a pipeline.
+
+    `key` is the stable machine identity and is never renamed; `label` is what an
+    administrator edits. Business logic reads `semantic_type` or `key`, never the
+    label. An inactive stage stays so records that sat in it remain readable.
+    """
+
+    __tablename__ = "sales_pipeline_stages"
+    __table_args__ = (
+        UniqueConstraint("pipeline_id", "key", name="uq_sales_pipeline_stages_key"),
+        Index("ix_sales_pipeline_stages_pipeline_position", "tenant_id", "pipeline_id", "position"),
+        CheckConstraint(PIPELINE_STAGE_SEMANTIC_CHECK_SQL, name="ck_sales_pipeline_stages_semantic"),
+        CheckConstraint("probability >= 0 AND probability <= 100", name="ck_sales_pipeline_stages_probability"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    pipeline_id = Column(
+        BigInteger,
+        ForeignKey("sales_pipelines.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    key = Column(Text, nullable=False)
+    label = Column(Text, nullable=False)
+    position = Column(Integer, nullable=False, server_default="0")
+    semantic_type = Column(Text, nullable=False)
+    probability = Column(Numeric(5, 2), nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, server_default=expression.true())
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    pipeline = relationship("SalesPipeline", back_populates="stages")

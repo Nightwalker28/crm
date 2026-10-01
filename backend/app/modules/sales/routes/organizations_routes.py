@@ -413,7 +413,7 @@ def get_sales_organization_summary(
     if not org:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organization not found")
 
-    return build_organization_summary(db, org)
+    return build_organization_summary(db, org, current_user=current_user)
 
 # update
 @router.put("/{org_id}", response_model=SalesOrganizationResponse)

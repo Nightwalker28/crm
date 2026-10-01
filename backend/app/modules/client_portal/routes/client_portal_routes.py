@@ -1137,6 +1137,7 @@ def respond_to_client_quote_route(
             "client_account_id": account.id,
             "previous_status": previous_status,
             "status": updated.status,
+            "field_changes": {"status": {"from": previous_status, "to": updated.status}},
             "message": (payload.message or "").strip() or None,
             "href": f"/dashboard/sales/quotes/{updated.quote_id}",
         },

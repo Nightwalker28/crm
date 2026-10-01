@@ -89,8 +89,11 @@ const TableRow = React.forwardRef<
     ref={ref}
     className={cn(
       "border-t border-line-subtle",
-      "odd:bg-surface even:bg-surface-muted/30",
-      "transition-colors duration-100 hover:bg-surface-raised/60",
+      // Opaque grounds, not tinted ones: a sticky cell inherits its ground from the row
+      // (design.md §4.4) and must occlude the columns scrolling beneath it. The tokens
+      // are the exact composites the tinted versions produced.
+      "odd:bg-surface even:bg-surface-row-alt",
+      "transition-colors duration-100 hover:bg-surface-row-hover",
       className
     )}
     {...props}
@@ -112,7 +115,7 @@ TableGroupRow.displayName = "TableGroupRow";
    ========================================================================== */
 
 const baseHeadClass =
-  "px-4 py-2.5 text-left font-medium text-xs uppercase tracking-wide align-middle " +
+  "px-4 py-2.5 text-left font-medium text-xs font-medium align-middle " +
   "relative before:content-[''] before:absolute before:top-1/2 before:-translate-y-1/2 " +
   "before:left-0 before:h-3.5 before:w-px before:bg-line-strong/60 first:before:hidden";
 
@@ -140,7 +143,7 @@ const TableGroupCell = React.forwardRef<
   <td
     ref={ref}
     className={cn(
-      "bg-surface-raised px-4 py-2 text-xs font-semibold uppercase tracking-widest text-copy-muted",
+      "bg-surface-raised px-4 py-2 text-xs font-semibold text-copy-label",
       "border-t border-line-default",
       className
     )}
@@ -168,13 +171,13 @@ const SortableHead = React.forwardRef<HTMLTableCellElement, SortableHeadProps>(
       ref={ref}
       aria-sort={sorted ? (direction === "asc" ? "ascending" : "descending") : "none"}
       className={cn(
-        "relative p-0 text-left text-xs font-medium uppercase tracking-wide align-middle",
+        "relative p-0 text-left text-xs font-medium align-middle",
         "before:absolute before:left-0 before:top-1/2 before:h-3.5 before:w-px before:-translate-y-1/2 before:bg-line-strong/60 first:before:hidden",
         className
       )}
       {...props}
     >
-      <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-1.5 px-4 py-2.5 text-left transition-colors duration-100 hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary", sorted ? "text-copy-primary" : "text-copy-muted")}>
+      <button type="button" onClick={onClick} className={cn("flex w-full items-center gap-1.5 px-4 py-2.5 text-left transition-colors duration-100 hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus", sorted ? "text-copy-primary" : "text-copy-muted")}>
         {children}
         {!sorted && <ArrowUpDown aria-hidden="true" size={11} className="text-copy-disabled" />}
         {sorted && direction === "asc" && <ArrowDownAZ aria-hidden="true" size={11} className="text-copy-secondary" />}

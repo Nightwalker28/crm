@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import type { FormEvent } from "react";
 import { useMemo, useRef, useState } from "react";
@@ -10,15 +11,18 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
@@ -133,7 +137,7 @@ export default function InsertionOrderRecordFormPage({
   if (mode === "edit" && orderQuery.error) {
     return (
       <RouteErrorState
-        title="Unable to load insertion order"
+        title="Insertion order could not be loaded"
         description="We could not load this insertion order. Try again or return to the list."
         reset={() => void orderQuery.refetch()}
         backHref="/dashboard/finance/insertion-orders"
@@ -161,12 +165,17 @@ function InsertionOrderFormEditor({
   order?: InsertionOrder;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/finance/insertion-orders";
+  const recordHref = useRecordTabHref(mode === "edit" && ioId ? `${listHref}/${ioId}` : listHref);
   const queryClient = useQueryClient();
   const initialForm = useMemo(() => seedFromOrder(order), [order]);
   const [form, setForm] = useState(initialForm);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>(order?.custom_fields ?? {});
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const [saveComplete, setSaveComplete] = useState(false);
   const customerRef = useRef<HTMLInputElement>(null);
   const emailRef = useRef<HTMLInputElement>(null);
@@ -240,6 +249,7 @@ function InsertionOrderFormEditor({
 
     try {
       setIsSaving(true);
+      setSubmitError(null);
       const saved = mode === "edit"
         ? await updateInsertionOrder(Number(ioId), payload)
         : await createInsertionOrder(payload);
@@ -250,33 +260,37 @@ function InsertionOrderFormEditor({
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
       ]);
       toast.success(mode === "edit" ? "Insertion order updated." : "Insertion order created.");
-      router.push(`/dashboard/finance/insertion-orders/${saved.id}`);
+      router.push(mode === "edit" ? recordHref : `${listHref}/${saved.id}`);
     } catch {
-      toast.error(`We could not ${mode === "edit" ? "update" : "create"} this insertion order. Review the fields and try again.`);
+      setSubmitError("Review the fields and try again.");
+      toast.error(`We could not ${mode === "edit" ? "update" : "create"} this insertion order.`);
     } finally {
       setIsSaving(false);
     }
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
-        description="Capture customer, schedule, references, and commercial values in one workflow."
-        actions={<Button variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}><ArrowLeft />Cancel</Link></Button>}
-      />
+    <PageShell
+      title={mode === "edit" ? `Edit ${order?.io_number ?? "insertion order"}` : "Create insertion order"}
+      description="Capture customer, schedule, references, and commercial values in one workflow."
+      actions={<Button asChild variant="ghost" size="sm"><Link href={recordHref}><ArrowLeft />Back to {mode === "edit" ? "insertion order" : "insertion orders"}</Link></Button>}
+    >
+      {submitError ? (
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this insertion order.`}>{submitError}</FormErrorBanner>
+      ) : null}
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title={mode === "edit" ? (order?.io_number ?? "Insertion order") : "Create insertion order"}
           sidebar={
             <>
-              <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Order state</h2>
+              <Card className="p-6">
+                <SectionHeading>Order state</SectionHeading>
                 {fieldEnabled("status") ? (
                   <Field className="mt-4">
                     <FieldLabel htmlFor="io-status">Status <RequiredMark /></FieldLabel>
                     <Select value={form.status} onValueChange={(value) => update("status", value)}>
                       <SelectTrigger id="io-status" className="w-full"><SelectValue /></SelectTrigger>
-                      <SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{status.charAt(0).toUpperCase() + status.slice(1)}</SelectItem>)}</SelectContent>
+                      <SelectContent>{STATUS_OPTIONS.map((status) => <SelectItem key={status} value={status}>{formatSnakeCaseLabel(status)}</SelectItem>)}</SelectContent>
                     </Select>
                   </Field>
                 ) : null}
@@ -291,23 +305,21 @@ function InsertionOrderFormEditor({
                 ) : null}
                 {order?.updated_at ? <p className="mt-4 text-xs text-copy-muted">Last updated {formatDateTime(order.updated_at)}</p> : null}
               </Card>
-              <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Customer relationship</h2>
-                <p className="mt-2 text-sm leading-6 text-copy-secondary">
+              <Card className="p-6">
+                <SectionHeading>Customer relationship</SectionHeading>
+                <p className="mt-2 text-p-sm text-copy-secondary">
                   Link an existing contact or account when possible. A lightweight contact can be created only when no record is linked.
                 </p>
               </Card>
             </>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">{isDirty ? "Unsaved changes" : "No unsaved changes"}</span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" asChild><Link href={mode === "edit" && ioId ? `/dashboard/finance/insertion-orders/${ioId}` : "/dashboard/finance/insertion-orders"}>Cancel</Link></Button>
-                <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving..." : mode === "edit" ? "Save changes" : "Create order"}</Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "Unsaved changes" : null}
+          actions={(
+            <>
+              <Button type="button" variant="outline" asChild><Link href={recordHref}>Cancel</Link></Button>
+              <Button type="submit" disabled={isSaving}><Save />{isSaving ? "Saving…" : mode === "edit" ? "Save changes" : "Create order"}</Button>
+            </>
+          )}
         >
           <FormSection title="Customer and references" description="Choose an existing CRM relationship or enter a new customer name.">
             <FieldGroup>
@@ -362,9 +374,7 @@ function InsertionOrderFormEditor({
                 <FieldError>{errors.customer}</FieldError>
                 {!form.customer_contact_id && !form.customer_organization_id && form.customer_name.trim() ? (
                   <label className="mt-2 flex items-start gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">
-                    <Checkbox checked={form.create_customer_if_missing} onCheckedChange={(checked) => update("create_customer_if_missing", checked === true)} className="mt-0.5">
-                      <CheckboxIndicator />
-                    </Checkbox>
+                    <Checkbox checked={form.create_customer_if_missing} onCheckedChange={(checked) => update("create_customer_if_missing", checked === true)} className="mt-0.5" />
                     <span>Create a lightweight contact when this order is saved.</span>
                   </label>
                 ) : null}
@@ -376,15 +386,15 @@ function InsertionOrderFormEditor({
                   <FieldError>{errors.email}</FieldError>
                 </Field>
               ) : null}
-              <div className="grid gap-4 sm:grid-cols-2">
+              <FieldGroup columns={2}>
                 {fieldEnabled("counterparty_reference") ? <Field><FieldLabel htmlFor="io-counterparty-reference">Counterparty reference</FieldLabel><Input id="io-counterparty-reference" value={form.counterparty_reference} onChange={(event) => update("counterparty_reference", event.target.value)} placeholder="PO-4821" /></Field> : null}
                 {fieldEnabled("external_reference") ? <Field><FieldLabel htmlFor="io-external-reference">External reference</FieldLabel><Input id="io-external-reference" value={form.external_reference} onChange={(event) => update("external_reference", event.target.value)} placeholder="Vendor reference" /></Field> : null}
-              </div>
+              </FieldGroup>
             </FieldGroup>
           </FormSection>
 
           <FormSection title="Schedule" description="Record the issue, effective, due, and delivery period dates.">
-            <FieldGroup className="grid gap-4 sm:grid-cols-2">
+            <FieldGroup columns={2}>
               {fieldEnabled("issue_date") ? <Field><FieldLabel htmlFor="io-issue-date">Issue date</FieldLabel><Input id="io-issue-date" type="date" value={form.issue_date} onChange={(event) => update("issue_date", event.target.value)} /></Field> : null}
               {fieldEnabled("effective_date") ? <Field><FieldLabel htmlFor="io-effective-date">Effective date</FieldLabel><Input id="io-effective-date" type="date" value={form.effective_date} onChange={(event) => update("effective_date", event.target.value)} /></Field> : null}
               {fieldEnabled("due_date") ? <Field data-invalid={Boolean(errors.dueDate)}><FieldLabel htmlFor="io-due-date">Due date</FieldLabel><Input ref={dueDateRef} id="io-due-date" type="date" value={form.due_date} onChange={(event) => { update("due_date", event.target.value); setErrors((current) => ({ ...current, dueDate: undefined })); }} aria-invalid={Boolean(errors.dueDate)} /><FieldError>{errors.dueDate}</FieldError></Field> : null}
@@ -394,7 +404,7 @@ function InsertionOrderFormEditor({
           </FormSection>
 
           <FormSection title="Commercial summary" description="Leave amounts blank when they are not finalized.">
-            <FieldGroup className="grid gap-4 sm:grid-cols-3">
+            <FieldGroup columns={3}>
               {fieldEnabled("subtotal_amount") ? <Field data-invalid={Boolean(errors.subtotal)}><FieldLabel htmlFor="io-subtotal">Subtotal</FieldLabel><Input ref={subtotalRef} id="io-subtotal" type="number" step="0.01" value={form.subtotal_amount} onChange={(event) => { update("subtotal_amount", event.target.value); setErrors((current) => ({ ...current, subtotal: undefined })); }} aria-invalid={Boolean(errors.subtotal)} placeholder="0.00" /><FieldError>{errors.subtotal}</FieldError></Field> : null}
               {fieldEnabled("tax_amount") ? <Field data-invalid={Boolean(errors.tax)}><FieldLabel htmlFor="io-tax">Tax</FieldLabel><Input ref={taxRef} id="io-tax" type="number" step="0.01" value={form.tax_amount} onChange={(event) => { update("tax_amount", event.target.value); setErrors((current) => ({ ...current, tax: undefined })); }} aria-invalid={Boolean(errors.tax)} placeholder="0.00" /><FieldError>{errors.tax}</FieldError></Field> : null}
               {fieldEnabled("total_amount") ? <Field data-invalid={Boolean(errors.total)}><FieldLabel htmlFor="io-total">Total</FieldLabel><Input ref={totalRef} id="io-total" type="number" step="0.01" value={form.total_amount} onChange={(event) => { update("total_amount", event.target.value); setErrors((current) => ({ ...current, total: undefined })); }} aria-invalid={Boolean(errors.total)} placeholder="0.00" /><FieldError>{errors.total}</FieldError><FieldDescription>Optional until finalized.</FieldDescription></Field> : null}
@@ -414,6 +424,6 @@ function InsertionOrderFormEditor({
           ) : null}
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

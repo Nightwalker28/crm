@@ -5,6 +5,7 @@ from sqlalchemy import func
 from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 from app.core.tenancy import get_or_create_single_tenant
+from app.modules.sales.services.pipelines_services import ensure_default_opportunity_pipeline
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -195,6 +196,8 @@ def seed_initial_data(
                 admin_user.first_name = admin_first_name.strip() or None
             if not admin_user.last_name:
                 admin_user.last_name = admin_last_name.strip() or None
+
+        ensure_default_opportunity_pipeline(db, tenant.id)
 
         db.commit()
         return {"seeded": True, "reason": "ok"}

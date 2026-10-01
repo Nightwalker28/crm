@@ -110,7 +110,7 @@ test("aligns module controls and confirms tenant-wide disablement with safe fail
 
   await page.getByRole("button", { name: "Edit Leads settings" }).click();
   await expect(page.getByRole("dialog", { name: "Edit module settings" })).toBeVisible();
-  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
   expect(updateRequests).toBe(0);
   await page.getByRole("button", { name: "Close module settings" }).click();
   await expect(page.getByRole("dialog", { name: "Discard module changes?" })).toBeVisible();
@@ -189,7 +189,7 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   expect(updateRequests).toBe(0);
   await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByText("Department", { exact: true }).last()).toBeVisible();
-  await page.getByRole("button", { name: "Module Settings" }).click();
+  await page.getByRole("button", { name: "Module settings" }).click();
   await expect(page.getByRole("dialog", { name: "Discard module access changes?" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/settings/modules/${moduleId}$`));
@@ -197,13 +197,13 @@ test("keeps department and team access as an explicit guarded draft", async ({ p
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith(`/admin/users/modules/${moduleId}/access`),
   );
-  await page.getByRole("button", { name: "Save Access" }).click();
+  await page.getByRole("button", { name: "Save access" }).click();
   await saveRequest;
 
   expect(savedPayload).toEqual({ department_ids: [10, 11], team_ids: [22, 23] });
   await expect.poll(() => updateRequests).toBe(1);
   await expect.poll(() => accessibleModuleRequests).toBeGreaterThan(accessibleRequestsBeforeSave);
-  await expect(page.getByText("All changes saved", { exact: true })).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("shows blocked teams and preserves the draft when a concurrent department change rejects save", async ({ page }) => {
@@ -231,9 +231,10 @@ test("shows blocked teams and preserves the draft when a concurrent department c
   await expect(page.getByText("Blocked by department.", { exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Allow Enterprise team" })).toBeDisabled();
   await page.getByRole("checkbox", { name: "Allow Field Ops team" }).click();
-  await page.getByRole("button", { name: "Save Access" }).click();
+  await page.getByRole("button", { name: "Save access" }).click();
 
-  await expect(page.getByRole("alert")).toContainText("A team’s department changed while you were editing.");
+  // Filtered: in development Next mounts an empty route announcer that is also role="alert".
+  await expect(page.getByRole("alert").filter({ hasText: "A team’s department changed while you were editing." })).toBeVisible();
   await expect(page.getByRole("button", { name: "Reload access rules" })).toBeVisible();
   await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Allow Field Ops team" })).toBeChecked();
@@ -253,7 +254,9 @@ test("shows retryable module load failures without backend detail", async ({ pag
 
   await page.goto("/dashboard/settings/modules");
 
-  await expect(page.getByRole("heading", { name: "Module settings could not be loaded" })).toBeVisible();
+  // The whole-route state names the page; its title is a paragraph because the page's one
+  // heading is the surface title above it (design.md 8).
+  await expect(page.getByRole("alert").getByText("Module settings could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/SELECT tenant_modules|tenant_id=42/)).toHaveCount(0);
 });

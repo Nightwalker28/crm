@@ -12,6 +12,7 @@ from app.core.module_filters import apply_filter_conditions
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem, SalesQuote
 from app.modules.sales.repositories import quotes_repository
+from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
 from app.modules.sales.services.quotes_services import get_quote_or_404
 
 
@@ -87,12 +88,13 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
         if not opportunity:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Opportunity not found")
     if opportunity is not None:
+        ensure_contact_on_opportunity(db, opportunity=opportunity, contact_id=contact_id, record_label="Order")
+        submitted_organization = data.get("organization_id")
+        if submitted_organization is not None and opportunity.organization_id is not None and submitted_organization != opportunity.organization_id:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order organization must match the linked opportunity")
         for field in {"contact_id", "organization_id"}:
-            submitted = data.get(field)
             linked = getattr(opportunity, field, None)
-            if submitted is not None and linked is not None and submitted != linked:
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Order {field.removesuffix('_id')} must match the linked opportunity")
-            if submitted is None and linked is not None:
+            if data.get(field) is None and linked is not None:
                 data[field] = linked
     owner_id = data.get("owner_id")
     if owner_id is not None and not quotes_repository.user_exists(db, tenant_id=tenant_id, user_id=owner_id):

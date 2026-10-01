@@ -1,2 +1,5 @@
 import { RouteLoadingState } from "@/components/ui/RouteStates";
-export default function Loading() { return <RouteLoadingState label="contacts" />; }
+
+export default function ContactsLoading() {
+  return <RouteLoadingState label="contacts" />;
+}

@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { FormEvent } from "react";
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Plus, X } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
@@ -13,8 +13,10 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
+import { RemovableChip } from "@/components/ui/RemovableChip";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useClientPortalActions, type PricingItemPayload } from "@/hooks/useClientPortal";
@@ -56,7 +58,7 @@ const EMPTY_FORM: PageForm = {
   itemPrice: "",
   brandCompanyName: "",
   brandLogoUrl: "",
-  brandAccentColor: "#14b8a6",
+  brandAccentColor: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   proposalOverview: "",
   proposalScope: "",
   proposalTerms: "",
@@ -116,7 +118,7 @@ export default function ClientPageCreateForm() {
     if (!Number.isFinite(price) || price < 0) next.price = "Public price must be zero or greater.";
     if (!validOptionalUrl(form.brandLogoUrl)) next.logoUrl = "Enter a valid HTTP or HTTPS logo URL.";
     if (form.brandAccentColor.trim() && !/^#[0-9a-fA-F]{6}$/.test(form.brandAccentColor.trim())) {
-      next.accentColor = "Use a six-digit hex color such as #14b8a6.";
+      next.accentColor = "Use a six-digit hex color such as #14b8a6."; // design-exempt: validation copy, not a styling value (§2.5)
     }
     setErrors(next);
 
@@ -170,25 +172,24 @@ export default function ClientPageCreateForm() {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Create client page"
-        description="Prepare a customer-specific pricing snapshot, proposal, and document package."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to Client Portal</Link></Button>}
-      />
-
+    <PageShell
+      title="Create client page"
+      description="Prepare a customer-specific pricing snapshot, proposal, and document package."
+      actions={<Button variant="outline" asChild><Link href="/dashboard/client-portal"><ArrowLeft />Back to client portal</Link></Button>}
+    >
       <form onSubmit={handleSubmit} noValidate>
         <RecordFormLayout
+          title="Create client page"
           sidebar={
             <>
-              <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Sharing boundary</h2>
-                <p className="mt-2 text-sm leading-6 text-copy-secondary">
+              <Card className="p-6">
+                <SectionHeading>Sharing boundary</SectionHeading>
+                <p className="mt-2 text-p-sm text-copy-secondary">
                   This draft is private to CRM users until you explicitly publish a scoped, expiring client link.
                 </p>
               </Card>
-              <Card className="p-5">
-                <h2 className="text-sm font-semibold text-copy-primary">Package summary</h2>
+              <Card className="p-6">
+                <SectionHeading>Package summary</SectionHeading>
                 <dl className="mt-4 grid gap-3 text-sm">
                   <div className="flex justify-between gap-4"><dt className="text-copy-muted">Customer</dt><dd className="text-right text-copy-primary">{form.linkedLabel || "Not selected"}</dd></div>
                   <div className="flex justify-between gap-4"><dt className="text-copy-muted">Pricing items</dt><dd className="text-copy-primary">1</dd></div>
@@ -197,15 +198,13 @@ export default function ClientPageCreateForm() {
               </Card>
             </>
           }
-          footer={
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <span className="text-sm text-copy-muted">{isDirty ? "Unsaved client page" : "Complete the required fields"}</span>
-              <div className="flex gap-2">
-                <Button type="button" variant="outline" asChild><Link href="/dashboard/client-portal">Cancel</Link></Button>
-                <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating..." : "Create page"}</Button>
-              </div>
-            </div>
-          }
+          status={isDirty ? "Unsaved changes" : "Complete the required fields"}
+          actions={(
+            <>
+              <Button type="button" variant="outline" asChild><Link href="/dashboard/client-portal">Cancel</Link></Button>
+              <Button type="submit" disabled={isCreatingPage}><Plus />{isCreatingPage ? "Creating…" : "Create page"}</Button>
+            </>
+          )}
         >
           <FormSection title="Page details" description="Choose exactly one customer for this private draft.">
             <FieldGroup>
@@ -332,10 +331,12 @@ export default function ClientPageCreateForm() {
               {documents.length ? (
                 <div className="mt-3 flex flex-wrap gap-2">
                   {documents.map((document) => (
-                    <span key={document.id} className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-3 py-1 text-xs text-copy-secondary">
-                      {document.label}
-                      <Button type="button" variant="ghost" size="icon-sm" className="-mr-2 size-6 rounded-full" onClick={() => setDocuments((current) => current.filter((item) => item.id !== document.id))} aria-label={`Remove ${document.label}`}><X className="h-3 w-3" /></Button>
-                    </span>
+                    <RemovableChip
+                      key={document.id}
+                      label={document.label}
+                      removeLabel={`Remove ${document.label}`}
+                      onRemove={() => setDocuments((current) => current.filter((item) => item.id !== document.id))}
+                    />
                   ))}
                 </div>
               ) : null}
@@ -368,6 +369,6 @@ export default function ClientPageCreateForm() {
           </FormSection>
         </RecordFormLayout>
       </form>
-    </div>
+    </PageShell>
   );
 }

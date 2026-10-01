@@ -9,13 +9,15 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { Contract } from "@/hooks/contracts/useContracts";
 import {
@@ -199,6 +201,12 @@ function ContractRecordFormEditor({
   const router = useRouter();
   const queryClient = useQueryClient();
   const { fields: moduleFields } = useModuleFieldConfigs("contracts");
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/contracts";
+  const recordHref = useRecordTabHref(
+    mode === "edit" && contractId ? `${listHref}/${contractId}` : listHref,
+  );
   const [form, setForm] = useState<ContractForm>(seed.form);
   const [displays, setDisplays] = useState<ContractDisplays>(seed.displays);
   const [initialSnapshot] = useState(() => JSON.stringify([seed.form, seed.displays]));
@@ -310,7 +318,7 @@ function ContractRecordFormEditor({
         queryClient.invalidateQueries({ queryKey: ["contract-edit", String(savedContractId)] }),
       ]);
       toast.success(mode === "edit" ? "Contract updated." : "Contract created.");
-      router.push(savedContractId ? `/dashboard/contracts/${savedContractId}` : "/dashboard/contracts");
+      router.push(mode === "edit" ? recordHref : (savedContractId ? `${listHref}/${savedContractId}` : listHref));
     } catch {
       setSubmitError(true);
     } finally {
@@ -319,14 +327,12 @@ function ContractRecordFormEditor({
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={mode === "edit" && updatedAt ? `Last modified ${formatDateTime(updatedAt)}` : undefined}
-        title={mode === "edit" ? `Edit ${contractNumber ?? "contract"}` : "Create contract"}
-        description={mode === "edit" ? "Update the commercial terms, lifecycle dates, ownership, and CRM relationships." : "Set the commercial terms, lifecycle dates, ownership, and related CRM records."}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
-      />
-
+    <PageShell
+      eyebrow={mode === "edit" && updatedAt ? `Last modified ${formatDateTime(updatedAt)}` : undefined}
+      title={mode === "edit" ? `Edit ${contractNumber ?? "contract"}` : "Create contract"}
+      description={mode === "edit" ? "Update the commercial terms, lifecycle dates, ownership, and CRM relationships." : "Set the commercial terms, lifecycle dates, ownership, and related CRM records."}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={recordHref}><ArrowLeft />Back to {mode === "edit" ? "contract" : "contracts"}</Link></Button>}
+    >
       {submitError ? (
         <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
           <div className="font-medium">We could not {mode === "edit" ? "update" : "create"} this contract.</div>
@@ -335,10 +341,10 @@ function ContractRecordFormEditor({
       ) : null}
 
       <RecordFormLayout
+        title={mode === "edit" ? (form.title.trim() || contractNumber || "Contract") : "New contract"}
         sidebar={
           <Card className="p-5">
-            <h2 className="text-base font-semibold text-copy-primary">Lifecycle and ownership</h2>
-            <FieldDescription className="mt-1">Set who owns the contract and its current stage.</FieldDescription>
+            <SectionHeading description="Set who owns the contract and its current stage.">Lifecycle and ownership</SectionHeading>
             <FieldGroup className="mt-5">
               {enabled("status") ? (
                 <Field>
@@ -358,18 +364,16 @@ function ContractRecordFormEditor({
             </FieldGroup>
           </Card>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contract."}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={mode === "edit" && contractId ? `/dashboard/contracts/${contractId}` : "/dashboard/contracts"}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contract"}</Button>
-            </div>
-          </div>
-        }
+        status={isDirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : "Complete the required fields to create this contract."}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={recordHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contract"}</Button>
+          </>
+        )}
       >
         <FormSection title="Contract details" description={mode === "edit" ? "The contract number remains fixed while its commercial details can be updated." : "The contract number is generated automatically after creation."}>
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field className="md:col-span-2">
               <FieldLabel htmlFor="contract-title">Title <RequiredMark /></FieldLabel>
               <Input id="contract-title" value={form.title} onChange={(event) => { setForm((current) => ({ ...current, title: event.target.value })); if (titleError) setTitleError(null); }} aria-invalid={Boolean(titleError)} aria-describedby={titleError ? "contract-title-error" : undefined} placeholder="Annual services agreement" />
@@ -393,7 +397,7 @@ function ContractRecordFormEditor({
 
         {(enabled("effective_date") || enabled("expiration_date") || enabled("renewal_date")) ? (
           <FormSection title="Key dates" description="Track the effective period and upcoming renewal window.">
-            <FieldGroup className="grid gap-4 md:grid-cols-3">
+            <FieldGroup columns={3}>
               {enabled("effective_date") ? (
                 <Field>
                   <FieldLabel htmlFor="contract-effective-date">Effective date</FieldLabel>
@@ -418,7 +422,7 @@ function ContractRecordFormEditor({
         ) : null}
 
         <FormSection title="Related records" description="Search by name or record number. Changing a parent record clears incompatible child links.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             {enabled("organization_id") ? (
               <Field>
                 <FieldLabel>Account</FieldLabel>
@@ -458,6 +462,6 @@ function ContractRecordFormEditor({
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

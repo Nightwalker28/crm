@@ -1,21 +1,23 @@
+import { formatSnakeCaseLabel } from "@/lib/module-display";
+import type { StatusTone } from "@/lib/statusStyles";
 import type { ReactNode } from "react";
 
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 
 function statusLabel(status: string | null) {
   if (!status) return "Queued";
   return status.replaceAll("_", " ").replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
-function statusTone(status: string | null) {
+function statusTone(status: string | null): StatusTone {
   if (status === "completed") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
+    return "success";
   }
   if (status === "failed") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
+    return "critical";
   }
-  return { bg: "bg-state-info-muted", text: "text-state-info", border: "border-state-info/40" };
+  return "neutral";
 }
 
 type Props = {
@@ -42,7 +44,7 @@ export function DataTransferJobProgress({
   children,
 }: Props) {
   const safeProgress = Math.min(100, Math.max(0, progress));
-  const operationLabel = operation.charAt(0).toUpperCase() + operation.slice(1);
+  const operationLabel = formatSnakeCaseLabel(operation);
 
   return (
     <div className="space-y-4">
@@ -58,7 +60,7 @@ export function DataTransferJobProgress({
                   : `${operationLabel} is running in the background.`}
             </div>
           </div>
-          <Pill {...statusTone(status)}>{statusLabel(status)}</Pill>
+          <StatusValue status={{ tone: statusTone(status), label: statusLabel(status) }} />
         </div>
         <div
           className="mt-4 h-2 overflow-hidden rounded-full bg-surface"
@@ -68,10 +70,10 @@ export function DataTransferJobProgress({
           aria-valuemax={100}
           aria-valuenow={safeProgress}
         >
-          <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${safeProgress}%` }} />
+          <div className="h-full rounded-full bg-primary transition-[width] duration-150" style={{ width: `${safeProgress}%` }} />
         </div>
         <div className="mt-2 flex items-center justify-between gap-3 text-xs text-copy-muted">
-          <span>{message || "Waiting for progress..."}</span>
+          <span>{message || "Waiting for progress…"}</span>
           <span>{safeProgress}%</span>
         </div>
       </Card>

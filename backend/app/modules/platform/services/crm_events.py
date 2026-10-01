@@ -21,16 +21,31 @@ CRM_EVENT_TYPES = {
     "lead.updated",
     "lead.converted",
     "deal.assigned",
+    "opportunity.created",
     "opportunity.stage_changed",
+    # Emitted on entering a won/lost stage by semantic type, never by label.
+    "opportunity.won",
+    "opportunity.lost",
+    # Relationship changes worth reacting to. A participant's role change is
+    # deliberately absent: it is audited, but it is not an event worth waking
+    # automations for.
+    "opportunity.participant_added",
+    "opportunity.participant_removed",
+    "opportunity.primary_contact_changed",
     "invoice.overdue",
     "quote.created",
     "quote.status_changed",
     "order.created",
+    "order.status_changed",
     "case.created",
     "case.status_changed",
     "contract.status_changed",
     "task.due_today",
+    "task.overdue",
     "task.assigned",
+    "booking.created",
+    "document.uploaded",
+    "document.shared",
 }
 SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
@@ -206,6 +221,7 @@ def serialize_crm_event_delivery(delivery: CrmEventDelivery) -> dict[str, Any]:
 def serialize_crm_event(event: CrmEvent, deliveries: list[CrmEventDelivery] | None = None) -> dict[str, Any]:
     return {
         "id": event.id,
+        "public_id": event.public_id,
         "actor_user_id": event.actor_user_id,
         "event_type": event.event_type,
         "entity_type": event.entity_type,
@@ -560,6 +576,25 @@ def safe_publish_crm_event(
             **(payload or {}),
         },
     )
+
+
+def field_changes(before: dict[str, Any], after: dict[str, Any], keys: Any = None) -> dict[str, dict[str, Any]]:
+    """`{field: {"from": old, "to": new}}` for each field whose value actually changed.
+
+    Automation's *changed*, *changed to* and *changed from* operators read this. An update
+    event that sent only the submitted keys (`changed_fields`) could not say what a field
+    changed from, so *changed to* never matched, and resubmitting an unchanged value
+    counted as a change.
+    """
+
+    names = keys if keys is not None else set(before) | set(after)
+    encoded_before = jsonable_encoder(before)
+    encoded_after = jsonable_encoder(after)
+    return {
+        name: {"from": encoded_before.get(name), "to": encoded_after.get(name)}
+        for name in sorted(names)
+        if encoded_before.get(name) != encoded_after.get(name)
+    }
 
 
 def actor_payload(user) -> dict[str, Any]:

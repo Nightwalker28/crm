@@ -22,6 +22,7 @@ from app.modules.calendar.models import (
     MeetingBookingType,
 )
 from app.modules.platform.services.activity_logs import safe_log_activity
+from app.modules.platform.services.crm_events import safe_emit_crm_event
 from app.modules.platform.services.notifications import create_notification
 from app.modules.sales.models import SalesContact, SalesLead
 from app.modules.user_management.models import User
@@ -784,4 +785,25 @@ def submit_public_booking(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Selected slot is no longer available") from exc
     db.refresh(booking)
     _record_booking_side_effects(db, booking=booking, event=event, crm_source=crm_source)
+    _emit_booking_created(db, booking=booking, owner_id=booking_type.owner_id)
     return booking
+
+
+def _emit_booking_created(db: Session, *, booking: MeetingBooking, owner_id: int | None) -> None:
+    """The `booking.created` automation trigger. A guest booked, so there is no staff actor."""
+
+    safe_emit_crm_event(
+        db,
+        tenant_id=booking.tenant_id,
+        actor_user_id=None,
+        event_type="booking.created",
+        entity_type="meeting_booking",
+        entity_id=booking.id,
+        payload={
+            "booking_id": booking.id,
+            "booking_type_id": booking.booking_type_id,
+            "guest_name": booking.guest_name,
+            "start_at": booking.start_at,
+            "owner_user_id": owner_id,
+        },
+    )

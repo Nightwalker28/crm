@@ -68,17 +68,17 @@ async function mockBackupPage(page: Page, runs = [completedRun, failedRun]) {
   await page.route("**/admin/tenant-backup-settings/destinations/connections", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
   );
+  // The GET used to keep returning the original record after a PUT, so the page it was
+  // testing could never settle: the draft held the saved values and the query held the old
+  // ones, which reads as permanently dirty. It remembers the write now.
+  let saved = backupSettings;
   await page.route("**/admin/tenant-backup-settings", async (route) => {
     if (route.request().method() === "PUT") {
-      const payload = route.request().postDataJSON();
-      await route.fulfill({
-        status: 200,
-        contentType: "application/json",
-        body: JSON.stringify({ ...backupSettings, ...payload, updated_at: "2026-07-25T09:00:00Z" }),
-      });
+      saved = { ...saved, ...route.request().postDataJSON(), updated_at: "2026-07-25T09:00:00Z" };
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
       return;
     }
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(backupSettings) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(saved) });
   });
   await page.route("**/admin/tenant-backup-runs?page=1&page_size=10", (route) =>
     route.fulfill({
@@ -101,25 +101,25 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   await mockBackupPage(page, []);
   await page.goto("/dashboard/settings/backups");
 
+  // The schedule was behind a `Configure` drawer and is on the page now (rebuild 5.6 batch
+  // 6d), so every step below lost its drawer scope. What is being checked is unchanged: the
+  // record still commits as a set, through one footer.
   await expect(page.getByRole("heading", { name: "Backups" })).toBeVisible();
-  await page.getByRole("button", { name: "Configure" }).click();
-  const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
-  await expect(settingsDrawer).toBeVisible();
-  await expect(settingsDrawer.getByRole("button", { name: "Manual only", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await settingsDrawer.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await expect(settingsDrawer.getByRole("button", { name: "Scheduled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(settingsDrawer.getByRole("button", { name: "Include", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("dialog", { name: "Configure backups" })).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Scheduled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByRole("radio", { name: "Include", exact: true })).toHaveAttribute("aria-checked", "true");
 
-  const scopeField = settingsDrawer.getByText("Scope", { exact: true }).locator("..");
-  await scopeField.getByRole("combobox").click();
+  await page.getByRole("combobox", { name: "Scope" }).click();
   await page.getByRole("option", { name: "Selected modules" }).click();
-  await settingsDrawer.getByRole("checkbox", { name: "Leads" }).click();
-  await expect(settingsDrawer.getByText("Unsaved changes")).toBeVisible();
+  await page.getByRole("checkbox", { name: "Leads" }).click();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
 
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/admin/tenant-backup-settings"),
   );
-  await settingsDrawer.getByRole("button", { name: "Save Settings" }).click();
+  await page.getByRole("button", { name: "Save schedule" }).click();
   const payload = (await saveRequest).postDataJSON() as {
     enabled: boolean;
     scope: string;
@@ -129,21 +129,32 @@ test("saves responsive tenant backup settings with shared controls", async ({ pa
   expect(payload.enabled).toBeTruthy();
   expect(payload.scope).toBe("selected_modules");
   expect(payload.selected_modules).toEqual(["sales_leads"]);
-  await expect(settingsDrawer).toHaveCount(0);
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
-test("guards dirty backup configuration dismissal", async ({ page }) => {
+test("discards a dirty backup configuration without writing", async ({ page }) => {
   await mockBackupPage(page, []);
   await page.goto("/dashboard/settings/backups");
 
-  await page.getByRole("button", { name: "Configure" }).click();
-  const settingsDrawer = page.getByRole("dialog", { name: "Configure backups" });
-  await settingsDrawer.getByRole("button", { name: "Scheduled", exact: true }).click();
-  await settingsDrawer.getByRole("button", { name: "Cancel" }).click();
+  // There is no drawer to dismiss any more, so the discard confirmation that guarded closing
+  // it went with it. The unsaved draft is still recoverable — through the footer's Discard,
+  // which is where the rest of the app puts it (5.4).
+  let writes = 0;
+  await page.route("**/admin/tenant-backup-settings", async (route) => {
+    if (route.request().method() === "PUT") writes += 1;
+    await route.fallback();
+  });
 
-  await expect(page.getByRole("heading", { name: "Discard backup setting changes?" })).toBeVisible();
-  await page.getByRole("button", { name: "Discard changes" }).click();
-  await expect(settingsDrawer).toHaveCount(0);
+  const discard = page.getByRole("button", { name: "Discard changes" });
+  await expect(discard).toBeDisabled();
+
+  await page.getByRole("radio", { name: "Scheduled", exact: true }).click();
+  await expect(page.getByText("Unsaved changes")).toBeVisible();
+  await discard.click();
+
+  await expect(page.getByRole("radio", { name: "Manual only", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
+  expect(writes).toBe(0);
 });
 
 test("redacts backup failures and confirms artifact deletion", async ({ page }) => {
@@ -195,7 +206,9 @@ test("shows a recoverable fixed error when settings fail", async ({ page }) => {
   );
   await page.goto("/dashboard/settings/backups");
 
-  await expect(page.getByRole("heading", { name: "Unable to load backup settings" })).toBeVisible();
+  // The whole-route state names the page; its title is a paragraph because the page's one
+  // heading is the surface title above it (design.md 8).
+  await expect(page.getByRole("alert").getByText("Backups could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/internal-cache|secret-stack-trace/)).toHaveCount(0);
 });

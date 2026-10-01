@@ -8,9 +8,8 @@ import ContractsTable from "@/components/contracts/ContractsTable";
 import { Button } from "@/components/ui/button";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
-import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { useContracts, type ContractSortState } from "@/hooks/contracts/useContracts";
@@ -50,16 +49,13 @@ export default function ContractsPage() {
     }));
   }
 
-  if (modulesLoading) {
-    return <RouteLoadingState label="contracts" />;
-  }
-
-  if (!accessibleModule?.actions?.can_view) {
-    return <PermissionDeniedState />;
-  }
-
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell
+      variant="list"
+      title="Contracts"
+      isLoading={modulesLoading}
+      isPermissionDenied={!modulesLoading && !accessibleModule?.actions?.can_view}
+    >
       <ModuleListToolbar
         searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -72,14 +68,8 @@ export default function ContractsPage() {
         primaryAction={canCreate ? <Button asChild><Link href="/dashboard/contracts/new"><Plus />New Contract</Link></Button> : undefined}
       />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
-      {error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Contracts could not be loaded. Check your connection and try again.</span>
-          <Button type="button" variant="outline" size="sm" onClick={() => void refresh()}>Try again</Button>
-        </div>
-      ) : null}
-      <ContractsTable contracts={contracts} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} sort={sort} onSortChange={setSort} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} canCreate={canCreate} onClearFilters={clearFilters} />
+      <ContractsTable contracts={contracts} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} sort={sort} onSortChange={setSort} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={() => void refresh()} canCreate={canCreate} onClearFilters={clearFilters} />
       {!error ? <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} /> : null}
-    </div>
+    </PageShell>
   );
 }

@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import CatalogRecordsTable from "@/components/catalog/CatalogRecordsTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { Button } from "@/components/ui/button";
 import Pagination from "@/components/ui/Pagination";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
@@ -25,7 +25,6 @@ type Props = {
 };
 
 export default function CatalogRecordsPage({ kind }: Props) {
-  const router = useRouter();
   const isProduct = kind === "products";
   const lowerTitle = isProduct ? "products" : "services";
   const moduleKey = isProduct ? "catalog_products" : "catalog_services";
@@ -79,10 +78,6 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = Boolean(searchValue.trim() || activeFilterCount);
 
-  function handleRowClick(record: CatalogRecord) {
-    router.push(`/dashboard/catalog/${kind}/${record.id}`);
-  }
-
   async function handleToggleActive(record: CatalogRecord, active: boolean) {
     if (!canEdit || togglingRecordId !== null) return;
     setTogglingRecordId(record.id);
@@ -108,7 +103,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title={isProduct ? "Products" : "Services"}>
       <ModuleListToolbar
         searchValue={searchValue}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -116,9 +111,12 @@ export default function CatalogRecordsPage({ kind }: Props) {
         filtersOpen={Boolean(activeFilters.filtersOpen)}
         activeFilterCount={activeFilterCount}
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        columnOptions={definition?.columns ?? []}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         viewControls={<SavedViewSelector moduleKey={moduleKey} views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
-        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />New {isProduct ? "Product" : "Service"}</Link></Button> : undefined}
+        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />Create {isProduct ? "product" : "service"}</Link></Button> : undefined}
       />
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
@@ -126,13 +124,6 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onChange={(filters) => setDraftConfig((current) => ({ ...current, filters }))}
         hideHeader
       />
-
-      {error ? (
-        <div role="alert" className="flex items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Catalog {lowerTitle} could not be loaded. Check your connection and try again.</span>
-          <Button type="button" variant="outline" size="sm" onClick={refresh}>Retry</Button>
-        </div>
-      ) : null}
 
       <CatalogRecordsTable
         kind={kind}
@@ -148,10 +139,11 @@ export default function CatalogRecordsPage({ kind }: Props) {
             sort: nextSort ? { key: nextSort.column, direction: nextSort.direction } : null,
           }))
         }
-        onRowClick={handleRowClick}
         onToggleActive={canEdit ? handleToggleActive : undefined}
         togglingRecordId={togglingRecordId}
         hasActiveFilters={hasActiveFilters}
+        hasError={Boolean(error)}
+        onRetry={refresh}
         canCreate={canCreate}
         onClearFilters={() =>
           setDraftConfig((current) => ({
@@ -172,6 +164,6 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onPageChange={goToPage}
         onPageSizeChange={onPageSizeChange}
       />
-    </div>
+    </PageShell>
   );
 }

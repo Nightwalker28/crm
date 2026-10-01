@@ -8,29 +8,32 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
-  formatTransactionMoney,
   serializeTransactionItems,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
+import { TransactionTotals } from "@/components/transactions/TransactionTotals";
 import { Button } from "@/components/ui/button";
 import {
   Field,
   FieldDescription,
   FieldError,
+  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { RequiredMark } from "@/components/ui/RequiredMark";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -151,7 +154,7 @@ export default function OrderRecordFormPage({
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
-        title="Unable to load order"
+        title="Order could not be loaded"
         reset={() => void query.refetch()}
         backHref="/dashboard/sales/orders"
         backLabel="Back to orders"
@@ -181,6 +184,10 @@ function OrderRecordFormEditor({
   updatedAt?: string | null;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/orders";
+  const backHref = useRecordTabHref(mode === "edit" && orderId ? `${listHref}/${orderId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
   const [form, setForm] = useState<OrderForm>(seed.form);
@@ -207,8 +214,7 @@ function OrderRecordFormEditor({
         ? null
         : "Each line needs a name, positive quantity, and valid non-negative amounts.",
     );
-    if (!validCustomer)
-      document.getElementById("order-customer-anchor")?.focus();
+    if (!validCustomer) document.getElementById("order-account")?.focus();
     else if (!validItems)
       document
         .querySelector<HTMLInputElement>("[data-transaction-field='name']")
@@ -254,56 +260,40 @@ function OrderRecordFormEditor({
       ]);
       toast.success(mode === "edit" ? "Order updated." : "Order created.");
       const targetId = body?.id ?? (orderId ? Number(orderId) : null);
-      router.push(
-        targetId
-          ? `/dashboard/sales/orders/${targetId}`
-          : "/dashboard/sales/orders",
-      );
+      router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
     } catch {
       setSubmitError("Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
   }
-  const backHref =
-    mode === "edit" && orderId
-      ? `/dashboard/sales/orders/${orderId}`
-      : "/dashboard/sales/orders";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={
-          mode === "edit" && updatedAt
-            ? `Last modified ${formatDateTime(updatedAt)}`
-            : undefined
-        }
-        title={mode === "edit" ? `Edit ${form.order_number}` : "Create order"}
-        description={
-          mode === "edit"
-            ? "Update customer links, line items, fulfillment details, and ownership."
-            : "Create an itemized order with customer, fulfillment, and payment context."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "order" : "orders"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      eyebrow={
+        mode === "edit" && updatedAt
+          ? `Last modified ${formatDateTime(updatedAt)}`
+          : undefined
+      }
+      title={mode === "edit" ? `Edit ${form.order_number}` : "Create order"}
+      description={
+        mode === "edit"
+          ? "Update customer links, line items, fulfillment details, and ownership."
+          : "Create an itemized order with customer, fulfillment, and payment context."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "order" : "orders"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">
-            We could not {mode === "edit" ? "update" : "create"} this order.
-          </div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this order.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? form.order_number : "Create order"}
         sidebar={
           <OrderSidebar
             form={form}
@@ -313,43 +303,44 @@ function OrderRecordFormEditor({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "Unsaved changes"
+          : mode === "edit"
+          ? null
+          : "Add a customer and line items to create this order."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={backHref}>Cancel</Link>
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Add a customer and line items to create this order."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={backHref}>Cancel</Link>
-              </Button>
-              <Button onClick={() => void submit()} disabled={submitting}>
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create order"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create order"}
+            </Button>
+          </>
+        )}
       >
+        {/* The requirement is `account || contact`, which no per-field `RequiredMark` can
+            state — and the backend requires neither, so two marks made a claim that was
+            wrong twice over (design.md §4.7). It is stated once in the description and
+            enforced by the section's own `role="alert"`. */}
         <FormSection
           title="Customer and billing details"
-          description="Link this order to the customer records used throughout the CRM."
+          description="Link this order to the customer records used throughout the CRM. An account or a contact is required."
         >
-          <span id="order-customer-anchor" tabIndex={-1} />
-          {customerError ? <FieldError>{customerError}</FieldError> : null}
-          <div className="mt-3 grid gap-4 md:grid-cols-2">
+          {customerError ? (
+            <FieldError className="mb-3">{customerError}</FieldError>
+          ) : null}
+          <FieldGroup columns={2}>
             <Field>
-              <FieldLabel>
-                Account <RequiredMark />
-              </FieldLabel>
+              <FieldLabel htmlFor="order-account">Account</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-account"
+                ariaInvalid={Boolean(customerError)}
                 recordType="organization"
                 valueId={form.organization_id}
                 displayValue={form.organization_name}
@@ -392,10 +383,10 @@ function OrderRecordFormEditor({
               />
             </Field>
             <Field>
-              <FieldLabel>
-                Contact <RequiredMark />
-              </FieldLabel>
+              <FieldLabel htmlFor="order-contact">Contact</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-contact"
+                ariaInvalid={Boolean(customerError)}
                 recordType="contact"
                 valueId={form.contact_id}
                 displayValue={form.contact_name}
@@ -429,8 +420,9 @@ function OrderRecordFormEditor({
               />
             </Field>
             <Field className="md:col-span-2">
-              <FieldLabel>Deal</FieldLabel>
+              <FieldLabel htmlFor="order-deal">Deal</FieldLabel>
               <LinkedRecordPicker
+                inputId="order-deal"
                 recordType="opportunity"
                 valueId={form.opportunity_id}
                 displayValue={form.opportunity_name}
@@ -467,7 +459,7 @@ function OrderRecordFormEditor({
                 quote conversion action.
               </FieldDescription>
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <TransactionLineItemsEditor
           items={items}
@@ -480,10 +472,10 @@ function OrderRecordFormEditor({
           idPrefix="order"
         />
         <FormSection
-          title="Delivery and payment details"
+          title="Fulfillment"
           description="Set fulfillment expectations and customer-facing payment terms."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field>
               <FieldLabel htmlFor="order-delivery-date">
                 Delivery date
@@ -523,7 +515,7 @@ function OrderRecordFormEditor({
                 }
               />
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <FormSection
           title="Terms and notes"
@@ -542,7 +534,7 @@ function OrderRecordFormEditor({
           </Field>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 
@@ -561,34 +553,18 @@ function OrderSidebar({
 }) {
   return (
     <>
-      <FormSection
-        title="Review summary"
+      <TransactionTotals
         description="Totals are calculated from the items and verified by the server."
-      >
-        <dl className="space-y-3">
-          <SummaryRow
-            label="Subtotal"
-            value={formatTransactionMoney(totals.subtotal, form.currency)}
-          />
-          <SummaryRow
-            label="Discount"
-            value={`− ${formatTransactionMoney(totals.discount, form.currency)}`}
-          />
-          <SummaryRow
-            label="Tax"
-            value={formatTransactionMoney(totals.tax, form.currency)}
-          />
-          <div className="border-t border-line-default pt-3">
-            <SummaryRow
-              label="Total"
-              value={formatTransactionMoney(totals.total, form.currency)}
-              strong
-            />
-          </div>
-        </dl>
-      </FormSection>
+        currency={form.currency}
+        rows={[
+          { label: "Subtotal", amount: totals.subtotal },
+          { label: "Discount", amount: totals.discount, negative: true },
+          { label: "Tax", amount: totals.tax },
+          { label: "Total", amount: totals.total, resolved: true },
+        ]}
+      />
       <FormSection
-        title="Order settings"
+        title="Order details"
         description="Control numbering, currency, and lifecycle status."
       >
         <div className="space-y-4">
@@ -604,12 +580,12 @@ function OrderSidebar({
             />
           </Field>
           <Field>
-            <FieldLabel>Currency</FieldLabel>
+            <FieldLabel htmlFor="order-currency">Currency</FieldLabel>
             <Select
               value={form.currency}
               onValueChange={(currency) => onChange({ ...form, currency })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="order-currency">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -622,12 +598,12 @@ function OrderSidebar({
             </Select>
           </Field>
           <Field>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel htmlFor="order-status">Status</FieldLabel>
             <Select
               value={form.status}
               onValueChange={(status) => onChange({ ...form, status })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="order-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -646,49 +622,19 @@ function OrderSidebar({
         description="Assign responsibility for fulfillment."
       >
         <Field>
-          <FieldLabel>Owner</FieldLabel>
-          <LinkedRecordPicker
-            recordType="user"
-            valueId={form.owner_id}
-            displayValue={form.owner_name}
-            onDisplayValueChange={(owner_name) =>
-              onChange({ ...form, owner_id: null, owner_name })
+          <FieldLabel htmlFor="order-owner">Owner</FieldLabel>
+          <OwnerSelect
+            id="order-owner"
+            moduleKey="sales_orders"
+            action={mode === "edit" ? "edit" : "create"}
+            ownerId={form.owner_id}
+            ownerName={form.owner_name}
+            onChange={(owner_id, owner_name) =>
+              onChange({ ...form, owner_id, owner_name })
             }
-            onSelect={(option) =>
-              onChange({
-                ...form,
-                owner_id: option.id,
-                owner_name: option.label,
-              })
-            }
-            onClear={() =>
-              onChange({ ...form, owner_id: null, owner_name: "" })
-            }
-            placeholder="Search owners (defaults to you)"
-            queryKeyPrefix="order-page-owner"
-            sourceModuleKey="sales_orders"
-            sourceAction={mode === "edit" ? "edit" : "create"}
           />
         </Field>
       </FormSection>
     </>
-  );
-}
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 ${strong ? "text-base font-semibold text-copy-primary" : "text-sm text-copy-secondary"}`}
-    >
-      <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
-    </div>
   );
 }

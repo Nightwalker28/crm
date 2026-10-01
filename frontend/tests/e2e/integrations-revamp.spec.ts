@@ -120,10 +120,10 @@ test("API key creation labels scopes and exposes the secret only until dismissed
 test("Webhook creation uses an explicit guarded drawer", async ({ page }) => {
   await page.goto("/dashboard/settings/integrations");
 
-  await page.getByRole("button", { name: "New webhook" }).click();
+  await page.getByRole("button", { name: "Create webhook" }).click();
   const webhookEditor = page.getByRole("dialog", { name: "Create webhook" });
   await expect(webhookEditor).toBeVisible();
-  await expect(webhookEditor.getByRole("button", { name: "Active", exact: true })).toHaveAttribute("aria-pressed", "true");
+  await expect(webhookEditor.getByRole("radio", { name: "Active", exact: true })).toHaveAttribute("aria-checked", "true");
   await page.getByLabel("Channel Name").fill("#operations");
   await webhookEditor.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Discard webhook draft?" })).toBeVisible();

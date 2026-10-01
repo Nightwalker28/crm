@@ -599,7 +599,8 @@ class APIRouteTests(unittest.TestCase):
     def test_refresh_returns_401_without_cookie(self):
         app.dependency_overrides[get_db] = self._override_db
 
-        response = self.client.post("/api/v1/auth/refresh")
+        with patch.object(signin_routes, "check_refresh_token_rate_limit"):
+            response = self.client.post("/api/v1/auth/refresh")
 
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()["detail"], "Missing refresh token")
@@ -852,6 +853,7 @@ class APIRouteTests(unittest.TestCase):
             job_title=None,
             timezone=None,
             bio=None,
+            booking_handle=None,
             auth_mode=UserAuthMode.manual_only,
             last_login_provider=None,
             mfa_enabled=False,
@@ -1535,6 +1537,7 @@ class APIRouteTests(unittest.TestCase):
             "id": 5,
             "owner_id": 7,
             "owner_name": "Owner",
+            "owner_handle": "owner",
             "name": "Discovery",
             "slug": "discovery",
             "duration_minutes": 30,
@@ -1595,6 +1598,8 @@ class APIRouteTests(unittest.TestCase):
         booking_type = {
             "name": "Discovery",
             "slug": "discovery",
+            "owner_handle": "owner-user",
+            "canonical_path": "/book/owner-user/discovery",
             "duration_minutes": 30,
             "timezone": "UTC",
             "owner_name": "Owner User",

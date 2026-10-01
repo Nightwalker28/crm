@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { useConfirm } from "@/hooks/useConfirm";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type Department = {
   id: number;
@@ -46,13 +46,13 @@ const emptyTeams: Team[] = [];
 
 async function fetchDepartments(): Promise<Department[]> {
   const res = await apiFetch("/admin/users/departments");
-  if (!res.ok) throw new Error("request-failed");
+  if (!res.ok) throw new ApiError(res.status, "request-failed");
   return res.json();
 }
 
 async function fetchTeams(): Promise<Team[]> {
   const res = await apiFetch("/admin/users/teams");
-  if (!res.ok) throw new Error("request-failed");
+  if (!res.ok) throw new ApiError(res.status, "request-failed");
   return res.json();
 }
 
@@ -108,7 +108,7 @@ export function useTeamsAndDepartments() {
       grouped.push({
         department: {
           id: -1,
-          name: "Unassigned Department",
+          name: "Unassigned department",
           description: "Teams with missing department links",
         },
         teams: orphanedTeams,
@@ -278,7 +278,7 @@ export function useTeamsAndDepartments() {
     const confirmed = await confirm({
       title: "Delete department?",
       description: `Permanently delete "${department.name}"? Departments with assigned teams cannot be deleted.`,
-      confirmLabel: "Delete Department",
+      confirmLabel: "Delete department",
       variant: "destructive",
     });
     if (!confirmed) return;
@@ -306,7 +306,7 @@ export function useTeamsAndDepartments() {
     const confirmed = await confirm({
       title: "Delete team?",
       description: `Delete team "${team.name}"? Users assigned to it will become unassigned.`,
-      confirmLabel: "Delete Team",
+      confirmLabel: "Delete team",
       variant: "destructive",
     });
     if (!confirmed) return;

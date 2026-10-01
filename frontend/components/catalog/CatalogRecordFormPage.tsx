@@ -1,5 +1,6 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Image from "next/image";
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -7,15 +8,18 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { CatalogKind, CatalogRecord, CatalogRecordPayload } from "@/hooks/catalog/useCatalogRecords";
@@ -93,7 +97,7 @@ export default function CatalogRecordFormPage({
   if (mode === "edit" && (query.error || !query.data)) {
     return (
       <RouteErrorState
-        title={`Unable to load ${noun}`}
+        title={`${formatSnakeCaseLabel(noun)} could not be loaded`}
         reset={() => void query.refetch()}
         backHref={`/dashboard/catalog/${kind}`}
         backLabel={`Back to ${kind}`}
@@ -139,7 +143,9 @@ function CatalogRecordFormEditor({
   const noun = isProduct ? "product" : "service";
   const titleNoun = isProduct ? "Product" : "Service";
   const listHref = `/dashboard/catalog/${kind}`;
-  const detailHref = recordId ? `${listHref}/${recordId}` : listHref;
+  // R2 travels in both directions: the tab the operator left is on this page's own URL, so
+  // Back, Cancel and the post-save redirect all return to it.
+  const detailHref = useRecordTabHref(recordId ? `${listHref}/${recordId}` : listHref);
   const snapshot = useMemo(
     () => JSON.stringify([form, mediaFile ? [mediaFile.name, mediaFile.size, mediaFile.lastModified] : null]),
     [form, mediaFile],
@@ -197,43 +203,37 @@ function CatalogRecordFormEditor({
         }
       }
       toast.success(`${titleNoun} ${mode === "edit" ? "updated" : "created"}.`);
-      router.push(`${listHref}/${saved.id}`);
+      router.push(mode === "edit" ? detailHref : `${listHref}/${saved.id}`);
     } catch {
       setSubmitError(true);
     }
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={mode === "edit" && record?.updated_at ? `Last modified ${formatDateTime(record.updated_at)}` : undefined}
-        title={mode === "edit" ? `Edit ${record?.name ?? noun}` : `Create ${noun}`}
-        description={mode === "edit" ? `Update this ${noun}'s catalog, pricing, visibility, and media details.` : `Add a ${noun} with customer-facing pricing, visibility, and media.`}
-        actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" ? detailHref : listHref}><ArrowLeft />Back to {mode === "edit" ? noun : kind}</Link></Button>}
-      />
-
+    <PageShell
+      eyebrow={mode === "edit" && record?.updated_at ? `Last modified ${formatDateTime(record.updated_at)}` : undefined}
+      title={mode === "edit" ? `Edit ${record?.name ?? noun}` : `Create ${noun}`}
+      description={mode === "edit" ? `Update this ${noun}'s catalog, pricing, visibility, and media details.` : `Add a ${noun} with customer-facing pricing, visibility, and media.`}
+      actions={<Button asChild variant="ghost" size="sm"><Link href={mode === "edit" ? detailHref : listHref}><ArrowLeft />Back to {mode === "edit" ? noun : kind}</Link></Button>}
+    >
       {submitError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not {mode === "edit" ? "update" : "create"} this {noun}.</div>
-          <div className="mt-1 text-copy-secondary">Check the entered information and try again.</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this ${noun}.`}>Check the entered information and try again.</FormErrorBanner>
       ) : null}
 
       <RecordFormLayout
+        title={mode === "edit" ? (record?.name ?? titleNoun) : `New ${noun}`}
         sidebar={
           <div className="grid gap-6">
-            <Card className="p-5">
-              <h2 className="text-base font-semibold text-copy-primary">Publishing</h2>
-              <FieldDescription className="mt-1">Control availability inside Lynk and the public website feed.</FieldDescription>
-              <div className="mt-5 grid gap-3">
+            <Card className="p-6">
+              <SectionHeading description="Control availability inside Lynk and the public website feed.">Publishing</SectionHeading>
+              <div className="mt-4 grid gap-3">
                 <ToggleRow label="Public website feed" checked={form.is_public} onChange={(is_public) => setForm((current) => ({ ...current, is_public }))} />
                 <ToggleRow label="Active" checked={form.is_active} onChange={(is_active) => setForm((current) => ({ ...current, is_active }))} />
               </div>
             </Card>
-            <Card className="p-5">
-              <h2 className="text-base font-semibold text-copy-primary">Media</h2>
-              <FieldDescription className="mt-1">Upload a customer-facing image for this catalog record.</FieldDescription>
-              <div className="mt-5 grid gap-3">
+            <Card className="p-6">
+              <SectionHeading description="Upload a customer-facing image for this catalog record.">Media</SectionHeading>
+              <div className="mt-4 grid gap-3">
                 {record?.media_url ? (
                   <Image src={resolveMediaUrl(record.media_url)} alt="" width={320} height={240} unoptimized className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover" />
                 ) : (
@@ -248,18 +248,16 @@ function CatalogRecordFormEditor({
             </Card>
           </div>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{dirty ? "You have unsaved changes." : mode === "edit" ? "No unsaved changes." : `Complete the required fields to create this ${noun}.`}</span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>
-              <Button onClick={() => void submit()} disabled={actions.isSaving || (mode === "edit" && !dirty)}><Save />{actions.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : `Create ${noun}`}</Button>
-            </div>
-          </div>
-        }
+        status={dirty ? "Unsaved changes" : mode === "edit" ? null : `Complete the required fields to create this ${noun}.`}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href={mode === "edit" ? detailHref : listHref}>Cancel</Link></Button>
+            <Button onClick={() => void submit()} disabled={actions.isSaving || (mode === "edit" && !dirty)}><Save />{actions.isSaving ? "Saving…" : mode === "edit" ? "Save changes" : `Create ${noun}`}</Button>
+          </>
+        )}
       >
         <FormSection title={`${titleNoun} details`} description="Define how this record is identified and described throughout the catalog.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field className="md:col-span-2">
               <FieldLabel htmlFor="catalog-name">Name <RequiredMark /></FieldLabel>
               <Input id="catalog-name" value={form.name} maxLength={180} onChange={(event) => { setForm((current) => ({ ...current, name: event.target.value })); if (nameError) setNameError(null); }} aria-invalid={Boolean(nameError)} aria-describedby={nameError ? "catalog-name-error" : undefined} placeholder={isProduct ? "Camera kit" : "Installation service"} />
@@ -283,7 +281,7 @@ function CatalogRecordFormEditor({
         </FormSection>
 
         <FormSection title="Pricing" description="Set the public base price used before customer-group pricing rules are applied.">
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field>
               <FieldLabel htmlFor="catalog-currency">Currency <RequiredMark /></FieldLabel>
               <Input id="catalog-currency" value={form.currency} maxLength={3} onChange={(event) => { setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() })); if (currencyError) setCurrencyError(null); }} aria-invalid={Boolean(currencyError)} aria-describedby={currencyError ? "catalog-currency-error" : undefined} />
@@ -299,7 +297,7 @@ function CatalogRecordFormEditor({
 
         {isProduct ? (
           <FormSection title="Inventory" description="Track availability or leave quantity blank when inventory is managed elsewhere.">
-            <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <FieldGroup columns={2}>
               <Field>
                 <FieldLabel>Status</FieldLabel>
                 <Select value={form.stock_status} onValueChange={(stock_status) => setForm((current) => ({ ...current, stock_status }))}>
@@ -321,7 +319,7 @@ function CatalogRecordFormEditor({
           </FormSection>
         ) : null}
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 
@@ -329,9 +327,7 @@ function ToggleRow({ label, checked, onChange }: { label: string; checked: boole
   return (
     <label className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3 text-sm text-copy-secondary">
       <span>{label}</span>
-      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} className="flex h-4 w-4 items-center justify-center rounded border border-line-strong bg-surface-raised text-copy-primary">
-        <CheckboxIndicator className="h-3 w-3" />
-      </Checkbox>
+      <Checkbox checked={checked} onCheckedChange={(value) => onChange(value === true)} />
     </label>
   );
 }

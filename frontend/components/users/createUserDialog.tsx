@@ -125,7 +125,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
         <DialogPanel size="xl">
           <DialogHeader>
             <div>
-              <DialogTitle>{setupLink ? "User created" : "Add user"}</DialogTitle>
+              <DialogTitle>{setupLink ? "User created" : "Create user"}</DialogTitle>
               <DialogDescription className="mt-1 text-copy-muted">
                 {setupLink
                   ? "Share this one-time setup link through a trusted channel."
@@ -137,7 +137,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
 
           {setupLink ? (
             <div className="mt-4 space-y-4">
-              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-state-success">
+              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-primary">
                 Manual sign-in is enabled for this user. Share the setup link below so they can create their password.
               </div>
 
@@ -160,7 +160,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
                 </div>
               )}
 
-              <FieldGroup className="grid gap-4 sm:grid-cols-2">
+              <FieldGroup className="grid gap-4 md:grid-cols-2">
                 <Field>
                   <FieldLabel htmlFor="create-user-first-name">First name</FieldLabel>
                   <Input
@@ -268,7 +268,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
             </div>
           )}
 
-          <DialogFooter className="mt-5">
+          <DialogFooter className="mt-4">
             <Button type="button" variant="outline" onClick={handleClose} disabled={isSubmitting}>
               {setupLink ? "Done" : "Cancel"}
             </Button>

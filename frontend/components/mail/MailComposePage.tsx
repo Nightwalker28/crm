@@ -6,14 +6,16 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useMailActions, useMailContext } from "@/hooks/useMail";
@@ -47,6 +49,7 @@ export default function MailComposePage() {
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [recipientError, setRecipientError] = useState<string | null>(null);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [sendComplete, setSendComplete] = useState(false);
 
   const sendConnections = useMemo(
@@ -63,11 +66,11 @@ export default function MailComposePage() {
   if (contextQuery.error) {
     return (
       <RouteErrorState
-        title="Unable to prepare mail"
+        title="The composer could not be opened"
         description="We could not load your available mail connections. Try again or return to Mail."
         reset={() => void contextQuery.refetch()}
         backHref="/dashboard/mail"
-        backLabel="Back to Mail"
+        backLabel="Back to mail"
       />
     );
   }
@@ -90,6 +93,7 @@ export default function MailComposePage() {
       return;
     }
 
+    setSendError(null);
     try {
       const message = await sendMail({
         provider,
@@ -101,45 +105,45 @@ export default function MailComposePage() {
       toast.success("Mail sent.");
       router.push(`/dashboard/mail?messageId=${message.id}`);
     } catch {
-      toast.error("We could not send this email. Check the mailbox connection and try again.");
+      setSendError("Check the mailbox connection and try again.");
+      toast.error("We could not send this email.");
     }
   }
 
   if (!sendConnections.length) {
     return (
-      <div className="grid gap-6">
-        <PageHeader
-          title="Compose email"
-          description="Write and send an email through a connected mailbox."
-          actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
-        />
+      <PageShell
+        title="Compose email"
+        description="Write and send an email through a connected mailbox."
+        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to mail</Link></Button>}
+      >
         <Card className="p-6">
-          <h2 className="text-base font-semibold text-copy-primary">No sending mailbox available</h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-copy-secondary">
+          <SectionHeading>No sending mailbox available</SectionHeading>
+          <p className="mt-2 max-w-2xl text-p-sm text-copy-secondary">
             Connect or repair a Gmail, Microsoft, or IMAP/SMTP mailbox before composing an email.
           </p>
-          <div className="mt-5 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button asChild><Link href="/dashboard/mail">Review mail connections</Link></Button>
             <Button variant="outline" asChild><Link href="/dashboard/settings/integrations">Manage integrations</Link></Button>
           </div>
         </Card>
-      </div>
+      </PageShell>
     );
   }
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Compose email"
-        description="Send an email through a connected mailbox and use CRM variables where record context is available."
-        actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to Mail</Link></Button>}
-      />
-
+    <PageShell
+      title="Compose email"
+      description="Send an email through a connected mailbox and use CRM variables where record context is available."
+      actions={<Button variant="outline" asChild><Link href="/dashboard/mail"><ArrowLeft />Back to mail</Link></Button>}
+    >
+      {sendError ? <FormErrorBanner title="We could not send this email.">{sendError}</FormErrorBanner> : null}
       <RecordFormLayout
+        title="Compose email"
         sidebar={
           <>
-            <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">Sending mailbox</h2>
+            <Card className="p-6">
+              <SectionHeading>Sending mailbox</SectionHeading>
               <Field className="mt-4">
                 <FieldLabel>Provider</FieldLabel>
                 <Select
@@ -158,9 +162,9 @@ export default function MailComposePage() {
                 <FieldDescription>The selected provider sends the message using your connected account.</FieldDescription>
               </Field>
             </Card>
-            <Card className="p-5">
-              <h2 className="text-sm font-semibold text-copy-primary">CRM variables</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">
+            <Card className="p-6">
+              <SectionHeading>CRM variables</SectionHeading>
+              <p className="mt-2 text-p-sm text-copy-secondary">
                 Variables resolve from linked record context or a matching contact recipient when the message is sent.
               </p>
               <div className="mt-4 flex flex-wrap gap-2">
@@ -168,7 +172,7 @@ export default function MailComposePage() {
                   <Button
                     key={token}
                     type="button"
-                    variant="secondary"
+                    variant="outline"
                     size="sm"
                     onClick={() => setBody((current) => `${current}${current ? " " : ""}${token}`)}
                   >
@@ -179,18 +183,16 @@ export default function MailComposePage() {
             </Card>
           </>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{isDirty ? "Unsaved message" : "Start writing your message"}</span>
-            <div className="flex gap-2">
-              <Button type="button" variant="outline" asChild><Link href="/dashboard/mail">Cancel</Link></Button>
-              <Button type="button" onClick={() => void handleSend()} disabled={isSendingMail}>
-                <Send />
-                {isSendingMail ? "Sending..." : "Send email"}
-              </Button>
-            </div>
-          </div>
-        }
+        status={isDirty ? "Unsaved changes" : "Start writing your message"}
+        actions={(
+          <>
+            <Button type="button" variant="outline" asChild><Link href="/dashboard/mail">Cancel</Link></Button>
+            <Button type="button" onClick={() => void handleSend()} disabled={isSendingMail}>
+              <Send />
+              {isSendingMail ? "Sending…" : "Send email"}
+            </Button>
+          </>
+        )}
       >
         <FormSection title="Message" description="Separate multiple recipients with commas.">
           <FieldGroup>
@@ -230,13 +232,13 @@ export default function MailComposePage() {
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 rows={14}
-                placeholder="Write your message..."
+                placeholder="Write your message…"
                 className="min-h-72 resize-y"
               />
             </Field>
           </FieldGroup>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

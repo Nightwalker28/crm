@@ -1,7 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState, type Dispatch, type SetStateAction } from "react";
-import { MenuItem } from "@headlessui/react";
+import { useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from "react";
 import { FileSpreadsheet, Upload } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +16,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -36,6 +36,13 @@ type Props = {
   fileAccept: string;
   disabled?: boolean;
   onImportSuccess?: () => void;
+  /**
+   * The file input, owned by a caller that puts the menu item in a menu. An input inside
+   * `DropdownMenuContent` unmounts when the menu closes, so the picker it opened returned to
+   * nothing and no preview ever loaded. The caller clicks this ref from its own item.
+   */
+  fileInputRef?: RefObject<HTMLInputElement | null>;
+  hideTrigger?: boolean;
 };
 
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
@@ -52,9 +59,10 @@ function duplicateModeLabel(mode: DuplicateMode) {
   return "Skip duplicates";
 }
 
-export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess }: Props) {
+export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess, fileInputRef, hideTrigger = false }: Props) {
   const { confirm } = useConfirm();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const ownInputRef = useRef<HTMLInputElement>(null);
+  const inputRef = fileInputRef ?? ownInputRef;
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [isImportDialogOpen, setIsImportDialogOpen] = useState(false);
@@ -205,21 +213,12 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
         }}
       />
 
-      <MenuItem>
-        {({ focus }) => (
-          <button
-            type="button"
-            disabled={menuDisabled}
-            onClick={() => inputRef.current?.click()}
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:text-copy-disabled ${
-              focus ? "bg-action-primary-muted text-copy-primary" : ""
-            }`}
-          >
-            <Upload aria-hidden="true" />
-            {isPreviewing ? "Reading file..." : isImporting ? "Importing..." : importLabel}
-          </button>
-        )}
-      </MenuItem>
+      {hideTrigger ? null : (
+        <DropdownMenuItem disabled={menuDisabled} onSelect={() => inputRef.current?.click()}>
+          <Upload aria-hidden="true" />
+          {isPreviewing ? "Reading file…" : isImporting ? "Importing…" : importLabel}
+        </DropdownMenuItem>
+      )}
 
       <Dialog open={isImportDialogOpen} onClose={() => { if (!isImporting) resetImportState(); }}>
         <DialogBackdrop />
@@ -240,7 +239,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
               </div>
             </DialogHeader>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               {importError ? (
                 <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                   {importError}
@@ -307,7 +306,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
                     Cancel
                   </Button>
                   <Button type="button" onClick={() => void handleImportSubmit()} disabled={isImporting || !preview}>
-                    {isImporting ? "Starting import..." : "Run import"}
+                    {isImporting ? "Starting import…" : "Run import"}
                   </Button>
                 </>
               )}
@@ -321,7 +320,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
 
 function ImportSummary({ summary }: { summary: ImportSummaryResponse }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <div className="grid gap-3 md:grid-cols-3">
         <SummaryCard label="Total rows" value={summary.total_rows} />
         <SummaryCard label="Imported" value={summary.imported_rows} tone="success" />
@@ -380,7 +379,7 @@ function SummaryCard({
     tone === "success" ? "text-state-success" : tone === "danger" ? "text-state-danger" : "text-copy-primary";
   return (
     <Card variant="status" className="px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
+      <div className="text-xs font-medium text-copy-label">{label}</div>
       <div className={`mt-1 font-semibold ${size === "lg" ? "text-2xl" : "text-lg"} ${valueClassName}`}>{value}</div>
     </Card>
   );

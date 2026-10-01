@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 async function cachePosPermissions(
   page: Parameters<typeof loginAsAdmin>[0],
@@ -24,6 +25,27 @@ async function cachePosPermissions(
       }]));
     },
     { cacheKey: moduleCacheKey, moduleActions: actions },
+  );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 91,
+        name: "finance_pos",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          ...actions,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]),
+    }),
   );
 }
 
@@ -73,6 +95,7 @@ function invoiceFixture(invoiceId: number) {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
 });
 
 test("Invoice creation uses the dedicated itemized transaction workflow", async ({
@@ -80,13 +103,14 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
 }) => {
   await page.goto("/dashboard/finance/pos/new");
   await expect(
-    page.getByRole("heading", { name: "Create invoice" }),
+    page.getByRole("heading", { name: "Create invoice", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pricing, discounts, and taxes")).toBeVisible();
-  await expect(page.getByText("Delivery and payment details")).toBeVisible();
-  await expect(page.getByText("Review summary")).toBeVisible();
+  await expect(page.getByText("Pricing and tax")).toBeVisible();
+  await expect(page.getByText("Payment", { exact: true })).toBeVisible();
+  await expect(page.getByText("Invoice details")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Create invoice" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
@@ -99,7 +123,9 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await page.getByLabel("unit price line 1").fill("100");
   await page.getByLabel("Discount amount").fill("10");
   await page.getByLabel("Tax rate (%)").fill("10");
-  await expect(page.getByText("$209.00", { exact: true })).toBeVisible();
+  // Two now: the ledger draws `Total` as well as `Balance`. It always computed the total
+  // and validated the amount paid against it, and drew only the balance.
+  await expect(page.getByText("$209.00", { exact: true })).toHaveCount(2);
   await page.getByLabel("name line 1").press("Enter");
   await expect(page.getByLabel("name line 2")).toBeFocused();
 });
@@ -130,9 +156,9 @@ test("Invoice detail and edit use routed record workflows", async ({
 
   await page.goto(`/dashboard/finance/pos/${invoiceId}`);
   await expect(
-    page.getByRole("heading", { name: "INV-BROWSER-1" }),
+    page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
   await expect(
     page.getByText("Acme Operations", { exact: true }).first(),
   ).toBeVisible();
@@ -161,10 +187,13 @@ test("Invoice actions and routed forms respect role permissions", async ({ page 
   );
 
   await page.goto(`/dashboard/finance/pos/${invoiceId}`);
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  // Print and Delete live in the record's overflow menu (design.md 4.7, archetype 2).
+  await page.getByRole("button", { name: "More INV-BROWSER-1 actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Delete|Move to recycle bin/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
   await page.goto("/dashboard/finance/pos/new");
   await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
@@ -199,7 +228,7 @@ test("Printable invoice uses accessible responsive document semantics", async ({
   await page.goto(`/dashboard/finance/pos/${invoiceId}/print`);
 
   await expect(page.getByRole("heading", { name: "Print invoice" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Print invoice INV-BROWSER-1" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Back to invoice" })).toHaveAttribute("href", `/dashboard/finance/pos/${invoiceId}`);
   await expect(page.getByText("Partially paid", { exact: true })).toBeVisible();

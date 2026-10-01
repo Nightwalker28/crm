@@ -110,7 +110,9 @@ test("shows a retryable fixed error when recycled records cannot load", async ({
 
   await page.goto("/dashboard/settings/recycle-bin");
 
-  await expect(page.getByText("Recycled records could not be loaded.")).toBeVisible();
+  // The state names the module being browsed, which is the first one the picker offers.
+  await expect(page.getByText(/^.+ could not be loaded$/)).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/SELECT deleted records|tenant_id=42/)).toHaveCount(0);
 });

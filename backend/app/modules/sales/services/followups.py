@@ -6,6 +6,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_department_module_access, require_role_module_action_access
+from app.modules.platform.models import RecordFollowUp
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.tasks.services.tasks_services import (
     create_task,
@@ -19,6 +20,36 @@ CHANNEL_LABELS = {
     "email": "Email",
     "call": "Call",
 }
+
+
+def _record_follow_up(
+    db: Session,
+    *,
+    current_user,
+    module_key: str,
+    entity_id: str,
+    channel: str,
+    note: str | None,
+    occurred_at: datetime,
+) -> RecordFollowUp:
+    """Persist the follow-up outcome in its own source table.
+
+    The paired ``log_activity`` call still records the change for audit; this
+    row is what the relationship activity projection reads, so the feed never
+    has to query the immutable audit store.
+    """
+
+    follow_up = RecordFollowUp(
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        module_key=module_key,
+        entity_id=str(entity_id),
+        channel=channel,
+        note=note,
+        occurred_at=occurred_at,
+    )
+    db.add(follow_up)
+    return follow_up
 
 
 def _utcnow() -> datetime:
@@ -53,7 +84,7 @@ def _require_task_create_access(db: Session, *, current_user) -> None:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
 
 
-def _create_follow_up_task(
+def create_record_follow_up_task(
     db: Session,
     *,
     current_user,
@@ -63,13 +94,21 @@ def _create_follow_up_task(
     channel: str,
     due_at,
     note: str | None,
+    title: str | None = None,
 ):
+    """Create the reminder that follows a contact attempt, linked to the record it is about.
+
+    Shared by every channel that records an outreach — the follow-up log here and the
+    WhatsApp click-to-chat — so a reminder is always gated by the same department and role
+    checks, always appears on the record's Tasks, and never commits on its own: the caller
+    commits it with the attempt it follows, or not at all.
+    """
     _require_task_create_access(db, current_user=current_user)
     channel_label = CHANNEL_LABELS[channel]
     task, added_keys = create_task(
         db,
         payload={
-            "title": f"Follow up with {source_label}",
+            "title": (title or "").strip() or f"Follow up with {source_label}",
             "description": note or f"{channel_label} follow-up for {source_label}.",
             "status": "todo",
             "priority": "medium",
@@ -148,8 +187,17 @@ def log_contact_follow_up(db: Session, *, contact, payload: dict, current_user) 
             },
             commit=False,
         )
+        follow_up = _record_follow_up(
+            db,
+            current_user=current_user,
+            module_key="sales_contacts",
+            entity_id=str(contact.contact_id),
+            channel=channel,
+            note=note,
+            occurred_at=contacted_at,
+        )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_contacts",
@@ -159,6 +207,7 @@ def log_contact_follow_up(db: Session, *, contact, payload: dict, current_user) 
                 due_at=payload.get("follow_up_due_at"),
                 note=note,
             )
+            follow_up.follow_up_task_id = task.id
         db.commit()
     except Exception:
         db.rollback()
@@ -206,8 +255,17 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
             },
             commit=False,
         )
+        follow_up = _record_follow_up(
+            db,
+            current_user=current_user,
+            module_key="sales_leads",
+            entity_id=str(lead.lead_id),
+            channel=channel,
+            note=note,
+            occurred_at=contacted_at,
+        )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_leads",
@@ -217,6 +275,7 @@ def log_lead_follow_up(db: Session, *, lead, payload: dict, current_user) -> dic
                 due_at=payload.get("follow_up_due_at"),
                 note=note,
             )
+            follow_up.follow_up_task_id = task.id
         db.commit()
     except Exception:
         db.rollback()
@@ -263,8 +322,17 @@ def log_opportunity_follow_up(db: Session, *, opportunity, payload: dict, curren
             },
             commit=False,
         )
+        follow_up = _record_follow_up(
+            db,
+            current_user=current_user,
+            module_key="sales_opportunities",
+            entity_id=str(opportunity.opportunity_id),
+            channel=channel,
+            note=note,
+            occurred_at=contacted_at,
+        )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_opportunities",
@@ -274,6 +342,7 @@ def log_opportunity_follow_up(db: Session, *, opportunity, payload: dict, curren
                 due_at=payload.get("follow_up_due_at"),
                 note=note,
             )
+            follow_up.follow_up_task_id = task.id
         db.commit()
     except Exception:
         db.rollback()
@@ -315,8 +384,17 @@ def log_quote_follow_up(db: Session, *, quote, payload: dict, current_user) -> d
             },
             commit=False,
         )
+        follow_up = _record_follow_up(
+            db,
+            current_user=current_user,
+            module_key="sales_quotes",
+            entity_id=str(quote.quote_id),
+            channel=channel,
+            note=note,
+            occurred_at=contacted_at,
+        )
         if payload.get("create_follow_up_task"):
-            task = _create_follow_up_task(
+            task = create_record_follow_up_task(
                 db,
                 current_user=current_user,
                 module_key="sales_quotes",
@@ -326,6 +404,7 @@ def log_quote_follow_up(db: Session, *, quote, payload: dict, current_user) -> d
                 due_at=payload.get("follow_up_due_at"),
                 note=note,
             )
+            follow_up.follow_up_task_id = task.id
         db.commit()
     except Exception:
         db.rollback()

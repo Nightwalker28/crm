@@ -15,6 +15,7 @@ celery_app = Celery(
         "app.tasks.data_transfer_tasks",
         "app.tasks.task_reminder_tasks",
         "app.tasks.recycle_purge_tasks",
+        "app.tasks.report_subscription_tasks",
         "app.tasks.tenant_backup_tasks",
     ],
 )
@@ -54,6 +55,10 @@ celery_app.conf.update(
         "scan-due-tenant-backups": {
             "task": "app.tasks.tenant_backups.scan_due_backup_schedules",
             "schedule": settings.TENANT_BACKUP_SCHEDULE_SCAN_INTERVAL_SECONDS,
+        },
+        "scan-due-report-subscriptions": {
+            "task": "app.tasks.report_subscriptions.scan_due",
+            "schedule": crontab(minute="*"),
         },
     },
 )

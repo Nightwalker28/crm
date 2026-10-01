@@ -3,23 +3,22 @@
 import type { FormEvent } from "react";
 import { useState } from "react";
 import Link from "next/link";
-import { Copy, ExternalLink, KeyRound, Link2, RefreshCw, Send, Users } from "lucide-react";
+import { Copy, RefreshCw, Send } from "lucide-react";
 import { toast } from "sonner";
 
+import { ClientAccountsTable } from "@/components/client-portal/ClientAccountsTable";
+import { ClientPagesTable } from "@/components/client-portal/ClientPagesTable";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
+import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SortableHead, Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
 import { useClientPortalActions, useClientPortalAccounts, useClientPortalPages, useCustomerOptions, type ClientAccountStatus, type ClientPortalSortState } from "@/hooks/useClientPortal";
 import { useConfirm } from "@/hooks/useConfirm";
-import { formatDateTime } from "@/lib/datetime";
 
 type LinkedType = "contact" | "organization";
 
@@ -39,29 +38,9 @@ function errorMessage(error: unknown, fallback: string) {
   return error instanceof Error ? error.message : fallback;
 }
 
-function formatMoney(value: string | number, currency: string) {
-  const amount = Number(value);
-  if (!Number.isFinite(amount)) return `${currency} 0.00`;
-  return `${currency} ${amount.toFixed(2)}`;
-}
-
 function customerLabel(item: { contact_id?: number | null; organization_id?: number | null; contact_name?: string | null; organization_name?: string | null }) {
   if (item.contact_id) return item.contact_name || `Contact #${item.contact_id}`;
   return item.organization_name || `Organization #${item.organization_id}`;
-}
-
-function actionLabel(action: string) {
-  return action === "request_changes" ? "Requested changes" : action === "accept" ? "Accepted" : action;
-}
-
-function statusTone(status: string) {
-  if (status === "active" || status === "published" || status === "accepted") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
-  }
-  if (status === "inactive" || status === "expired" || status === "revoked") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
-  }
-  return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
 }
 
 function nextSort(current: ClientPortalSortState, column: string): ClientPortalSortState {
@@ -110,9 +89,17 @@ function CustomerSelector({
           className="md:w-full"
         />
       </div>
-      <div className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1">
+      {/* Bounded on purpose: this is a search-filtered picker, not page content. An
+          uncapped customer list would push the rest of the form off screen. The marker
+          declares the intent - see docs/design/design.md 4.5. */}
+      <div
+        data-bounded-list
+        role="group"
+        aria-label="Customer search results"
+        className="max-h-44 overflow-y-auto rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-1"
+      >
         {optionsQuery.isLoading ? (
-          <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers...</div>
+          <div className="px-3 py-3 text-sm text-copy-muted" aria-busy="true">Loading customers…</div>
         ) : optionsQuery.isError ? (
           <div role="alert" className="px-3 py-3 text-sm text-copy-secondary">
             <p>Customers could not be loaded.</p>
@@ -191,7 +178,7 @@ export default function ClientPortalDashboardPage() {
       setLastSetupLink(account.setup_link ?? null);
       toast.success("Client account created.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to create client account."));
+      toast.error(errorMessage(error, "The client account could not be created. Check the email and try again."));
     }
   }
 
@@ -212,7 +199,7 @@ export default function ClientPortalDashboardPage() {
       const updated = await updateAccountStatus({ accountId, status });
       toast.success(`Client access set to ${updated.status}.`);
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to update client access."));
+      toast.error(errorMessage(error, "Client access could not be changed. Try again."));
     }
   }
 
@@ -230,7 +217,7 @@ export default function ClientPortalDashboardPage() {
       if (account.setup_link) await copyText(account.setup_link, "Setup link");
       toast.success("Setup link regenerated.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to regenerate setup link."));
+      toast.error(errorMessage(error, "A new setup link could not be created. Try again."));
     }
   }
 
@@ -247,7 +234,7 @@ export default function ClientPortalDashboardPage() {
       if (page.public_link) await copyText(page.public_link, "Client link");
       toast.success("Client page link published.");
     } catch (error) {
-      toast.error(errorMessage(error, "Failed to publish client page."));
+      toast.error(errorMessage(error, "The page could not be published. Try again."));
     }
   }
 
@@ -255,13 +242,16 @@ export default function ClientPortalDashboardPage() {
   const accounts = accountsQuery.data ?? [];
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar><Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button></PageToolbar>
+    <PageShell
+      title="Client portal"
+      description="Provision authenticated client access and publish scoped customer pages."
+      actions={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
+    >
 
       <div className="grid gap-4">
-        <Card className="px-5 py-5">
+        <Card className="p-6">
           <div className="mb-4">
-            <h2 className="text-base font-semibold text-copy-primary">Client Login Access</h2>
+            <h2 className="text-base font-semibold text-copy-primary">Client login access</h2>
             <FieldDescription className="mt-1">Create a setup link manually linked to a contact or organization.</FieldDescription>
           </div>
           <form className="grid gap-4" onSubmit={handleCreateAccount}>
@@ -282,12 +272,12 @@ export default function ClientPortalDashboardPage() {
             </FieldGroup>
             <Button type="submit" disabled={isCreatingAccount}>
               <Send className="h-4 w-4" />
-              {isCreatingAccount ? "Creating..." : "Create Setup Link"}
+              {isCreatingAccount ? "Creating…" : "Create setup link"}
             </Button>
           </form>
           {lastSetupLink ? (
             <div className="mt-4 rounded-[var(--radius-control)] border border-state-info/40 bg-state-info-muted p-3 text-sm">
-              <div className="mb-2 text-xs uppercase text-copy-muted">Latest setup link</div>
+              <div className="mb-2 text-xs font-medium text-copy-label">Latest setup link</div>
               <div className="break-all text-copy-primary">{lastSetupLink}</div>
               <p className="mt-2 text-xs text-copy-muted">Share this link securely. Regenerating it invalidates the previous link.</p>
               <Button type="button" variant="outline" className="mt-3" onClick={() => void copyText(lastSetupLink, "Setup link")}>
@@ -299,182 +289,42 @@ export default function ClientPortalDashboardPage() {
         </Card>
       </div>
 
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h2 className="text-base font-semibold text-copy-primary">Shared Pages</h2>
-            <FieldDescription className="mt-1">Publish a signed link after the pricing snapshot is ready.</FieldDescription>
-          </div>
-        </div>
-        {pagesQuery.isLoading ? (
-          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading client pages...</div>
-        ) : pagesQuery.error ? (
-          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
-            <p>Client pages could not be loaded.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void pagesQuery.refetch()}><RefreshCw />Try again</Button>
-          </div>
-        ) : pages.length === 0 ? (
-          <EmptyState
-            icon={Link2}
-            title="No client pages yet"
-            description="Create a private customer page, then publish a scoped link when it is ready."
-            action={<Button asChild><Link href="/dashboard/client-portal/pages/new">Create client page</Link></Button>}
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1080px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <SortableHead sorted={pageSort?.key === "title"} direction={pageSort?.key === "title" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "title"))}>
-                    Page
-                  </SortableHead>
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Pricing</TableHead>
-                  <TableHead>Activity</TableHead>
-                  <SortableHead sorted={pageSort?.key === "status"} direction={pageSort?.key === "status" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "status"))}>
-                    Status
-                  </SortableHead>
-                  <SortableHead sorted={pageSort?.key === "updated_at"} direction={pageSort?.key === "updated_at" ? pageSort.direction : "asc"} onClick={() => setPageSort((current) => nextSort(current, "updated_at"))}>
-                    Updated
-                  </SortableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {pages.map((page) => (
-                  <TableRow key={page.id}>
-                    <TableCell>
-                      <div className="font-medium text-copy-primary">{page.title}</div>
-                      <div className="text-xs text-copy-muted">{page.summary || "No summary"}</div>
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {customerLabel(page)}
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {page.pricing_items[0] ? formatMoney(page.pricing_items[0].public_unit_price, page.pricing_items[0].currency) : "No items"}
-                    </TableCell>
-                    <TableCell className="text-copy-secondary">
-                      {page.latest_action ? (
-                        <div>
-                          <div className="text-copy-primary">{actionLabel(page.latest_action.action)}</div>
-                          <div className="text-xs text-copy-muted">{page.latest_action.actor_email || page.latest_action.actor_name || "Client response"} · {page.action_count} total</div>
-                        </div>
-                      ) : (
-                        <span className="text-copy-muted">No responses</span>
-                      )}
-                    </TableCell>
-                    <TableCell><Pill {...statusTone(page.status)} className="capitalize">{page.status}</Pill></TableCell>
-                    <TableCell className="text-copy-muted">{formatDateTime(page.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end gap-2">
-                        {page.public_link ? (
-                          <Button type="button" variant="outline" size="sm" onClick={() => void copyText(page.public_link, "Client link")}>
-                            <Copy className="h-4 w-4" />
-                            Copy
-                          </Button>
-                        ) : null}
-                        {page.public_link ? (
-                          <Button type="button" variant="outline" size="sm" asChild>
-                            <a href={page.public_link} target="_blank" rel="noreferrer">
-                              <ExternalLink className="h-4 w-4" />
-                              Open
-                            </a>
-                          </Button>
-                        ) : null}
-                        <Button type="button" size="sm" onClick={() => void handlePublish(page.id)} disabled={isPublishingPage}>
-                          <Link2 className="h-4 w-4" />
-                          Publish
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+      <Card className="p-6">
+        <SectionHeading description="Publish a signed link after the pricing snapshot is ready." className="mb-4">
+          Shared pages
+        </SectionHeading>
+        <ClientPagesTable
+          pages={pages}
+          customerLabel={customerLabel}
+          sort={pageSort}
+          onSortChange={(column) => setPageSort((current) => nextSort(current, column))}
+          isLoading={pagesQuery.isLoading}
+          isRefreshing={pagesQuery.isFetching && !pagesQuery.isLoading}
+          hasError={Boolean(pagesQuery.error)}
+          onRetry={() => void pagesQuery.refetch()}
+          onCopyLink={(link) => void copyText(link, "Client link")}
+          onPublish={(pageId) => void handlePublish(pageId)}
+          isPublishing={isPublishingPage}
+        />
       </Card>
 
-      <Card className="px-5 py-5">
-        <h2 className="mb-4 text-base font-semibold text-copy-primary">Client Accounts</h2>
-        {accountsQuery.isLoading ? (
-          <div className="px-4 py-8 text-center text-sm text-copy-muted" aria-busy="true">Loading accounts...</div>
-        ) : accountsQuery.error ? (
-          <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-4 text-sm text-copy-secondary">
-            <p>Client accounts could not be loaded.</p>
-            <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void accountsQuery.refetch()}><RefreshCw />Try again</Button>
-          </div>
-        ) : accounts.length === 0 ? (
-          <EmptyState
-            icon={Users}
-            title="No client accounts yet"
-            description="Create a setup link above to provision authenticated client access."
-          />
-        ) : (
-          <div className="overflow-x-auto">
-            <Table className="min-w-[1100px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <SortableHead sorted={accountSort?.key === "email"} direction={accountSort?.key === "email" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "email"))}>
-                    Email
-                  </SortableHead>
-                  <TableHead>Customer</TableHead>
-                  <SortableHead sorted={accountSort?.key === "status"} direction={accountSort?.key === "status" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "status"))}>
-                    Status
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "last_login_at"} direction={accountSort?.key === "last_login_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "last_login_at"))}>
-                    Last Login
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "setup_token_expires_at"} direction={accountSort?.key === "setup_token_expires_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "setup_token_expires_at"))}>
-                    Setup Expires
-                  </SortableHead>
-                  <SortableHead sorted={accountSort?.key === "updated_at"} direction={accountSort?.key === "updated_at" ? accountSort.direction : "asc"} onClick={() => setAccountSort((current) => nextSort(current, "updated_at"))}>
-                    Updated
-                  </SortableHead>
-                  <TableHead className="text-right">Actions</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {accounts.map((account) => (
-                  <TableRow key={account.id}>
-                    <TableCell><span className="font-medium text-copy-primary">{account.email}</span></TableCell>
-                    <TableCell className="text-copy-secondary">{customerLabel(account)}</TableCell>
-                    <TableCell>
-                      <Select value={account.status} onValueChange={(value) => void handleUpdateAccountStatus(account.id, value as ClientAccountStatus)} disabled={isUpdatingAccountStatus}>
-                        <SelectTrigger size="sm" className="w-[132px] capitalize" aria-label={`Access status for ${account.email}`}>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="pending">Pending</SelectItem>
-                          <SelectItem value="active">Active</SelectItem>
-                          <SelectItem value="inactive">Inactive</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </TableCell>
-                    <TableCell className="text-copy-muted">{account.last_login_at ? formatDateTime(account.last_login_at) : "-"}</TableCell>
-                    <TableCell className="text-copy-muted">{account.setup_token_expires_at ? formatDateTime(account.setup_token_expires_at) : "-"}</TableCell>
-                    <TableCell className="text-copy-muted">{formatDateTime(account.updated_at)}</TableCell>
-                    <TableCell>
-                      <div className="flex justify-end">
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          onClick={() => void handleRegenerateSetupLink(account.id)}
-                          disabled={isRegeneratingSetupLink || account.status === "inactive"}
-                        >
-                          <KeyRound className="h-4 w-4" />
-                          Setup Link
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
+      <Card className="p-6">
+        <SectionHeading className="mb-4">Client accounts</SectionHeading>
+        <ClientAccountsTable
+          accounts={accounts}
+          customerLabel={customerLabel}
+          sort={accountSort}
+          onSortChange={(column) => setAccountSort((current) => nextSort(current, column))}
+          isLoading={accountsQuery.isLoading}
+          isRefreshing={accountsQuery.isFetching && !accountsQuery.isLoading}
+          hasError={Boolean(accountsQuery.error)}
+          onRetry={() => void accountsQuery.refetch()}
+          onStatusChange={(accountId, status) => void handleUpdateAccountStatus(accountId, status)}
+          isUpdatingStatus={isUpdatingAccountStatus}
+          onRegenerateSetupLink={(accountId) => void handleRegenerateSetupLink(accountId)}
+          isRegeneratingSetupLink={isRegeneratingSetupLink}
+        />
       </Card>
-    </div>
+    </PageShell>
   );
 }

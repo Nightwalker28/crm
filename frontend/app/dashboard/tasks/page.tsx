@@ -10,17 +10,29 @@ import TaskDialog from "@/components/tasks/TaskDialog";
 import TasksBoard from "@/components/tasks/TasksBoard";
 import TasksCalendar from "@/components/tasks/TasksCalendar";
 import TasksTable from "@/components/tasks/TasksTable";
+import { PageShell } from "@/components/ui/PageShell";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
+import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { fetchTaskCalendarEvent, useCalendarActions } from "@/hooks/useCalendar";
 import { fetchTask, useTasks, type Task, type TaskPayload, type TaskSortState } from "@/hooks/useTasks";
+import { useListDisplay } from "@/hooks/useListDisplay";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+
+/** A board or a calendar of ten cards is not a board. A reload onto `?display=board` starts here too. */
+const BOARD_PAGE_SIZE = 100;
+
+function clearDialogAddress(address: URLSearchParams) {
+  address.delete("taskId");
+  address.delete("action");
+}
 
 export default function TasksPage() {
   const router = useRouter();
@@ -29,7 +41,8 @@ export default function TasksPage() {
   const taskId = taskIdParam && /^\d+$/.test(taskIdParam) ? Number(taskIdParam) : null;
   const [dialogOpen, setDialogOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [displayMode, setDisplayMode] = useState<"list" | "board" | "calendar">("list");
+  const { updateAddress } = usePageAddress();
+  const [displayMode, setDisplayMode] = useListDisplay(["list", "board", "calendar"]);
   const [sort, setSort] = useState<TaskSortState>(null);
   const { fields: moduleFields } = useModuleFieldConfigs("tasks");
   const definition = useMemo(() => buildModuleViewDefinition("tasks", [], moduleFields), [moduleFields]);
@@ -63,7 +76,7 @@ export default function TasksPage() {
     deleteTask,
     isSaving,
     isDeleting,
-  } = useTasks(activeFilters, sort);
+  } = useTasks(activeFilters, sort, displayMode === "list" ? undefined : BOARD_PAGE_SIZE);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters);
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = activeFilterCount > 0 || Boolean(
@@ -91,28 +104,33 @@ export default function TasksPage() {
 
   useEffect(() => {
     if (!taskId || !taskDetailQuery.error) return;
-    toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "Failed to load task.");
-    router.replace("/dashboard/tasks");
-  }, [taskDetailQuery.error, taskId, router]);
+    toast.error(taskDetailQuery.error instanceof Error ? taskDetailQuery.error.message : "This task could not be opened. Check your connection and try again.");
+    updateAddress(clearDialogAddress);
+  }, [taskDetailQuery.error, taskId, updateAddress]);
 
   const createRequested = searchParams.get("action") === "create";
   const isDialogOpen = createRequested || (taskId ? Boolean(activeTask) : dialogOpen);
   function openCreateDialog() {
     setSelectedTask(null);
     setDialogOpen(true);
-    router.replace("/dashboard/tasks");
+    updateAddress(clearDialogAddress);
   }
 
   function openEditDialog(task: Task) {
     setSelectedTask(task);
     setDialogOpen(true);
-    router.replace(`/dashboard/tasks?taskId=${task.id}`);
+    // Through the page's one address writer, so opening a card on the board keeps
+    // `?display=board` and the saved view's params rather than replacing the whole query.
+    updateAddress((address) => {
+      address.delete("action");
+      address.set("taskId", String(task.id));
+    });
   }
 
   function closeDialog() {
     setDialogOpen(false);
     setSelectedTask(null);
-    router.replace("/dashboard/tasks");
+    updateAddress(clearDialogAddress);
   }
 
   async function handleSubmit(payload: TaskPayload) {
@@ -156,7 +174,7 @@ export default function TasksPage() {
 
   function changeDisplayMode(mode: "list" | "board" | "calendar") {
     setDisplayMode(mode);
-    if (mode !== "list" && pageSize < 100) onPageSizeChange(100);
+    if (mode !== "list" && pageSize < BOARD_PAGE_SIZE) onPageSizeChange(BOARD_PAGE_SIZE);
   }
 
   async function handleAddToCalendar() {
@@ -181,7 +199,7 @@ export default function TasksPage() {
   }
 
   return (
-    <div className="flex flex-col gap-4">
+    <PageShell variant="list" title="Tasks">
       <ModuleListToolbar
         searchValue={typeof activeFilters?.search === "string" ? activeFilters.search : ""}
         onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))}
@@ -189,24 +207,27 @@ export default function TasksPage() {
         filtersOpen={Boolean(activeFilters.filtersOpen)}
         activeFilterCount={activeFilterCount}
         onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))}
+        columnOptions={definition?.columns ?? []}
+        visibleColumns={visibleColumns}
+        onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         onClearFilters={clearFilters}
         viewControls={
           <>
             <SavedViewSelector moduleKey="tasks" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />
-            <div className="inline-flex rounded-md border border-line-default p-0.5" aria-label="Task display">
-              <Button type="button" variant={displayMode === "list" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "list"} onClick={() => changeDisplayMode("list")}><Table2 />List</Button>
-              <Button type="button" variant={displayMode === "board" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "board"} onClick={() => changeDisplayMode("board")}><Columns3 />Board</Button>
-              <Button type="button" variant={displayMode === "calendar" ? "secondary" : "ghost"} size="sm" aria-pressed={displayMode === "calendar"} onClick={() => changeDisplayMode("calendar")}><CalendarDays />Calendar</Button>
-            </div>
+            <SegmentedControl aria-label="Task display" value={displayMode} onValueChange={changeDisplayMode}>
+              <SegmentedItem value="list"><Table2 />List</SegmentedItem>
+              <SegmentedItem value="board"><Columns3 />Board</SegmentedItem>
+              <SegmentedItem value="calendar"><CalendarDays />Calendar</SegmentedItem>
+            </SegmentedControl>
           </>
         }
-        primaryAction={<Button aria-label="Add Task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Add Task</span></Button>}
+        primaryAction={<Button aria-label="Create task" onClick={openCreateDialog}><Plus className="h-4 w-4" /><span className="hidden sm:inline">Create task</span></Button>}
       />
 
-      <div className="rounded-xl border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+      <div className="rounded-[var(--radius-panel)] border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
         <div className="flex items-center gap-2 text-copy-secondary">
           <CheckSquare className="h-4 w-4" />
-          Default task views hide completed work. Use Manage View to include a completed-task queue.
+          Default task views hide completed work. Use Manage views to include a completed-task queue.
         </div>
       </div>
 
@@ -217,17 +238,10 @@ export default function TasksPage() {
         hideHeader
       />
 
-      {error ? (
-        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <span>Tasks could not be loaded. Check your connection and try again.</span>
-          <Button type="button" size="sm" variant="outline" onClick={() => void refresh()}>Try again</Button>
-        </div>
-      ) : null}
-
       {displayMode !== "list" ? (
-        <div className="rounded-lg border border-line-default bg-surface px-4 py-3 text-sm text-copy-muted">
+        <p className="text-sm text-copy-muted">
           Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. {displayMode === "board" ? "Drag cards between columns or use the status menu for keyboard access." : "Calendar placement follows each task's due date in your local timezone."}
-        </div>
+        </p>
       ) : null}
 
       {displayMode === "list" ? (
@@ -237,14 +251,17 @@ export default function TasksPage() {
           isRefreshing={isFetching && !isLoading}
           visibleColumns={visibleColumns}
           onEdit={openEditDialog}
+          onCreateTask={openCreateDialog}
           isFiltered={hasActiveFilters}
+          hasError={Boolean(error)}
+          onRetry={() => void refresh()}
           sort={sort}
           onSortChange={setSort}
         />
       ) : displayMode === "board" ? (
-        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
+        <TasksBoard tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={openCreateDialog} onOpen={openEditDialog} onStatusChange={handleStatusChange} />
       ) : (
-        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} onOpen={openEditDialog} />
+        <TasksCalendar tasks={tasks} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={() => void refresh()} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onOpen={openEditDialog} />
       )}
 
       <Pagination
@@ -275,6 +292,6 @@ export default function TasksPage() {
         onRemoveFromCalendar={activeTask ? handleRemoveFromCalendar : undefined}
         onOpenCalendarEvent={linkedCalendarEventQuery.data?.event ? handleOpenCalendarEvent : undefined}
       />
-    </div>
+    </PageShell>
   );
 }

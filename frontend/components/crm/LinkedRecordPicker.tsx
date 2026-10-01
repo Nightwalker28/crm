@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 
 export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global";
 
@@ -42,7 +43,10 @@ function optionIdentity(recordType: LinkedRecordType, option: LinkedRecordOption
 }
 
 type Props = {
+  /** Ties a visible `FieldLabel htmlFor` to the input. Prefer this. */
   inputId?: string;
+  /** Only where no visible label exists (design.md 8): a placeholder is not a name. */
+  ariaLabel?: string;
   inputRef?: Ref<HTMLInputElement>;
   recordType: LinkedRecordType;
   valueId: number | null;
@@ -61,6 +65,8 @@ type Props = {
   sourceAction?: "create" | "edit" | "view";
   allowClear?: boolean;
   allowedModuleKeys?: string[];
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -170,7 +176,13 @@ async function searchLinkedRecords(
     if (recordType === "opportunity") {
       const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
       const client = typeof record.client === "string" ? record.client : null;
-      const stage = typeof record.sales_stage === "string" ? record.sales_stage.replace(/_/g, " ") : null;
+      const stageRef = record.pipeline_stage as { label?: unknown } | null | undefined;
+      const stage =
+        typeof stageRef?.label === "string"
+          ? stageRef.label
+          : typeof record.sales_stage === "string" && record.sales_stage
+            ? formatSnakeCaseLabel(record.sales_stage)
+            : null;
       return {
         id: Number(record.opportunity_id),
         label: name,
@@ -236,6 +248,7 @@ async function searchLinkedRecords(
 
 export default function LinkedRecordPicker({
   inputId,
+  ariaLabel,
   inputRef,
   recordType,
   valueId,
@@ -254,6 +267,8 @@ export default function LinkedRecordPicker({
   sourceAction = "create",
   allowClear = true,
   allowedModuleKeys,
+  ariaDescribedBy,
+  ariaInvalid,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -301,6 +316,7 @@ export default function LinkedRecordPicker({
       <div className="flex gap-2">
         <Input
           id={inputId}
+          aria-label={ariaLabel}
           ref={inputRef}
           value={displayValue}
           disabled={disabled}
@@ -317,6 +333,8 @@ export default function LinkedRecordPicker({
           aria-autocomplete="list"
           aria-expanded={isOpen && Boolean(displayValue.trim())}
           aria-controls={listboxId}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
               ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`
@@ -344,7 +362,7 @@ export default function LinkedRecordPicker({
           id={listboxId}
           role="listbox"
           aria-label={`${placeholder} results`}
-          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-xl"
+          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-[var(--shadow-panel)]"
         >
           {query.isLoading ? (
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div>
@@ -361,7 +379,7 @@ export default function LinkedRecordPicker({
                   type="button"
                   role="option"
                   aria-selected={optionIndex === activeIndex}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveIndex(optionIndex)}
                   onClick={() => selectOption(option)}

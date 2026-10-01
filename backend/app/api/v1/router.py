@@ -29,12 +29,19 @@ from app.modules.platform.routes.custom_modules import builder_router as custom_
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
 from app.modules.platform.routes.module_fields import admin_router as module_fields_admin_router, router as module_fields_router
 from app.modules.platform.routes.module_reports import router as module_reports_router
+from app.modules.mail.routes.tenant_mail import router as tenant_mail_router
 from app.modules.platform.routes.crm_events import router as crm_events_router
+from app.modules.platform.routes.webhook_events import router as webhook_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
 from app.modules.platform.routes.integrations_registry import router as integrations_registry_router
 from app.modules.platform.routes.linked_record_options import router as linked_record_options_router
 from app.modules.platform.routes.notifications import router as notifications_router
+from app.modules.platform.routes.record_activity import router as record_activity_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
+from app.modules.platform.routes.record_layouts import (
+    admin_router as record_layouts_admin_router,
+    router as record_layouts_router,
+)
 from app.modules.platform.routes.realtime import router as realtime_router
 from app.modules.platform.routes.message_templates import router as message_templates_router
 from app.modules.platform.routes.notification_channels import router as notification_channels_router
@@ -49,10 +56,15 @@ from app.modules.sales.routes.contacts_routes import router as sales_contacts_ro
 from app.modules.sales.routes.leads_routes import router as sales_leads_router
 from app.modules.sales.routes.organizations_routes import router as sales_organization_router
 from app.modules.sales.routes.opportunities_routes import router as sales_opportunities_router
+from app.modules.sales.routes.pipelines_routes import router as sales_pipelines_router
+from app.modules.sales.routes.opportunity_participants_routes import (
+    router as sales_opportunity_participants_router,
+)
 from app.modules.sales.routes.orders_routes import router as sales_orders_router
 from app.modules.sales.routes.quotes_routes import router as sales_quotes_router
 from app.modules.support.routes.cases_routes import router as support_cases_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
+from app.modules.telephony.routes.telephony_routes import router as telephony_router
 from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
 from app.modules.website_integrations.routes.website_integration_routes import (
     public_router as website_integration_public_router,
@@ -75,13 +87,18 @@ router.include_router(public_custom_fields_router)
 router.include_router(module_fields_admin_router)
 router.include_router(module_fields_router)
 router.include_router(module_reports_router)
+router.include_router(tenant_mail_router)
 router.include_router(data_transfer_job_router)
 router.include_router(crm_events_router)
+router.include_router(webhook_events_router)
 router.include_router(global_search_router)
 router.include_router(integrations_registry_router)
 router.include_router(linked_record_options_router)
 router.include_router(notifications_router)
+router.include_router(record_activity_router)
 router.include_router(record_comments_router)
+router.include_router(record_layouts_admin_router)
+router.include_router(record_layouts_router)
 router.include_router(realtime_router)
 router.include_router(message_templates_router)
 router.include_router(notification_channels_router)
@@ -112,11 +129,17 @@ router.include_router(finance_router)
 router.include_router(sales_leads_router, prefix="/sales")
 router.include_router(sales_contacts_router, prefix="/sales")
 router.include_router(sales_organization_router, prefix="/sales")
+# Before the opportunities router: its literal `/opportunities/participant-roles`
+# path would otherwise be matched by `/opportunities/{opportunity_id}` first.
+router.include_router(sales_opportunity_participants_router, prefix="/sales")
+# Before the opportunities router: `/opportunities/pipeline/...` are literal paths.
+router.include_router(sales_pipelines_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(sales_quotes_router, prefix="/sales")
 router.include_router(sales_orders_router, prefix="/sales")
 router.include_router(support_cases_router)
 router.include_router(tasks_router)
+router.include_router(telephony_router)
 router.include_router(whatsapp_router)
 router.include_router(website_integration_router)
 router.include_router(website_integration_public_router)

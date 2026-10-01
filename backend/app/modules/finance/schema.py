@@ -56,6 +56,10 @@ class InsertionOrderUpdateRequest(BaseModel):
     tax_amount: Optional[float] = None
     total_amount: Optional[float] = None
     notes: Optional[str] = None
+    #: The record's owner. Writable because design.md 4.7 puts a user-pointing column in the
+    #: spine's State block, and an insertion order was the one record type of the nine whose
+    #: update contract had no way to carry the reassignment at all.
+    user_id: Optional[int] = None
     custom_fields: dict[str, Any] | None = None
 
     @field_validator("status")
@@ -86,8 +90,12 @@ class InsertionOrderResponse(BaseModel):
     custom_fields: dict[str, Any] | None = None
     file_name: Optional[str] = None
     file_url: Optional[str] = None
+    #: The owner's id as well as their name: the rail's Owner control selects by id, and the
+    #: name alone left it unable to say which option was the current one.
+    user_id: Optional[int] = None
     user_name: Optional[str] = None
     photo_url: Optional[str] = None
+    created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
 
@@ -230,6 +238,7 @@ class PosInvoiceResponse(BaseModel):
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     user_name: Optional[str] = None
+    created_at: Optional[str] = None
     updated_at: Optional[str] = None
     lines: list[PosInvoiceLineResponse] = Field(default_factory=list)
 

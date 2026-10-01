@@ -1,9 +1,10 @@
 "use client";
 
-import { Menu, MenuButton, MenuItems } from "@headlessui/react";
-import { ChevronDown } from "lucide-react";
+import { useRef, useState } from "react";
+import { ChevronDown, Download, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportControls } from "@/components/ui/ExportControls";
 import { ImportControls } from "@/components/ui/ImportControls";
 
@@ -34,46 +35,65 @@ export function ModuleImportExportControls({
   currentPageIds = [],
   onExportSuccess,
 }: Props) {
+  // The dialog and the file input live beside the menu, not inside it. Radix unmounts the
+  // menu's content when an item closes it, and anything rendered there went with it: the
+  // export dialog opened and vanished in the same frame, and the import picker returned to an
+  // input that no longer existed. The items only open what is mounted out here.
+  const [isExportOpen, setIsExportOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
   if (!importEndpoint && !exportEndpoint) {
     return null;
   }
 
   return (
     <div className="flex items-center gap-3">
-      <Menu as="div" className="relative">
-        <MenuButton
-          as={Button}
-          type="button"
-          variant="outline"
-        >
-          Actions
-          <ChevronDown className="h-4 w-4" />
-        </MenuButton>
-        <MenuItems
-          anchor="bottom end"
-          className="z-50 mt-2 w-44 rounded-[var(--radius-card)] border border-line-default bg-surface-raised p-1 shadow-2xl outline-none"
-        >
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button type="button" variant="outline">
+            Actions
+            <ChevronDown className="h-4 w-4" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent>
           {importEndpoint ? (
-            <ImportControls
-              importEndpoint={importEndpoint}
-              importLabel={importLabel}
-              fileAccept={fileAccept}
-              onImportSuccess={onImportSuccess}
-            />
+            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+              <Upload aria-hidden="true" />
+              {importLabel}
+            </DropdownMenuItem>
           ) : null}
           {exportEndpoint ? (
-            <ExportControls
-              exportEndpoint={exportEndpoint}
-              exportMethod={exportMethod}
-              exportBody={exportBody}
-              exportLabel={exportLabel}
-              selectedIds={selectedIds}
-              currentPageIds={currentPageIds}
-              onExportSuccess={onExportSuccess}
-            />
+            <DropdownMenuItem onSelect={() => setIsExportOpen(true)}>
+              <Download aria-hidden="true" />
+              {exportLabel}
+            </DropdownMenuItem>
           ) : null}
-        </MenuItems>
-      </Menu>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {importEndpoint ? (
+        <ImportControls
+          hideTrigger
+          fileInputRef={fileInputRef}
+          importEndpoint={importEndpoint}
+          importLabel={importLabel}
+          fileAccept={fileAccept}
+          onImportSuccess={onImportSuccess}
+        />
+      ) : null}
+      {exportEndpoint ? (
+        <ExportControls
+          hideTrigger
+          open={isExportOpen}
+          onOpenChange={setIsExportOpen}
+          exportEndpoint={exportEndpoint}
+          exportMethod={exportMethod}
+          exportBody={exportBody}
+          exportLabel={exportLabel}
+          selectedIds={selectedIds}
+          currentPageIds={currentPageIds}
+          onExportSuccess={onExportSuccess}
+        />
+      ) : null}
     </div>
   );
 }

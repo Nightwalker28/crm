@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
-from app.modules.mail.models import MailMessage, UserMailConnection
+from app.modules.mail.models import MailMessage, MailRecordAssociation, UserMailConnection
 from app.modules.mail.schema import MailProvider
 from app.modules.user_management.models import User
 
@@ -155,6 +155,117 @@ def find_message_by_provider_id(
             MailMessage.provider_message_id == provider_message_id,
         )
         .first()
+    )
+
+
+def find_message_by_idempotency_key(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_user_id: int,
+    idempotency_key: str,
+) -> MailMessage | None:
+    """Find an earlier claim for this compose attempt.
+
+    Scoped to the owner as well as the tenant because the uniqueness contract
+    is per mailbox owner: two users may independently generate the same key
+    without colliding.
+    """
+
+    return (
+        db.query(MailMessage)
+        .filter(
+            MailMessage.tenant_id == tenant_id,
+            MailMessage.owner_user_id == owner_user_id,
+            MailMessage.idempotency_key == idempotency_key,
+        )
+        .first()
+    )
+
+
+def list_message_associations(
+    db: Session,
+    *,
+    tenant_id: int,
+    message_id: int,
+) -> list[MailRecordAssociation]:
+    return (
+        db.query(MailRecordAssociation)
+        .filter(
+            MailRecordAssociation.tenant_id == tenant_id,
+            MailRecordAssociation.message_id == message_id,
+        )
+        .order_by(MailRecordAssociation.association_type.asc(), MailRecordAssociation.id.asc())
+        .all()
+    )
+
+
+def get_message_association(
+    db: Session,
+    *,
+    tenant_id: int,
+    message_id: int,
+    association_id: int,
+) -> MailRecordAssociation | None:
+    return (
+        db.query(MailRecordAssociation)
+        .filter(
+            MailRecordAssociation.tenant_id == tenant_id,
+            MailRecordAssociation.message_id == message_id,
+            MailRecordAssociation.id == association_id,
+        )
+        .first()
+    )
+
+
+def find_message_association(
+    db: Session,
+    *,
+    tenant_id: int,
+    message_id: int,
+    module_key: str,
+    entity_id: str,
+) -> MailRecordAssociation | None:
+    return (
+        db.query(MailRecordAssociation)
+        .filter(
+            MailRecordAssociation.tenant_id == tenant_id,
+            MailRecordAssociation.message_id == message_id,
+            MailRecordAssociation.module_key == module_key,
+            MailRecordAssociation.entity_id == entity_id,
+        )
+        .first()
+    )
+
+
+def list_thread_messages(
+    db: Session,
+    *,
+    tenant_id: int,
+    owner_user_id: int,
+    connection_id: int | None,
+    provider_thread_id: str | None,
+) -> list[MailMessage]:
+    """Messages sharing one provider thread inside one mailbox.
+
+    Provider thread ids are only unique per account, so a thread is identified
+    by (connection, provider_thread_id). Without both, the message is treated
+    as its own thread rather than matched against unrelated mailboxes.
+    """
+
+    if not connection_id or not provider_thread_id:
+        return []
+    return (
+        db.query(MailMessage)
+        .filter(
+            MailMessage.tenant_id == tenant_id,
+            MailMessage.owner_user_id == owner_user_id,
+            MailMessage.connection_id == connection_id,
+            MailMessage.provider_thread_id == provider_thread_id,
+            MailMessage.deleted_at.is_(None),
+        )
+        .order_by(MailMessage.id.asc())
+        .all()
     )
 
 

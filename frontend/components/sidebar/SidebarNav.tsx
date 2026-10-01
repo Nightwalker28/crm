@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronRight } from "lucide-react";
 
+import { cn } from "@/lib/utils";
+
 export const SidebarNav = ({ children }: { children: React.ReactNode }) => {
   return (
     <nav
@@ -17,12 +19,27 @@ export const SidebarNav = ({ children }: { children: React.ReactNode }) => {
 };
 
 export const SidebarGroup = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">{children}</div>;
+  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">{children}</div>;
 };
 
 export const SidebarMenu = ({ children }: { children: React.ReactNode }) => {
-  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">{children}</div>;
+  return <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">{children}</div>;
 };
+
+/**
+ * The one navigation item treatment, read by the sidebar and the settings rail (design.md
+ * §7.16). Current is elevation and a bar in ink; it was the primary action's tint in a
+ * bordered box, the state §7.13–§7.15 each took the tint off.
+ */
+export function navItemClassName(active: boolean) {
+  return cn(
+    "relative flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] px-2 py-1.5 text-left text-sm font-medium",
+    "transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus",
+    active
+      ? "bg-surface-raised text-copy-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-copy-primary"
+      : "text-copy-secondary hover:bg-surface-muted hover:text-copy-primary",
+  );
+}
 
 type SidebarChildProps = {
   href?: string;
@@ -42,18 +59,6 @@ function useIsActive() {
       return pathname === href || pathname.startsWith(href + "/");
     },
     [pathname],
-  );
-}
-
-function GlassItemWrapper({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="relative group/item">
-      {children}
-    </div>
   );
 }
 
@@ -77,6 +82,7 @@ export function SidebarMenuItemCollapsible({
   const hasActiveChild = childItems.some((child) => isActiveFn(getChildHref(child)));
   const [internalOpen, setInternalOpen] = React.useState(hasActiveChild);
   const isOpen = open ?? internalOpen;
+  const listId = React.useId();
 
   React.useEffect(() => {
     if (hasActiveChild && open === undefined) {
@@ -84,58 +90,43 @@ export function SidebarMenuItemCollapsible({
     }
   }, [hasActiveChild, open]);
 
-  const activeSelf = hasActiveChild;
   const setOpen = onOpenChange ?? setInternalOpen;
+  const childrenShown = isOpen && !collapsed;
+  // §7.16: the group marks the position only while the current item under it is hidden.
+  // With the item showing, the group takes ink so the branch is findable, and no more.
+  const markSelf = hasActiveChild && !childrenShown;
 
   return (
-    <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-hidden">
-      <GlassItemWrapper>
-        <button
-          type="button"
-          title={collapsed ? label : undefined}
-          onClick={() => setOpen(!isOpen)}
-          aria-expanded={isOpen}
-          className={
-            "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-left text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
-            (activeSelf
-              ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
-              : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
-          }
-        >
-          {Icon && (
-            <Icon
-              className={
-                "h-4 w-4 shrink-0 transition-colors " +
-                (activeSelf ? "text-primary" : "text-copy-muted")
-              }
-            />
+    <div className="flex w-full min-w-0 flex-col gap-0.5 overflow-x-clip">
+      <button
+        type="button"
+        title={collapsed ? label : undefined}
+        onClick={() => setOpen(!isOpen)}
+        aria-expanded={childrenShown}
+        aria-controls={listId}
+        className={cn(navItemClassName(markSelf), hasActiveChild && "text-copy-primary")}
+      >
+        {Icon && (
+          <Icon className={cn("h-4 w-4 shrink-0", hasActiveChild ? "text-copy-primary" : "text-copy-muted")} />
+        )}
+        <span className={collapsed ? "sr-only" : "min-w-0 flex-1 truncate"}>{label}</span>
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 text-copy-muted transition-transform duration-200 motion-reduce:transition-none",
+            collapsed && "hidden",
+            isOpen && "rotate-90",
           )}
-          <span
-            className={
-              "min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-sm transition-all duration-200 " +
-              (collapsed ? "sr-only" : "opacity-100")
-            }
-          >
-            {label}
-          </span>
-          <ChevronRight
-            className={
-              "h-3.5 w-3.5 shrink-0 transition-transform duration-200 " +
-              (collapsed ? "hidden" : "") +
-              " " +
-              (isOpen ? "rotate-90" : "") +
-              " " +
-              (activeSelf ? "text-primary" : "text-copy-muted")
-            }
-          />
-        </button>
-      </GlassItemWrapper>
+        />
+      </button>
 
+      {/* Closed, the links were `max-h-0 opacity-0` and still in the tab order. */}
       <div
-        className={
-          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-line-subtle pl-1.5 transition-all duration-200 motion-reduce:transition-none " +
-          (collapsed ? "max-h-0 opacity-0" : isOpen ? "max-h-96 opacity-100" : "max-h-0 opacity-0")
-        }
+        id={listId}
+        inert={!childrenShown}
+        className={cn(
+          "ml-4 flex min-w-0 max-w-[calc(100%-1rem)] flex-col gap-0.5 overflow-hidden border-l border-line-subtle pl-1.5 transition-[max-height,opacity] duration-200 motion-reduce:transition-none",
+          childrenShown ? "max-h-96 opacity-100" : "max-h-0 opacity-0",
+        )}
       >
         {childItems}
       </div>
@@ -158,27 +149,14 @@ export function SidebarMenuItemChild({
   const active = isActiveFn(href);
 
   return (
-    <GlassItemWrapper>
-      <Link
-        href={href}
-        onClick={onNavigate}
-        className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control-sm)] border px-2 py-1.5 text-[13px] font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
-          (active
-            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
-            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
-        }
-      >
-        <span
-          className={
-            "min-w-0 overflow-hidden text-ellipsis whitespace-nowrap transition-all duration-200 " +
-            (collapsed ? "sr-only" : "opacity-100")
-          }
-        >
-          {children}
-        </span>
-      </Link>
-    </GlassItemWrapper>
+    <Link
+      href={href}
+      onClick={onNavigate}
+      aria-current={active ? "page" : undefined}
+      className={cn(navItemClassName(active), "rounded-[var(--radius-control-sm)]")}
+    >
+      <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{children}</span>
+    </Link>
   );
 }
 
@@ -199,22 +177,15 @@ export function SidebarMenuItemLink({
   const active = isActiveFn(href);
 
   return (
-    <GlassItemWrapper>
-      <Link
-        href={href}
-        onClick={onNavigate}
-        title={collapsed ? label : undefined}
-        aria-current={active ? "page" : undefined}
-        className={
-          "relative z-10 flex w-full min-w-0 items-center gap-2 overflow-hidden rounded-[var(--radius-control)] border px-2 py-1.5 text-sm font-medium transition-colors duration-150 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary " +
-          (active
-            ? "border-primary/20 bg-action-primary-muted text-primary before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-primary"
-            : "border-transparent bg-transparent text-copy-secondary hover:border-line-subtle hover:bg-surface-muted hover:text-copy-primary")
-        }
-      >
-        <Icon className={`h-4 w-4 shrink-0 ${active ? "text-primary" : "text-copy-muted"}`} />
-        <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{label}</span>
-      </Link>
-    </GlassItemWrapper>
+    <Link
+      href={href}
+      onClick={onNavigate}
+      title={collapsed ? label : undefined}
+      aria-current={active ? "page" : undefined}
+      className={navItemClassName(active)}
+    >
+      <Icon className={cn("h-4 w-4 shrink-0", active ? "text-copy-primary" : "text-copy-muted")} />
+      <span className={collapsed ? "sr-only" : "min-w-0 truncate"}>{label}</span>
+    </Link>
   );
 }

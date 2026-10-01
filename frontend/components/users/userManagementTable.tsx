@@ -1,17 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, Fragment } from "react";
-import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { UsersRound } from "lucide-react";
 import Pagination from "../ui/Pagination";
 import UserFilters, {
   type UserFiltersValue,
 } from "@/components/users/userFilters";
-import { Pill } from "@/components/ui/Pill";
+import { Avatar } from "@/components/ui/Avatar";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { ModuleTableLoading } from "@/components/ui/ModuleTableLoading";
+import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import {
   Select,
   SelectContent,
@@ -27,21 +25,7 @@ import type {
 import { usePagedList } from "@/hooks/usePagedList";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHeaderRow,
-  TableHead,
-  TableCell,
-  TableGroupRow,
-  TableGroupCell,
-  SortableHead,
-} from "@/components/ui/Table";
 import { Card } from "../ui/Card";
-import { ModuleTableShell } from "../ui/ModuleTableShell";
-import { resolveMediaUrl } from "@/lib/media";
 
 export type SortKey = "name" | "role" | "email" | "status";
 export type SortDirection = "asc" | "desc";
@@ -118,49 +102,6 @@ function filtersEqual(a: UserFiltersValue, b: UserFiltersValue) {
 }
 
 // --- Color Configurations ---
-const ROLE_LEVEL_STYLES = {
-  admin: {
-    bg: "bg-state-danger-muted",
-    text: "text-state-danger",
-    border: "border-state-danger/40",
-  },
-  elevated: {
-    bg: "bg-state-warning-muted",
-    text: "text-state-warning",
-    border: "border-state-warning/40",
-  },
-  standard: {
-    bg: "bg-state-info-muted",
-    text: "text-state-info",
-    border: "border-state-info/40",
-  },
-  basic: {
-    bg: "bg-action-primary-muted",
-    text: "text-copy-primary",
-    border: "border-line-strong",
-  },
-  unassigned: {
-    bg: "bg-surface-muted",
-    text: "text-copy-muted",
-    border: "border-line-default",
-  },
-};
-
-const DEFAULT_ROLE_STYLE = {
-  bg: "bg-surface-muted",
-  text: "text-copy-secondary",
-  border: "border-line-default",
-};
-
-function getRolePillProps(roleName: string, roleLevel?: number | null) {
-  if (!roleName || roleName === "Unassigned")
-    return ROLE_LEVEL_STYLES.unassigned;
-  if (typeof roleLevel !== "number") return DEFAULT_ROLE_STYLE;
-  if (roleLevel >= 100) return ROLE_LEVEL_STYLES.admin;
-  if (roleLevel >= 90) return ROLE_LEVEL_STYLES.elevated;
-  if (roleLevel >= 10) return ROLE_LEVEL_STYLES.standard;
-  return ROLE_LEVEL_STYLES.basic;
-}
 
 // --- Fetcher Functions ---
 
@@ -333,9 +274,6 @@ export function UserManagementTable({
   const selectablePageIds = users
     .filter((user) => user.id !== currentUserId)
     .map((user) => user.id);
-  const allPageSelected =
-    selectablePageIds.length > 0 &&
-    selectablePageIds.every((id) => selectedIds.includes(id));
   const hasActiveFilters = Boolean(
     filters.search.trim() ||
     filters.selectedTeams.length ||
@@ -368,7 +306,6 @@ export function UserManagementTable({
     }));
   }, [users]);
 
-  const columnCount = visibleColumns.length + 1;
   const getUserName = (user: User) =>
     [user.first_name, user.last_name].filter(Boolean).join(" ").trim() ||
     user.email;
@@ -377,187 +314,90 @@ export function UserManagementTable({
   const getRoleName = (user: User) =>
     user.role_name || (user.role_id ? `Role #${user.role_id}` : "Unassigned");
 
-  const renderHead = (column: string) => {
-    switch (column) {
-      case "name":
-        return (
-          <SortableHead
-            key={column}
-            sorted={sortKey === "name"}
-            direction={sortDirection}
-            onClick={() => handleHeaderClick("name")}
-          >
-            Name
-          </SortableHead>
-        );
-      case "team_name":
-        return <TableHead key={column}>Team</TableHead>;
-      case "role_name":
-        return (
-          <SortableHead
-            key={column}
-            sorted={sortKey === "role"}
-            direction={sortDirection}
-            onClick={() => handleHeaderClick("role")}
-          >
-            Role
-          </SortableHead>
-        );
-      case "email":
-        return (
-          <SortableHead
-            key={column}
-            sorted={sortKey === "email"}
-            direction={sortDirection}
-            onClick={() => handleHeaderClick("email")}
-          >
-            Email
-          </SortableHead>
-        );
-      case "auth_mode":
-        return <TableHead key={column}>Sign-in Mode</TableHead>;
-      case "mfa_enabled":
-        return <TableHead key={column}>MFA</TableHead>;
-      case "is_active":
-        return (
-          <SortableHead
-            key={column}
-            sorted={sortKey === "status"}
-            direction={sortDirection}
-            onClick={() => handleHeaderClick("status")}
-          >
-            Status
-          </SortableHead>
-        );
-      default:
-        return null;
-    }
+  // The header's sort vocabulary and the column keys are two different vocabularies —
+  // "is_active" is the column, "status" is what the query sorts by — so the map is
+  // explicit rather than inferred from the key.
+  const SORT_KEY_BY_COLUMN: Record<string, SortKey> = {
+    name: "name",
+    role_name: "role",
+    email: "email",
+    is_active: "status",
   };
 
-  const renderUserCell = (u: User, column: string) => {
+  const renderCell = (u: User, column: string) => {
     const isSelf = typeof currentUserId === "number" && u.id === currentUserId;
-    const teamName = getTeamName(u);
-    const roleName = getRoleName(u);
-    const roleProps = getRolePillProps(roleName, u.role_level);
 
     switch (column) {
       case "name":
         return (
-          <TableCell>
-            <div className="flex items-center gap-2 h-7">
-              {u.photo_url ? (
-                <Image
-                  src={resolveMediaUrl(u.photo_url)}
-                  alt=""
-                  width={24}
-                  height={24}
-                  unoptimized
-                  className="h-6 w-6 rounded object-cover"
-                />
-              ) : (
-                <div className="flex h-6 w-6 items-center justify-center rounded bg-surface-raised text-[10px] text-copy-secondary">
-                  {(u.first_name?.[0] ?? u.email[0] ?? "?").toUpperCase()}
-                </div>
-              )}
+          <div className="flex items-center gap-2 h-7">
+            <Avatar size="sm" src={u.photo_url} name={[u.first_name, u.last_name].filter(Boolean).join(" ") || null} email={u.email} />
 
-              <div className="flex items-center gap-1 max-w-full">
-                <span className="whitespace-nowrap overflow-hidden text-ellipsis">
-                  {getUserName(u)}
+            <div className="flex items-center gap-1 max-w-full">
+              <span className="whitespace-nowrap overflow-hidden text-ellipsis">
+                {getUserName(u)}
+              </span>
+              {isSelf && (
+                <span className="shrink-0 text-2xs text-copy-muted">
+                  (You)
                 </span>
-                {isSelf && (
-                  <span className="shrink-0 text-[10px] text-copy-muted">
-                    (You)
-                  </span>
-                )}
-              </div>
+              )}
             </div>
-          </TableCell>
+          </div>
         );
       case "team_name":
-        return <TableCell>{teamName}</TableCell>;
+        return getTeamName(u);
       case "role_name":
-        return (
-          <TableCell>
-            <Pill
-              bg={roleProps.bg}
-              text={roleProps.text}
-              border={roleProps.border}
-              className="w-22"
-            >
-              {roleName}
-            </Pill>
-          </TableCell>
-        );
+        return <span className="text-sm text-copy-secondary">{getRoleName(u)}</span>;
       case "email":
         return (
-          <TableCell>
-            <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
-              {u.email}
-            </span>
-          </TableCell>
+          <span className="whitespace-nowrap overflow-hidden text-ellipsis block">
+            {u.email}
+          </span>
         );
       case "auth_mode":
-        return (
-          <TableCell>
-            {u.auth_mode === "manual_only" ? "Manual only" : "Manual + SSO"}
-          </TableCell>
-        );
+        return u.auth_mode === "manual_only" ? "Manual only" : "Manual + SSO";
       case "mfa_enabled":
-        return (
-          <TableCell>
-            {u.mfa_enabled ? (
-              <Pill
-                bg="bg-state-success-muted"
-                text="text-state-success"
-                border="border-state-success/40"
-              >
-                Enabled
-              </Pill>
-            ) : u.mfa_required ? (
-              <Pill
-                bg="bg-state-warning-muted"
-                text="text-state-warning"
-                border="border-state-warning/40"
-              >
-                Required
-              </Pill>
-            ) : (
-              <Pill
-                bg="bg-surface-muted"
-                text="text-copy-muted"
-                border="border-line-default"
-              >
-                Off
-              </Pill>
-            )}
-          </TableCell>
+        return u.mfa_enabled ? (
+          <StatusValue status={{ tone: "success", label: "Enabled" }} />
+        ) : u.mfa_required ? (
+          <StatusValue status={{ tone: "attention", label: "Required" }} />
+        ) : (
+          <StatusValue status={{ tone: "neutral", label: "Off" }} />
         );
       case "is_active":
-        return (
-          <TableCell>
-            {u.is_active === "active" ? (
-              <Pill
-                bg="bg-state-success-muted"
-                text="text-state-success"
-                border="border-state-success/40"
-              >
-                Active
-              </Pill>
-            ) : (
-              <Pill
-                bg="bg-surface-muted"
-                text="text-copy-muted"
-                border="border-line-default"
-              >
-                Inactive
-              </Pill>
-            )}
-          </TableCell>
+        return u.is_active === "active" ? (
+          <StatusValue status={{ tone: "success", label: "Active" }} />
+        ) : (
+          <StatusValue status={{ tone: "neutral", label: "Inactive" }} />
         );
       default:
         return null;
     }
   };
+
+  const COLUMN_LABELS: Record<string, string> = {
+    name: "Name",
+    team_name: "Team",
+    role_name: "Role",
+    email: "Email",
+    auth_mode: "Sign-in mode",
+    mfa_enabled: "MFA",
+    is_active: "Status",
+  };
+
+  const userColumns: RecordTableColumn<User>[] = visibleColumns.map((column) => ({
+    key: column,
+    label: COLUMN_LABELS[column] ?? column,
+    size: column === "name" || column === "email" ? "lg" : "md",
+    sortable: Boolean(SORT_KEY_BY_COLUMN[column]),
+    render: (u) => renderCell(u, column),
+  }));
+
+  // The rows the table renders, already in band order. `groupBy` opens a band where the
+  // label changes; it does not reorder, which is why the grouping memo stays.
+  const orderedUsers = groupedByTeam.flatMap((group) => group.users);
+  const sortedColumnKey = visibleColumns.find((column) => SORT_KEY_BY_COLUMN[column] === sortKey);
 
   const handleFilterChange = (newFilters: UserFiltersValue) => {
     suppressNextStateChangeRef.current = false;
@@ -741,112 +581,48 @@ export function UserManagementTable({
       ) : null}
 
       <div className="flex flex-col gap-2">
-        <ModuleTableShell>
-          <Table className="min-w-[900px]">
-            <TableHeader>
-              <TableHeaderRow>
-                <TableHead className="w-10">
-                  <Checkbox
-                    aria-label="Select all users on this page"
-                    checked={allPageSelected}
-                    disabled={!selectablePageIds.length}
-                    onCheckedChange={(checked) =>
-                      setSelectedIds((current) =>
-                        checked === true
-                          ? Array.from(
-                              new Set([...current, ...selectablePageIds]),
-                            )
-                          : current.filter(
-                              (id) => !selectablePageIds.includes(id),
-                            ),
-                      )
-                    }
-                  />
-                </TableHead>
-                {visibleColumns.map((column) => renderHead(column))}
-              </TableHeaderRow>
-            </TableHeader>
-
-            <TableBody>
-              {isLoading ? (
-                <ModuleTableLoading columnCount={columnCount} />
-              ) : groupedByTeam.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={columnCount} className="py-14">
-                    <EmptyState
-                      icon={UsersRound}
-                      title={
-                        hasActiveFilters
-                          ? "No users match these filters"
-                          : "No users yet"
-                      }
-                      description={
-                        hasActiveFilters
-                          ? "Clear one or more filters and try again."
-                          : "Use Add User to provision the first user in this workspace."
-                      }
-                      action={
-                        hasActiveFilters ? (
-                          <Button
-                            type="button"
-                            variant="outline"
-                            onClick={clearAllFilters}
-                          >
-                            Clear filters
-                          </Button>
-                        ) : undefined
-                      }
-                    />
-                  </TableCell>
-                </TableRow>
-              ) : (
-                groupedByTeam.map(({ teamName, users }) => (
-                  <Fragment key={teamName}>
-                    <TableGroupRow>
-                      <TableGroupCell colSpan={columnCount}>
-                        <span className="font-semibold text-copy-secondary">
-                          {teamName}
-                        </span>
-                      </TableGroupCell>
-                    </TableGroupRow>
-
-                    {users.map((u) => {
-                      return (
-                        <TableRow
-                          key={u.id}
-                          className="cursor-pointer"
-                          onClick={() => onEdit(u)}
-                        >
-                          <TableCell
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <Checkbox
-                              aria-label={`Select ${getUserName(u)}`}
-                              checked={selectedIds.includes(u.id)}
-                              disabled={u.id === currentUserId}
-                              onCheckedChange={(checked) =>
-                                setSelectedIds((current) =>
-                                  checked === true
-                                    ? Array.from(new Set([...current, u.id]))
-                                    : current.filter((id) => id !== u.id),
-                                )
-                              }
-                            />
-                          </TableCell>
-                          {visibleColumns.map((column) => (
-                            <Fragment key={column}>
-                              {renderUserCell(u, column)}
-                            </Fragment>
-                          ))}
-                        </TableRow>
-                      );
-                    })}
-                  </Fragment>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </ModuleTableShell>
+        <RecordTable
+          label="Users"
+          rows={orderedUsers}
+          rowKey={(u) => u.id}
+          columns={userColumns}
+          groupBy={(u) => getTeamName(u)}
+          onOpenRow={(u) => onEdit(u)}
+          rowLabel={(u) => `Open ${getUserName(u)}`}
+          isLoading={isLoading}
+          isRefreshing={isFetching}
+          sort={sortedColumnKey ? { column: sortedColumnKey, direction: sortDirection } : null}
+          onSortChange={(next) => {
+            const key = SORT_KEY_BY_COLUMN[next.column];
+            if (key) handleHeaderClick(key);
+          }}
+          selection={{
+            selectedIds,
+            allLabel: "Select all users on this page",
+            rowLabel: (u) => `Select ${getUserName(u)}`,
+            isRowSelectable: (u) => u.id !== currentUserId,
+            onToggleRow: (id, checked) =>
+              setSelectedIds((current) =>
+                checked
+                  ? Array.from(new Set([...current, id as number]))
+                  : current.filter((selected) => selected !== id),
+              ),
+            onToggleAll: (checked) =>
+              setSelectedIds((current) =>
+                checked
+                  ? Array.from(new Set([...current, ...selectablePageIds]))
+                  : current.filter((id) => !selectablePageIds.includes(id)),
+              ),
+          }}
+          emptyState={{
+            icon: UsersRound,
+            title: "No users yet",
+            description: "Create the first user to give someone access to this workspace.",
+          }}
+          hasActiveFilters={hasActiveFilters}
+          onClearFilters={clearAllFilters}
+          filteredEmptyState={{ icon: UsersRound }}
+        />
 
         {/* --- Pagination Footer --- */}
         <Card className="px-4 py-1.5">

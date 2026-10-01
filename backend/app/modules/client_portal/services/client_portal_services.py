@@ -1080,6 +1080,11 @@ def record_client_catalog_request(
             "details": request_details,
         },
     )
+    # A catalogue request is a create, so it carries no before-state and can never be the
+    # single-field edit `log_activity` coalesces — but the write path is allowed to return
+    # None now, and a request the portal cannot reference is a failure, not a zero.
+    if entry is None:  # pragma: no cover - unreachable for a create
+        raise RuntimeError("The catalogue request could not be recorded.")
     return int(entry.id)
 
 

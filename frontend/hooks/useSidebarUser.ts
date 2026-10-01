@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
 import { apiFetch } from "@/lib/api";
+import { publishAuthSessionChange } from "@/lib/authSessionEvents";
 
 const USER_CACHE_KEY = "lynk_user";
 const USER_VERIFIED_AT_KEY = "lynk_user_verified_at";
@@ -102,6 +103,7 @@ export function useSidebarUser() {
       } catch {
         if (cancelled) return;
         clearAuthStorage();
+        publishAuthSessionChange();
         router.replace("/auth/login");
       }
     })();
@@ -116,7 +118,7 @@ export function useSidebarUser() {
       method: "POST",
     });
 
-    sessionStorage.clear();
+    publishAuthSessionChange();
     setVerified(false);
     router.push("/auth/login");
   }

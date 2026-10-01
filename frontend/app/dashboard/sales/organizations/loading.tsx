@@ -1,2 +1,5 @@
 import { RouteLoadingState } from "@/components/ui/RouteStates";
-export default function Loading() { return <RouteLoadingState label="accounts" />; }
+
+export default function OrganizationsLoading() {
+  return <RouteLoadingState label="accounts" />;
+}

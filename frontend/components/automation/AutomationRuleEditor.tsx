@@ -7,17 +7,19 @@ import { toast } from "sonner";
 
 import { AutomationInspector } from "./AutomationInspector";
 import { AutomationStepList } from "./AutomationStepList";
-import type { AutomationActionConfig, AutomationCondition, AutomationRule, AutomationRulePreview, AutomationTriggerGroup, InspectorSelection, RuleDraft } from "./types";
-import { buildAction, buildCondition, draftSignature, emptyDraft, isBlankValue, ruleToDraft, serializeDraft } from "./utils";
+import type { AutomationActionConfig, AutomationCondition, AutomationRule, AutomationRulePreview, AutomationTemplate, AutomationTriggerGroup, InspectorSelection, RuleDraft } from "./types";
+import { buildAction, buildCondition, conditionSentence, draftSignature, emptyDraft, isBlankValue, mergeFieldTokens, ruleToDraft, serializeDraft, templateToDraft } from "./utils";
+import { Chip } from "@/components/ui/Chip";
 import { Button } from "@/components/ui/button";
 import { Card, CardBody, CardFooter, CardHeader } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { useAutomationActions, useAutomationConditionFields, deleteAutomationRule, persistAutomationRule, previewAutomationRule } from "@/hooks/useAutomationRules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 
-export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, onClose, onSaved, onDeleted }: {
+export function AutomationRuleEditor({ rule, template, duplicate = false, triggerGroups, onClose, onSaved, onDeleted }: {
   rule?: AutomationRule;
+  /** Prefills a new rule. It stays a draft, disabled, until it is saved and enabled. */
+  template?: AutomationTemplate;
   duplicate?: boolean;
   triggerGroups: AutomationTriggerGroup[];
   onClose: () => void;
@@ -27,9 +29,11 @@ export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, o
   const { confirm } = useConfirm();
   const queryClient = useQueryClient();
   const firstTrigger = triggerGroups[0]?.triggers[0]?.key ?? "";
-  const initialDraft = useMemo(() => rule ? ruleToDraft(rule, duplicate) : emptyDraft(firstTrigger), [duplicate, firstTrigger, rule]);
+  const initialDraft = useMemo(() => rule ? ruleToDraft(rule, duplicate) : template ? templateToDraft(template) : emptyDraft(firstTrigger), [duplicate, firstTrigger, rule, template]);
+  const blankDraft = useMemo(() => emptyDraft(firstTrigger), [firstTrigger]);
   const [draft, setDraft] = useState<RuleDraft>(initialDraft);
-  const [baselineDraft, setBaselineDraft] = useState<RuleDraft>(initialDraft);
+  // What Discard returns to: the saved rule, or the template a new rule started from.
+  const [savedDraft, setSavedDraft] = useState<RuleDraft>(initialDraft);
   const [selection, setSelection] = useState<InspectorSelection>({ kind: "settings" });
   const [inspectorOpen, setInspectorOpen] = useState(false);
 
@@ -38,7 +42,21 @@ export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, o
   const conditionFields = useMemo(() => new Map((conditionFieldsQuery.data ?? []).map((field) => [field.key, field])), [conditionFieldsQuery.data]);
   const actionDefinitions = useMemo(() => new Map((actionDefinitionsQuery.data ?? []).map((action) => [action.key, action])), [actionDefinitionsQuery.data]);
   const selectedTrigger = triggerGroups.flatMap((group) => group.triggers).find((trigger) => trigger.key === draft.trigger_event);
-  const isDirty = draftSignature(draft) !== draftSignature(baselineDraft);
+  // A saved rule is dirty when it differs from what was saved. An unsaved one is dirty as soon
+  // as it holds anything, a template included, so it can be saved and is guarded on leave.
+  const isDirty = draftSignature(draft) !== draftSignature(draft.id ? savedDraft : blankDraft);
+  const moduleKey = selectedTrigger?.module_key ?? null;
+  const mergeFields = useMemo(() => mergeFieldTokens(conditionFields.values()), [conditionFields]);
+  const summary = useMemo(() => {
+    // The description is a sentence ("A sales lead is created."), which reads better after
+    // "When" than the label does.
+    const event = selectedTrigger?.description.replace(/\.$/, "") ?? "";
+    const when = event ? `When ${event.charAt(0).toLocaleLowerCase()}${event.slice(1)}` : "When the trigger fires";
+    const conditions = draft.conditions.map((condition) => conditionSentence(condition, conditionFields));
+    const only = conditions.length ? `, if ${conditions.join(draft.condition_mode === "any" ? " or " : " and ")}` : "";
+    const actions = draft.actions.map((action) => actionDefinitions.get(action.type)?.label.toLocaleLowerCase()).filter(Boolean);
+    return `${when}${only}, ${actions.length ? `then ${actions.join(", then ")}` : "do nothing yet: add an action"}.`;
+  }, [actionDefinitions, conditionFields, draft.actions, draft.condition_mode, draft.conditions, selectedTrigger]);
   useUnsavedChangesGuard(isDirty);
 
   const messages = useMemo(() => {
@@ -78,7 +96,7 @@ export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, o
     },
     onSuccess: async (savedRule) => {
       const next = ruleToDraft(savedRule);
-      setDraft(next); setBaselineDraft(next); onSaved(savedRule);
+      setDraft(next); setSavedDraft(next); onSaved(savedRule);
       toast.success("Automation rule saved.");
       await queryClient.invalidateQueries({ queryKey: ["automation-rules"] });
     },
@@ -120,18 +138,21 @@ export function AutomationRuleEditor({ rule, duplicate = false, triggerGroups, o
     <Card className="min-w-0">
       <CardHeader className="flex flex-row flex-wrap items-center gap-3">
         <Button type="button" variant="ghost" size="sm" onClick={() => void closeEditor()}><ArrowLeft />Rules</Button>
-        <button type="button" className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => inspect({ kind: "settings" })}><span className="flex flex-wrap items-center gap-2"><span className="truncate text-base font-semibold text-copy-primary">{draft.name || "Untitled automation"}</span><Pill>{draft.enabled ? "Enabled" : draft.id ? "Disabled" : "Draft"}</Pill></span><span className="mt-1 block truncate text-sm text-copy-muted">{draft.description || "Select to edit rule settings."}</span></button>
+        <button type="button" className="min-w-0 flex-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus" onClick={() => inspect({ kind: "settings" })}><span className="flex flex-wrap items-center gap-2"><span className="truncate text-base font-semibold text-copy-primary">{draft.name || "Untitled automation"}</span><Chip>{draft.enabled ? "Enabled" : draft.id ? "Disabled" : "Draft"}</Chip></span><span className="mt-1 block text-sm text-copy-secondary" data-testid="automation-rule-summary">{summary}</span></button>
       </CardHeader>
-      <CardBody className="bg-surface-muted/40 py-5"><AutomationStepList draft={draft} selection={selection} triggerLabel={selectedTrigger?.label ?? draft.trigger_event} triggerDescription={selectedTrigger?.description ?? "Choose the event that starts this rule."} conditionFields={conditionFields} actionDefinitions={actionDefinitions} messages={messages} onInspect={inspect} onAddCondition={() => { const condition = buildCondition(conditionFields.values().next().value); setDraft((current) => ({ ...current, conditions: [...current.conditions, condition] })); inspect({ kind: "condition", id: condition.id }); }} onRemoveCondition={(id) => { setDraft((current) => ({ ...current, conditions: current.conditions.filter((condition) => condition.id !== id) })); inspect({ kind: "validation" }); }} onAddAction={() => { const action = buildAction(actionDefinitions.values().next().value); setDraft((current) => ({ ...current, actions: [...current.actions, action] })); inspect({ kind: "action", id: action.id }); }} onRemoveAction={(id) => { setDraft((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) })); inspect({ kind: "validation" }); }} onMoveAction={moveAction} /></CardBody>
-      <CardFooter className="sticky bottom-0 z-10 flex flex-wrap items-center gap-2 bg-surface/95 backdrop-blur">
-        <p className={`mr-auto text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</p>
-        {isDirty ? <Button type="button" variant="ghost" onClick={() => setDraft(baselineDraft)}>Discard</Button> : null}
+      <CardBody className="bg-surface-muted/40 py-4"><AutomationStepList draft={draft} selection={selection} triggerLabel={selectedTrigger?.label ?? draft.trigger_event} triggerDescription={selectedTrigger?.description ?? "Choose the event that starts this rule."} conditionFields={conditionFields} actionDefinitions={actionDefinitions} messages={messages} onInspect={inspect} onAddCondition={() => { const condition = buildCondition(conditionFields.values().next().value); setDraft((current) => ({ ...current, conditions: [...current.conditions, condition] })); inspect({ kind: "condition", id: condition.id }); }} onRemoveCondition={(id) => { setDraft((current) => ({ ...current, conditions: current.conditions.filter((condition) => condition.id !== id) })); inspect({ kind: "validation" }); }} onAddAction={() => { const action = buildAction(actionDefinitions.values().next().value); setDraft((current) => ({ ...current, actions: [...current.actions, action] })); inspect({ kind: "action", id: action.id }); }} onRemoveAction={(id) => { setDraft((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) })); inspect({ kind: "validation" }); }} onMoveAction={moveAction} /></CardBody>
+      {/* An automation rule commits as a whole — trigger, conditions and actions are
+          validated together — so the manual save stays (archetype 4). R3 takes the
+          stickiness, R5 the colour. This was the tenth and last `sticky bottom-0`. */}
+      <CardFooter className="flex flex-wrap items-center gap-2">
+        <p className="mr-auto text-sm text-copy-muted">{isDirty ? "Unsaved changes" : null}</p>
+        {isDirty && draft.id ? <Button type="button" variant="ghost" onClick={() => setDraft(savedDraft)}>Discard</Button> : null}
         <Button type="button" variant="outline" onClick={() => void changeEnabled(!draft.enabled)} disabled={previewMutation.isPending}>{draft.enabled ? <PowerOff /> : <Power />}{draft.enabled ? "Disable" : "Enable"}</Button>
         <Button type="button" variant="outline" onClick={() => { previewMutation.mutate(draft.enabled, { onSuccess: () => { inspect({ kind: "validation" }); toast.success("Automation draft is valid."); } }); }} disabled={previewMutation.isPending || !draft.name.trim()}><ListChecks />{previewMutation.isPending ? "Checking…" : "Validate"}</Button>
         <Button type="button" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending || !isDirty || !draft.name.trim()}><Save />{saveMutation.isPending ? "Saving…" : "Save rule"}</Button>
-        {draft.id ? <Button type="button" variant="dangerGhost" onClick={() => void removeRule()} disabled={deleteMutation.isPending}><Trash2 />Delete</Button> : null}
+        {draft.id ? <Button type="button" variant="destructiveGhost" onClick={() => void removeRule()} disabled={deleteMutation.isPending}><Trash2 />Delete</Button> : null}
       </CardFooter>
     </Card>
-    <AutomationInspector open={inspectorOpen} onOpenChange={setInspectorOpen} selection={selection} draft={draft} triggerGroups={triggerGroups} selectedTriggerDescription={selectedTrigger?.description ?? "This event starts the automation rule."} conditionFields={conditionFields} actionDefinitions={actionDefinitions} messages={messages} preview={previewMutation.data} previewError={previewMutation.isError} onDraftChange={(patch) => setDraft((current) => ({ ...current, ...patch }))} onTriggerChange={(trigger) => void changeTrigger(trigger)} onEnabledChange={(enabled) => void changeEnabled(enabled)} onUpdateCondition={updateCondition} onRemoveCondition={(id) => { setDraft((current) => ({ ...current, conditions: current.conditions.filter((condition) => condition.id !== id) })); setInspectorOpen(false); }} onUpdateAction={updateAction} onRemoveAction={(id) => { setDraft((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) })); setInspectorOpen(false); }} />
+    <AutomationInspector open={inspectorOpen} onOpenChange={setInspectorOpen} selection={selection} draft={draft} triggerGroups={triggerGroups} moduleKey={moduleKey} mergeFields={mergeFields} selectedTriggerDescription={selectedTrigger?.description ?? "This event starts the automation rule."} conditionFields={conditionFields} actionDefinitions={actionDefinitions} messages={messages} preview={previewMutation.data} previewError={previewMutation.isError} onDraftChange={(patch) => setDraft((current) => ({ ...current, ...patch }))} onTriggerChange={(trigger) => void changeTrigger(trigger)} onEnabledChange={(enabled) => void changeEnabled(enabled)} onUpdateCondition={updateCondition} onRemoveCondition={(id) => { setDraft((current) => ({ ...current, conditions: current.conditions.filter((condition) => condition.id !== id) })); setInspectorOpen(false); }} onUpdateAction={updateAction} onRemoveAction={(id) => { setDraft((current) => ({ ...current, actions: current.actions.filter((action) => action.id !== id) })); setInspectorOpen(false); }} />
   </div>;
 }

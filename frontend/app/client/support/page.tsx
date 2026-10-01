@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import Link from "next/link";
-import { ArrowRight, HelpCircle, Plus } from "lucide-react";
+import { ArrowRight, Plus } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -64,25 +64,16 @@ export default function ClientSupportPage() {
   }
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client">Overview</Link>
-          </Button>
-        </header>
-
-        <section className="mb-5">
-          <div className="flex items-center gap-2 text-sm text-copy-secondary">
-            <HelpCircle className="h-4 w-4" />
-            Client support
-          </div>
-          <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Support tickets</h1>
-        </section>
+    // Out of the rebuild programme (scoping decision 8) — this module may be removed, so it
+    // is NOT on the archetypes. What it did need is the chrome taken off: `app/client/layout.tsx`
+    // now supplies the ground, the container and the header, and leaving this page's own
+    // `min-h-screen` wrapper and wordmark in place drew a second portal inside the first.
+    <>
+      <div>
+        <h1 className="mb-5 text-lg font-semibold text-copy-primary">Support tickets</h1>
 
         <div className="grid gap-5 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <section className="h-fit rounded-md border border-line-default bg-surface p-5">
+          <section className="h-fit rounded-[var(--radius-card)] border border-line-default bg-surface p-5">
             <div className="flex items-center gap-2">
               <Plus className="h-4 w-4 text-copy-secondary" />
               <h2 className="text-base font-semibold text-copy-primary">Create ticket</h2>
@@ -118,20 +109,20 @@ export default function ClientSupportPage() {
 
           <section>
             {casesQuery.isLoading ? (
-              <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading tickets...</div>
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading tickets...</div>
             ) : casesQuery.error ? (
-              <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
+              <div className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
                 {casesQuery.error instanceof Error ? casesQuery.error.message : "Failed to load support tickets."}
               </div>
             ) : cases.length === 0 ? (
-              <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No support tickets yet.</div>
+              <div className="rounded-[var(--radius-card)] border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No support tickets yet.</div>
             ) : (
               <div className="grid gap-3">
                 {cases.map((item) => (
-                  <Link key={item.id} href={`/client/support/${item.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
+                  <Link key={item.id} href={`/client/support/${item.id}`} className="group rounded-[var(--radius-control)] border border-line-subtle bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div className="min-w-0">
-                        <div className="text-xs uppercase text-copy-muted">{item.case_number}</div>
+                        <div className="text-xs font-medium text-copy-label">{item.case_number}</div>
                         <h2 className="mt-1 truncate font-semibold text-copy-primary">{item.subject}</h2>
                         <p className="mt-1 text-xs text-copy-muted">{formatDateTime(item.updated_at)}</p>
                       </div>
@@ -150,6 +141,6 @@ export default function ClientSupportPage() {
           </section>
         </div>
       </div>
-    </main>
+    </>
   );
 }

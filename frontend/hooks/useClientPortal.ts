@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { downloadBlob, openBlobInNewTab } from "@/lib/browser";
 import { apiUrl } from "@/lib/runtime-config";
 
@@ -349,7 +349,9 @@ async function crmJson<T>(path: string, init: RequestInit = {}, fallback = "Requ
     },
   });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error(fallback);
+  // The status is kept so a 403 can render a permission wall rather than a fault
+  // (rebuild.md 5.6 batch 3).
+  if (!res.ok) throw new ApiError(res.status, fallback);
   return body as T;
 }
 

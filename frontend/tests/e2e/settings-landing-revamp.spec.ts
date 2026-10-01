@@ -6,18 +6,18 @@ const SETTINGS_DESTINATIONS = [
   { name: "General", href: "/dashboard/settings/general" },
   { name: "Users", href: "/dashboard/settings/users" },
   { name: "Teams", href: "/dashboard/settings/teams" },
-  { name: "Customer Groups", href: "/dashboard/settings/customer-groups" },
+  { name: "Customer groups", href: "/dashboard/settings/customer-groups" },
   { name: "Permissions", href: "/dashboard/settings/permissions" },
-  { name: "Module Settings", href: "/dashboard/settings/modules" },
-  { name: "Module Builder", href: "/dashboard/settings/module-builder" },
-  { name: "Field Config", href: "/dashboard/settings/fields" },
+  { name: "Module settings", href: "/dashboard/settings/modules" },
+  { name: "Module builder", href: "/dashboard/settings/module-builder" },
+  { name: "Field config", href: "/dashboard/settings/fields" },
   { name: "Templates", href: "/dashboard/settings/message-templates" },
   { name: "Automation", href: "/dashboard/settings/automation" },
-  { name: "Booking Links", href: "/dashboard/settings/calendar-booking" },
+  { name: "Booking links", href: "/dashboard/settings/calendar-booking" },
   { name: "Backups", href: "/dashboard/settings/backups" },
   { name: "Integrations", href: "/dashboard/settings/integrations" },
-  { name: "Activity Log", href: "/dashboard/settings/activity-log" },
-  { name: "Recycle Bin", href: "/dashboard/settings/recycle-bin" },
+  { name: "Activity log", href: "/dashboard/settings/activity-log" },
+  { name: "Recycle bin", href: "/dashboard/settings/recycle-bin" },
   { name: "Authentication", href: "/dashboard/settings/authentication" },
   { name: "Domains", href: "/dashboard/settings/domains" },
   { name: "Provisioning", href: "/dashboard/settings/provisioning" },
@@ -36,8 +36,10 @@ test("shows every registered settings destination on mobile", async ({ page }) =
     await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
   }
 
+  // Scoped to the hub, the one settings index.
+  const hub = page.locator('[data-slot="settings-hub"]');
   for (const destination of SETTINGS_DESTINATIONS) {
-    await expect(page.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(
+    await expect(hub.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(
       "href",
       destination.href,
     );
@@ -47,8 +49,9 @@ test("shows every registered settings destination on mobile", async ({ page }) =
 test("settings rows use one scan column and support keyboard navigation", async ({ page }) => {
   await page.goto("/dashboard/settings");
 
-  const generalLink = page.getByRole("link", { name: /^General/ });
-  const usersLink = page.getByRole("link", { name: /^Users/ });
+  const hub = page.locator('[data-slot="settings-hub"]');
+  const generalLink = hub.getByRole("link", { name: /^General/ });
+  const usersLink = hub.getByRole("link", { name: /^Users/ });
   const generalBox = await generalLink.boundingBox();
   const usersBox = await usersLink.boundingBox();
 
@@ -62,4 +65,14 @@ test("settings rows use one scan column and support keyboard navigation", async 
   await page.keyboard.press("Enter");
 
   await expect(page).toHaveURL(/\/dashboard\/settings\/general$/);
+});
+
+test("settings pages draw no second nav and return to the hub from the header", async ({ page }) => {
+  await page.goto("/dashboard/settings/users");
+  await expect(page.locator('[data-slot="settings-nav-rail"]')).toHaveCount(0);
+  const back = page.getByRole("link", { name: "Back to all settings" });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(/\/dashboard\/settings$/);
+  await expect(page.getByRole("link", { name: "Back to all settings" })).toHaveCount(0);
 });

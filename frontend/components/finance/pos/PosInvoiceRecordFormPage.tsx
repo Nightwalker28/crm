@@ -8,27 +8,30 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
-  formatTransactionMoney,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
+import { TransactionTotals } from "@/components/transactions/TransactionTotals";
 import { Button } from "@/components/ui/button";
 import {
   Field,
   FieldDescription,
   FieldError,
+  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
@@ -89,7 +92,7 @@ const EMPTY_FORM: InvoiceForm = {
   payment_status: "unpaid",
   payment_method: "cash",
   template_id: "modern",
-  accent_color: "#14b8a6",
+  accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   currency: "USD",
   discount_amount: "0",
   tax_rate: "0",
@@ -190,7 +193,7 @@ export default function PosInvoiceRecordFormPage({
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
-        title="Unable to load invoice"
+        title="Invoice could not be loaded"
         reset={() => void query.refetch()}
         backHref="/dashboard/finance/pos"
         backLabel="Back to invoices"
@@ -220,6 +223,10 @@ function PosInvoiceRecordFormEditor({
   updatedAt?: string | null;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/finance/pos";
+  const backHref = useRecordTabHref(mode === "edit" && invoiceId ? `${listHref}/${invoiceId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
   const [form, setForm] = useState<InvoiceForm>(seed.form);
@@ -230,7 +237,11 @@ function PosInvoiceRecordFormEditor({
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
   const [linesError, setLinesError] = useState<string | null>(null);
-  const [pricingError, setPricingError] = useState<string | null>(null);
+  // One `pricingError` covered discount, tax rate and amount paid, so the message named
+  // none of them (§7.5: an error names the fix). Three fields, three errors.
+  const [discountError, setDiscountError] = useState<string | null>(null);
+  const [taxRateError, setTaxRateError] = useState<string | null>(null);
+  const [paidError, setPaidError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const baseTotals = useMemo(() => calculateTransactionTotals(lines), [lines]);
@@ -263,11 +274,12 @@ function PosInvoiceRecordFormEditor({
       !form.customer_email.trim() ||
       /^\S+@\S+\.\S+$/.test(form.customer_email.trim());
     const validLines = areTransactionItemsValid(lines);
-    const validPricing =
+    const validDiscount =
       numberValue(form.discount_amount) >= 0 &&
-      numberValue(form.discount_amount) <= totals.subtotal &&
-      numberValue(form.tax_rate) >= 0 &&
-      numberValue(form.tax_rate) <= 100 &&
+      numberValue(form.discount_amount) <= totals.subtotal;
+    const validTaxRate =
+      numberValue(form.tax_rate) >= 0 && numberValue(form.tax_rate) <= 100;
+    const validPaid =
       numberValue(form.amount_paid) >= 0 &&
       numberValue(form.amount_paid) <= totals.total;
     setCustomerError(validCustomer ? null : "Customer name is required.");
@@ -277,10 +289,14 @@ function PosInvoiceRecordFormEditor({
         ? null
         : "Each line needs a description, positive quantity, and non-negative price.",
     );
-    setPricingError(
-      validPricing
+    setDiscountError(
+      validDiscount ? null : "Enter a discount between zero and the subtotal.",
+    );
+    setTaxRateError(validTaxRate ? null : "Enter a tax rate between 0 and 100.");
+    setPaidError(
+      validPaid
         ? null
-        : "Discount, tax, or paid amount is outside the allowed range.",
+        : "Enter an amount paid between zero and the invoice total.",
     );
     if (!validCustomer) document.getElementById("invoice-customer")?.focus();
     else if (!validEmail) document.getElementById("invoice-email")?.focus();
@@ -288,7 +304,17 @@ function PosInvoiceRecordFormEditor({
       document
         .querySelector<HTMLInputElement>("[data-transaction-field='name']")
         ?.focus();
-    return validCustomer && validEmail && validLines && validPricing;
+    else if (!validDiscount) document.getElementById("invoice-discount")?.focus();
+    else if (!validTaxRate) document.getElementById("invoice-tax-rate")?.focus();
+    else if (!validPaid) document.getElementById("invoice-paid")?.focus();
+    return (
+      validCustomer &&
+      validEmail &&
+      validLines &&
+      validDiscount &&
+      validTaxRate &&
+      validPaid
+    );
   }
   async function submit() {
     if (!validate()) return;
@@ -344,97 +370,84 @@ function PosInvoiceRecordFormEditor({
       ]);
       toast.success(mode === "edit" ? "Invoice updated." : "Invoice created.");
       const targetId = body?.id ?? (invoiceId ? Number(invoiceId) : null);
-      router.push(
-        targetId
-          ? `/dashboard/finance/pos/${targetId}`
-          : "/dashboard/finance/pos",
-      );
+      router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
     } catch {
       setSubmitError("Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
   }
-  const backHref =
-    mode === "edit" && invoiceId
-      ? `/dashboard/finance/pos/${invoiceId}`
-      : "/dashboard/finance/pos";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        eyebrow={
-          mode === "edit" && updatedAt
-            ? `Last modified ${formatDateTime(updatedAt)}`
-            : undefined
-        }
-        title={
-          mode === "edit" ? `Edit ${form.invoice_number}` : "Create invoice"
-        }
-        description={
-          mode === "edit"
-            ? "Update billing details, line items, pricing, payment state, and print settings."
-            : "Create an itemized customer invoice with pricing, payment, and print settings."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={backHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "invoice" : "invoices"}
-            </Link>
-          </Button>
-        }
-      />
+    <PageShell
+      eyebrow={
+        mode === "edit" && updatedAt
+          ? `Last modified ${formatDateTime(updatedAt)}`
+          : undefined
+      }
+      title={
+        mode === "edit" ? `Edit ${form.invoice_number}` : "Create invoice"
+      }
+      description={
+        mode === "edit"
+          ? "Update billing details, line items, pricing, payment state, and print settings."
+          : "Create an itemized customer invoice with pricing, payment, and print settings."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={backHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "invoice" : "invoices"}
+          </Link>
+        </Button>
+      }
+    >
       {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">
-            We could not {mode === "edit" ? "update" : "create"} this invoice.
-          </div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this invoice.`}>{submitError}</FormErrorBanner>
       ) : null}
       <RecordFormLayout
+        title={mode === "edit" ? form.invoice_number : "Create invoice"}
         sidebar={
           <InvoiceSidebar
             form={form}
             onChange={setForm}
             totals={totals}
             currencies={currencies.data ?? ["USD"]}
-            pricingError={pricingError}
+            discountError={discountError}
+            taxRateError={taxRateError}
+            paidError={paidError}
+            onClearPricingError={() => {
+              setDiscountError(null);
+              setTaxRateError(null);
+              setPaidError(null);
+            }}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {dirty
-                ? "You have unsaved changes."
+        status={dirty
+          ? "Unsaved changes"
+          : mode === "edit"
+          ? null
+          : "Add the customer and line items to create this invoice."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={backHref}>Cancel</Link>
+            </Button>
+            <Button onClick={() => void submit()} disabled={submitting}>
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Add the customer and line items to create this invoice."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={backHref}>Cancel</Link>
-              </Button>
-              <Button onClick={() => void submit()} disabled={submitting}>
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create invoice"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create invoice"}
+            </Button>
+          </>
+        )}
       >
         <FormSection
           title="Customer and billing details"
           description="Link an existing CRM customer or enter walk-in billing information."
         >
-          <div className="grid gap-4 md:grid-cols-2">
+          <FieldGroup columns={2}>
             <Field
               data-invalid={Boolean(customerError)}
               className="md:col-span-2"
@@ -454,8 +467,9 @@ function PosInvoiceRecordFormEditor({
               {customerError ? <FieldError>{customerError}</FieldError> : null}
             </Field>
             <Field>
-              <FieldLabel>Account</FieldLabel>
+              <FieldLabel htmlFor="invoice-account">Account</FieldLabel>
               <LinkedRecordPicker
+                inputId="invoice-account"
                 recordType="organization"
                 valueId={form.customer_organization_id}
                 displayValue={form.organization_name}
@@ -492,8 +506,9 @@ function PosInvoiceRecordFormEditor({
               />
             </Field>
             <Field>
-              <FieldLabel>Contact</FieldLabel>
+              <FieldLabel htmlFor="invoice-contact">Contact</FieldLabel>
               <LinkedRecordPicker
+                inputId="invoice-contact"
                 recordType="contact"
                 valueId={form.customer_contact_id}
                 displayValue={form.contact_name}
@@ -553,7 +568,7 @@ function PosInvoiceRecordFormEditor({
                 }
               />
             </Field>
-          </div>
+          </FieldGroup>
         </FormSection>
         <TransactionLineItemsEditor
           items={lines}
@@ -598,7 +613,7 @@ function PosInvoiceRecordFormEditor({
           </div>
         </FormSection>
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }
 
@@ -607,7 +622,10 @@ function InvoiceSidebar({
   onChange,
   totals,
   currencies,
-  pricingError,
+  discountError,
+  taxRateError,
+  paidError,
+  onClearPricingError,
 }: {
   form: InvoiceForm;
   onChange: (form: InvoiceForm) => void;
@@ -620,46 +638,33 @@ function InvoiceSidebar({
     balance: number;
   };
   currencies: string[];
-  pricingError: string | null;
+  discountError: string | null;
+  taxRateError: string | null;
+  paidError: string | null;
+  onClearPricingError: () => void;
 }) {
   return (
     <>
-      <FormSection
-        title="Review summary"
+      {/* `Total` was computed, validated against (`amount_paid <= total`) and never drawn,
+          so the operator entered a payment against a figure the form withheld. */}
+      <TransactionTotals
         description="Totals are recalculated by the server before the invoice is saved."
-      >
-        <dl className="space-y-3">
-          <SummaryRow
-            label="Subtotal"
-            value={formatTransactionMoney(totals.subtotal, form.currency)}
-          />
-          <SummaryRow
-            label="Discount"
-            value={`− ${formatTransactionMoney(totals.discount, form.currency)}`}
-          />
-          <SummaryRow
-            label="Tax"
-            value={formatTransactionMoney(totals.tax, form.currency)}
-          />
-          <SummaryRow
-            label="Paid"
-            value={`− ${formatTransactionMoney(totals.paid, form.currency)}`}
-          />
-          <div className="border-t border-line-default pt-3">
-            <SummaryRow
-              label="Balance"
-              value={formatTransactionMoney(totals.balance, form.currency)}
-              strong
-            />
-          </div>
-        </dl>
-      </FormSection>
+        currency={form.currency}
+        rows={[
+          { label: "Subtotal", amount: totals.subtotal },
+          { label: "Discount", amount: totals.discount, negative: true },
+          { label: "Tax", amount: totals.tax },
+          { label: "Total", amount: totals.total },
+          { label: "Paid", amount: totals.paid, negative: true },
+          { label: "Balance", amount: totals.balance, resolved: true },
+        ]}
+      />
       <FormSection
-        title="Pricing, discounts, and taxes"
-        description="Apply invoice-level adjustments after line items."
+        title="Pricing and tax"
+        description="Invoice-level adjustments, applied after the line items."
       >
         <div className="space-y-4">
-          <Field>
+          <Field data-invalid={Boolean(discountError)}>
             <FieldLabel htmlFor="invoice-discount">Discount amount</FieldLabel>
             <Input
               id="invoice-discount"
@@ -667,12 +672,15 @@ function InvoiceSidebar({
               min="0"
               step="0.01"
               value={form.discount_amount}
-              onChange={(event) =>
-                onChange({ ...form, discount_amount: event.target.value })
-              }
+              aria-invalid={Boolean(discountError)}
+              onChange={(event) => {
+                onClearPricingError();
+                onChange({ ...form, discount_amount: event.target.value });
+              }}
             />
+            {discountError ? <FieldError>{discountError}</FieldError> : null}
           </Field>
-          <Field>
+          <Field data-invalid={Boolean(taxRateError)}>
             <FieldLabel htmlFor="invoice-tax-rate">Tax rate (%)</FieldLabel>
             <Input
               id="invoice-tax-rate"
@@ -681,12 +689,47 @@ function InvoiceSidebar({
               max="100"
               step="0.01"
               value={form.tax_rate}
-              onChange={(event) =>
-                onChange({ ...form, tax_rate: event.target.value })
-              }
+              aria-invalid={Boolean(taxRateError)}
+              onChange={(event) => {
+                onClearPricingError();
+                onChange({ ...form, tax_rate: event.target.value });
+              }}
             />
+            {taxRateError ? <FieldError>{taxRateError}</FieldError> : null}
           </Field>
+        </div>
+      </FormSection>
+      {/* Payment status, the amount paid and the method are one fact about this invoice.
+          They were split across the pricing block and the settings block, so reconciling a
+          part-paid invoice meant reading two panels. */}
+      <FormSection
+        title="Payment"
+        description="What has been received against this invoice, and how."
+      >
+        <div className="space-y-4">
           <Field>
+            <FieldLabel htmlFor="invoice-payment-status">
+              Payment status
+            </FieldLabel>
+            <Select
+              value={form.payment_status}
+              onValueChange={(payment_status) =>
+                onChange({ ...form, payment_status })
+              }
+            >
+              <SelectTrigger id="invoice-payment-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PAYMENT_STATUSES.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Field data-invalid={Boolean(paidError)}>
             <FieldLabel htmlFor="invoice-paid">Amount paid</FieldLabel>
             <Input
               id="invoice-paid"
@@ -694,17 +737,31 @@ function InvoiceSidebar({
               min="0"
               step="0.01"
               value={form.amount_paid}
+              aria-invalid={Boolean(paidError)}
+              onChange={(event) => {
+                onClearPricingError();
+                onChange({ ...form, amount_paid: event.target.value });
+              }}
+            />
+            {paidError ? <FieldError>{paidError}</FieldError> : null}
+          </Field>
+          <Field>
+            <FieldLabel htmlFor="invoice-payment-method">
+              Payment method
+            </FieldLabel>
+            <Input
+              id="invoice-payment-method"
+              value={form.payment_method}
               onChange={(event) =>
-                onChange({ ...form, amount_paid: event.target.value })
+                onChange({ ...form, payment_method: event.target.value })
               }
             />
           </Field>
-          {pricingError ? <FieldError>{pricingError}</FieldError> : null}
         </div>
       </FormSection>
       <FormSection
-        title="Delivery and payment details"
-        description="Control invoice dates, status, payment method, and print presentation."
+        title="Invoice details"
+        description="Numbering, currency, dates, and workflow status."
       >
         <div className="space-y-4">
           <Field>
@@ -719,12 +776,12 @@ function InvoiceSidebar({
             />
           </Field>
           <Field>
-            <FieldLabel>Currency</FieldLabel>
+            <FieldLabel htmlFor="invoice-currency">Currency</FieldLabel>
             <Select
               value={form.currency}
               onValueChange={(currency) => onChange({ ...form, currency })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="invoice-currency">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -760,12 +817,12 @@ function InvoiceSidebar({
             />
           </Field>
           <Field>
-            <FieldLabel>Status</FieldLabel>
+            <FieldLabel htmlFor="invoice-status">Status</FieldLabel>
             <Select
               value={form.status}
               onValueChange={(status) => onChange({ ...form, status })}
             >
-              <SelectTrigger>
+              <SelectTrigger id="invoice-status">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -777,47 +834,22 @@ function InvoiceSidebar({
               </SelectContent>
             </Select>
           </Field>
+        </div>
+      </FormSection>
+      <FormSection
+        title="Print"
+        description="How this invoice looks when it is printed or sent."
+      >
+        <div className="space-y-4">
           <Field>
-            <FieldLabel>Payment status</FieldLabel>
-            <Select
-              value={form.payment_status}
-              onValueChange={(payment_status) =>
-                onChange({ ...form, payment_status })
-              }
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAYMENT_STATUSES.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="invoice-payment-method">
-              Payment method
-            </FieldLabel>
-            <Input
-              id="invoice-payment-method"
-              value={form.payment_method}
-              onChange={(event) =>
-                onChange({ ...form, payment_method: event.target.value })
-              }
-            />
-          </Field>
-          <Field>
-            <FieldLabel>Print template</FieldLabel>
+            <FieldLabel htmlFor="invoice-template">Print template</FieldLabel>
             <Select
               value={form.template_id}
               onValueChange={(template_id) =>
                 onChange({ ...form, template_id })
               }
             >
-              <SelectTrigger>
+              <SelectTrigger id="invoice-template">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -846,23 +878,5 @@ function InvoiceSidebar({
         </div>
       </FormSection>
     </>
-  );
-}
-function SummaryRow({
-  label,
-  value,
-  strong = false,
-}: {
-  label: string;
-  value: string;
-  strong?: boolean;
-}) {
-  return (
-    <div
-      className={`flex items-center justify-between gap-3 ${strong ? "text-base font-semibold text-copy-primary" : "text-sm text-copy-secondary"}`}
-    >
-      <dt>{label}</dt>
-      <dd className="tabular-nums">{value}</dd>
-    </div>
   );
 }

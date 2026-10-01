@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowRight, Rows3 } from "lucide-react";
+import { ArrowRight, LayoutGrid, Search } from "lucide-react";
 
 import { formatDashboardCurrency, type CrmDashboardSummary } from "@/components/dashboard/DashboardCrmWidgets";
-import { Input } from "@/components/ui/input";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { Card } from "@/components/ui/Card";
+import { RecordTable } from "@/components/ui/RecordTable";
+import { InputGroup, InputGroupAddon, InputGroupInput } from "@/components/ui/input-group";
+import { StatTile } from "@/components/ui/StatTile";
 import { Textarea } from "@/components/ui/textarea";
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
@@ -40,7 +42,7 @@ export function DashboardNoteWidget({
       }}
       maxLength={2000}
       className="min-h-44 resize-y"
-      placeholder="Write a quick note..."
+      placeholder="Write a quick note…"
       aria-label="Dashboard quick note"
     />
   );
@@ -64,51 +66,41 @@ export function DashboardSummaryTable({
 
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Rows3 className="pointer-events-none absolute left-3 top-1/2 z-10 h-4 w-4 -translate-y-1/2 text-copy-muted" />
-        <Input
+      {/* The icon was hand-positioned over a plain `Input`; `InputGroup` is the primitive for it. */}
+      <InputGroup>
+        <InputGroupAddon><Search /></InputGroupAddon>
+        <InputGroupInput
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          className="pl-9"
-          placeholder="Filter modules..."
+          placeholder="Filter modules"
           aria-label="Filter dashboard module summaries"
         />
-      </div>
-      <div className="overflow-hidden rounded-[var(--radius-card)] border border-line-default">
-        <Table>
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Module</TableHead>
-              <TableHead>Summary</TableHead>
-              <TableHead>Open</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {filtered.slice(0, 8).map((item) => (
-              <TableRow key={item.id}>
-                <TableCell className="font-medium text-copy-primary">
-                  {getModuleDisplayName(item.name, item.description ?? undefined)}
-                </TableCell>
-                <TableCell className="text-copy-secondary">{moduleSummaryText(item, summary, unreadCount)}</TableCell>
-                <TableCell>
-                  <Link
-                    href={getModuleRoute(item.name, item.base_route) || "/dashboard/profile"}
-                    className="inline-flex items-center gap-1 font-medium text-copy-secondary hover:text-copy-primary"
-                  >
-                    View
-                    <ArrowRight className="h-3.5 w-3.5" />
-                  </Link>
-                </TableCell>
-              </TableRow>
-            ))}
-            {!filtered.length ? (
-              <TableRow>
-                <TableCell colSpan={3} className="py-6 text-center text-copy-muted">No modules match this filter.</TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </div>
+      </InputGroup>
+      {/* R10: a read-only list is `RecordTable variant="readOnly"`. This was the raw `Table`,
+          one of the two importers left outside the primitives and the client portal. */}
+      <RecordTable
+        variant="readOnly"
+        label="Module summaries"
+        shellVariant="nested"
+        columns={[
+          {
+            key: "module",
+            label: "Module",
+            render: (item) => (
+              <Link
+                href={getModuleRoute(item.name, item.base_route) || "/dashboard/profile"}
+                className="font-medium text-copy-primary underline-offset-4 hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+              >
+                {getModuleDisplayName(item.name, item.description ?? undefined)}
+              </Link>
+            ),
+          },
+          { key: "summary", label: "Summary", size: "lg", render: (item) => moduleSummaryText(item, summary, unreadCount) },
+        ]}
+        rows={filtered.slice(0, 8)}
+        rowKey={(item) => item.id}
+        emptyState={{ icon: LayoutGrid, title: normalizedQuery ? "No modules match this filter" : "No modules are available yet" }}
+      />
     </div>
   );
 }
@@ -144,18 +136,20 @@ export function DashboardModuleSummary({
     helper = "Unread user updates";
   }
 
+  // The one metric that is also a link. The box is earned by the click (R8), so it is the
+  // interactive card, and the figure inside it is the same `StatTile` every metric uses.
   return (
-    <Link
-      href={href}
-      className="block rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 transition-colors hover:border-line-strong hover:bg-surface-raised"
-    >
-      <div className="text-xs uppercase tracking-[0.16em] text-copy-muted">{moduleName}</div>
-      <div className="mt-3 text-3xl font-semibold text-copy-primary">{value}</div>
-      <div className="mt-2 text-sm leading-6 text-copy-secondary">{helper}</div>
-      <div className="mt-4 flex items-center gap-2 text-sm font-medium text-copy-primary">
-        Open module
-        <ArrowRight className="h-4 w-4" />
-      </div>
-    </Link>
+    <Card variant="interactive" asChild>
+      <Link
+        href={href}
+        className="flex h-full flex-col p-4 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
+      >
+        <StatTile label={moduleName} value={value} context={helper} />
+        <span className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-copy-secondary">
+          Open module
+          <ArrowRight className="size-4" aria-hidden="true" />
+        </span>
+      </Link>
+    </Card>
   );
 }

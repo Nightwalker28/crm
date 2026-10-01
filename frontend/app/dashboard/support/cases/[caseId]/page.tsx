@@ -1,21 +1,30 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { MessageSquareText, Save } from "lucide-react";
-import { toast } from "sonner";
 
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { Button } from "@/components/ui/button";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
+import RecordAuditHistory, {
+  type RecordModuleEvent,
+} from "@/components/recordActivity/RecordAuditHistory";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
+import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Card } from "@/components/ui/Card";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Pill } from "@/components/ui/Pill";
-import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import {
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+  RecordSpineTrack,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { StatusValue } from "@/components/ui/StatusValue";
 import {
   SUPPORT_CASES_QUERY_KEY,
   SUPPORT_CASES_SUMMARY_QUERY_KEY,
@@ -23,248 +32,389 @@ import {
   type SupportCase,
   useSupportCase,
 } from "@/hooks/support/useCases";
-import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { getSupportCasePriorityStyle, getSupportCaseStatusStyle } from "@/lib/statusStyles";
+import { getSupportCasePriority, getSupportCaseStatus } from "@/lib/statusStyles";
 
 const STATUSES = ["new", "open", "pending", "resolved", "closed"] as const;
 const PRIORITIES = ["low", "medium", "high", "urgent"] as const;
 const CATEGORIES = ["general", "billing", "technical", "order", "account"] as const;
 
+const STATUS_OPTIONS: InlineFieldEditOption[] = STATUSES.map((value) => ({
+  value,
+  ...getSupportCaseStatus(value),
+}));
+const PRIORITY_OPTIONS: InlineFieldEditOption[] = PRIORITIES.map((value) => ({
+  value,
+  ...getSupportCasePriority(value),
+}));
+
+const CATEGORY_LABELS: Record<(typeof CATEGORIES)[number], string> = {
+  general: "General",
+  billing: "Billing",
+  technical: "Technical",
+  order: "Order",
+  account: "Account",
+};
+
+/** Category is a category, not a status (R5) — no tone, ever. */
+const CATEGORY_OPTIONS: InlineFieldEditOption[] = CATEGORIES.map((value) => ({
+  value,
+  tone: null,
+  label: CATEGORY_LABELS[value],
+}));
+
+/**
+ * A case's whole set is its pipeline: `closed` completes it rather than leaving it, so unlike
+ * a quote's `cancelled` or an order's, nothing here is an exit and every status is a step.
+ */
+const CASE_TRACK_STEPS = STATUSES.map((value) => ({
+  id: value,
+  label: getSupportCaseStatus(value).label,
+}));
+
+/**
+ * Every event type `cases_services` writes, spelled out rather than title-cased at runtime.
+ *
+ * The runtime title-caser this replaces turned `client_replied` into `Client Replied` — §3.5
+ * shouting a source-level grep cannot see, and the `client_*` prefix said "portal" to nobody.
+ */
+const CASE_EVENT_LABELS: Record<string, string> = {
+  created: "Case created",
+  updated: "Case updated",
+  status_changed: "Status changed",
+  commented: "Reply added",
+  client_created: "Case opened from the portal",
+  client_replied: "Customer replied in the portal",
+  client_status_changed: "Status changed from the portal",
+};
+
+/**
+ * Fields `Details` must not draw a second time (design.md §4.7): the header owns the subject
+ * and the case number, and the spine owns status, priority, category and the assignee.
+ */
+const SPINE_OWNED_FIELDS = [
+  "subject",
+  "case_number",
+  "status",
+  "priority",
+  "category",
+  "assigned_to_id",
+] as const;
+
 export default function SupportCaseDetailPage() {
   const params = useParams<{ caseId: string }>();
-  const caseQuery = useSupportCase(params.caseId);
-
-  if (caseQuery.isLoading) return <RouteLoadingState label="support case" />;
-  if (caseQuery.error instanceof Error && caseQuery.error.message === "not-found") {
-    return <RouteNotFoundState recordLabel="Support case" backHref="/dashboard/support/cases" backLabel="Back to support cases" />;
-  }
-  if (caseQuery.error || !caseQuery.data) {
-    return <RouteErrorState title="Unable to load this support case" reset={() => void caseQuery.refetch()} backHref="/dashboard/support/cases" backLabel="Back to support cases" />;
-  }
-
-  return <SupportCaseWorkspace key={`${caseQuery.data.id}:${caseQuery.data.updated_at}`} item={caseQuery.data} />;
-}
-
-function SupportCaseWorkspace({ item }: { item: SupportCase }) {
   const queryClient = useQueryClient();
-  const [status, setStatus] = useState(item.status ?? "new");
-  const [priority, setPriority] = useState(item.priority ?? "medium");
-  const [category, setCategory] = useState(item.category ?? "general");
-  const [comment, setComment] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [commenting, setCommenting] = useState(false);
-  const [saveError, setSaveError] = useState(false);
-  const [commentError, setCommentError] = useState(false);
-  const initialSnapshot = useMemo(() => JSON.stringify([item.status, item.priority, item.category ?? "general"]), [item]);
-  const currentSnapshot = useMemo(() => JSON.stringify([status, priority, category]), [status, priority, category]);
-  const isDirty = currentSnapshot !== initialSnapshot;
+  const { modules } = useAccessibleModules();
 
-  useUnsavedChangesGuard(isDirty, saving);
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const caseActions = moduleActions("support_cases");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const canEdit = Boolean(caseActions?.can_edit);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canViewDocuments = Boolean(documentActions?.can_view);
 
-  async function handleSave() {
-    if (!isDirty || saving) return;
-    try {
-      setSaving(true);
-      setSaveError(false);
-      const res = await apiFetch(`/support/cases/${item.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status, priority, category }),
-      });
-      const body = await res.json().catch(() => null) as SupportCase | null;
-      if (!res.ok || !body) throw new Error("save-failed");
-      queryClient.setQueryData(supportCaseQueryKey(item.id), body);
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
-      ]);
-      toast.success("Support case updated.");
-    } catch {
-      setSaveError(true);
-    } finally {
-      setSaving(false);
-    }
+  const caseQuery = useSupportCase(params.caseId);
+  const detailLayoutQuery = useResolvedRecordLayout("support_cases", "detail");
+
+  const item = caseQuery.data ?? null;
+  const notFound = caseQuery.error instanceof Error && caseQuery.error.message === "not-found";
+  const caseName = item?.subject || "Support case";
+
+  async function updateField(field: "status" | "priority" | "category", next: string) {
+    if (!item) return;
+    const res = await apiFetch(`/support/cases/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ [field]: next }),
+    });
+    const body = (await res.json().catch(() => null)) as SupportCase | null;
+    if (!res.ok || !body) throw new Error("The case could not be saved.");
+    queryClient.setQueryData(supportCaseQueryKey(item.id), body);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "support_cases", String(item.id)],
+      }),
+    ]);
   }
 
-  async function handleComment() {
-    if (!comment.trim() || commenting) return;
-    try {
-      setCommenting(true);
-      setCommentError(false);
-      const res = await apiFetch(`/support/cases/${item.id}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body: comment.trim(), is_internal: false }),
-      });
-      if (!res.ok) throw new Error("comment-failed");
-      setComment("");
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: supportCaseQueryKey(item.id) }),
-      ]);
-      toast.success("Reply added.");
-    } catch {
-      setCommentError(true);
-    } finally {
-      setCommenting(false);
-    }
+  /** The assignee is an id rather than an enum, so it does not go through `updateField` —
+   *  everything else about the write is the same. */
+  async function updateAssignee(nextOwnerId: number | null) {
+    if (!item) return;
+    const res = await apiFetch(`/support/cases/${item.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigned_to_id: nextOwnerId }),
+    });
+    const body = (await res.json().catch(() => null)) as SupportCase | null;
+    if (!res.ok || !body) throw new Error("The case could not be saved.");
+    queryClient.setQueryData(supportCaseQueryKey(item.id), body);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+      queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "support_cases", String(item.id)],
+      }),
+    ]);
   }
 
   return (
-    <div className="flex flex-col gap-6">
-      <RecordPageHeader
-        backHref="/dashboard/support/cases"
-        backLabel="Back to support cases"
-        title={item.case_number}
-        description={item.subject}
-        primaryAction={<Button onClick={() => void handleSave()} disabled={saving || !isDirty}><Save />{saving ? "Saving…" : "Save changes"}</Button>}
-      />
-
-      {saveError ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          The case could not be updated. Review the fields and try again.
-        </div>
+    <RecordWorkspace
+      title={caseName}
+      description="Review the case's state, the conversation with the customer, and its linked records."
+      backHref="/dashboard/support/cases"
+      backLabel="Support cases"
+      isLoading={caseQuery.isLoading || (!item && !caseQuery.error)}
+      hasError={Boolean(caseQuery.error)}
+      onRetry={() => void caseQuery.refetch()}
+      errorState={notFound ? (
+        <RouteNotFoundState
+          titleAs="p"
+          recordLabel="Support case"
+          backHref="/dashboard/support/cases"
+          backLabel="Back to support cases"
+        />
+      ) : undefined}
+      status={item ? <StatusValue status={getSupportCaseStatus(item.status)} context="record" /> : null}
+      /*
+       * The subject is the case's name and the number is its reference — the reverse of the
+       * three line-item documents, whose number *is* their identity in the ledger. The
+       * operator's question here is "which case is this", and the subject answers it.
+       */
+      subtitle={item ? (
+        <>
+          <span>{item.case_number}</span>
+          {item.contact_name || item.organization_name ? (
+            <span>{item.contact_name || item.organization_name}</span>
+          ) : null}
+        </>
       ) : null}
+      /*
+       * No header actions at all. A case advances by changing its status, and the rail owns
+       * that field — and there is no `/[id]/edit` route to point an `Edit` button at, which
+       * is a real gap recorded in `rebuild.md` rather than one a migration invents a form for.
+       */
+      spine={
+        <RecordSpine>
+          {item ? (
+            <>
+              <RecordSpineTrack
+                steps={CASE_TRACK_STEPS}
+                currentId={item.status}
+                label="Case lifecycle"
+              />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        <div className="grid content-start gap-4">
-          <Card className="p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <h2 className="text-lg font-semibold text-copy-primary">Case overview</h2>
-                <FieldDescription className="mt-1">Manage the response state, urgency, and queue context.</FieldDescription>
-              </div>
-              <div className="flex gap-2">
-                <CasePill value={status} type="status" />
-                <CasePill value={priority} type="priority" />
-              </div>
-            </div>
-            <FieldGroup className="mt-5 grid gap-4 md:grid-cols-3">
-              <Field>
-                <FieldLabel>Status</FieldLabel>
-                <Select value={status} onValueChange={setStatus}>
-                  <SelectTrigger aria-label="Status"><SelectValue /></SelectTrigger>
-                  <SelectContent>{STATUSES.map((value) => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel>Priority</FieldLabel>
-                <Select value={priority} onValueChange={setPriority}>
-                  <SelectTrigger aria-label="Priority"><SelectValue /></SelectTrigger>
-                  <SelectContent>{PRIORITIES.map((value) => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-              <Field>
-                <FieldLabel>Category</FieldLabel>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger aria-label="Category"><SelectValue /></SelectTrigger>
-                  <SelectContent>{CATEGORIES.map((value) => <SelectItem key={value} value={value}>{titleCase(value)}</SelectItem>)}</SelectContent>
-                </Select>
-              </Field>
-            </FieldGroup>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <SummaryTile label="Requester" value={item.contact_name || item.organization_name || "No requester linked"} />
-              <SummaryTile label="Assignee" value={item.assigned_to_name || "Unassigned"} />
-              <SummaryTile label="SLA due" value={item.sla_due_at ? formatDateTime(item.sla_due_at) : "No SLA deadline"} />
-              <SummaryTile label="Source" value={item.source ? titleCase(item.source) : "Not recorded"} />
-            </div>
-            {item.description ? <p className="mt-5 whitespace-pre-wrap border-t border-line-subtle pt-5 text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
-          </Card>
+              <RecordSpineBlock title="State">
+                <RecordSpineField label="Status">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Status"
+                      value={item.status ?? "new"}
+                      options={STATUS_OPTIONS}
+                      onCommit={(next) => updateField("status", next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getSupportCaseStatus(item.status)} context="record" />
+                  )}
+                </RecordSpineField>
+                <RecordOwnerField
+                  label="Assignee"
+                  moduleKey="support_cases"
+                  ownerId={item.assigned_to_id}
+                  ownerName={item.assigned_to_name}
+                  canEdit={canEdit}
+                  onCommit={updateAssignee}
+                />
+                <RecordSpineField label="Priority">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Priority"
+                      value={item.priority ?? "medium"}
+                      options={PRIORITY_OPTIONS}
+                      onCommit={(next) => updateField("priority", next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getSupportCasePriority(item.priority)} context="record" />
+                  )}
+                </RecordSpineField>
+                <RecordSpineField label="Category">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Category"
+                      value={item.category ?? "general"}
+                      options={CATEGORY_OPTIONS}
+                      onCommit={(next) => updateField("category", next.value)}
+                    />
+                  ) : (
+                    <StatusValue
+                      status={{ tone: null, label: CATEGORY_LABELS[item.category as keyof typeof CATEGORY_LABELS] ?? item.category ?? "General" }}
+                      context="record"
+                    />
+                  )}
+                </RecordSpineField>
+              </RecordSpineBlock>
 
-          <Card className="p-5">
-            <div className="flex items-center gap-2">
-              <MessageSquareText className="h-5 w-5 text-copy-muted" />
-              <h2 className="text-lg font-semibold text-copy-primary">Conversation</h2>
-            </div>
-            <FieldDescription className="mt-1">Keep the customer-facing response history together with the case.</FieldDescription>
-            <div className="mt-5 grid gap-3">
-              {(item.comments ?? []).length ? item.comments?.map((entry) => (
-                <article key={entry.id} className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-copy-muted">
-                    <span>{entry.author_name || "Team member"}</span>
-                    <time dateTime={entry.created_at}>{formatDateTime(entry.created_at)}</time>
-                  </div>
-                  <div className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-primary">{entry.body}</div>
-                </article>
-              )) : (
-                <div className="rounded-[var(--radius-control)] border border-dashed border-line-default px-4 py-8 text-center text-sm text-copy-muted">No replies yet. Add the first response below.</div>
-              )}
-            </div>
-            <Field className="mt-5">
-              <FieldLabel htmlFor="support-case-reply">Add reply</FieldLabel>
-              <Textarea id="support-case-reply" value={comment} onChange={(event) => { setComment(event.target.value); if (commentError) setCommentError(false); }} rows={4} placeholder="Write a customer-facing reply" aria-invalid={commentError} aria-describedby={commentError ? "support-case-reply-error" : undefined} />
-              {commentError ? <p id="support-case-reply-error" role="alert" className="text-sm text-state-danger">The reply could not be added. Try again.</p> : null}
-              <Button onClick={() => void handleComment()} disabled={!comment.trim() || commenting} className="w-fit">{commenting ? "Adding…" : "Add reply"}</Button>
-            </Field>
-          </Card>
-        </div>
+              <RecordSpineBlock title="Connected">
+                <RecordSpineLink
+                  label="Contact"
+                  value={item.contact_name}
+                  href={item.contact_id ? `/dashboard/sales/contacts/${item.contact_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Account"
+                  value={item.organization_name}
+                  href={item.organization_id ? `/dashboard/sales/organizations/${item.organization_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Deal"
+                  value={item.opportunity_name}
+                  href={item.opportunity_id ? `/dashboard/sales/opportunities/${item.opportunity_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Quote"
+                  value={item.quote_label}
+                  href={item.quote_id ? `/dashboard/sales/quotes/${item.quote_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Order"
+                  value={item.order_label}
+                  href={item.order_id ? `/dashboard/sales/orders/${item.order_id}` : null}
+                />
+              </RecordSpineBlock>
 
-        <div className="grid content-start gap-4">
-          <Card className="p-5">
-            <h2 className="text-lg font-semibold text-copy-primary">Related records</h2>
-            <FieldDescription className="mt-1">Open the customer and commercial context connected to this case.</FieldDescription>
-            <div className="mt-4 grid gap-3">
-              <LinkedTile label="Contact" value={item.contact_name || (item.contact_id ? "Linked contact" : "No contact")} href={item.contact_id ? `/dashboard/sales/contacts/${item.contact_id}` : null} />
-              <LinkedTile label="Account" value={item.organization_name || (item.organization_id ? "Linked account" : "No account")} href={item.organization_id ? `/dashboard/sales/organizations/${item.organization_id}` : null} />
-              <LinkedTile label="Deal" value={item.opportunity_name || (item.opportunity_id ? "Linked deal" : "No deal")} href={item.opportunity_id ? `/dashboard/sales/opportunities/${item.opportunity_id}` : null} />
-              <LinkedTile label="Quote" value={item.quote_label || (item.quote_id ? "Linked quote" : "No quote")} href={item.quote_id ? `/dashboard/sales/quotes/${item.quote_id}` : null} />
-              <LinkedTile label="Order" value={item.order_label || (item.order_id ? "Linked order" : "No order")} href={item.order_id ? `/dashboard/sales/orders/${item.order_id}` : null} />
-            </div>
-          </Card>
-
-          <Card className="p-5">
-            <h2 className="text-lg font-semibold text-copy-primary">Case history</h2>
-            <div className="mt-4 grid gap-3">
-              {(item.events ?? []).length ? item.events?.map((event) => (
-                <div key={event.id} className="border-l-2 border-line-default pl-3">
-                  <div className="text-sm font-medium text-copy-primary">{titleCase(event.event_type)}</div>
-                  <time dateTime={event.created_at} className="mt-1 block text-xs text-copy-muted">{formatDateTime(event.created_at)}</time>
-                </div>
-              )) : <div className="text-sm text-copy-muted">No case history yet.</div>}
-            </div>
-          </Card>
-        </div>
-
-        <CrmRecordActivitySection
-          className="xl:col-span-2"
+              <RecordSpineMeta
+                createdLabel={`Created ${formatDateTime(item.created_at)}`}
+                updatedLabel={`Updated ${formatDateTime(item.updated_at)}`}
+                history={
+                  <RecordAuditHistory
+                    moduleKey="support_cases"
+                    entityId={item.id}
+                    moduleEvents={caseEvents(item)}
+                  />
+                }
+              />
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={item ? (
+        <CaseOverview
+          item={item}
+          layout={detailLayoutQuery.data}
+          isLayoutLoading={detailLayoutQuery.isLoading}
+          layoutError={detailLayoutQuery.error}
+          onRetryLayout={() => void detailLayoutQuery.refetch()}
+        />
+      ) : null}
+      /*
+       * The conversation *is* the Timeline. `_fetch_case_replies` projects every
+       * `SupportCaseComment` into the feed as `type="case_reply"`, so the `Conversation` card
+       * and its reply box become the composer's reply mode over the feed that already
+       * rendered them — which is what removes the two comment systems the census named.
+       */
+      timeline={item ? (
+        <RecordTimeline
           moduleKey="support_cases"
           entityId={item.id}
-          recordLabel="Support case"
-          taskSourceLabel={item.case_number}
+          canEdit={canEdit}
+          composer={canEdit ? {
+            reply: {
+              endpoint: `/support/cases/${item.id}/comments`,
+              label: "Reply to the customer",
+              placeholder: "Write a customer-facing reply",
+              onReplied: async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: supportCaseQueryKey(item.id) }),
+                  queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_QUERY_KEY }),
+                  queryClient.invalidateQueries({ queryKey: SUPPORT_CASES_SUMMARY_QUERY_KEY }),
+                ]);
+              },
+            },
+          } : undefined}
         />
-      </div>
-    </div>
+      ) : undefined}
+      tasks={item && canViewTasks ? (
+        <RecordTasksPanel
+          moduleKey="support_cases"
+          entityId={item.id}
+          sourceLabel={item.case_number}
+          canCreate={Boolean(taskActions?.can_create)}
+          canEdit={Boolean(taskActions?.can_edit)}
+          createActionVariant="outline"
+        />
+      ) : undefined}
+      files={item && canViewDocuments ? (
+        <RecordDocumentsPanel
+          moduleKey="support_cases"
+          entityId={item.id}
+          canUpload={Boolean(documentActions?.can_create) && canEdit}
+          canEdit={Boolean(documentActions?.can_edit) && canEdit}
+          canDelete={Boolean(documentActions?.can_delete) && canEdit}
+        />
+      ) : undefined}
+    />
   );
 }
 
-function CasePill({ value, type }: { value: string; type: "status" | "priority" }) {
-  const style = type === "priority" ? getSupportCasePriorityStyle(value) : getSupportCaseStatusStyle(value);
-  return <Pill bg={style.bg} text={style.text} border={style.border}>{style.label}</Pill>;
-}
+function CaseOverview({
+  item,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
+}: {
+  item: SupportCase;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
+}) {
+  if (isLayoutLoading || !layout) {
+    return (
+      <Card className="px-5 py-5">
+        {layoutError ? (
+          <PanelError message="The case details layout could not be loaded." onRetry={onRetryLayout} />
+        ) : (
+          <PanelLoading label="Loading case details…" />
+        )}
+      </Card>
+    );
+  }
 
-function SummaryTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
-      <div className="mt-1 text-sm font-medium text-copy-primary">{value}</div>
-    </div>
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={item as unknown as Record<string, unknown>}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+    />
   );
 }
 
-function LinkedTile({ label, value, href }: { label: string; value: string; href: string | null }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">{label}</div>
-      <div className="mt-1 text-sm font-medium text-copy-primary">
-        {href ? <Link href={href} className="hover:text-action-primary hover:underline">{value}</Link> : value}
-      </div>
-    </div>
-  );
-}
-
-function titleCase(value: string) {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+/**
+ * The case's own event log, in the shape the History sheet merges (design.md §4.7).
+ *
+ * This was a `Case history` card in the right column, beside a `RecordActivityTimeline` that
+ * answered the same question from `activity_logs` — the two-lists-one-question duplication
+ * the contract rebuild removed first. The domain log is the one with the coverage: only it
+ * sees a portal reply.
+ */
+function caseEvents(item: SupportCase): RecordModuleEvent[] {
+  return (item.events ?? []).map((event) => ({
+    id: String(event.id),
+    occurredAt: event.created_at,
+    label: CASE_EVENT_LABELS[event.event_type] ?? event.event_type,
+    // No actor is the portal or an automation; an actor the service could not resolve is a
+    // user who has since been removed, which is not the same thing and does not read as one.
+    detail: event.created_by_id ? event.created_by_name ?? "Unknown user" : "Customer or system",
+  }));
 }

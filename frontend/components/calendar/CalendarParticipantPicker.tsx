@@ -61,7 +61,7 @@ function participantEntry(
       type: "user" as const,
       id: participant.user_id,
       label: user?.name ?? `User #${participant.user_id}`,
-      typeLabel: "User Invite",
+      typeLabel: "User invite",
     };
   }
   if (participant.participant_type === "team" && participant.team_id) {
@@ -71,7 +71,7 @@ function participantEntry(
       type: "team" as const,
       id: participant.team_id,
       label: team?.name ?? `Team #${participant.team_id}`,
-      typeLabel: "Team Share",
+      typeLabel: "Team share",
     };
   }
   return null;

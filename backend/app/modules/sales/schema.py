@@ -3,9 +3,9 @@ from decimal import Decimal
 import json
 from typing import Any, Optional
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
-from app.modules.sales.opportunity_stages import OPPORTUNITY_STAGE_PATTERN
+from app.modules.sales.opportunity_contact_roles import OPPORTUNITY_CONTACT_ROLE_PATTERN
 
 
 class CustomerGroupSummary(BaseModel):
@@ -384,6 +384,7 @@ class SalesQuoteResponse(SalesQuoteBase):
     quote_id: int
     quote_number: str
     assigned_to: int | None = None
+    assigned_to_name: str | None = None
     created_time: datetime
     updated_at: datetime | None = None
     items: list[SalesQuoteItemResponse] = Field(default_factory=list)
@@ -574,6 +575,7 @@ class SalesOrderResponse(BaseModel):
     id: int
     order_number: str
     quote_id: int | None = None
+    quote_number: str | None = None
     organization_id: int | None = None
     contact_id: int | None = None
     opportunity_id: int | None = None
@@ -642,8 +644,29 @@ class RelatedOpportunitySummary(BaseModel):
     probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None
     currency_type: str | None = None
+    # Set only on a contact's related deals: the role that contact plays on the deal.
+    # `contact_role_key` is null when the contact is the legacy primary without a
+    # participant row.
+    contact_role_key: str | None = None
+    contact_role_label: str | None = None
+    is_primary_contact: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RelatedRecordAccess(BaseModel):
+    """Which related sections of a summary the reader may view.
+
+    False means the section is hidden by permission, so its list is empty and its
+    count is zero whatever exists. Sections a summary does not carry are omitted.
+    """
+
+    contacts: bool | None = None
+    opportunities: bool | None = None
+    quotes: bool | None = None
+    orders: bool | None = None
+    invoices: bool | None = None
+    insertion_orders: bool | None = None
 
 
 class QuoteSummaryResponse(BaseModel):
@@ -716,12 +739,17 @@ class OrganizationCompactSummary(BaseModel):
 class ContactSummaryResponse(BaseModel):
     contact: SalesContactResponse
     organization: OrganizationCompactSummary | None = None
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
+    # The contact's deals: as primary contact or as a participant, with its role.
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
+    related_orders: list[RelatedOrderSummary] = Field(default_factory=list)
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
+    # Counts are totals; the lists above hold the most recent few.
     opportunity_count: int
     quote_count: int
+    order_count: int = 0
     insertion_order_count: int
 
 
@@ -743,6 +771,7 @@ class FollowUpActionResponse(BaseModel):
 
 class OrganizationSummaryResponse(BaseModel):
     organization: SalesOrganizationResponse
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
     related_contacts: list[SalesContactResponse]
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
@@ -755,6 +784,7 @@ class OrganizationSummaryResponse(BaseModel):
     quote_count: int
     order_count: int
     invoice_count: int
+    # Counts are totals; the lists above hold the most recent few.
     insertion_order_count: int
 
 
@@ -765,6 +795,8 @@ class ContactCompactSummary(BaseModel):
     primary_email: str | None = None
     contact_telephone: str | None = None
     current_title: str | None = None
+    # Lets a deal's composer list an opted-out participant as not selectable.
+    email_opt_out: bool | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -774,7 +806,10 @@ class ContactCompactSummary(BaseModel):
 class SalesOpportunityBase(BaseModel):
     opportunity_name: str
     client: str | None = None
+    # Legacy stage key; still accepted and returned during the pipeline
+    # compatibility period. `pipeline_stage_id` is the stable reference.
     sales_stage: str | None = None
+    pipeline_stage_id: int | None = None
     contact_id: int | None = None
     organization_id: int | None = None
     assigned_to: int | None = None
@@ -820,6 +855,7 @@ class SalesOpportunityUpdate(BaseModel):
     opportunity_name: str | None = None
     client: str | None = None
     sales_stage: str | None = None
+    pipeline_stage_id: int | None = None
     contact_id: int | None = None
     organization_id: int | None = None
     assigned_to: int | None = None
@@ -841,11 +877,36 @@ class SalesOpportunityUpdate(BaseModel):
 
 
 class SalesOpportunityStageUpdate(BaseModel):
-    sales_stage: str = Field(pattern=OPPORTUNITY_STAGE_PATTERN)
+    """Move a deal by legacy key or by stage id; when both are sent they must agree."""
+
+    # Validated against the tenant's pipeline by `assign_opportunity_stage`, not a fixed list.
+    sales_stage: str | None = Field(default=None, max_length=40)
+    pipeline_stage_id: int | None = None
+
+    @model_validator(mode="after")
+    def require_a_stage(self):
+        if self.sales_stage is None and self.pipeline_stage_id is None:
+            raise ValueError("sales_stage or pipeline_stage_id is required")
+        return self
+
+
+class OpportunityPipelineStageRef(BaseModel):
+    """A deal's stage as display metadata, so clients never infer meaning from a label."""
+
+    id: int
+    key: str
+    label: str
+    semantic_type: str
+    probability: float
+    is_active: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class SalesOpportunityResponse(SalesOpportunityBase):
     opportunity_id: int
+    pipeline_id: int | None = None
+    pipeline_stage: OpportunityPipelineStageRef | None = None
     contact_name: str | None = None
     organization_name: str | None = None
     assigned_to_name: str | None = None
@@ -863,6 +924,9 @@ class SalesOpportunityListItem(BaseModel):
     opportunity_name: str | None = None
     client: str | None = None
     sales_stage: str | None = None
+    pipeline_id: int | None = None
+    pipeline_stage_id: int | None = None
+    pipeline_stage: OpportunityPipelineStageRef | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = None
     total_cost_of_project: str | None = None
@@ -899,19 +963,143 @@ class SalesOpportunityListResponse(BaseModel):
     page: int
 
 
+class OpportunityContactParticipant(BaseModel):
+    """One contact involved in a deal, with the role they play in it."""
+
+    id: int
+    opportunity_id: int
+    contact_id: int
+    role_key: str
+    role_label: str
+    is_primary: bool
+    contact_name: str | None = None
+    contact: ContactCompactSummary
+    created_at: datetime | None = None
+    created_by_user_id: int | None = None
+    # Populated only on removed participants, which are served by their own route.
+    removed_at: datetime | None = None
+    removed_by_user_id: int | None = None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class OpportunityParticipantCreate(BaseModel):
+    """Put an existing contact on a deal.
+
+    `contact_id` is a hint from the client, never an authorization: the service
+    resolves it inside the caller's tenant and the route independently requires
+    Contacts link access.
+    """
+
+    contact_id: int
+    # Omitted role means the catalog default rather than a rejection, matching the
+    # legacy mirror, which records no role.
+    role_key: str | None = Field(default=None, pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+    # Adding someone straight as the primary contact also moves the legacy
+    # `sales_opportunities.contact_id`.
+    is_primary: bool = False
+
+
+class OpportunityParticipantRoleUpdate(BaseModel):
+    role_key: str = Field(pattern=OPPORTUNITY_CONTACT_ROLE_PATTERN)
+
+
+class OpportunityParticipantListResponse(BaseModel):
+    results: list[OpportunityContactParticipant]
+    # Whether this reader may change the participant list, so a client can render a
+    # read-only relationship rail without probing the write routes. UI hiding is not
+    # the authorization; the routes enforce it independently.
+    can_manage: bool = False
+
+
+class OpportunityContactRoleOption(BaseModel):
+    key: str
+    label: str
+
+
+class OpportunityContactRoleCatalogResponse(BaseModel):
+    results: list[OpportunityContactRoleOption]
+
+
 class OpportunitySummaryResponse(BaseModel):
     opportunity: SalesOpportunityResponse
     contact: ContactCompactSummary | None = None
     organization: OrganizationCompactSummary | None = None
+    # `participant_contacts` carries every association including the primary one,
+    # which is repeated in `primary_contact` for clients that only need that.
+    # `contact` above stays the legacy single-contact field.
+    primary_contact: OpportunityContactParticipant | None = None
+    participant_contacts: list[OpportunityContactParticipant] = Field(default_factory=list)
+    # False when the reader may not view Contacts; the participant lists are then
+    # empty because they are hidden, not because the deal has no participants.
+    can_view_contacts: bool = True
+    related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
     related_quotes: list[RelatedQuoteSummary]
     related_insertion_orders: list[RelatedInsertionOrderSummary]
     inferred_services: list[str]
+    quote_count: int = 0
     insertion_order_count: int
+
+
+class SalesPipelineStageResponse(BaseModel):
+    id: int
+    key: str
+    label: str
+    position: int
+    semantic_type: str
+    is_closed: bool
+    probability: float
+    is_active: bool
+
+
+class SalesPipelineResponse(BaseModel):
+    id: int
+    module_key: str
+    name: str
+    is_default: bool
+    is_active: bool
+    stages: list[SalesPipelineStageResponse]
+
+
+class SalesPipelineStageUpdate(BaseModel):
+    """A partial change to one stage. The stable `key` is deliberately not editable."""
+
+    label: str | None = Field(default=None, max_length=80)
+    semantic_type: str | None = None
+    probability: Decimal | None = Field(default=None, ge=0, le=100)
+    is_active: bool | None = None
+
+
+class SalesPipelineStageCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=80)
+    # Optional: derived from the name when omitted. Permanent once created.
+    key: str | None = Field(default=None, max_length=40)
+    semantic_type: str = "ongoing"
+    probability: Decimal | None = Field(default=None, ge=0, le=100)
+
+
+class SalesPipelineStageOrderUpdate(BaseModel):
+    stage_ids: list[int] = Field(min_length=1)
+
+
+class SalesPipelineStageUsage(BaseModel):
+    stage_id: int
+    live_deal_count: int
+
+
+class SalesPipelineStageUsageResponse(BaseModel):
+    pipeline_id: int
+    stages: list[SalesPipelineStageUsage]
 
 
 class OpportunityPipelineStageSummary(BaseModel):
     stage_key: str
+    # None for the Unstaged bucket.
+    stage_id: int | None = None
     label: str
+    semantic_type: str
+    probability: float
+    is_active: bool = True
     count: int
     total_value: float
 

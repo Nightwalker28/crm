@@ -1,7 +1,7 @@
 "use client";
 
-import { RouteErrorState } from "@/components/ui/RouteStates";
+import { RouteErrorState, type RouteErrorBoundaryProps } from "@/components/ui/RouteStates";
 
-export default function ErrorState({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  return <RouteErrorState title="Unable to load roles and permissions" reset={reset} />;
+export default function PermissionsError({ reset }: RouteErrorBoundaryProps) {
+  return <RouteErrorState title="Roles and permissions could not be loaded" reset={reset} />;
 }

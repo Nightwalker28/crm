@@ -3,7 +3,7 @@ import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const ioId = 7301;
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 function orderFixture() {
   return {
@@ -31,10 +31,57 @@ function orderFixture() {
     },
     file_name: "IO-2099-07301.pdf",
     file_url: "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
+    user_id: 7,
     user_name: "Finance Owner",
+    created_at: "2099-07-24T08:00:00Z",
     updated_at: "2099-07-24T09:00:00Z",
   };
 }
+
+/** The `detail` surface insertion orders adopted in rebuild 5.3 batch 4. */
+const insertionOrderDetailLayout = {
+  layout_id: null,
+  module_key: "finance_io",
+  surface: "detail",
+  name: "Insertion Order Details",
+  source: "system",
+  version: 1,
+  can_customize: false,
+  warnings: [],
+  sections: [
+    {
+      id: "references",
+      label: "References",
+      position: 0,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "external_reference", label: "External reference", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+        { field_key: "counterparty_reference", label: "Counterparty reference", field_type: "text", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "totals",
+      label: "Totals",
+      position: 1,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "total_amount", label: "Total", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+    {
+      id: "custom_fields",
+      label: "Custom fields",
+      position: 2,
+      region: "main",
+      collapsed_by_default: false,
+      fields: [
+        { field_key: "custom:campaign_type", label: "Campaign type", field_type: "text", field_source: "custom_field", position: 0, width: "half", visible: true, required: false, readonly: true },
+      ],
+    },
+  ],
+};
 
 async function cacheInsertionOrderPermissions(
   page: Parameters<typeof loginAsAdmin>[0],
@@ -69,6 +116,61 @@ async function cacheInsertionOrderPermissions(
     },
     { cacheKey: moduleCacheKey, editAllowed: canEdit, moduleOverrides: overrides },
   );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      // Tasks and documents are here because the record archetype's Tasks and Files tabs
+      // resolve through their own modules — a tab whose module is not granted is not rendered.
+      body: JSON.stringify([
+        {
+          id: 73,
+          name: "finance_io",
+          is_enabled: true,
+          actions: {
+            can_view: true,
+            can_create: true,
+            can_edit: canEdit,
+            can_delete: false,
+            can_restore: false,
+            can_export: false,
+            can_configure: false,
+            ...overrides,
+          },
+        },
+        ...["tasks", "documents"].map((name, index) => ({
+          id: 74 + index,
+          name,
+          is_enabled: true,
+          actions: {
+            can_view: true,
+            can_create: true,
+            can_edit: true,
+            can_delete: false,
+            can_restore: false,
+            can_export: false,
+            can_configure: false,
+          },
+        })),
+      ]),
+    }),
+  );
+
+  // The record archetype's `Details` tab is `ReadOnlyRecordLayout` over the resolved layout,
+  // so a detail route cannot render without one.
+  await page.route("**/record-layouts/finance_io/detail/resolved", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(insertionOrderDetailLayout) }),
+  );
+  await page.route("**/records/finance_io/**/activity**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], next_cursor: null, has_more: false, limit: 25, available_types: ["note"], omitted_types: [] }),
+    }),
+  );
 }
 
 test.beforeEach(async ({ page }) => {
@@ -86,34 +188,44 @@ test.beforeEach(async ({ page }) => {
       body: JSON.stringify({ operating_currencies: ["USD", "LKR"] }),
     }),
   );
+  // The rail's Owner control lists the tenant's users rather than searching for them
+  // (design.md §7.8), so a record page now asks for them on load.
+  await page.route("**/linked-record-options/users?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: 7, label: "Finance Owner", email: "finance@example.com" }], has_more: false }),
+    }),
+  );
 });
 
 test("Insertion Order creation is routed, responsive, and focuses the required customer", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/finance/insertion-orders/new");
 
-  await expect(page.getByRole("heading", { name: "Create insertion order" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create insertion order", level: 2 })).toBeVisible();
   const customerType = page.getByRole("combobox", { name: "Customer type" });
   await expect(customerType).toBeVisible();
   await customerType.click();
   await page.getByRole("option", { name: "Account" }).click();
-  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search accounts or enter a customer");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveAttribute("placeholder", "Search accounts or enter a customer");
   await customerType.click();
   await page.getByRole("option", { name: "Contact" }).click();
-  await expect(page.getByLabel("Customer")).toHaveAttribute("placeholder", "Search contacts or enter a customer");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveAttribute("placeholder", "Search contacts or enter a customer");
 
   await page.getByRole("button", { name: "Create order" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
-  await expect(page.getByLabel("Customer")).toBeFocused();
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toBeFocused();
 
-  await page.getByLabel("Customer").fill("New Customer");
+  await page.getByRole("combobox", { name: "Customer", exact: true }).fill("New Customer");
+  await page.keyboard.press("Escape");
   await page.getByText("Create a lightweight contact when this order is saved.").click();
   await expect(page.getByLabel("Customer email")).toBeVisible();
 });
 
 test("Insertion Order creation preserves commercial fields and redacts backend failures", async ({ page }) => {
   let submitted: Record<string, unknown> | null = null;
-  await page.route("**/finance/insertion-orders", async (route) => {
+  await page.route("**/api/v1/finance/insertion-orders", async (route) => {
     if (route.request().method() !== "POST") {
       await route.continue();
       return;
@@ -127,12 +239,13 @@ test("Insertion Order creation preserves commercial fields and redacts backend f
   });
 
   await page.goto("/dashboard/finance/insertion-orders/new");
-  await page.getByLabel("Customer").fill("New Customer");
+  await page.getByRole("combobox", { name: "Customer", exact: true }).fill("New Customer");
+  await page.keyboard.press("Escape");
   await page.getByText("Create a lightweight contact when this order is saved.").click();
   await page.getByLabel("Customer email").fill("customer@example.test");
   await page.getByLabel("Subtotal").fill("1000");
   await page.getByLabel("Tax").fill("100");
-  await page.getByLabel("Total").fill("1100");
+  await page.getByLabel("Total", { exact: true }).fill("1100");
   await page.getByRole("button", { name: "Create order" }).click();
 
   expect(submitted).toMatchObject({
@@ -144,7 +257,8 @@ test("Insertion Order creation preserves commercial fields and redacts backend f
     tax_amount: 100,
     total_amount: 1100,
   });
-  await expect(page.getByText("We could not create this insertion order. Review the fields and try again.")).toBeVisible();
+  // The alert is a title and a fix, two lines (design.md 7.5).
+  await expect(page.getByRole("alert").filter({ hasText: "We could not create this insertion order." })).toContainText("Review the fields and try again.");
   await expect(page.getByText("sql_connection=private-secret")).toBeHidden();
 });
 
@@ -152,7 +266,7 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   await cacheInsertionOrderPermissions(page, true);
   let order = orderFixture();
   let submitted: Record<string, unknown> | null = null;
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     if (route.request().method() === "PUT") {
       submitted = route.request().postDataJSON() as Record<string, unknown>;
       order = { ...order, ...submitted };
@@ -161,13 +275,13 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
   });
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
-  await page.getByRole("link", { name: "Edit insertion order" }).click();
+  await page.getByRole("link", { name: "Edit", exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}/edit$`));
   await expect(page.getByRole("heading", { name: "Edit IO-2099-07301" })).toBeVisible();
-  await expect(page.getByLabel("Customer")).toHaveValue("Acme Operations");
-  await expect(page.getByLabel("Total")).toHaveValue("1100");
+  await expect(page.getByRole("combobox", { name: "Customer", exact: true })).toHaveValue("Acme Operations");
+  await expect(page.getByLabel("Total", { exact: true })).toHaveValue("1100");
 
-  await page.getByLabel("Total").fill("1250");
+  await page.getByLabel("Total", { exact: true }).fill("1250");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/insertion-orders/${ioId}$`));
   expect(submitted).toMatchObject({ customer_name: "Acme Operations", customer_organization_id: 51, total_amount: 1250 });
@@ -175,21 +289,29 @@ test("Insertion Order detail and edit use routed record workflows", async ({ pag
 
 test("Insertion Order detail uses the shared mobile summary and authenticated attachment", async ({ page }) => {
   await cacheInsertionOrderPermissions(page, true);
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
   });
 
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "Insertion order details" })).toBeVisible();
-  await expect(page.getByText("Active", { exact: true })).toBeVisible();
-  await expect(page.getByText("Finance Owner")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
-  await expect(page.getByRole("heading", { name: "Custom fields" })).toBeVisible();
-  await expect(page.getByText("Campaign Type")).toBeVisible();
-  await expect(page.getByText("Renewal")).toBeVisible();
-  await expect(page.getByRole("link", { name: "IO-2099-07301.pdf" })).toHaveAttribute(
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("IO-2099-07301");
+  // R9: state and relationships are the rail's, and it is the only editable region.
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
+  await expect(spine.getByText("Finance Owner")).toBeVisible();
+  await expect(spine.getByRole("link", { name: "Acme Operations" })).toHaveAttribute("href", "/dashboard/sales/organizations/51");
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files"]);
+
+  // The private `Custom fields` card is gone: the tenant's fields are merged into the same
+  // resolved layout as the system ones (design.md §4.7).
+  await expect(page.locator("[data-layout-section='custom_fields']")).toBeVisible();
+  await expect(page.getByText("Renewal", { exact: true })).toBeVisible();
+
+  // The imported source file is a rare action on the record, so it is in the overflow menu
+  // and only rendered when there is a file to fetch.
+  await page.getByRole("button", { name: /More .* actions/ }).click();
+  await expect(page.getByRole("menuitem", { name: "Download source file" })).toHaveAttribute(
     "href",
     "http://localhost:8000/finance/insertion-orders/files/IO-2099-07301",
   );
@@ -197,20 +319,26 @@ test("Insertion Order detail uses the shared mobile summary and authenticated at
 
 test("Insertion Order detail is read-only without edit permission", async ({ page }) => {
   await cacheInsertionOrderPermissions(page, false);
-  await page.route(`**/finance/insertion-orders/${ioId}`, async (route) => {
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderFixture()) });
   });
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "IO-2099-07301" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit insertion order" })).toHaveCount(0);
-  await expect(page.getByText("Acme Operations")).toBeVisible();
-  await expect(page.getByText("$1,100.00")).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("IO-2099-07301");
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByRole("link", { name: "Acme Operations" })).toBeVisible();
+  // Without edit permission the rail shows the status rather than offering to change it.
+  await expect(spine.getByRole("combobox", { name: "Status" })).toHaveCount(0);
+  await expect(spine.locator('[data-slot="status-value"]', { hasText: "Active" })).toBeVisible();
+  // The header carries the total as the identifying glance and `Totals` carries it as the
+  // document's arithmetic — the same pair the three line-item documents ship (design.md §4.7).
+  await expect(page.locator("[data-layout-section='totals']").getByText("$1,100.00")).toBeVisible();
 });
 
 test("Insertion Order detail failures do not expose backend details", async ({ page }) => {
-  await page.route(`**/finance/insertion-orders/${ioId}`, (route) =>
+  await page.route(`**/api/v1/finance/insertion-orders/${ioId}`, (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -220,7 +348,8 @@ test("Insertion Order detail failures do not expose backend details", async ({ p
 
   await page.goto(`/dashboard/finance/insertion-orders/${ioId}`);
 
-  await expect(page.getByRole("heading", { name: "Unable to load insertion order" })).toBeVisible();
+  // `PageShell` owns the record archetype's §7.4 states and names the record, not the failure.
+  await expect(page.getByText("Insertion order could not be loaded")).toBeVisible();
   await expect(page.getByText("sql_connection=detail-page-secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });
@@ -277,13 +406,14 @@ test("Insertion Order list distinguishes filtered empty and fixed failure states
 
   await page.goto("/dashboard/finance/insertion-orders");
   await expect(page.getByText("No insertion orders yet")).toBeVisible();
-  await page.getByRole("button", { name: "Active" }).click();
+  await page.getByRole("radio", { name: "Active" }).click();
   await expect(page.getByText("No insertion orders match this view")).toBeVisible();
-  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Insertion orders").getByRole("button", { name: "Clear filters" }).click();
 
   shouldFail = true;
   await page.reload();
-  await expect(page.getByText("Insertion orders could not be loaded. Check your connection and try again.")).toBeVisible();
+  await expect(page.getByText("Insertion orders could not be loaded")).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.")).toBeVisible();
   await expect(page.getByText("tenant_id=42 sql_connection=private-secret")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
 });

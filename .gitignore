@@ -97,3 +97,12 @@ backend/celerybeat-schedule
 ########################################
 
 liscence-keys
+
+########################################
+# Playwright output
+########################################
+
+# Written as root by the e2e container, so every run dirties the tree and needs a
+# chown to clean up. It is build output, not source.
+frontend/test-results/
+frontend/playwright-report/

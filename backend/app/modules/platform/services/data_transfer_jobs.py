@@ -35,6 +35,7 @@ MODULE_DISPLAY_NAMES = {
     "sales_opportunities": "Opportunities",
     "sales_quotes": "Quotes",
     "finance_io": "Insertion Orders",
+    "reports": "Reports",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -49,11 +50,17 @@ MODULE_LINKS = {
     "sales_opportunities": "/dashboard/sales/opportunities",
     "sales_quotes": "/dashboard/sales/quotes",
     "finance_io": "/dashboard/finance/insertion-orders",
+    "reports": "/dashboard/reports",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
+    "report_export": "export",
     "import": "create",
 }
+
+
+def _operation_label(operation_type: str) -> str:
+    return "Report export" if operation_type == "report_export" else operation_type.title()
 
 
 def require_data_transfer_module_access(
@@ -85,6 +92,11 @@ def require_data_transfer_job_access(
         module_key=job.module_key,
         action=action,
     )
+    if job.operation_type == "report_export":
+        source_key = (job.payload or {}).get("source_module_key")
+        if not isinstance(source_key, str):
+            raise HTTPException(status_code=404, detail="Report export source is unavailable")
+        require_data_transfer_module_access(db, current_user=current_user, module_key=source_key, action="view")
 
 
 def data_transfer_download_action(job: DataTransferJob) -> str:
@@ -188,8 +200,8 @@ def create_data_transfer_job(
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{operation_type.title()} queued",
-        message=f"{operation_type.title()} for {module_name} has been queued in the background.",
+        title=f"{_operation_label(operation_type)} queued",
+        message=f"{_operation_label(operation_type)} for {module_name} has been queued in the background.",
     )
     return job
 
@@ -278,8 +290,8 @@ def mark_job_completed(
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{job.operation_type.title()} completed",
-        message=f"{job.operation_type.title()} for {module_name} completed successfully.",
+        title=f"{_operation_label(job.operation_type)} completed",
+        message=f"{_operation_label(job.operation_type)} for {module_name} completed successfully.",
     )
     return job
 
@@ -301,7 +313,7 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{job.operation_type.title()} failed",
+        title=f"{_operation_label(job.operation_type)} failed",
         message=safe_data_transfer_error(module_key=job.module_key, operation_type=job.operation_type),
     )
     return job
@@ -436,7 +448,7 @@ def cleanup_expired_data_transfer_results(db: Session) -> int:
     jobs = (
         db.query(DataTransferJob.id, DataTransferJob.result_file_path)
         .filter(
-            DataTransferJob.operation_type == "export",
+            DataTransferJob.operation_type.in_(["export", "report_export"]),
             DataTransferJob.status == "completed",
             DataTransferJob.result_file_path.isnot(None),
             DataTransferJob.completed_at.isnot(None),
@@ -611,6 +623,31 @@ def process_export_job(*, job_id: int) -> None:
         current_user = _get_job_actor(db, job=job)
         if actor_user_id is not None and current_user is None:
             raise ValueError("Job actor was not found in the job tenant.")
+        if job.operation_type == "report_export":
+            from app.modules.platform.services import report_engine
+
+            if current_user is None:
+                raise ValueError("Report export has no subscriber")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="reports", action="export")
+            source_key = payload["source_module_key"]
+            require_data_transfer_module_access(db, current_user=current_user, module_key=source_key, action="view")
+            if payload["config"].get("format") == "tabular":
+                total = report_engine.run_records(db, current_user, module_key=source_key, config=payload["config"], group_keys=None, offset=0, limit=1)["total"]
+                if total > 100_000:
+                    raise ValueError("Report has more than 100,000 records; narrow its filters before exporting")
+            file_format = payload["format"]
+            if file_format == "xlsx":
+                content = report_engine.report_xlsx_bytes(db, current_user, module_key=source_key, config=payload["config"], max_records=100_000)
+                media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            elif file_format == "csv":
+                content = report_engine.report_csv_bytes(db, current_user, module_key=source_key, config=payload["config"], max_records=100_000)
+                media_type = "text/csv"
+            else:
+                raise ValueError("Unsupported report export format")
+            file_name = f"report-{job.id}.{file_format}"
+            result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
+            mark_job_completed(db, job, summary={"file_name": file_name}, result_file_path=result_path, result_file_name=file_name, result_media_type=media_type)
+            return
         update_job_progress(db, job, progress_percent=35, progress_message="Collecting records for export.")
         exported_rows = 0
 

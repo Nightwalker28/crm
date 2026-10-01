@@ -9,11 +9,11 @@ test.beforeEach(async ({ page }) => {
 test("Quote creation uses an itemized full-page workflow", async ({ page }) => {
   await page.goto("/dashboard/sales/quotes/new");
   await expect(
-    page.getByRole("heading", { name: "Create quote" }),
+    page.getByRole("heading", { name: "Create quote", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
-  await expect(page.getByText("Review summary")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
   await page.getByRole("button", { name: "Create quote" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
@@ -68,7 +68,7 @@ test("Quotes list routes creation to the dedicated page", async ({ page }) => {
     }),
   );
   await page.goto("/dashboard/sales/quotes");
-  await expect(page.locator("span.bg-state-info-muted", { hasText: "Sent" })).toBeVisible();
+  await expect(page.locator('[data-slot="status-value"][data-tone="neutral"]', { hasText: "Sent" })).toBeVisible();
   const createLink = page.getByRole("link", { name: "Create quote" });
   await expect(createLink).toBeVisible();
   await createLink.click();

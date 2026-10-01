@@ -4,28 +4,43 @@ import { loginAsAdmin } from "./helpers/auth";
 
 const dealId = 987654324;
 const summary = {
-  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
+  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", pipeline_stage: { id: 3, key: "proposal", label: "Proposal", semantic_type: "ongoing", probability: 50, is_active: true }, contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
   contact: { contact_id: 41, first_name: "Grace", last_name: "Buyer", primary_email: "grace@example.com", contact_telephone: "+94770000003", current_title: "COO" },
   organization: { org_id: 51, org_name: "Acme" },
+  participant_contacts: [], can_view_contacts: true,
   related_quotes: [], related_insertion_orders: [], inferred_services: ["Demand generation"], insertion_order_count: 0,
 };
 const pipelineSummary = {
   total_count: 2,
   stages: [
-    { stage_key: "lead", label: "Lead", count: 2, total_value: 125000 },
+    { stage_key: "lead", stage_id: 1, label: "Lead", semantic_type: "open", probability: 10, is_active: true, count: 2, total_value: 125000 },
   ],
 };
 
-test.beforeEach(async ({ page }) => { await loginAsAdmin(page); });
+test.beforeEach(async ({ page }) => {
+  await loginAsAdmin(page);
+  // The rail's Owner control lists the tenant's users rather than searching for them
+  // (design.md §7.8), so a record page now asks for them on load.
+  await page.route("**/linked-record-options/users?**", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ results: [{ id: 7, label: "Ada Owner", email: "ada@example.com" }], has_more: false }),
+    }),
+  );
+});
 
 test("Deals expose the shared table and pipeline controls", async ({ page }) => {
-  await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/sales/opportunities");
   await expect(page.getByRole("heading", { name: "Deals" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Add deal" })).toBeVisible();
+  await page.getByRole("button", { name: "Create deal" }).click();
+  const quickCreate = page.getByRole("dialog", { name: "Create deal" });
+  await expect(quickCreate).toBeVisible();
+  await quickCreate.getByRole("button", { name: "Close Create deal" }).click();
+  await expect(quickCreate).toBeHidden();
   await expect(page.getByPlaceholder("Search deals")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Table" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Pipeline" }).click();
+  await expect(page.getByRole("radio", { name: "Table", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Pipeline" }).click();
   await expect(page.getByText(/Drag a card to another stage/)).toBeVisible();
 });
 
@@ -47,23 +62,32 @@ test("Deals keep the list available when pipeline totals fail and retry with fix
   await expect(page.getByText("sql_connection=private-secret")).toHaveCount(0);
   shouldFail = false;
   await page.getByRole("button", { name: "Retry totals" }).click();
-  const leadCard = page.getByText("Lead", { exact: true }).locator("..").locator("..");
-  await expect(leadCard.getByText("2", { exact: true })).toBeVisible();
+  // Scoped to the stat row: the table under it can hold real deals whose stage is also "Lead".
+  const leadTile = page.locator('[data-slot="stat-tile"]', { has: page.getByText("Lead", { exact: true }) });
+  await expect(leadTile.getByText("2", { exact: true })).toBeVisible();
 });
 
 test("Deal create, detail, and edit use routed record workflows", async ({ page }) => {
   await page.route(`**/sales/opportunities/${dealId}/summary`, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(summary) }));
   await page.goto("/dashboard/sales/opportunities/new");
-  await expect(page.getByRole("heading", { name: "Create deal" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create deal", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: "Create deal" }).click();
   await expect(page.getByText("Deal name is required.")).toBeVisible();
   await expect(page.getByText("Select an existing contact.")).toBeVisible();
   await expect(page.getByLabel("Deal name")).toBeFocused();
 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);
-  await expect(page.getByRole("heading", { name: "Browser Deal" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.locator("span.bg-action-primary-muted", { hasText: "Proposal" })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Deal");
+  // The archetype's fixed tab set, in order, and nothing nested inside it — the page used to
+  // render a second strip at `:507` through `CrmRecordActivitySection` (design.md §4.7).
+  await expect(page.getByRole("tab")).toHaveText(["Details", "Timeline", "Tasks", "Files", "Related records"]);
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // Stage lives in the spine and nowhere else. The pre-5.3 page offered it from three
+  // controls: a six-button grid, a Won/Lost pair, and this one.
+  await expect(page.getByRole("combobox", { name: "Stage" })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: "Won" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Lost" })).toHaveCount(0);
+  await expect(page.locator('[data-slot="status-value"]', { hasText: "Proposal" }).first()).toBeVisible();
   await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
   await page.getByRole("tab", { name: /Related/ }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/opportunities/${dealId}\\?tab=related$`));
@@ -71,6 +95,6 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await page.goto(`/dashboard/sales/opportunities/${dealId}/edit`);
   await expect(page.getByRole("heading", { name: "Edit deal" })).toBeVisible();
   await expect(page.getByLabel("Deal name")).toHaveValue("Browser Deal");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

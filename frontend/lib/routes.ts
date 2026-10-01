@@ -35,6 +35,8 @@ export const SETTINGS_ROUTES = {
   moduleAccess: (moduleId: string | number) => `/dashboard/settings/modules/${moduleId}`,
   moduleBuilder: "/dashboard/settings/module-builder",
   fields: "/dashboard/settings/fields",
+  recordLayouts: "/dashboard/settings/record-layouts",
+  pipeline: "/dashboard/settings/pipeline",
   automation: "/dashboard/settings/automation",
   calendarBooking: "/dashboard/settings/calendar-booking",
   backups: "/dashboard/settings/backups",
@@ -80,9 +82,15 @@ export function canonicalizeDashboardHref(href: string): string {
   return href;
 }
 
+/**
+ * A9: the fallback was `SETTINGS_ROUTES.activityLog`, which is admin-only — so a
+ * notification with a missing or malformed link sent a non-admin straight into a
+ * permission wall. The default is the dashboard, which every role can reach. A caller that
+ * knows its audience is admin still passes the activity log explicitly.
+ */
 export function resolveNotificationHref(
   href: string | null | undefined,
-  fallback: string = SETTINGS_ROUTES.activityLog,
+  fallback: string = DASHBOARD_ROUTES.home,
 ): string {
   const candidate = href?.trim();
   const isDashboardPath = candidate === "/dashboard" ||
@@ -108,36 +116,38 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   calendar: "Calendar",
   mail: "Mail",
   tasks: "Tasks",
-  "client-portal": "Client Portal",
-  catalog: "Products & Services",
+  "client-portal": "Client portal",
+  catalog: "Products & services",
   products: "Products",
   services: "Services",
   sales: "Sales",
   finance: "Finance",
-  "insertion-orders": "Insertion Orders",
+  "insertion-orders": "Insertion orders",
   pos: "POS",
   payments: "Payments",
   company: "General",
   general: "General",
-  users: "User Management",
+  users: "User management",
   authentication: "Authentication",
   domains: "Domains",
   provisioning: "Provisioning",
   teams: "Teams",
-  "customer-groups": "Customer Groups",
+  "customer-groups": "Customer groups",
   "roles-permissions": "Permissions",
   permissions: "Permissions",
-  modules: "Module Settings",
-  "module-builder": "Module Builder",
-  "custom-fields": "Field Config",
-  fields: "Field Config",
+  modules: "Module settings",
+  "module-builder": "Module builder",
+  "custom-fields": "Field config",
+  fields: "Field config",
   automation: "Automation",
-  "calendar-booking": "Booking Links",
+  "calendar-booking": "Booking links",
   backups: "Backups",
-  "recycle-bin": "Recycle Bin",
-  "activity-log": "Activity Log",
+  "recycle-bin": "Recycle bin",
+  "activity-log": "Activity log",
   "message-templates": "Templates",
   reports: "Reports",
+  dashboards: "Dashboards",
+  forecast: "Forecast",
 };
 
 export function getFriendlyRouteLabel(pathOrSegment: string): string {

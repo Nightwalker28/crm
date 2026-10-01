@@ -1,12 +1,17 @@
 import { getModuleRegistryLabel } from "@/lib/module-registry";
 
+/**
+ * The one function allowed to build a label from a key (design.md §3.5, §3.6) — an enum value,
+ * a field key, an event type. Sentence case: `closed_won` is "Closed won", `lead.created` is
+ * "Lead created". Only the first letter is raised, so an acronym already in the key survives.
+ */
 export function formatSnakeCaseLabel(value: string): string {
-  return value
+  const words = value
     .replace(/^custom_\d+_/, "")
-    .split("_")
+    .split(/[\s._-]+/)
     .filter(Boolean)
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
 }
 
 export function getModuleDisplayName(moduleName: string, fallbackDescription?: string): string {

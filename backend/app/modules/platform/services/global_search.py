@@ -17,6 +17,7 @@ from app.modules.mail.models import MailMessage
 from app.modules.platform.models import CustomModuleDefinition
 from app.modules.platform.repositories import custom_modules_repository
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
+from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.support.models import SupportCase
 from app.modules.tasks.models import Task, TaskAssignee
 
@@ -348,7 +349,7 @@ def _opportunity_results(db: Session, *, tenant_id: int, query: str, limit: int,
             "module_label": "Opportunities",
             "record_id": str(record.opportunity_id),
             "title": record.opportunity_name,
-            "subtitle": " · ".join(part for part in [record.client, record.sales_stage, record.target_geography] if part) or None,
+            "subtitle": " · ".join(part for part in [record.client, record.sales_stage and opportunity_stage_facts(record).label, record.target_geography] if part) or None,
             "href": f"/dashboard/sales/opportunities/{record.opportunity_id}",
         }
         for record in items

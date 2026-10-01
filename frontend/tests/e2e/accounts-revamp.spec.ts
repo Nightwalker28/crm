@@ -77,15 +77,17 @@ test("Accounts list keeps shared controls usable on mobile", async ({ page }) =>
 
   await expect(page.getByRole("heading", { name: "Accounts" })).toBeVisible();
   await expect(page.getByPlaceholder("Search accounts")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create account" })).toBeVisible();
+  // Create is the Quick Create surface now, not a navigation to /new.
+  await expect(page.getByRole("button", { name: "Create account" })).toBeVisible();
   const filtersButton = page.getByRole("button", { name: /Filters/ });
   await filtersButton.focus();
   await page.keyboard.press("Enter");
-  await expect(page.getByText("Filter Conditions")).toBeVisible();
-  const tableRegion = page.getByRole("region", { name: "Data table" });
+  await expect(page.getByText("Filter conditions")).toBeVisible();
+  const tableRegion = page.getByRole("region", { name: "Accounts" });
   await expect(tableRegion).toBeVisible();
   await expect(tableRegion.locator("span.bg-surface-muted", { hasText: "Media & Entertainment" })).toBeVisible();
-  expect(await tableRegion.locator("thead th").evaluateAll((headers) => headers.slice(0, 2).map((header) => window.getComputedStyle(header).position))).toEqual(["sticky", "sticky"]);
+  // The header row pins as one: `thead` is sticky (Table), not each cell (design.md 4.4).
+  expect(await tableRegion.locator("thead").evaluate((head) => window.getComputedStyle(head).position)).toBe("sticky");
 });
 
 test("Account create, detail, edit, and related-record tabs use the shared workflow", async ({ page }) => {
@@ -97,24 +99,29 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   });
 
   await page.goto("/dashboard/sales/organizations/new");
-  await expect(page.getByRole("heading", { name: "Create account" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create account", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByText("Account name is required.")).toBeVisible();
   await expect(page.getByText("Primary email is required.")).toBeVisible();
   await expect(page.getByLabel("Account name")).toBeFocused();
-  const ownerPicker = page.getByPlaceholder("Search owners (defaults to you)");
-  await ownerPicker.fill("Ada");
+  const ownerPicker = page.getByRole("combobox", { name: "Owner" });
+  await ownerPicker.click();
   await page.getByRole("option", { name: /Ada Owner/ }).click();
-  await expect(ownerPicker).toHaveValue("Ada Owner");
+  await expect(ownerPicker).toHaveText(/Ada Owner/);
 
   await page.goto(`/dashboard/sales/organizations/${fakeAccountId}`);
-  await expect(page.getByRole("heading", { name: "Browser Account" })).toBeVisible();
-  await expect(page.getByRole("tab", { name: "Overview" })).toHaveAttribute("aria-selected", "true");
-  await expect(page.getByText("Ada Owner", { exact: true })).toBeVisible();
-  await expect(page.getByText("Technology", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-record-workspace-title]")).toHaveText("Browser Account");
+  await expect(page.getByRole("tab", { name: "Details" })).toHaveAttribute("aria-selected", "true");
+  // Ownership now reads from the record spine; the industry stays on Details (design.md 4.7).
+  const spine = page.locator('[data-slot="record-spine"]');
+  await expect(spine.getByText("Ada Owner", { exact: true })).toBeVisible();
+  await expect(page.locator("[data-layout-field='industry']")).toContainText("Technology");
+  // Audit history is a sheet off the spine's meta line, not a fifth tab.
+  await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Related records" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/organizations/${fakeAccountId}\\?tab=related$`));
-  await expect(page.getByText("Insertion orders", { exact: true })).toBeVisible();
+  // The spine also counts insertion orders, so target the related-records card.
+  await expect(page.getByRole("heading", { name: "Insertion orders" })).toBeVisible();
   await expect(page.getByText("SO-BROWSER", { exact: true })).toBeVisible();
   await expect(page.getByText("INV-BROWSER", { exact: true })).toBeVisible();
 
@@ -122,6 +129,6 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByRole("heading", { name: "Edit account" })).toBeVisible();
   await expect(page.getByLabel("Account name")).toHaveValue("Browser Account");
   await expect(page.getByLabel("Primary email")).toHaveValue("account@example.com");
-  await expect(page.getByPlaceholder("Search owners")).toHaveValue("Ada Owner");
+  await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

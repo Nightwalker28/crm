@@ -1,6 +1,6 @@
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 
-export default function NotFound() {
+export default function QuotesNotFound() {
   return (
     <RouteNotFoundState
       recordLabel="Quote"

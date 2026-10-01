@@ -123,12 +123,15 @@ test("hydrates the default role only after its permission query succeeds", async
 
   await page.goto("/dashboard/settings/permissions");
 
-  await expect(page.getByLabel("Loading role permissions")).toBeVisible();
+  // 5.6 batch 4b moved the loading state into the table primitive: the matrix owns its
+  // own §7.4 states, so the region reports itself busy instead of the page swapping in
+  // a route-level spinner. The assertion this replaces named that removed spinner.
+  await expect(page.getByRole("region", { name: "Role permissions" })).toHaveAttribute("aria-busy", "true");
   await expect(page.getByText("No modules match this search")).toHaveCount(0);
   await expect(page.getByText("No modules available for this role")).toHaveCount(0);
   await expect(page.getByRole("heading", { name: "Sales Rep Permissions" })).toBeVisible();
   await expect(page.getByText("Leads", { exact: true })).toBeVisible();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("shows distinct real-empty and hydrated search-empty states", async ({ page }) => {
@@ -163,7 +166,7 @@ test("switches roles without edits and hydrates the selected role baseline", asy
 
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("an out-of-order response for the previous role cannot replace the selected role", async ({ page }) => {
@@ -191,11 +194,12 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
   await page.goto("/dashboard/settings/permissions");
 
   await expect(page.getByRole("heading", { name: "Permissions", exact: true })).toBeVisible();
-  await expect(page.getByText("Sales", { exact: true })).toBeVisible();
-  await expect(page.getByText("Finance", { exact: true })).toBeVisible();
+  // The group row, not the sidebar's Sales group.
+  await expect(page.getByRole("cell", { name: "Sales", exact: true })).toBeVisible();
+  await expect(page.getByRole("cell", { name: "Finance", exact: true })).toBeVisible();
 
   await page.getByPlaceholder("Search modules").fill("Accounts");
-  await expect(page.getByText("Accounts", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Role permissions").getByText("Accounts", { exact: true })).toBeVisible();
   await expect(page.getByText("Leads", { exact: true })).toBeHidden();
 
   await page.getByRole("checkbox", { name: "Set all permissions for Accounts" }).click();
@@ -204,14 +208,14 @@ test("filters grouped modules, applies bulk permissions, and saves from mobile",
   const saveRequest = page.waitForRequest((request) =>
     request.method() === "PUT" && request.url().endsWith("/admin/users/roles/21/permissions"),
   );
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
   const request = await saveRequest;
   const payload = request.postDataJSON() as { permissions: Array<{ module_id: number; actions: Record<string, boolean> }> };
   const accounts = payload.permissions.find((permission) => permission.module_id === 102);
 
   expect(payload.permissions).toHaveLength(3);
   expect(Object.values(accounts?.actions ?? {}).every(Boolean)).toBeTruthy();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("warns before discarding changes when switching roles", async ({ page }) => {
@@ -232,7 +236,7 @@ test("warns before discarding changes when switching roles", async ({ page }) =>
   await page.getByRole("button", { name: "Discard and switch" }).click();
   await expect(page.getByRole("heading", { name: "Manager Permissions" })).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("save success adopts the returned permissions as the new baseline", async ({ page }) => {
@@ -251,11 +255,11 @@ test("save success adopts the returned permissions as the new baseline", async (
   await page.getByRole("checkbox", { name: "Delete Leads" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
 
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
 
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).not.toBeChecked();
   await expect(page.getByRole("checkbox", { name: "Export Leads" })).toBeChecked();
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("save failure retains the editable draft", async ({ page }) => {
@@ -269,25 +273,25 @@ test("save failure retains the editable draft", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions");
   await page.getByRole("checkbox", { name: "Delete Leads" }).click();
 
-  await page.getByRole("button", { name: "Save Permissions" }).click();
+  await page.getByRole("button", { name: "Save permissions" }).click();
 
   await expect(page.getByText("Permissions could not be saved. Please try again.")).toBeVisible();
   await expect(page.getByRole("checkbox", { name: "Delete Leads" })).toBeChecked();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Save Permissions" })).toBeEnabled();
+  await expect(page.getByRole("button", { name: "Save permissions" })).toBeEnabled();
 });
 
 test("opens Create Role from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions?action=create-role");
 
-  await expect(page.getByRole("dialog", { name: "Create Role" })).toBeVisible();
+  await expect(page.getByRole("dialog", { name: "Create role" })).toBeVisible();
 });
 
 test("guards a dirty role draft before closing the drawer", async ({ page }) => {
   await page.goto("/dashboard/settings/permissions");
-  await page.getByRole("button", { name: "Create Role" }).click();
+  await page.getByRole("button", { name: "Create role" }).click();
 
-  const roleDrawer = page.getByRole("dialog", { name: "Create Role" });
+  const roleDrawer = page.getByRole("dialog", { name: "Create role" });
   await roleDrawer.getByLabel("Role Name").fill("Support Lead");
   await roleDrawer.getByRole("button", { name: "Cancel" }).click();
   await expect(page.getByRole("heading", { name: "Discard role draft?" })).toBeVisible();
