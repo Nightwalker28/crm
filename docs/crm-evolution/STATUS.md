@@ -20,6 +20,234 @@ Last updated 2026-10-01.
 | 3D | Not started: needs an explicit provider request (README Wave 3 item 17) | |
 | 4A | Phase 1 done (2026-10-01): 08 event inventory and external contract. **Awaiting the owner's approval of the contract before Phase 2.** See below | `08a-webhook-event-contract.md`, `webhook_events.py`, `crm_events.public_id`, `GET /admin/webhooks/event-types`; `test_webhook_event_contract.py` |
 | **4A Phase 2 onward** | **Not started. Next: 08 Phase 2 (subscriptions), once 08a is approved** | |
+| Owner fixes (2026-10-01) | Done: automation made to work end to end (stays in Settings); settings' second nav rail removed. See below | `automation_records.py`, derived triggers and templates in `automation_registry.py`; `test_automation_triggers.py` |
+| Reports rebuild | **Phases 1–3 done (2026-10-01)**: engine v2, library, viewer, builder, shared dashboards, scheduled email and XLSX. Phase 4 deferred. See below | `11-reports.md`, `report_engine.py`, `report_dashboards.py`, `report_subscriptions.py`, `test_report_engine.py`, `test_report_subscriptions.py`, `reports-revamp.spec.ts` |
+| **Next, owner-set order** | **ERP modules one at a time, starting with a written plan** | |
+
+## Reports rebuild request (owner request, 2026-10-01)
+
+The owner's words: *the reports module's functionality, UI and UX need a lot of work. Base
+it on the major CRM and ERP players (Salesforce, HubSpot, Zoho, Dynamics, Odoo), take the
+best of each, and build our own.* After Reports, **ERP modules one at a time**, to the same
+first-class standard as the CRM modules (products and services, inventory, and so on), with
+a written plan first.
+
+Starting point for Reports:
+
+- Backend: `platform/services/module_reports.py`; routes `platform/routes/module_reports.py`
+  under `/reports`: modules, CRM summary, forecast and snapshots, saved reports CRUD, per-module
+  report and CSV export. Access: the `reports` module plus `view`.
+- Frontend: a single page `app/dashboard/reports/page.tsx`, plus
+  `components/dashboard/DashboardReportChartWidget.tsx` on the home dashboard.
+- First deliverable: a benchmark and plan doc in `docs/crm-evolution/` (report types,
+  builder, charts, dashboards, scheduling and sharing, permissions, and what to reuse:
+  `module_filters`, saved views, `list_fields`, export jobs). Then build in slices.
+- **Done 2026-10-01:** the benchmark and plan are `11-reports.md` (§2 lists 8 defects in the
+  former page, §5 the four phases). Phases 1–3 are complete.
+
+## Reports Phase 3 — scheduled email and XLSX (2026-10-01)
+
+The owner chose a **tenant-wide general sender** for scheduled CRM and automation mail.
+The first consumer is report subscriptions. Settings → Integrations now stores one encrypted
+workspace SMTP password per tenant; administrators see sender metadata, never the password.
+Personal mailbox sends remain personal. No automation email action exists yet.
+
+- A viewer can schedule their own email for a saved report or dashboard, daily, weekly or
+  monthly in their time zone. Celery scans due schedules. Each slot has a delivery row;
+  the worker claims it before SMTP so an uncertain provider acceptance is not replayed.
+  Each send rechecks that the subscriber is active, Reports is available, the target is
+  still visible, and every source report remains in scope. A report attaches XLSX; a
+  dashboard emails the visible widget totals with its saved date and scope filters.
+- Direct CSV and XLSX keep the 5,000-record tabular cap. A full XLSX uses the existing
+  persisted export jobs, rechecking access at generation and download. It refuses more
+  than 100,000 records instead of silently truncating. XLSX uses numeric cells for figures
+  and literal cells for untrusted text.
+- `20260824_report_subscriptions` adds the tenant sender, subscriptions and delivery log.
+  `test_report_subscriptions.py` covers schedule time zones, sender setup, one due claim,
+  disabled subscribers, and dashboard filters. The report engine's XLSX test covers labels
+  and numeric cells.
+
+Late fixes from the close-out review: a dashboard email's date override falls back to the
+report's default date field, as the on-screen dashboard does; report export files expire
+with the existing export retention task; a job download rechecks Reports export and
+source-module view; a queued delivery left by a crashed worker is picked up by the next
+scan; a failed delivery is logged with its traceback for operators (the subscriber sees
+only the generic error).
+
+Verification: compileall; `verify_migrations` at head `20260824_report_subscriptions`;
+`verify_openapi`; `generate-contracts.sh --check`; `check-design.sh` (21 rules); frontend
+lint and production build. Backend: the five touched modules (`test_report_engine`,
+`test_report_subscriptions`, `test_module_reports_forecasting`,
+`test_data_transfer_job_permissions`, `test_secret_rotation`) pass 51 of 51 after the late
+fixes, and the whole suite passes 1362 of 1362 with Redis up. e2e at `--workers=1`:
+`reports-revamp` 8 of 8: 7 at the first run, including the schedule dialog, then the added
+admin sender flow on its own.
+Rendered guards, together on one worker: `design-rules.spec.ts` passes, 109 routes, none
+unreachable; `scroll-containers.spec.ts` passes.
+
+Not checked: a real SMTP delivery. Tests mock the provider; the first live send needs a
+workspace sender configured under Settings → Integrations. The sender's SMTP host is not
+restricted (no private-address check), the same as personal IMAP/SMTP connections; both
+are admin or user supplied.
+
+## Reports Phases 1 and 2 — engine, library, viewer, builder; dashboards (2026-10-01)
+
+Benchmark and plan: `11-reports.md`. Phase 1 is the engine and the three report pages;
+Phase 2 is shared dashboards. Owner ruling for Phase 2: **the home dashboard stays
+personal**, and shared dashboards live under Reports.
+
+**Backend.**
+- `report_catalog.py`: one source per module (base query, record link, owner scope) and
+  typed fields; label resolvers show owners by name, stages by label in pipeline order,
+  accounts, contacts, pipelines and teams by name. The deal amount is numeric through
+  `opportunities_repository.opportunity_value_expression` (made public).
+- `report_engine.py`: config version 2 (summary, matrix, tabular; up to 2 groupings and 4
+  measures: count, sum, avg, min, max), version 1 configs read as version 2 without a
+  rewrite, date buckets (day to year) per dialect, relative date ranges in the viewer's time
+  zone, Show me (all, mine, my team), grouped rows plus subtotals plus totals in three
+  queries, drill-down records, CSV (tabular capped at 5,000 rows).
+- `report_templates.py`: 13 templates. `module_reports.py`: saved reports gain a description
+  and `private` / `everyone` sharing, the owner is the only editor, and create, share and
+  delete are logged. The v1 `GET /reports/modules/{key}` runs on the new engine.
+- `report_dashboards.py` with `report_dashboards`: widgets hold report IDs only and resolve
+  per viewer (`missing`, `not_shared`, `no_access`); dashboard filters are a relative date
+  range and Show me.
+- Routes: `GET /reports/templates`, `POST /reports/run`, `/run/records`,
+  `/run/export.csv`, `GET /reports/saved/{id}`, and CRUD under `/reports/dashboards`.
+  Migrations `20260822_report_sharing` and `20260823_report_dashboards`.
+
+**Frontend.**
+- `lib/reports.ts` and `lib/reportDashboards.ts`.
+- `components/reports/`: `ReportBuilder`, `ReportView`, `ReportChart`, `ReportResultTable`,
+  `ReportRecordsPanel`, `ReportTemplateGallery`, `ReportDashboardWidget` and
+  `DashboardWidgetDialog`.
+- Routes: `/dashboard/reports` (library, with a Templates tab), `/new`, `/[reportId]`,
+  `/[reportId]/edit`, `/forecast`, `/dashboards` and `/dashboards/[dashboardId]`.
+- `DashboardWidgetShell`, `sizeClass` and `SIZE_LABELS` are exported from
+  `DashboardLayoutEditor` and shared with home, whose behaviour is unchanged. Home's saved
+  report widget runs through `POST /reports/run`.
+- The palette's "Build report" opens `/dashboard/reports/new`.
+- design.md §7.10 gains the report table ruling: every report format is `RecordTable`, a
+  matrix cell is a button that drills, and the Total row opens every record.
+
+**Verification.**
+- Backend: `test_report_engine.py` (new, 32 cases, including 6 dashboard cases); the whole
+  suite passes 1351 of 1351. The 4 rate-limit tests were rerun with Redis.
+- compileall; `verify_migrations` at head `20260823_report_dashboards`; `verify_openapi`
+  (372 paths); `generate-contracts.sh --check`; `check-design.sh` (21 rules); lint; `tsc`;
+  `npm run build`.
+- A read-only PostgreSQL smoke run on the dev database (as an admin, rolled back): every
+  template, all five date granularities, a matrix on owner × stage with sum and average,
+  and CSV. Each drill-down total matched its group's count. The SQLite tests cannot reach
+  the PostgreSQL date SQL, and this run did.
+- e2e at `--workers=1 --timeout=90000`: `command-palette-actions` and
+  `dashboard-edit-mode-revamp` pass 21 of 21. `reports-revamp` passes 6 of 6 after two test
+  fixes, neither in product code: the dashboard mock's glob also matched the page URL, and
+  the builder's post-save navigation needed time for the report route's first dev compile.
+- Bugs this pass found and fixed: SQLite quarter buckets used true division; a two-level
+  report with no rows indexed a missing label level; a test helper named `run` shadowed
+  `TestCase.run`; lint's `module` variable name and two unescaped apostrophes.
+- Rendered guards, each alone on a fresh dev server. `design-rules.spec.ts` audited 109
+  routes with none unreachable, and its one finding was real: the builder shows the shared
+  `SavedViewConditionEditor` open, which exposed Title Case "Add AND Condition" (§3.5). The
+  primitive now says "Add AND condition" / "Add OR condition", and `view-manager-revamp.spec.ts`
+  follows (8 of 8). Rerun: `design-rules.spec.ts` passes, 109 routes. `scroll-containers.spec.ts`
+  passes every report route; its one finding is `/client/support NAV-FAILED`, a navigation
+  failure on the out-of-scope support portal page, not a height cap (see the NAV-FAILED memory).
+
+**Deferred** (see `11-reports.md` §5): Phase 4 (related-record fields,
+period comparison); an owner or team picker and custom dates as dashboard filters;
+dashboard templates.
+
+## Owner fixes: automation that works, settings without a second rail (2026-10-01)
+
+Requested directly by the owner, outside the wave order: *automation should work seamlessly
+for rules people create and ones they reuse, simple to create and use*, and *remove the
+settings page's inner sidebar; a settings page's top bar has a back arrow to the settings
+hub*. The owner then ruled that **automation stays inside Settings**: first class in how it
+works, not a new sidebar module. There is no module seed, no permission migration and no
+route move.
+
+**What was broken** (found by reading the engine against the emitters):
+
+1. **Conditions read only what the emitting route happened to send.** `lead.created` carries
+   no `first_name`, so *First Name contains X* never matched and *is empty* always did.
+   `{{payload.first_name}}` rendered blank in the convert-lead default.
+2. **20 triggers the builder offered were never emitted** (4A's inventory, 08a §2), so rules
+   on them never ran. 14 now fire, and the other 6 are hidden (Deferred row replaced).
+3. ***Changed to* / *changed from* never matched on lead updates.** `lead.updated` sent
+   `changed_fields` (the submitted keys), not from/to values.
+4. **Automation notes never showed on the record.** They were written under the entity type
+   (`sales_lead`) where comments are keyed by module (`sales_leads`). Automation tasks carried
+   the same wrong `source_module_key`.
+5. **Date conditions were always false.** `gt`/`lt` coerced both sides through `float()`.
+6. **Pointing a rule at a person meant typing a user ID**, and there was no "record owner".
+
+**Backend:**
+
+- `platform/services/automation_records.py` (new): entity type → module key, model, id
+  field, owner, label and record path for leads, contacts, deals, quotes, orders, insertion
+  orders, tasks, documents and bookings. `load_record_snapshot` loads the triggering record's
+  columns (tenant-scoped, binned records excluded, storage internals hidden) plus
+  `owner_user_id`, `record_label` and `record_url`. The engine lays it *under* the payload:
+  event-time values still win.
+- **Derived triggers** (`AutomationDerivedTrigger` in the registry): a specific trigger read
+  off a general event rather than a second event row. `lead.updated` → `lead.status_changed`,
+  `lead.assigned`; `lead.created` with an owner → `lead.assigned`; `quote.status_changed` →
+  `quote.sent/accepted/rejected/expired`; `order.status_changed` → `order.completed/cancelled`.
+  This covers every path that changes a quote status (form and client portal) and sends no
+  extra events to Slack or webhook consumers. Runs record the rule's trigger.
+- **New emissions:** `opportunity.created` (create route), `order.status_changed` (order
+  PATCH), `booking.created` (public booking, no staff actor), `document.uploaded` (once per
+  document, since idempotent retries return the same one), `document.shared`, `task.overdue`
+  (`scan_overdue_tasks`, on the hourly due-alert schedule, once per due time, 7-day lookback).
+  `field_changes` (new helper in `crm_events.py`) now rides `lead.updated`,
+  `quote.status_changed` (both emitters) and `order.status_changed`.
+- **Still unavailable** (`available=False`): `booking.cancelled`, `booking.rescheduled` (no
+  such flow exists) and the four `ticket.*` triggers (support is out of scope). The builder no
+  longer offers them, and an enabled rule on one is refused. A saved draft still loads.
+- **Engine:** equality is numeric or date-aware, then case-insensitive text; `gt`/`lt` compare
+  dates. The `owner` target resolves the record's owner. A notification with no link opens the
+  record, and "the record has no owner to notify" is a readable run failure. Notes and tasks
+  use the module key. A rule whose trigger module is disabled for the tenant records a
+  *skipped* run.
+- **Registry:** a `user` field type for targets; *Owner* conditions on leads, deals, quotes
+  and orders; calendar and insertion-order condition fields; document fields renamed to real
+  columns (`original_filename`, `extension`); *Add note* limited to modules with comments.
+  **Stage conditions list the tenant's own pipeline stages** (closes that Deferred row).
+- **Templates:** 11 ready-made rules (`AUTOMATION_TEMPLATES`) and `GET
+  /admin/automation-rules/templates`. Every template is tested as a valid, enabled rule.
+- `RecordComment.id` gained the SQLite variant the other platform tables have (PostgreSQL
+  DDL unchanged), so note actions are testable.
+
+**Frontend (Settings → Automation):** a **Templates** tab (gallery by category; *Use
+template* opens the builder prefilled and disabled); an empty rule list leads with *Browse
+templates*. The rules table reads **When / Then**. The builder header states the rule in one
+sentence ("When a sales lead is created, if Status equals New, then create task.").
+`AutomationUserSelect` replaces the user-ID box: *Record owner*, *Person who made the change*,
+then people. Text fields gain **Insert record field**.
+
+**Settings navigation:** `settings/layout.tsx` is a passthrough, and `SettingsNavRail` is
+deleted. `app/dashboard/layout.tsx` draws a back arrow (`settings-back`, "Back to all
+settings") before the title on every settings subpage. design.md archetype 4 is rewritten
+with the ruling. The rendered guard's `settingsRail` check became `settingsNav`: no rail, a
+back arrow on every settings page and none on the hub, and the hub reaches every page.
+
+**Verification:** `test_automation_triggers.py` (new, 20 cases) and the existing automation
+and pipeline tests: 60 pass. The whole backend suite passes 1319 of 1319; the 4 rate-limit
+tests were rerun with Redis. compileall, `verify_openapi` (366 paths), `verify_migrations`
+at head, `generate-contracts.sh --check`, `check-design.sh` (21 rules), lint and `tsc` pass.
+
+e2e, with a scoped baseline. With these changes stashed, the same server failed 8 tests at the
+30s budget (automation-builder ×5, module-builder ×3), all timeouts. The e2e container is
+capped at 1 CPU on a host at load ~4.5. With these changes and `--timeout=90000`, and no spec
+edits: automation-builder 9 of 9 (7 existing and 2 new), settings-landing 3 of 3 (1 new),
+module-builder 3 of 3. One failure along the way was my own new test using the wrong label.
+
+The rendered guard `design-rules.spec.ts` passed alone on a fresh dev server: 106 routes, none
+unreachable, 15.2 minutes. The first attempt was OOM-killed at the 6g cap after 22 minutes. The
+second ran clean except the new `settingsNav` hub check, which read the hub before its links
+rendered. It now waits for them.
 
 ## Wave 4A — webhook event contract, 08 Phase 1 (2026-10-01)
 
@@ -897,7 +1125,6 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | Custom-module EAV filtering over `custom_module_record_values` (rebuild Appendix B.2) | A backend query-parameter contract | A standalone slice; the toolbar already stopped claiming the filter works |
 | `RequiredMark` not announced to screen readers (about 54 of 68 uses) | A primitive decision for the owner: a `Field` context, or the mark taking its control's id | When the owner picks the approach; then fix in the primitive, not at each call site |
 | `opportunities-revamp.spec.ts` "pipeline totals … retry" fails (inherited, reproduces at HEAD) | Not caused by 2D; unread beyond attribution | 2E frontend Phase 1, the first 2E slice that touches the list page |
-| Automation *Stage* condition options are the six seeded keys (`automation_registry.py`), so a tenant-added stage cannot be picked there | The registry is static per module; making one field's options tenant-dynamic is a registry contract change | When automation conditions gain tenant-resolved options; until then *Stage outcome* (semantic type) covers "a deal was won/lost" |
 | Tenant restore of pipeline configuration and stage ids | Backups export pipelines, stages and each deal's stage ids; restore reads no sales files yet | When tenant restore gains sales-module restore: stage ids must be remapped, not copied |
 | Partial quote/order update that sends only `contact_id` is not checked against the record's stored deal | Predates 05 Phase 3; `_ensure_linked_records` validates only submitted fields | When quote/order updates are next touched: validate against the effective (submitted or stored) deal |
 | Quote/order Deal picker filters deals by *primary* contact only | `contact_id is` on the opportunity search means the primary; a participant filter is a search contract change | When the quote form is next touched, or the picker gains a participant filter (the rail did not touch the quote form) |
@@ -910,7 +1137,9 @@ the start of every wave, and build a row in the wave its trigger names, not earl
 | The composer's mode strip (Note · Call · Email · WhatsApp) clips its last mode at 390px | Predates 3C: the same four modes rendered before; seen in 3C's screenshots | The next slice that touches `RecordTimelineComposer`'s mode strip, or a SegmentedControl overflow rule for narrow widths |
 | Contact click-to-chat stamps `whatsapp_last_contacted_at` only, not `last_contacted_at` / `last_contacted_channel` as the follow-up log does | Pre-existing; changing what "last contacted" means was not 3B's scope. 3C has the same shape: a call logged on a deal stamps the deal, not the participant it names | When contact recency is next touched, or tracked interactions extend past contacts |
 | A typed address of an opted-out contact who is *not* a participant is not refused when mailing from a deal | The composer only knows participants, and the server links by id, never by address | If opt-out becomes a send-time rule across all mail (the inbox composer has the same gap) |
-| 20 automation triggers are offered in the rule builder but never emitted (`lead.status_changed`, `lead.assigned`, `opportunity.created`, `quote.sent/accepted/rejected/expired`, `order.*` beyond created, `booking.*`, `ticket.*`, `document.*`, `task.overdue`); a rule on one never runs | Found by 4A's inventory (08a §2). Emitting them is domain work in each module, not the webhook contract's | Per module, when its events are next touched; each one that starts emitting also gets a webhook catalogue entry. Until then the builder should stop offering them, which is a small separate fix |
+| `booking.cancelled`, `booking.rescheduled` and the four `ticket.*` automation triggers are unavailable (hidden from the builder, refused when enabling) | No booking cancel/reschedule flow exists; support is out of scope | When bookings gain cancel or reschedule, emit there and set `available=True`. Support: only if the owner brings it back |
+| Newly emitted events (`opportunity.created`, `order.status_changed`, `booking.created`, `document.uploaded`, `document.shared`, `task.overdue`) have no webhook catalogue entry | 08a is awaiting the owner's approval, so the catalogue is not extended without it | With 08 Phase 2, as part of the approved contract |
+| Leads changed outside `PUT /sales/leads/{id}` (imports, bulk edits, conversion) emit no `lead.updated`, so `lead.status_changed` / `lead.assigned` do not fire for them | Emission stays in routes (08a §2), and the snapshot fix does not change which writes emit | With the "records created outside the HTTP routes" row below: move emission into the services |
 | Records created outside the HTTP routes emit no event: CSV import, bookings and POS/finance flows creating contacts or leads, automation actions | Events are emitted in routes, after the commit (08a §2) | When a webhook consumer needs "every lead", move emission into the domain services, one module at a time |
 | `task.assigned` / `task.due_today` webhooks carry no assignee identities: the internal payload has only display labels | Adding `assignee_user_ids` changes the internal payload, which 4A kept untouched | With 08 Phase 2, or when a consumer asks: add the IDs to the internal payload (additive) and to the catalogue |
 | Webhooks have no tenant public identifier in the envelope | 08 §9 allows one only if product policy does; each subscription is per tenant and signs with its own secret | If the owner wants one endpoint to serve several workspaces; it is an additive envelope key |

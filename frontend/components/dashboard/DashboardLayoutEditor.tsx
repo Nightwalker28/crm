@@ -91,14 +91,15 @@ export const DEFAULT_DASHBOARD_WIDGETS: DashboardWidget[] = [
   { id: "default-notifications", type: "notifications", size: "medium" },
 ];
 
-const SIZE_LABELS: Record<DashboardWidgetSize, string> = {
+export const SIZE_LABELS: Record<DashboardWidgetSize, string> = {
   small: "S",
   medium: "M",
   large: "L",
   wide: "W",
 };
 
-function sizeClass(size: DashboardWidgetSize) {
+/** The grid span per size. Home and the shared report dashboards use the same grid. */
+export function sizeClass(size: DashboardWidgetSize) {
   if (size === "small") return "md:col-span-1 xl:col-span-1";
   if (size === "large") return "md:col-span-2 xl:col-span-3";
   if (size === "wide") return "md:col-span-2 xl:col-span-4";
@@ -136,9 +137,17 @@ function widgetIcon(type: DashboardWidgetType): LucideIcon {
   return LayoutDashboard;
 }
 
-function DashboardWidgetShell({
+/**
+ * One dashboard panel: its heading, the edit-mode controls, and the body. Shared by the home
+ * dashboard and the report dashboards, which differ in what a widget holds, not in how a
+ * widget is moved, resized or removed.
+ */
+export function DashboardWidgetShell({
   title,
   widget,
+  icon,
+  flush = false,
+  extraActions,
   children,
   handle,
   moveButtons,
@@ -147,7 +156,12 @@ function DashboardWidgetShell({
   isEditing,
 }: {
   title: string;
-  widget: DashboardWidget;
+  widget: { id: string; size: DashboardWidgetSize };
+  icon?: LucideIcon;
+  /** A body that fills the panel edge to edge (a stat group) draws its own padding. */
+  flush?: boolean;
+  /** Edit-mode controls beyond move, resize and remove, such as "Configure". */
+  extraActions?: ReactNode;
   children: ReactNode;
   handle: ReactNode;
   moveButtons: ReactNode;
@@ -167,11 +181,12 @@ function DashboardWidgetShell({
       <div className="border-b border-line-subtle px-4 py-3">
         <PanelHeader
           title={title}
-          icon={isEditing ? undefined : widgetIcon(widget.type)}
+          icon={isEditing ? undefined : icon}
           action={isEditing ? (
             <div className="flex flex-wrap items-center gap-1">
               {handle}
               {moveButtons}
+              {extraActions}
               <SegmentedControl
                 aria-label={`Resize ${title}`}
                 value={widget.size}
@@ -192,7 +207,7 @@ function DashboardWidgetShell({
         />
       </div>
       {/* A stat group fills the panel edge to edge and carries its own cell padding (§4.7). */}
-      <div className={cn(!isFlushCrmWidget(widget.type) && "p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
+      <div className={cn(!flush && "p-4", isEditing && "pointer-events-none select-none opacity-80")}>{children}</div>
       </section>
     </Card>
   );
@@ -287,6 +302,8 @@ export function DashboardLayoutEditor({
           <DashboardWidgetShell
             title={widgetTitle(widget, modulesByName)}
             widget={widget}
+            icon={widgetIcon(widget.type)}
+            flush={isFlushCrmWidget(widget.type)}
             handle={handle}
             moveButtons={moveButtons}
             onResize={onResize}

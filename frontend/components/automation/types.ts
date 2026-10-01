@@ -58,7 +58,7 @@ export type AutomationConditionField = {
   payload_key: string;
   module_key: string;
   label: string;
-  field_type: "text" | "number" | "date" | "select";
+  field_type: "text" | "number" | "date" | "select" | "user";
   operators: string[];
   options: { value: string; label: string }[];
 };
@@ -66,7 +66,9 @@ export type AutomationConditionField = {
 export type AutomationActionField = {
   key: string;
   label: string;
-  field_type: "text" | "textarea" | "number" | "select" | "actor_or_user_id" | "payload_or_number";
+  // `user` takes "owner" (the record's owner), "actor" (whoever caused the event) or a user
+  // id. `actor_or_user_id` is its older name, still on rules saved before the rename.
+  field_type: "text" | "textarea" | "number" | "select" | "user" | "actor_or_user_id" | "payload_or_number";
   required: boolean;
   placeholder: string | null;
   options: { value: string; label: string }[];
@@ -116,3 +118,15 @@ export type InspectorSelection =
   | { kind: "condition"; id: string }
   | { kind: "action"; id: string }
   | { kind: "validation" };
+
+export type AutomationTemplate = {
+  key: string;
+  name: string;
+  description: string;
+  category: string;
+  module_key: string | null;
+  trigger_event: string;
+  condition_mode: "all" | "any";
+  conditions_json: Record<string, unknown>[];
+  actions_json: Record<string, unknown>[];
+};

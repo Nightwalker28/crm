@@ -72,7 +72,7 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "finance_io", label: "Insertion orders", route: DASHBOARD_ROUTES.insertionOrders, group: "finance", status: "tier2", enabled: true, sortOrder: 10, quickAction: { label: "Create insertion order", description: "Add a finance insertion order", href: `${DASHBOARD_ROUTES.insertionOrders}/new` } },
   { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.financePos, group: "finance", status: "tier2", enabled: true, sortOrder: 20, quickAction: { label: "Create invoice", description: "Add an itemized invoice", href: `${DASHBOARD_ROUTES.financePos}/new` } },
   { key: "finance_payments", label: "Payments", route: DASHBOARD_ROUTES.payments, group: "finance", status: "tier2", enabled: true, sortOrder: 30, requiredModuleKey: "finance_pos", quickAction: { label: "Record payment", description: "Apply a payment to an outstanding invoice", href: `${DASHBOARD_ROUTES.payments}/record`, requiredAction: "edit" } },
-  { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90, quickAction: { label: "Build report", description: "Configure a tenant-authorized report", href: `${DASHBOARD_ROUTES.reports}#report-builder` } },
+  { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90, quickAction: { label: "Build report", description: "Start a new report from scratch", href: `${DASHBOARD_ROUTES.reports}/new` } },
   { key: "message_templates", label: "Templates", route: SETTINGS_ROUTES.templates, group: "settings", status: "tier2", enabled: true, sortOrder: 80, adminOnly: true, quickAction: { label: "Create message template", description: "Add a reusable message template", href: `${SETTINGS_ROUTES.templates}/new` } },
   { key: "integrations", label: "Integrations", route: SETTINGS_ROUTES.integrations, group: "settings", status: "tier1", enabled: true, sortOrder: 90, adminOnly: true, quickAction: { label: "Configure integration", description: "Review providers and connect an integration", href: `${SETTINGS_ROUTES.integrations}#provider-registry`, requiredAction: "configure" } },
 ] as const;
@@ -86,8 +86,8 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
  * `record-layouts`, which existed only in the hub — so it was invisible to the palette and its
  * header rendered Title Case out of a label fallback. Two lists is one list plus a bug.
  *
- * Everything now derives from here: the rail in `settings/layout.tsx`, the hub, the flat list
- * below. Adding a settings page means adding one row.
+ * Everything now derives from here: the hub, the header title, the flat list below. Adding a
+ * settings page means adding one row.
  */
 export const SETTINGS_NAV_GROUPS = [
   {

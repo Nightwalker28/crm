@@ -58,6 +58,22 @@ class UserMailConnection(Base):
     messages = relationship("MailMessage", back_populates="connection")
 
 
+class TenantMailSettings(Base):
+    """Workspace sender for scheduled and system-generated mail."""
+
+    __tablename__ = "tenant_mail_settings"
+
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), primary_key=True)
+    sender_email = Column(String(255), nullable=False)
+    smtp_host = Column(String(255), nullable=False)
+    smtp_port = Column(Integer, nullable=False)
+    smtp_security = Column(String(20), nullable=False)
+    smtp_username = Column(String(255), nullable=False)
+    encrypted_password = Column(Text, nullable=False)
+    encrypted_password_key_version = Column(String(32), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
 class MailMessage(Base):
     __tablename__ = "mail_messages"
     __table_args__ = (

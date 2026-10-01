@@ -601,7 +601,7 @@ nearest shipping screen rather than inventing one.
 | Comfortable table row | 52px |
 | Toolbar row | `min-h-9` |
 | Context rail | `20rem` — the record spine and the form aside are the same width (§4.7) |
-| Nav rail | `16rem` — settings lateral navigation (§4.7) |
+| Nav rail | None in settings (§4.7, 2026-10-01). The client portal's rail takes the sidebar's own widths |
 | Page split | `lg:grid-cols-[minmax(0,1fr)_20rem]` — **one** ratio, **one** breakpoint |
 | Field grid inside a section | `md:grid-cols-2` |
 
@@ -1316,41 +1316,39 @@ have a value, and the backend agrees.
 
 #### Archetype 4 — Settings
 
-`app/dashboard/settings/layout.tsx` supplies a `16rem` nav rail; each page is a
-`PageShell variant="settings"` inside it.
+Each settings page is a `PageShell variant="settings"` in the dashboard's own document
+scroll. There is **no second nav rail**: the sidebar's single *Settings* entry opens the hub
+(`/dashboard/settings`), the hub is the one index, and every page below it shows a back
+arrow before its title in the dashboard header that returns to the hub.
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
-│ Settings                                                                 │
-├────────────────┬─────────────────────────────────────────────────────────┤
-│ NAV   16rem    │ Authentication                                          │
-│                │ Sign-in methods and session policy for this workspace.  │
-│ Workspace      │                                                         │
-│  General       │ ┌ Multi-factor ──────────────────────────────────────┐  │
-│  Branding      │ │  Require MFA for all users        [ on  ]  Saved   │  │
-│ People         │ └───────────────────────────────────────────────────┘   │
-│  Users         │ ┌ Single sign-on ────────────────────────────────────┐  │
-│  Roles         │ │  Provider          [ Microsoft Entra ▾ ]  Saving…  │  │
-│ ▸Authentication│ └───────────────────────────────────────────────────┘   │
-│  …             │                                                         │
-└────────────────┴─────────────────────────────────────────────────────────┘
+│ ←  Authentication                                    ⌘K     🔔  (AB)     │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Authentication                                                           │
+│ Sign-in methods and session policy for this workspace.                   │
+│                                                                          │
+│ ┌ Multi-factor ─────────────────────────────────────────────────────────┐│
+│ │  Require MFA for all users                         [ on  ]  Saved      ││
+│ └───────────────────────────────────────────────────────────────────────┘│
+│ ┌ Single sign-on ───────────────────────────────────────────────────────┐│
+│ │  Provider          [ Microsoft Entra ▾ ]  Saving…                     ││
+│ └───────────────────────────────────────────────────────────────────────┘│
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-Contract: **every settings page has a visible title and a description** — none of the 19
-does today. `PermissionDeniedState` on **all 23** pages, not 1 — settings is entirely
-admin-gated, so a missing permission wall is exactly what a non-admin hits.
+Contract: **every settings page has a visible title and a description**, and
+`PermissionDeniedState` on every page, since settings is entirely admin-gated and a
+missing permission wall is exactly what a non-admin hits.
 
-The nav rail closes A8 and settles the IA: `SETTINGS_NAV_ITEMS` (flat, 18) and the hub's
-`SETTINGS_SECTIONS` (6 groups, 19) become **one** source, which is what currently leaks
-`record-layouts` — invisible to ⌘K and rendering Title Case from a label fallback.
+`SETTINGS_NAV_GROUPS` is the one source for the hub, the header title and ⌘K.
 
-**The rail is pinned and the content column is the scroller** — the same mechanism as
-archetype 2's spine, and for the same reason: an operator three panels down a 900-line
-backups page must still be able to reach Domains. It is *not* `position: sticky` (R3);
-the settings layout is a full-height two-column grid and the right column owns the scroll,
-so §4.5 still holds at one *page* scroll region — the same two-scroller shape archetype
-2 already ships. Below `lg` the rail is not drawn and the page reverts to a document
-scroll, with the hub as the narrow-viewport index.
+**Why no rail (owner ruling, 2026-10-01).** 5.6 added a `16rem` rail (A8) so a two-page
+settings task did not round-trip through the hub. It put two navs on screen for one
+destination, beside a sidebar that already has a Settings entry. The owner chose the hub
+plus the header back arrow: settings is visited occasionally, one page at a time, and the
+workspace keeps its full width. The rendered guard (`design-rules.spec.ts`, `settingsNav`)
+fails if a rail is drawn, if a settings page lacks the back arrow, or if the hub misses a page.
 
 ##### The commit model, per control (R1 applied)
 
@@ -1575,7 +1573,7 @@ exists. The list-and-record language in particular is not optional:
 | A kanban | `Board` — see §7.13. The same rows as the list, in `ModuleTableShell` |
 | A month calendar | `MonthGrid` — see §7.14. The grid and the narrow day picker are one component |
 | A feed, inbox or history line — activity, a notification, an invite, a message, a linked task | `ListRow` inside `RowList` — see §7.15. Not a table and not a card |
-| A navigation entry — the sidebar, the settings rail | `navItemClassName` from `SidebarNav` — see §7.16. The current page is elevation and a bar in ink |
+| A navigation entry — the sidebar, the client portal rail | `navItemClassName` from `SidebarNav` — see §7.16. The current page is elevation and a bar in ink |
 | A person | `Avatar` |
 | An absent value | `EmptyValue` — `Not set` in a field, `—` in a cell (§3.6) |
 | A read-only label over its value | `Fact` — see §7.12. An ink group, never a bordered cell |
@@ -1889,6 +1887,24 @@ whole grid. It is the one table in the app that is allowed a footer button.
 Anything that is neither a list nor a matrix is neither primitive's, and takes §12 before
 a line of it is written.
 
+#### A report's table is a list, including a pivot (Reports rebuild, 2026-10-01)
+
+A report result is read like a list, not like the permission grid: every cell is a figure
+under a named column, and every row is a group someone can open. So all three report
+formats are `RecordTable` `default`, never `MatrixTable` and never a new table.
+
+- **Summary:** one row per group, with a *Records* column and one column per measure. A
+  second grouping uses `groupBy` bands, and the band label carries the group's subtotal.
+- **Matrix (pivot):** one row per row group, one column per column group (the first 12),
+  and a *Total* column. A cell is a button that opens that cell's records, marked
+  `interactive` so it never also opens the row.
+- **Tabular:** the records, with `rowHref` to each record's page.
+- The last row is **Total**, and it opens every record in the report. A total row is a row
+  of the list, not a footer, because it opens records like the rows above it.
+
+This follows Odoo's pivot and Dynamics' chart drill-down: a figure is always one click from
+the records behind it (`docs/crm-evolution/11-reports.md` §3).
+
 ### 7.11 An editing drawer is `EditorPanel`, and `sheet.tsx` is never composed at a call site
 
 `dialog.tsx` got a styled panel with a closed size set in rebuild 5.1; `sheet.tsx` did
@@ -2111,8 +2127,8 @@ visible; a feed row's actions are secondary to what it says.
 
 ### 7.16 Navigation marks where you are in ink, and a group of one is a link
 
-Two navs share the viewport on every settings page — the sidebar and the settings rail (§4.7) —
-and 5.6 made the rail copy the sidebar's current-page mark by hand so the two would read as one
+Two navs shared the viewport on every settings page — the sidebar and the settings rail, since
+removed (§4.7) — and 5.6 made the rail copy the sidebar's current-page mark by hand so the two would read as one
 kind of thing. The copy was the mark: `bg-action-primary-muted text-primary` behind a
 `border-primary/20` box and a `bg-primary` bar. That is the primary action's tint carrying
 *you are here*, the state §7.13, §7.14 and §7.15 each took it off.

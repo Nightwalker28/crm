@@ -25,7 +25,7 @@ export type ModuleFilterField = {
   operators?: SavedViewFilterOperator[];
   options?: ModuleFilterFieldOption[];
   sourceModuleKey?: string;
-  recordType?: "user" | "team";
+  recordType?: "user" | "team" | "organization" | "contact";
 };
 
 export type ModuleViewDisplayMode = { value: string; label: string };

@@ -245,6 +245,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `mail/compose/page.tsx` | 5 | 5.7 | unchanged | Shim | close-out — unchanged, a shim |
 | `calendar/page.tsx` | 631 | 5.7 | rebuild | One of 3 unshared calendar grids | **done, batch 5** — 631 → 391 lines. `MonthGrid` in a `Card` beside the 20rem rail (§4.4 page split); its two grids, the *Selected day* panel and the header's session-sync box are gone. Invites and providers are rows, statuses are `StatusValue`, the states are `PanelStates`. Batch 6 — the invite and provider rows are `ListRow`s |
 | `reports/page.tsx` | 936 | 5.7 | rebuild | Uses **both** `RecordTable` and raw `Table`. **A11** | **done, batch 7** (A11 is the sidebar's, batch 8) — raw `Table` → `RecordTable variant="readOnly"`, `ForecastBucketList` → `ListRow`, four tinted error banners → `PanelError` / `FieldError` / toasts, headings → `PanelHeader`, the chart's `Skeleton` and `EmptyState` → `PanelStates`, *Top result* → `Fact`, presets off the action tint |
+| `reports/[reportId]/page.tsx`, `reports/dashboards/[dashboardId]/page.tsx` | — | 5.7 | adopt | Report and dashboard viewers consume the shared dashboard archetype | Phase 3 adds the schedule action |
 
 ### 1.11 `app/dashboard/settings/**` (25)
 
@@ -402,6 +403,8 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `integrations/IntegrationEventHistory.tsx` | 211 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — three prose states replaced by `RecordTable`'s |
 | `integrations/IntegrationWebhookWorkspace.tsx` | 306 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batches 4b + 7a** — `RecordTable`, then `EditorPanel`, and the Save became a submit |
 | `integrations/IntegrationWebsiteWorkspace.tsx` | 652 | 5.6 | rebuild | Raw `Table` → `RecordTable` | **done, batches 4b + 7a** — three tables, six prose states retired; then `EditorPanel`, and the Save became a submit |
+| `integrations/TenantMailSettingsPanel.tsx` | — | 5.6 | adopt | Workspace SMTP settings use the existing settings page and form primitives | Phase 3 |
+| `reports/ReportSubscriptionDialog.tsx` | — | 5.7 | adopt | Shared schedule form for report and dashboard viewers | Phase 3 |
 | `integrations/IntegrationProviderRegistry.tsx` | 181 | 5.6 | adopt | | **done, batches 4a + 7d** — `PanelError` in 4a; in 7d the section header → `SectionHeading`, two prose states in `Card`s → `PanelLoading` + `EmptyState`, and two R7 headings stepped down |
 | `integrations/IntegrationSectionError.tsx` | 15 | 5.1 | **delete** | One of the 3 competing settings error idioms | **done, 5.6 batch 4a** — a verbatim duplicate of `PanelError`; all 4 call sites moved |
 | `recordLayouts/RecordLayoutBuilder.tsx` | 580 | 5.6 | rebuild | ~~6 raw HTML5 DnD implementations start here~~ — **stale, corrected 7c**: this file has no drag-and-drop at all. It reorders with arrow buttons. The real set is five files, listed in 5.7 | **done, batch 7c** — five `Card` + hand-rolled `h2` → `FormSection` (R7), page actions → `ActionBar` (R4), the `aria-pressed` collapse toggle → `SegmentedBoolean` (ruling 4, a fifth idiom) |

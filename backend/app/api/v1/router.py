@@ -29,6 +29,7 @@ from app.modules.platform.routes.custom_modules import builder_router as custom_
 from app.modules.platform.routes.data_transfer_jobs import router as data_transfer_job_router
 from app.modules.platform.routes.module_fields import admin_router as module_fields_admin_router, router as module_fields_router
 from app.modules.platform.routes.module_reports import router as module_reports_router
+from app.modules.mail.routes.tenant_mail import router as tenant_mail_router
 from app.modules.platform.routes.crm_events import router as crm_events_router
 from app.modules.platform.routes.webhook_events import router as webhook_events_router
 from app.modules.platform.routes.global_search import router as global_search_router
@@ -86,6 +87,7 @@ router.include_router(public_custom_fields_router)
 router.include_router(module_fields_admin_router)
 router.include_router(module_fields_router)
 router.include_router(module_reports_router)
+router.include_router(tenant_mail_router)
 router.include_router(data_transfer_job_router)
 router.include_router(crm_events_router)
 router.include_router(webhook_events_router)

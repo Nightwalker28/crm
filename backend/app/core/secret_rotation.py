@@ -14,7 +14,7 @@ from app.core.secrets import (
 )
 from app.modules.calendar.models import UserCalendarConnection
 from app.modules.documents.models import DocumentStorageConnection
-from app.modules.mail.models import UserMailConnection
+from app.modules.mail.models import TenantMailSettings, UserMailConnection
 from app.modules.user_management.models import TenantSsoSettings, User
 
 LegacyDecryptor = Callable[[str | None], str | None]
@@ -35,6 +35,7 @@ SECRET_FIELD_TARGETS: tuple[SecretFieldTarget, ...] = (
     SecretFieldTarget("mfa_totp", User, "encrypted_totp_secret", "mfa_secret_key_version", tenant_field="tenant_id"),
     SecretFieldTarget("sso_client_secret", TenantSsoSettings, "encrypted_client_secret", "client_secret_key_version", tenant_field="tenant_id"),
     SecretFieldTarget("mail_oauth_access", UserMailConnection, "access_token", "access_token_key_version", tenant_field="tenant_id"),
+    SecretFieldTarget("tenant_mail_password", TenantMailSettings, "encrypted_password", "encrypted_password_key_version", tenant_field="tenant_id"),
     SecretFieldTarget("mail_oauth_refresh", UserMailConnection, "refresh_token", "refresh_token_key_version", tenant_field="tenant_id"),
     SecretFieldTarget(
         "mail_password",

@@ -476,37 +476,42 @@ test("opens report building as a create-authorized palette workflow", async ({ p
         results: [{
           module_key: "sales_leads",
           label: "Leads",
-          dimensions: [{ key: "status", label: "Status", field_type: "select" }],
-          metrics: [],
-          filter_fields: [],
-          default_dimension: "status",
+          fields: [{ key: "status", label: "Status", field_type: "select", groupable: true, measurable: false, filter_type: "text" }],
+          default_date_field: null,
+          default_columns: [],
+          supports_scope: true,
+          has_record_pages: true,
         }],
       }),
     }),
   );
-  await page.route("**/reports/modules/*", (route) =>
+  await page.route("**/reports/run", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         module_key: "sales_leads",
-        dimension: { key: "status", label: "Status", field_type: "select" },
-        metric: "count",
-        metric_field: null,
-        total_count: 0,
+        label: "Leads",
+        config: { version: 2, format: "summary", groupings: [{ field: "status" }], measures: [{ aggregate: "count" }], scope: "all", date_filter: null, filters: {}, columns: [], chart: { type: "column" }, sort: { by: "value", direction: "desc" }, limit: 25 },
+        groupings: [{ key: "status", label: "Status", field_type: "select", groupable: true, measurable: false, filter_type: "text", granularity: null }],
+        measures: [{ key: "count", aggregate: "count", field: null, label: "Records", field_type: "number" }],
         rows: [],
+        subtotals: [],
+        totals: { count: 0, values: [0] },
+        row_groups: [],
+        column_groups: [],
+        truncated: false,
+        records: null,
+        generated_at: "2099-01-01T00:00:00Z",
       }),
     }),
-  );
-  await page.route("**/reports/saved?**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }),
   );
   await page.keyboard.press("Control+K");
   await page.getByText("Build report", { exact: true }).click();
 
-  await expect(page).toHaveURL(/\/dashboard\/reports#report-builder$/);
-  await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
-  await expect(page.locator("#report-builder")).toBeVisible();
+  await expect(page).toHaveURL(/\/dashboard\/reports\/new$/);
+  await expect(page.getByRole("heading", { name: "New report" })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Report on" })).toBeVisible();
 });
 
 test("opens message-template creation as a routed full-page workflow", async ({ page }) => {

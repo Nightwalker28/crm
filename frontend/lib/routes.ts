@@ -146,6 +146,8 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   "activity-log": "Activity log",
   "message-templates": "Templates",
   reports: "Reports",
+  dashboards: "Dashboards",
+  forecast: "Forecast",
 };
 
 export function getFriendlyRouteLabel(pathOrSegment: string): string {

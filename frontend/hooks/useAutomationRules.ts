@@ -8,6 +8,7 @@ import type {
   AutomationRule,
   AutomationRulePreview,
   AutomationRun,
+  AutomationTemplate,
   AutomationTriggerGroup,
 } from "@/components/automation/types";
 import { ApiError, apiFetch } from "@/lib/api";
@@ -48,6 +49,24 @@ export function useAutomationActions(triggerEvent: string, enabled = true) {
     queryKey: ["automation-rule-action-registry", triggerEvent],
     queryFn: () => readResults<AutomationActionDefinition>(`/admin/automation-rules/action-registry?${new URLSearchParams({ trigger_event: triggerEvent })}`),
     enabled: enabled && Boolean(triggerEvent),
+  });
+}
+
+export function useAutomationTemplates(enabled = true) {
+  return useQuery({
+    queryKey: ["automation-rule-templates"],
+    queryFn: () => readResults<AutomationTemplate>("/admin/automation-rules/templates"),
+    enabled,
+    staleTime: 10 * 60_000,
+  });
+}
+
+/** Every action definition, for naming a rule's actions in the list without opening it. */
+export function useAllAutomationActions() {
+  return useQuery({
+    queryKey: ["automation-rule-action-registry", "all"],
+    queryFn: () => readResults<AutomationActionDefinition>("/admin/automation-rules/action-registry"),
+    staleTime: 10 * 60_000,
   });
 }
 

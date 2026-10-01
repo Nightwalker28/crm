@@ -2,8 +2,9 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu } from "lucide-react";
+import { ArrowLeft, Menu } from "lucide-react";
 import CalendarSyncBridge from "@/components/calendar/CalendarSyncBridge";
 import Sidebar from "@/components/sidebar/Sidebar";
 import BrowserNotificationsBridge from "@/components/notifications/BrowserNotificationsBridge";
@@ -46,7 +47,9 @@ function registryModuleTitle(pathname: string) {
 
 // The sidebar carries a single flat "Settings" entry that opens the settings landing page.
 // Once a specific settings page is open, the header names that page, using the same label the
-// sidebar and landing page use so the name you click is the name you land on.
+// sidebar and landing page use so the name you click is the name you land on, and a back arrow
+// beside it returns to the landing page. Settings has no second nav rail: the landing page is
+// its one index, and the arrow is the way back to it.
 function settingsPageTitle(pathname: string) {
   const segments = pathname.slice(SETTINGS_ROUTES.root.length).split("/").filter(Boolean);
   const leaf = segments[segments.length - 1];
@@ -88,6 +91,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           : registryModuleTitle(pathname) ?? (customModule
             ? customModule.display_name?.trim() || getModuleDisplayName(customModule.name, customModule.description ?? undefined)
             : null);
+  const isSettingsSubpage = pathname.startsWith(`${SETTINGS_ROUTES.root}/`);
   const isCheckingAdminAccess = requiresAdmin && isLoading;
   const isCustomModulePath = pathname === "/dashboard/custom" || pathname.startsWith("/dashboard/custom/");
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
@@ -145,6 +149,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
                   exactly one per page). It was an h1 until every route carried a `PageShell`,
                   because demoting it sooner would have left the unmigrated pages with no
                   heading at all. Phase 4 finished that migration. */}
+              {isSettingsSubpage ? (
+                <Button asChild variant="ghost" size="icon-sm">
+                  <Link href={SETTINGS_ROUTES.root} aria-label="Back to all settings" data-testid="settings-back"><ArrowLeft /></Link>
+                </Button>
+              ) : null}
               {moduleTitle ? <div className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</div> : null}
             </div>
             <div className="min-w-0">

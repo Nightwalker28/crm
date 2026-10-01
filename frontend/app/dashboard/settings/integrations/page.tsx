@@ -8,6 +8,7 @@ import { IntegrationEventHistory } from "@/components/integrations/IntegrationEv
 import { IntegrationProviderRegistry, type IntegrationRegistryHealth } from "@/components/integrations/IntegrationProviderRegistry";
 import { IntegrationWebhookWorkspace } from "@/components/integrations/IntegrationWebhookWorkspace";
 import { IntegrationWebsiteWorkspace } from "@/components/integrations/IntegrationWebsiteWorkspace";
+import { TenantMailSettingsPanel } from "@/components/integrations/TenantMailSettingsPanel";
 import { PageShell } from "@/components/ui/PageShell";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
@@ -60,6 +61,8 @@ export default function IntegrationsPage() {
         onRetry={() => void registryQuery.refetch()}
         onConnectDocumentProvider={(providerKey) => void connectDocumentProvider(providerKey)}
       />
+
+      <TenantMailSettingsPanel />
 
       <IntegrationWebsiteWorkspace />
 

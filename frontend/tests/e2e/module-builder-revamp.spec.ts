@@ -204,12 +204,9 @@ test("adds a field in the inspector and exposes shared builder destinations", as
 
   await expect(page.getByRole("tab", { name: "Permissions" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Automation" })).toHaveCount(0);
-  // Saved views is the one destination the rail cannot carry — `/dashboard/views/<key>` is
-  // not a settings route — so it stays in the page header. Permissions and Automation were
-  // A8 workarounds beside it and the rail owns them now (rebuild 5.6 batch 6c), so the
-  // assertion moved to the rail rather than being deleted.
+  // Saved views is not a settings route, so it stays in the page header. Permissions and
+  // Automation are reached from the settings hub, through the header's back arrow (the rail
+  // that carried them was removed 2026-10-01).
   await expect(page.getByRole("link", { name: "Saved views" })).toHaveAttribute("href", "/dashboard/views/service_requests");
-  const rail = page.locator('[data-slot="settings-nav-rail"]');
-  await expect(rail.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "/dashboard/settings/permissions");
-  await expect(rail.getByRole("link", { name: "Automation" })).toHaveAttribute("href", "/dashboard/settings/automation");
+  await expect(page.getByRole("link", { name: "Back to all settings" })).toHaveAttribute("href", "/dashboard/settings");
 });

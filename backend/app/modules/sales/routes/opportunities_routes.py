@@ -509,6 +509,22 @@ def create_sales_opportunity(
         description=f"Created opportunity {opportunity.opportunity_name}",
         after_state=_serialize_opportunity(opportunity),
     )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="opportunity.created",
+        entity_type="sales_opportunity",
+        entity_id=opportunity.opportunity_id,
+        payload={
+            **actor_payload(current_user),
+            "opportunity_id": opportunity.opportunity_id,
+            "deal_name": opportunity.opportunity_name,
+            "sales_stage": opportunity.sales_stage,
+            "assigned_to": opportunity.assigned_to,
+            "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
+        },
+    )
     _emit_deal_assigned_event(db, current_user=current_user, opportunity=opportunity)
     return SalesOpportunityResponse.model_validate(opportunity)
 

@@ -146,9 +146,9 @@ test("adds editable AND and OR conditions and omits the redundant views breadcru
   await expect(page.getByRole("navigation", { name: "Breadcrumb" })).toHaveCount(0);
   await page.getByRole("button", { name: "Edit view" }).click();
   await page.getByRole("tab", { name: "Filters" }).click();
-  await page.getByRole("button", { name: "Add AND Condition" }).click();
+  await page.getByRole("button", { name: "Add AND condition" }).click();
   await expect(page.getByText("No AND conditions yet.")).toHaveCount(0);
-  await page.getByRole("button", { name: "Add OR Condition" }).click();
+  await page.getByRole("button", { name: "Add OR condition" }).click();
   await expect(page.getByText("No OR conditions yet.")).toHaveCount(0);
   await expect(page.getByText("2 columns · 2 conditions · Default sorting")).toBeVisible();
 });

@@ -51,6 +51,9 @@ const STATIC_ROUTES = [
   "/dashboard/mail/compose",
   "/dashboard/profile",
   "/dashboard/reports",
+  "/dashboard/reports/dashboards",
+  "/dashboard/reports/forecast",
+  "/dashboard/reports/new",
   "/dashboard/sales/contacts",
   "/dashboard/sales/contacts/new",
   "/dashboard/sales/leads",
@@ -169,7 +172,7 @@ type Scope = "dashboard" | "public" | "portal";
 const CATEGORIES = [
   "uppercase", "mono", "radius", "controlHeight", "font", "nesting", "formTitle", "formFooter", "formSticky",
   "typeRamp", "pageRoot", "cardBorder", "controlBorder", "titleCase", "siblingHeight", "colourBudget",
-  "archetype", "settingsRail", "focus", "controlName",
+  "archetype", "settingsNav", "focus", "controlName",
 ] as const;
 type Category = (typeof CATEGORIES)[number];
 type Findings = Record<Category, string[]>;
@@ -306,7 +309,6 @@ async function probeRoute(page: Page, args: { route: string; scope: Scope; recor
     });
 
     // Page root (§4.7): the first thing in the dashboard's content scroller is `PageShell`.
-    // The settings rail is a sibling column of the page, not a page, so it may precede it.
     if (a.scope === "dashboard") {
       const scroller = document.querySelector<HTMLElement>("main div.overflow-y-auto");
       const shell = scroller?.querySelector<HTMLElement>('[data-slot="page-shell"]');
@@ -315,7 +317,7 @@ async function probeRoute(page: Page, args: { route: string; scope: Scope; recor
       else {
         for (let node: HTMLElement | null = shell; node && node !== scroller; node = node.parentElement) {
           for (let prev = node.previousElementSibling; prev; prev = prev.previousElementSibling) {
-            if (!visible(prev) || prev.querySelector('[data-slot="settings-nav-rail"]')) continue;
+            if (!visible(prev)) continue;
             out.pageRoot.push(`${label(prev)} renders before PageShell`);
           }
         }
@@ -446,17 +448,15 @@ async function probeRoute(page: Page, args: { route: string; scope: Scope; recor
       if (!document.querySelector('[data-slot="record-header"]')) out.archetype.push("no record header");
     }
 
-    // Settings rail (A8): the current page is marked, once, on the item that owns it.
+    // Settings navigation (owner ruling 2026-10-01): no second nav rail beside the sidebar.
+    // A settings page returns to the hub through the header's back arrow; the hub has none.
     if (a.route.startsWith("/dashboard/settings")) {
-      const rail = document.querySelector('[data-slot="settings-nav-rail"]');
-      if (!rail || !visible(rail)) out.settingsRail.push("no visible settings rail");
-      else {
-        const current = Array.from(rail.querySelectorAll<HTMLAnchorElement>('a[aria-current="page"]'));
-        const path = a.route;
-        const owns = (href: string) => path === href || (href !== "/dashboard/settings" && path.startsWith(`${href}/`));
-        if (current.length !== 1) out.settingsRail.push(`${current.length} items marked aria-current`);
-        else if (!owns(new URL(current[0].href).pathname)) out.settingsRail.push(`marks ${new URL(current[0].href).pathname}`);
-      }
+      if (document.querySelector('[data-slot="settings-nav-rail"]')) out.settingsNav.push("a settings nav rail is drawn");
+      const back = document.querySelector<HTMLAnchorElement>('header [data-testid="settings-back"]');
+      if (a.route === "/dashboard/settings") {
+        if (back) out.settingsNav.push("the hub draws a back arrow");
+      } else if (!back || !visible(back)) out.settingsNav.push("no header back arrow");
+      else if (new URL(back.href).pathname !== "/dashboard/settings") out.settingsNav.push(`back arrow goes to ${new URL(back.href).pathname}`);
     }
     return out;
   }, { ...args, categories: [...CATEGORIES], allowedRadii: [...ALLOWED_RADII], allowedH: [...ALLOWED_CONTROL_H], ramp: TYPE_RAMP, nouns: PROPER_NOUNS, products: PRODUCT_NAMES });
@@ -748,23 +748,16 @@ test("design rule audit", async ({ page, browser }) => {
 
   for (const { route, record } of routes) await audit(page, route, "dashboard", record);
 
-  // The rail reaches every settings page without a trip through the hub (A8).
+  // The hub is the one settings index, so it reaches every settings page.
   await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded", timeout: 45000 });
-  await page.waitForTimeout(1300);
-  const railHrefs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-slot="settings-nav-rail"] a')).map((x) => new URL(x.href).pathname),
-  );
+  // The hub renders after the admin check resolves; read it once its links are there.
+  await page.locator('[data-slot="settings-hub"] a').first().waitFor({ timeout: 45000 });
   const hubHrefs = await page.evaluate(() =>
-    Array.from(document.querySelectorAll<HTMLAnchorElement>('main div.overflow-y-auto a[href^="/dashboard/settings/"]'))
-      .filter((x) => !x.closest('[data-slot="settings-nav-rail"]'))
-      .map((x) => new URL(x.href).pathname),
+    Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-slot="settings-hub"] a[href^="/dashboard/settings/"]')).map((x) => new URL(x.href).pathname),
   );
-  const settingsPages = [...new Set([
-    ...STATIC_ROUTES.filter((r) => /^\/dashboard\/settings\/[^/]+$/.test(r)),
-    ...hubHrefs.filter((r) => /^\/dashboard\/settings\/[^/]+$/.test(r)),
-  ])];
+  const settingsPages = STATIC_ROUTES.filter((r) => /^\/dashboard\/settings\/[^/]+$/.test(r));
   for (const destination of settingsPages) {
-    if (!railHrefs.includes(destination)) findings.settingsRail.push(`${destination}  not reachable from the rail`);
+    if (!hubHrefs.includes(destination)) findings.settingsNav.push(`${destination}  not reachable from the hub`);
   }
 
   // The active option in a listbox, both themes.
@@ -864,7 +857,7 @@ test("design rule audit", async ({ page, browser }) => {
   expect.soft(findings.siblingHeight, "buttons in one row at different heights (rebuild.md R4)").toEqual([]);
   expect.soft(findings.colourBudget, "most rows of a list carry colour (rebuild.md R5)").toEqual([]);
   expect.soft(findings.archetype, "a record route not on RecordWorkspace (design.md 4.7, archetype 2)").toEqual([]);
-  expect.soft(findings.settingsRail, "the settings rail misses a page or its current mark (A8)").toEqual([]);
+  expect.soft(findings.settingsNav, "settings navigation: a rail is back, a page lacks its back arrow, or the hub misses a page").toEqual([]);
   expect.soft(findings.focus, "focus that does not show (design.md 2.3, 8)").toEqual([]);
   expect.soft(findings.controlName, "a form control with no accessible name (design.md 8)").toEqual([]);
   expect.soft(running, "an animation still running under reduced motion (design.md 6)").toEqual([]);

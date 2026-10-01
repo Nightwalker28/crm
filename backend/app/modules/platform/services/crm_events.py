@@ -21,6 +21,7 @@ CRM_EVENT_TYPES = {
     "lead.updated",
     "lead.converted",
     "deal.assigned",
+    "opportunity.created",
     "opportunity.stage_changed",
     # Emitted on entering a won/lost stage by semantic type, never by label.
     "opportunity.won",
@@ -35,11 +36,16 @@ CRM_EVENT_TYPES = {
     "quote.created",
     "quote.status_changed",
     "order.created",
+    "order.status_changed",
     "case.created",
     "case.status_changed",
     "contract.status_changed",
     "task.due_today",
+    "task.overdue",
     "task.assigned",
+    "booking.created",
+    "document.uploaded",
+    "document.shared",
 }
 SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
@@ -570,6 +576,25 @@ def safe_publish_crm_event(
             **(payload or {}),
         },
     )
+
+
+def field_changes(before: dict[str, Any], after: dict[str, Any], keys: Any = None) -> dict[str, dict[str, Any]]:
+    """`{field: {"from": old, "to": new}}` for each field whose value actually changed.
+
+    Automation's *changed*, *changed to* and *changed from* operators read this. An update
+    event that sent only the submitted keys (`changed_fields`) could not say what a field
+    changed from, so *changed to* never matched, and resubmitting an unchanged value
+    counted as a change.
+    """
+
+    names = keys if keys is not None else set(before) | set(after)
+    encoded_before = jsonable_encoder(before)
+    encoded_after = jsonable_encoder(after)
+    return {
+        name: {"from": encoded_before.get(name), "to": encoded_after.get(name)}
+        for name in sorted(names)
+        if encoded_before.get(name) != encoded_after.get(name)
+    }
 
 
 def actor_payload(user) -> dict[str, Any]:

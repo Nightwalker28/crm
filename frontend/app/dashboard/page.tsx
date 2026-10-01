@@ -33,6 +33,7 @@ import {
 } from "@/components/dashboard/DashboardPersonalWidgets";
 import {
   DashboardReportChartWidget,
+  describeSavedReport,
   fetchDashboardSavedReports,
 } from "@/components/dashboard/DashboardReportChartWidget";
 import {
@@ -209,7 +210,7 @@ export default function DashboardHomePage() {
         items.push({
           type: "report_chart",
           title: `Chart: ${report.name}`,
-          description: `${getModuleDisplayName(report.module_key)} by ${report.config.dimension}`,
+          description: describeSavedReport(report),
           defaultSize: "large",
           config: { saved_report_id: report.id },
         });

@@ -36,9 +36,7 @@ test("shows every registered settings destination on mobile", async ({ page }) =
     await expect(page.getByRole("heading", { name: group, exact: true })).toBeVisible();
   }
 
-  // Scoped to the hub. rebuild.md 5.6 added a settings nav rail in the layout, so a bare
-  // link-by-name matches twice on any viewport wide enough to draw it. Coverage *of* the
-  // rail is 5.10's, per the programme's no-new-e2e rule.
+  // Scoped to the hub, the one settings index.
   const hub = page.locator('[data-slot="settings-hub"]');
   for (const destination of SETTINGS_DESTINATIONS) {
     await expect(hub.getByRole("link", { name: new RegExp(`^${destination.name}`) })).toHaveAttribute(
@@ -67,4 +65,14 @@ test("settings rows use one scan column and support keyboard navigation", async 
   await page.keyboard.press("Enter");
 
   await expect(page).toHaveURL(/\/dashboard\/settings\/general$/);
+});
+
+test("settings pages draw no second nav and return to the hub from the header", async ({ page }) => {
+  await page.goto("/dashboard/settings/users");
+  await expect(page.locator('[data-slot="settings-nav-rail"]')).toHaveCount(0);
+  const back = page.getByRole("link", { name: "Back to all settings" });
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(/\/dashboard\/settings$/);
+  await expect(page.getByRole("link", { name: "Back to all settings" })).toHaveCount(0);
 });

@@ -21,7 +21,7 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
-from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
+from app.modules.platform.services.crm_events import actor_payload, field_changes, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
     enqueue_export_job,
@@ -570,6 +570,7 @@ def update_lead(
             "score": updated.score,
             "score_grade": updated.score_grade,
             "changed_fields": sorted(update_data.keys()),
+            "field_changes": field_changes(before_state, _serialize_lead(updated), keys=set(update_data) - {"custom_fields"}),
             "before_status": before_state.get("status"),
             "href": f"/dashboard/sales/leads/{updated.lead_id}",
         },

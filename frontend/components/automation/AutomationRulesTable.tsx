@@ -1,6 +1,6 @@
 "use client";
 
-import { Copy, Edit3, History, MoreHorizontal, Power, PowerOff, Trash2, Workflow } from "lucide-react";
+import { Copy, Edit3, History, LayoutTemplate, MoreHorizontal, Power, PowerOff, Trash2, Workflow } from "lucide-react";
 
 import type { AutomationRule } from "./types";
 import { formatModuleLabel, statusToneFor } from "./utils";
@@ -13,6 +13,8 @@ import { formatDateTime } from "@/lib/datetime";
 type Props = {
   rules: AutomationRule[];
   triggerLabels: Map<string, string>;
+  actionLabels: Map<string, string>;
+  onBrowseTemplates: () => void;
   isRefreshing?: boolean;
   hasFilters: boolean;
   onCreate: () => void;
@@ -33,6 +35,8 @@ type Props = {
 export function AutomationRulesTable({
   rules,
   triggerLabels,
+  actionLabels,
+  onBrowseTemplates,
   isRefreshing,
   hasFilters,
   onCreate,
@@ -55,18 +59,28 @@ export function AutomationRulesTable({
         </>
       ),
     },
+    // When / Then reads a rule the way its builder is laid out, instead of two bare counts.
     {
       key: "trigger",
-      label: "Module / trigger",
+      label: "When",
       render: (rule) => (
         <>
-          <div className="text-copy-primary">{rule.module_key ? formatModuleLabel(rule.module_key) : "Platform"}</div>
-          <div className="mt-1 text-xs text-copy-muted">{triggerLabels.get(rule.trigger_event) ?? rule.trigger_event}</div>
+          <div className="text-copy-primary">{triggerLabels.get(rule.trigger_event) ?? rule.trigger_event}</div>
+          <div className="mt-1 text-xs text-copy-muted">
+            {rule.module_key ? formatModuleLabel(rule.module_key) : "Platform"}
+            {rule.conditions_json.length ? ` · only if ${rule.conditions_json.length} condition${rule.conditions_json.length === 1 ? "" : "s"} match` : ""}
+          </div>
         </>
       ),
     },
-    { key: "conditions", label: "Conditions", size: "sm", render: (rule) => rule.conditions_json.length || "Always" },
-    { key: "actions", label: "Actions", size: "sm", render: (rule) => rule.actions_json.length },
+    {
+      key: "actions",
+      label: "Then",
+      render: (rule) => {
+        const labels = rule.actions_json.map((action) => actionLabels.get(String(action.type)) ?? String(action.type ?? "")).filter(Boolean);
+        return labels.length ? <span className="text-copy-primary">{labels.join(", then ")}</span> : <span className="text-copy-muted">No actions yet</span>;
+      },
+    },
     {
       key: "status",
       label: "Status",
@@ -115,8 +129,13 @@ export function AutomationRulesTable({
       emptyState={{
         icon: Workflow,
         title: "No automation rules yet",
-        description: "Create a rule to respond to CRM events automatically.",
-        action: <Button type="button" onClick={onCreate}>Create rule</Button>,
+        description: "Start from a ready-made template, or build a rule from scratch.",
+        action: (
+          <div className="flex flex-wrap justify-center gap-2">
+            <Button type="button" onClick={onBrowseTemplates}><LayoutTemplate />Browse templates</Button>
+            <Button type="button" variant="outline" onClick={onCreate}>Create rule</Button>
+          </div>
+        ),
       }}
     />
   );

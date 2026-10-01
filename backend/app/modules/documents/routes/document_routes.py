@@ -51,6 +51,8 @@ from app.modules.documents.services.document_services import (
     update_document_template_status,
     upload_document_version,
 )
+from app.modules.platform.models import CrmEvent
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -247,6 +249,37 @@ def get_document_templates(
     return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
 
 
+def _emit_document_event(db: Session, *, current_user, document, event_type: str, once: bool = False, extra: dict | None = None) -> None:
+    """Automation triggers for documents. Emitted after the write, best-effort.
+
+    `once` guards the upload: a retried request with the same idempotency key returns the
+    document it already created, and that is not a second upload.
+    """
+
+    if once and db.query(CrmEvent.id).filter(
+        CrmEvent.tenant_id == current_user.tenant_id,
+        CrmEvent.event_type == event_type,
+        CrmEvent.entity_type == "document",
+        CrmEvent.entity_id == str(document.id),
+    ).first():
+        return
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        event_type=event_type,
+        entity_type="document",
+        entity_id=document.id,
+        payload={
+            **actor_payload(current_user),
+            "document_id": document.id,
+            "title": document.title,
+            "original_filename": document.original_filename,
+            **(extra or {}),
+        },
+    )
+
+
 @router.post("", response_model=DocumentResponse)
 def upload_document(
     file: UploadFile = File(...),
@@ -291,6 +324,7 @@ def upload_document(
         storage_provider=storage_provider,
         current_user=current_user,
     )
+    _emit_document_event(db, current_user=current_user, document=document, event_type="document.uploaded", once=True)
     return DocumentResponse.model_validate(document)
 
 
@@ -349,6 +383,8 @@ def create_document_client_share(
         payload=payload.model_dump(),
         current_user=current_user,
     )
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    _emit_document_event(db, current_user=current_user, document=document, event_type="document.shared", extra={"share_id": share.id})
     return DocumentClientShareResponse.model_validate(share)
 
 

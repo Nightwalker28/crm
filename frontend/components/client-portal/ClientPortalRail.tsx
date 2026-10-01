@@ -15,7 +15,9 @@ import { CLIENT_PORTAL_ROUTES, CLIENT_PORTAL_SECTIONS } from "@/lib/client-porta
  *
  * The portal had no layout at all, so the hub was its only index and any two-section task
  * round-tripped through it: Orders → `/client` → Quotes. That is A8's defect exactly, and
- * `SettingsNavRail` is the precedent for the fix.
+ * the settings rail was the precedent for the fix. (Settings later dropped its rail for the
+ * hub plus a header back arrow, 2026-10-01; the portal keeps its rail, since its sections are
+ * a customer's everyday navigation rather than occasional configuration.)
  *
  * It is **built from the sidebar's own parts** rather than styled to match them. The active
  * treatment is `navItemClassName` itself (§7.16) because a second nav that marked its

@@ -11,10 +11,9 @@ import { SETTINGS_NAV_GROUPS } from "@/lib/module-registry";
  * now renders `SETTINGS_NAV_GROUPS`, which is also what the rail and the command palette
  * read, so the two lists cannot drift again (rebuild.md 5.6, ruling 2).
  *
- * It survives the rail rather than redirecting to `general`: it is where the sidebar's one
- * `Settings` entry lands, where every route state's "Back to settings" goes, and where the
- * one-line descriptions live that a 16rem rail has no room for. Below `lg`, where the rail
- * is not drawn, it is the only index.
+ * It is the only settings index: the sidebar's one `Settings` entry lands here, and every
+ * settings page returns here through the header's back arrow and its route states' "Back to
+ * settings". The rail that once sat beside settings pages was removed (2026-10-01).
  */
 export default function SettingsPage() {
   return (

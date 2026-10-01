@@ -156,4 +156,19 @@ def update_order(
         before_state=before_state,
         after_state=_serialize_order(updated),
     )
+    if before_state.get("status") != updated.status:
+        safe_publish_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            event_type="order.status_changed",
+            entity_type="sales_order",
+            entity_id=updated.id,
+            payload={
+                "order_number": updated.order_number,
+                "previous_status": before_state.get("status"),
+                "status": updated.status,
+                "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
+            },
+        )
     return updated

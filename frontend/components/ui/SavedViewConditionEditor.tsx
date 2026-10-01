@@ -143,7 +143,7 @@ function ConditionGroupsContent({
               onClick={() => addCondition(groupKey)}
             >
               <Plus className="h-4 w-4" />
-              Add {groupKey === "all" ? "AND" : "OR"} Condition
+              Add {groupKey === "all" ? "AND" : "OR"} condition
             </Button>
           </div>
 

@@ -517,6 +517,72 @@ def scan_due_task_alerts(db: Session, *, now: datetime | None = None) -> dict:
     }
 
 
+# How far back the overdue scan looks. It runs hourly; the window covers a worker that was
+# down for a while, and keeps a first run from announcing every task that was ever late.
+TASK_OVERDUE_LOOKBACK = timedelta(days=7)
+
+
+def scan_overdue_tasks(db: Session, *, now: datetime | None = None) -> dict:
+    """Emit `task.overdue` once for each open task whose due time has passed.
+
+    Once per *due time*, not once per task: an overdue event recorded after the task's
+    current `due_at` means this deadline was already announced, so a task that is
+    rescheduled and slips again is announced again.
+    """
+
+    scan_time = now or _utcnow()
+    if scan_time.tzinfo is None:
+        scan_time = scan_time.replace(tzinfo=timezone.utc)
+    overdue_tasks = (
+        db.query(Task)
+        .options(selectinload(Task.assignees))
+        .filter(
+            Task.deleted_at.is_(None),
+            Task.status != "completed",
+            Task.due_at.isnot(None),
+            Task.due_at < scan_time,
+            Task.due_at >= scan_time - TASK_OVERDUE_LOOKBACK,
+        )
+        .order_by(Task.due_at.asc(), Task.id.asc())
+        .all()
+    )
+    last_announced: dict[tuple[int, str], datetime] = {}
+    if overdue_tasks:
+        rows = (
+            db.query(CrmEvent.tenant_id, CrmEvent.entity_id, func.max(CrmEvent.created_at))
+            .filter(
+                CrmEvent.event_type == "task.overdue",
+                CrmEvent.entity_type == "task",
+                CrmEvent.entity_id.in_([str(task.id) for task in overdue_tasks]),
+            )
+            .group_by(CrmEvent.tenant_id, CrmEvent.entity_id)
+            .all()
+        )
+        for tenant_id, entity_id, created_at in rows:
+            if created_at is not None and created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            last_announced[(tenant_id, entity_id)] = created_at
+
+    events_created = 0
+    for task in overdue_tasks:
+        due_at = task.due_at if task.due_at.tzinfo else task.due_at.replace(tzinfo=timezone.utc)
+        announced = last_announced.get((task.tenant_id, str(task.id)))
+        if announced is not None and announced >= due_at:
+            continue
+        event = safe_emit_crm_event(
+            db,
+            tenant_id=task.tenant_id,
+            actor_user_id=None,
+            event_type="task.overdue",
+            entity_type="task",
+            entity_id=task.id,
+            payload={**_task_due_alert_payload(task), "title": task.title},
+        )
+        if event is not None:
+            events_created += 1
+    return {"overdue_tasks": len(overdue_tasks), "events_created": events_created}
+
+
 def _notify_task_assignees(
     db: Session,
     *,

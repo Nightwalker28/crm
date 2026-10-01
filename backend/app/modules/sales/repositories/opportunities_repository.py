@@ -191,7 +191,9 @@ def list_cursor(
     return query.order_by(None).order_by(SalesOpportunity.opportunity_id.desc()).limit(limit + 1).all()
 
 
-def _opportunity_value_expression(db: Session):
+def opportunity_value_expression(db: Session):
+    """The deal amount as a number. `total_cost_of_project` is free text, so anything that
+    does not parse as a number counts as zero rather than failing the query."""
     value = func.coalesce(SalesOpportunity.total_cost_of_project, "")
     if db.bind is not None and db.bind.dialect.name == "postgresql":
         trimmed = func.trim(value)
@@ -227,7 +229,7 @@ def summarize_pipeline(
             SalesOpportunity.pipeline_stage_id,
             SalesOpportunity.sales_stage,
             func.count(SalesOpportunity.opportunity_id),
-            func.coalesce(func.sum(_opportunity_value_expression(db)), 0),
+            func.coalesce(func.sum(opportunity_value_expression(db)), 0),
         )
         .group_by(SalesOpportunity.pipeline_stage_id, SalesOpportunity.sales_stage)
         .all()

@@ -148,3 +148,33 @@ test("preserves module scope and supports the mobile keyboard create flow", asyn
   await page.keyboard.press("Enter");
   await expect(page.getByRole("dialog", { name: "Rule settings" })).toBeVisible();
 });
+
+test("starts a rule from a template, reads it back in plain language, and saves it disabled", async ({ page }) => {
+  await page.route("**/admin/automation-rules/templates", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [{ key: "new_lead_follow_up", name: "Follow up on every new lead", description: "Give the lead's owner a task.", category: "Leads", module_key: "sales_leads", trigger_event: "lead.created", condition_mode: "all", conditions_json: [{ field: "status", operator: "equals", value: "new" }], actions_json: [{ type: "create_task", title: "Follow up with {{payload.record_label}}", priority: "high", due_in_days: 1, assignee_user_id: "owner" }] }] }) }));
+  await page.goto("/dashboard/settings/automation");
+  await page.getByRole("radio", { name: "Templates" }).click();
+  await expect(page.getByTestId("automation-template-gallery").getByRole("heading", { name: "Leads" })).toBeVisible();
+  await page.getByRole("button", { name: "Use template: Follow up on every new lead" }).click();
+
+  await expect(page.getByTestId("automation-rule-summary")).toHaveText("When a sales lead is created, if Status equals New, then create task.");
+  // The assignee is a person picker led by the record owner, not a box for a user id.
+  await page.getByTestId("automation-action-0").getByRole("button").first().click();
+  await expect(page.getByRole("combobox", { name: "Assignee" })).toContainText("Record owner");
+  await page.getByRole("button", { name: "Insert record field" }).click();
+  await page.getByRole("menuitem", { name: "Record name" }).click();
+  await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue("Follow up with {{payload.record_label}} {{payload.record_label}}");
+  await page.getByRole("button", { name: "Done editing" }).click();
+
+  const create = page.waitForRequest((request) => request.method() === "POST" && /\/admin\/automation-rules$/.test(request.url()));
+  await page.getByRole("button", { name: "Save rule" }).click();
+  const payload = (await create).postDataJSON() as { name: string; enabled: boolean; trigger_event: string; actions_json: Array<{ assignee_user_id: string }> };
+  expect(payload).toMatchObject({ name: "Follow up on every new lead", enabled: false, trigger_event: "lead.created" });
+  expect(payload.actions_json[0].assignee_user_id).toBe("owner");
+});
+
+test("the empty rule list offers templates first", async ({ page }) => {
+  await page.route(/\/admin\/automation-rules(?:\?.*)?$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [] }) }));
+  await page.goto("/dashboard/settings/automation");
+  await page.locator('[data-slot="empty-state"]').getByRole("button", { name: "Browse templates" }).click();
+  await expect(page).toHaveURL(/tab=templates/);
+});
