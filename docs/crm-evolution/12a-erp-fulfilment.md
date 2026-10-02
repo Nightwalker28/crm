@@ -195,8 +195,11 @@ set_reservations(db, *, tenant_id, product_id, warehouse_id, holds, expected_ver
   next positive move or *Check availability* offers them to waiting orders, oldest first.
   Each affected order gets an activity entry, and the owner of an order that lost stock is
   notified.
-- `website_order` moves check **available**, not on hand. A website order can no longer
-  take stock promised to a confirmed order (§1 item 6).
+- **Planned outbound moves check available, not on hand**: `website_order`, the
+  *Fulfilled* shortcut's `sales_order` moves, and `transfer_out`. A website order can no
+  longer take stock promised to a confirmed order (§1 item 6), and a transfer cannot strip
+  a warehouse of held stock; reallocate first. Only adjustments and counts, which record
+  what is physically there, may go below what is held.
 - The invariant test widens: levels equal the ledger's sums, and `reserved` equals the sum
   of reservation rows, never more than on hand.
 
@@ -335,8 +338,12 @@ writing the migration (they were not checked for this plan; the stack was down).
   with templates *Backorders by product*, *Deliveries this month* and *Returns by reason*.
 - **Export:** deliveries and returns lists through `module_export`.
 - **Recycle bin:** draft deliveries and returns, as E2's drafts.
-- **Backup and restore:** reservations, deliveries and returns join the inventory set.
-  Restore rebuilds `reserved` from reservation rows instead of trusting the backup's figure.
+- **Backup and restore:** deliveries and returns join the inventory set. Reservations do
+  not: they are derived from confirmed orders and stock, and orders and stock are restored
+  separately. After an inventory or sales-order restore, `rebuild_reservations` keeps each
+  hold that still belongs to a confirmed order line in that warehouse, clamps holds to stock
+  (automatic first, newest order first) and recomputes `reserved`. The backup's `reserved`
+  figure is ignored. `scripts/rebuild_stock_levels.py` reports and fixes the same drift.
 
 ## 4. Phases
 
@@ -347,7 +354,8 @@ Cancelling or rejecting a website order returns its stock (§3.7). Its own commi
 ### E3 Phase 1 — reservation
 
 Reservation table, `reserve_for_order` / `release_for_order` / `set_reservations`, the
-three `post_moves` changes, the Reservations dialog, order confirm, edit, cancel and warehouse, website orders on available stock, the
+three `post_moves` changes, the Reservations dialog, order lines that keep their IDs when
+an order is edited (holds, and Phase 2's deliveries, point at them), order confirm, edit, cancel and warehouse, website orders on available stock, the
 migration's reservation step, *Check availability*, Reserved on the product's Stock tab, and
 restore rebuilding `reserved`.
 

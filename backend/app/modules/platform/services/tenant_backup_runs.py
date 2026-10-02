@@ -17,8 +17,8 @@ from app.core.pagination import Pagination
 from app.core.uploads import UPLOADS_DIR
 from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
-from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel,
-    InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
+from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
+    InventoryReturn, InventoryReturnLine, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
@@ -80,6 +80,11 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("inventory_adjustment_lines.json", InventoryAdjustmentLine),
         ("inventory_transfers.json", InventoryTransfer),
         ("inventory_transfer_lines.json", InventoryTransferLine),
+        # Reservations are derived, so they are rebuilt after a restore, never backed up.
+        ("inventory_deliveries.json", InventoryDelivery),
+        ("inventory_delivery_lines.json", InventoryDeliveryLine),
+        ("inventory_returns.json", InventoryReturn),
+        ("inventory_return_lines.json", InventoryReturnLine),
         ("inventory_stock_moves.json", InventoryStockMove),
         ("inventory_stock_levels.json", InventoryStockLevel),
     ],

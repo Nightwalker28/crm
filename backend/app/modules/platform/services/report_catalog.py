@@ -22,7 +22,10 @@ from sqlalchemy.orm import Session
 from app.core.access_control import get_finance_user_scope, require_role_module_action_access
 from app.modules.finance.models import FinanceIO
 from app.modules.catalog.models import CatalogProduct
-from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+from app.modules.inventory.models import (
+    InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryReturn, InventoryReturnLine,
+    InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
+)
 from app.modules.finance.repositories import io_repository
 from app.modules.finance.services.io_search_services import get_finance_module_id
 from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
@@ -33,6 +36,8 @@ from app.modules.sales.models import (
     SalesContact,
     SalesLead,
     SalesOpportunity,
+    SalesOrder,
+    SalesOrderItem,
     SalesOrganization,
     SalesPipeline,
     SalesPipelineStage,
@@ -388,7 +393,95 @@ def _inventory_move_fields(db: Session, user) -> list[ReportField]:
     ]
 
 
+def _deliveries_query(db: Session, user, search: str | None):
+    query = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == user.tenant_id, InventoryDelivery.deleted_at.is_(None))
+    return query.filter(or_(InventoryDelivery.number.ilike(f"%{search}%"), InventoryDelivery.tracking_number.ilike(f"%{search}%"))) if search else query
+
+
+def _delivery_fields(db: Session, user) -> list[ReportField]:
+    order_number = select(SalesOrder.order_number).where(SalesOrder.id == InventoryDelivery.order_id, SalesOrder.tenant_id == InventoryDelivery.tenant_id).scalar_subquery()
+    warehouse_name = select(InventoryWarehouse.name).where(InventoryWarehouse.id == InventoryDelivery.warehouse_id, InventoryWarehouse.tenant_id == InventoryDelivery.tenant_id).scalar_subquery()
+    units = select(func.coalesce(func.sum(InventoryDeliveryLine.quantity), 0)).where(InventoryDeliveryLine.delivery_id == InventoryDelivery.id).scalar_subquery()
+    return [
+        ReportField("number", "Number", "text", InventoryDelivery.number, groupable=False),
+        ReportField("status", "Status", "select", InventoryDelivery.status, labels="humanize"),
+        ReportField("order", "Order", "text", order_number),
+        ReportField("warehouse", "Warehouse", "text", warehouse_name),
+        ReportField("carrier", "Carrier", "text", InventoryDelivery.carrier),
+        ReportField("shipped_on", "Shipped on", "date", InventoryDelivery.shipped_on),
+        ReportField("units", "Units", "number", units),
+    ]
+
+
+def _backorder_query(db: Session, user, search: str | None):
+    """Stocked lines of confirmed orders that still have something to deliver."""
+    delivered = select(func.coalesce(func.sum(InventoryDeliveryLine.quantity), 0)).join(InventoryDelivery, InventoryDelivery.id == InventoryDeliveryLine.delivery_id).where(
+        InventoryDeliveryLine.order_line_id == SalesOrderItem.id, InventoryDelivery.status == "posted").scalar_subquery()
+    query = db.query(SalesOrderItem).join(SalesOrder, and_(SalesOrder.id == SalesOrderItem.order_id, SalesOrder.tenant_id == SalesOrderItem.tenant_id)).join(
+        CatalogProduct, and_(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id)).filter(
+        SalesOrderItem.tenant_id == user.tenant_id, SalesOrder.status == "confirmed", SalesOrder.remaining_closed_at.is_(None),
+        CatalogProduct.track_inventory == 1, CatalogProduct.deleted_at.is_(None), SalesOrderItem.quantity > delivered)
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"), SalesOrder.order_number.ilike(f"%{search}%"))) if search else query
+
+
+def _backorder_fields(db: Session, user) -> list[ReportField]:
+    delivered = select(func.coalesce(func.sum(InventoryDeliveryLine.quantity), 0)).join(InventoryDelivery, InventoryDelivery.id == InventoryDeliveryLine.delivery_id).where(
+        InventoryDeliveryLine.order_line_id == SalesOrderItem.id, InventoryDelivery.status == "posted").scalar_subquery()
+    reserved = select(func.coalesce(func.sum(InventoryReservation.quantity), 0)).where(InventoryReservation.order_line_id == SalesOrderItem.id).scalar_subquery()
+    product = select(CatalogProduct.name).where(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id).scalar_subquery()
+    sku = select(CatalogProduct.sku).where(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id).scalar_subquery()
+    order_number = select(SalesOrder.order_number).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    delivery_date = select(SalesOrder.delivery_date).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    to_deliver = SalesOrderItem.quantity - delivered
+    return [
+        ReportField("product", "Product", "text", product),
+        ReportField("sku", "SKU", "text", sku),
+        ReportField("order", "Order", "text", order_number),
+        ReportField("delivery_date", "Delivery date", "date", delivery_date),
+        ReportField("ordered", "Ordered", "number", SalesOrderItem.quantity),
+        ReportField("delivered", "Delivered", "number", delivered),
+        ReportField("reserved", "Reserved", "number", reserved),
+        ReportField("to_deliver", "To deliver", "number", to_deliver),
+        ReportField("waiting", "Waiting", "number", to_deliver - reserved),
+    ]
+
+
+def _returns_query(db: Session, user, search: str | None):
+    query = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == user.tenant_id, InventoryReturn.deleted_at.is_(None))
+    return query.filter(or_(InventoryReturn.number.ilike(f"%{search}%"), InventoryReturn.reason.ilike(f"%{search}%"))) if search else query
+
+
+def _return_fields(db: Session, user) -> list[ReportField]:
+    order_number = select(SalesOrder.order_number).where(SalesOrder.id == InventoryReturn.order_id, SalesOrder.tenant_id == InventoryReturn.tenant_id).scalar_subquery()
+    warehouse_name = select(InventoryWarehouse.name).where(InventoryWarehouse.id == InventoryReturn.warehouse_id, InventoryWarehouse.tenant_id == InventoryReturn.tenant_id).scalar_subquery()
+    units = select(func.coalesce(func.sum(InventoryReturnLine.quantity), 0)).where(InventoryReturnLine.return_id == InventoryReturn.id).scalar_subquery()
+    restocked = select(func.coalesce(func.sum(InventoryReturnLine.quantity), 0)).where(InventoryReturnLine.return_id == InventoryReturn.id, InventoryReturnLine.restock == 1).scalar_subquery()
+    return [
+        ReportField("number", "Number", "text", InventoryReturn.number, groupable=False),
+        ReportField("status", "Status", "select", InventoryReturn.status, labels="humanize"),
+        ReportField("reason", "Reason", "text", InventoryReturn.reason),
+        ReportField("order", "Order", "text", order_number),
+        ReportField("warehouse", "Warehouse", "text", warehouse_name),
+        ReportField("received_at", "Received", "datetime", InventoryReturn.received_at),
+        ReportField("units", "Units", "number", units),
+        ReportField("restocked", "Restocked", "number", restocked),
+    ]
+
+
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
+    "inventory_deliveries": ReportSource(
+        "inventory_deliveries", "Deliveries", InventoryDelivery, InventoryDelivery.id, lambda db: InventoryDelivery.number,
+        _deliveries_query, _delivery_fields, "/dashboard/inventory/deliveries/{id}",
+        ("status", "order", "warehouse", "shipped_on", "units"), default_date_field="shipped_on", label_field="number"),
+    "inventory_backorders": ReportSource(
+        "inventory_backorders", "Order lines to deliver", SalesOrderItem, SalesOrderItem.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id).scalar_subquery(),
+        _backorder_query, _backorder_fields, None, ("order", "delivery_date", "ordered", "delivered", "to_deliver", "waiting"),
+        label_field="product", permission_module_key="sales_orders"),
+    "inventory_returns": ReportSource(
+        "inventory_returns", "Returns", InventoryReturn, InventoryReturn.id, lambda db: InventoryReturn.number,
+        _returns_query, _return_fields, "/dashboard/inventory/returns/{id}",
+        ("status", "reason", "order", "received_at", "units", "restocked"), default_date_field="received_at", label_field="number"),
     "inventory_stock": ReportSource(
         "inventory_stock", "Stock levels", InventoryStockLevel, InventoryStockLevel.id,
         lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery(), _inventory_levels_query, _inventory_level_fields,

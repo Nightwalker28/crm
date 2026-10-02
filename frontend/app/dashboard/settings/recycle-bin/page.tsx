@@ -51,6 +51,8 @@ const MODULE_OPTIONS = [
   "catalog_services",
   "inventory_adjustments",
   "inventory_transfers",
+  "inventory_deliveries",
+  "inventory_returns",
 ];
 
 async function fetchRecycleItems(moduleKey: string, page: number, pageSize: number): Promise<RecycleResponse> {

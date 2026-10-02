@@ -15,6 +15,7 @@ from sqlalchemy.sql.sqltypes import Date, DateTime, Numeric
 from app.modules.platform.models import TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+from app.modules.inventory.services.stock_ledger import rebuild_reservations
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_runs import (
     MODULE_CHILD_EXPORTS,
@@ -45,6 +46,17 @@ def _read_json(zipf: zipfile.ZipFile, name: str) -> Any:
         raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Backup archive is missing {name}.") from exc
     except json.JSONDecodeError as exc:
         raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Backup archive contains invalid JSON: {name}.") from exc
+
+
+# Inventory files added after backups were first taken (E3 deliveries and returns). A backup
+# made before them simply has none, which restores as none.
+OPTIONAL_INVENTORY_FILES = {"inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json"}
+
+
+def _read_inventory_rows(zipf: zipfile.ZipFile, filename: str) -> Any:
+    if filename in OPTIONAL_INVENTORY_FILES and f"modules/{filename}" not in zipf.namelist():
+        return []
+    return _read_json(zipf, f"modules/{filename}")
 
 
 def _artifact_from_run(db: Session, *, tenant_id: int, source_backup_run_id: int) -> tuple[TenantBackupRun, Path]:
@@ -213,7 +225,7 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
         raise HTTPException(status_code=409, detail="Append-only inventory cannot use update existing; choose create missing or replace")
     children: dict[str, list[dict[str, Any]]] = {}
     for filename, _model in MODULE_CHILD_EXPORTS["inventory_stock"]:
-        rows = _read_json(zipf, f"modules/{filename}")
+        rows = _read_inventory_rows(zipf, filename)
         if not isinstance(rows, list) or any(not isinstance(row, dict) or str(row.get("tenant_id")) != str(tenant_id) for row in rows):
             raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Inventory backup rows are invalid: {filename}")
         children[filename] = rows
@@ -254,21 +266,20 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
             raise HTTPException(status_code=409, detail=f"Movement {move.id} does not match the restored ledger balance")
     levels = {(row.product_id, row.warehouse_id): row for row in db.query(InventoryStockLevel).filter(InventoryStockLevel.tenant_id == tenant_id).with_for_update().all()}
     backup_levels = {(int(row["product_id"]), int(row["warehouse_id"])): row for row in children["inventory_stock_levels.json"]}
+    # `reserved` is not taken from the backup: holds are derived from confirmed orders and
+    # re-validated against the restored stock by `rebuild_reservations` below.
     for key in set(levels) | set(balances) | set(backup_levels):
         level = levels.get(key)
         if level is None:
-            level = InventoryStockLevel(tenant_id=tenant_id, product_id=key[0], warehouse_id=key[1], reserved=Decimal(str(backup_levels.get(key, {}).get("reserved") or 0)))
+            level = InventoryStockLevel(tenant_id=tenant_id, product_id=key[0], warehouse_id=key[1], reserved=Decimal(0))
             db.add(level)
-        elif mode in {"replace_module_data", WHOLE_TENANT_RESTORE_MODE} and key in backup_levels:
-            level.reserved = Decimal(str(backup_levels[key].get("reserved") or 0))
         level.on_hand = balances.get(key, Decimal(0))
-        if Decimal(level.reserved or 0) > Decimal(level.on_hand):
-            raise HTTPException(status_code=409, detail="Restored stock is below a reserved balance")
     for product_id, product in products.items():
         total = sum((quantity for (pid, _), quantity in balances.items() if pid == product_id), Decimal(0))
         product.stock_quantity = total
         product.stock_status = "in_stock" if total > 0 else "out_of_stock"
     db.flush()
+    rebuild_reservations(db, tenant_id=tenant_id)
     if db.get_bind().dialect.name == "postgresql":
         for _name, model, _rows in bundles:
             table = model.__tablename__
@@ -279,7 +290,7 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
 def _inventory_preview_count(zipf: zipfile.ZipFile, *, tenant_id: int, warehouse_rows: list[dict[str, Any]]) -> int:
     total = len(warehouse_rows)
     for filename, _model in MODULE_CHILD_EXPORTS["inventory_stock"]:
-        rows = _read_json(zipf, f"modules/{filename}")
+        rows = _read_inventory_rows(zipf, filename)
         if not isinstance(rows, list) or any(not isinstance(row, dict) or str(row.get("tenant_id")) != str(tenant_id) for row in rows):
             raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Inventory backup rows are invalid: {filename}")
         total += len(rows)
@@ -413,6 +424,9 @@ def execute_tenant_module_restore(
             with db.begin_nested():
                 result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows) if module_key == "inventory_stock" else _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
                 db.flush()
+                if module_key == "sales_orders":
+                    # Restored statuses decide which orders may hold stock.
+                    rebuild_reservations(db, tenant_id=tenant_id)
         summary = {**preview_summary, **result}
         run.status = "completed"
         run.summary = summary
@@ -571,6 +585,9 @@ def execute_whole_tenant_restore(
                 with db.begin_nested():
                     result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=WHOLE_TENANT_RESTORE_MODE, warehouse_rows=rows) if module_key == "inventory_stock" else _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
                     db.flush()
+                if module_key == "sales_orders":
+                    with db.begin_nested():
+                        rebuild_reservations(db, tenant_id=tenant_id)
                 module_summary = {**preview_summary, **result}
                 module_summaries[module_key] = module_summary
                 total_rows += int(preview_summary["total_rows"])

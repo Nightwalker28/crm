@@ -25,8 +25,76 @@ Last updated 2026-10-02.
 | ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
 | ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
 | ERP E2 | **Done (2026-10-02).** Phase 1 `a7a1dc4`; Phases 2–3 and the review fixes `f7a80d6`. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
-| ERP E3 | **Plan written (2026-10-02): `12a-erp-fulfilment.md`.** Benchmark (Odoo, Business Central, NetSuite, Zoho Inventory, ERPNext), design, Phases 0–3. **Owner accepted every §5 decision (2026-10-02), extending 2: users can edit and reallocate holds.** See below | `12a-erp-fulfilment.md` |
-| **Next, owner-set order** | **E3 Phase 0 (website-order cancel defect), then Phases 1–3 of `12a-erp-fulfilment.md`.** Browser tests run through `scripts/e2e.sh`. | |
+| ERP E3 | **Implemented (2026-10-02): reservation, deliveries, returns.** Phase 0 committed as `9ed7e7b`; Phases 1–3 committed together. See below | `20260830_order_reservations` → `20260901_inventory_returns`, `stock_ledger.py` (reservations), `delivery_services.py`, `return_services.py`, `reservation_services.py`; `OrderFulfilmentPanel`, `ReservationsDialog`, `DeliveryDocumentPage`, `ReturnDocumentPage`; `test_inventory_reservations/deliveries/returns.py`, `fulfilment-phase1/2.spec.ts` |
+| **Next, owner-set order** | **E4 purchasing (`12-erp-inventory.md` §2): benchmark first, then plan, per the ERP rule.** Its receipts will fill E3 backorders automatically (waiting lines are reserved, oldest first, when stock arrives). | |
+
+## ERP E3 — sales fulfilment, implemented (2026-10-02)
+
+Plan `12a-erp-fulfilment.md`; the owner accepted every §5 decision and extended decision 2
+(users can edit holds and move them to a more urgent order).
+
+**Phase 0** (`9ed7e7b`): cancelling or rejecting a website order reverses its stock moves; a
+closed website order cannot be reopened. The dev database had no affected orders, so no
+backfill.
+
+**Phase 1, reservation** (`20260830_order_reservations`). `inventory_reservations` (per order
+line and warehouse, `manual` flag) with `inventory_stock_levels.reserved` as their cached sum,
+written only by `stock_ledger.py`: `reserve_for_order` (confirm, edit, warehouse change; drops
+what no longer applies), `release_for_order`, `set_reservations` (the Reservations dialog:
+atomic, version-checked, every changed hold becomes manual), `rebuild_reservations` (after an
+inventory or sales-order restore, and in `scripts/rebuild_stock_levels.py`). `post_moves`:
+planned outbound moves (`website_order`, `sales_order`, `transfer_out`, `delivery`) take only
+available stock; a positive move reserves for waiting lines oldest-first; a negative move
+below what is held releases automatic holds before manual ones, newest order first, and tells
+the order owner. Order lines now keep their IDs on edit (`_apply_items`; the order form sends
+`id`). Orders gain a warehouse (shown only with two or more). UI: the order's *Fulfilment*
+tab, *Check availability*, the Reservations dialog (from the tab and from the product's Stock
+tab, which also shows Reserved). Holds are not backed up; restore re-derives them.
+
+**Phase 2, deliveries** (`20260831_inventory_deliveries`). `inventory_deliveries` (+ lines):
+draft → posted → cancelled (reversal), partial shipments, carrier, tracking, shipped on. The
+remainder stays on the line as To deliver; *Close remaining* releases it; `delivery_status`
+(none · pending · partial · delivered · closed) is cached on the order and drives *Fulfilled*.
+The manual *Fulfilled* is a shortcut that posts one delivery for everything left (needs
+delivery `create` + `edit`); cancelling an order with a posted delivery is refused, as is going
+back to draft; a delivered line keeps its product, cannot shrink below what shipped or be
+removed. The migration gives each E2-fulfilled order a posted `migrated` delivery (cancelling
+it reverses the old `sales_order` moves) and closes pre-E2 fulfilled orders; the dev database
+had none of either. Order list: Delivery column and filter, *Waiting for stock* filter, and
+the presets *To deliver* and *Waiting for stock* (seeded once: by the migration for users who
+already had order views, on first visit otherwise). Module `inventory_deliveries`; list,
+document and new-from-order pages; recycle bin and purge.
+
+**Phase 3, returns and the platform** (`20260901_inventory_returns`). `inventory_returns`
+(+ lines) against a posted delivery: draft → received → cancelled, per-line *Restock* (off for
+damaged goods: recorded, no stock), defaults to what can still come back; a delivery with
+returns cannot be cancelled; a return does not reopen the order. Automation triggers
+`inventory.delivery_posted`, `inventory.return_received` (record actions allowed); a
+*Ready to deliver* notice when arriving stock completes an order's holds; report sources
+*Deliveries*, *Order lines to deliver*, *Returns* with templates *Backorders by product*,
+*Deliveries this month*, *Returns by reason*; CSV exports; recycle bin; backup set (older
+backups without the new files still restore). Module `inventory_returns`.
+
+**Verification (one pass, after implementing all three phases).**
+- `codex-check.sh` passed whole: migration replay at `20260901_inventory_returns`, OpenAPI 418
+  paths, contract drift, backend 1425 of 1425 (new: reservations 11, deliveries 11, returns 7,
+  website cancel 1), 21 design rules, lint, build. (Phase 1 alone had also passed it.)
+- PostgreSQL race, rolled back: a reservation on a product waited 0.98 s for a concurrent
+  posting's lock; the level was unchanged afterwards and `reserved` equalled its hold rows.
+- Browser, production build: `inventory-phase1/2/3`, `orders-revamp`, `catalog-revamp`,
+  `catalog-line-items`, `recycle-bin-revamp`, `integrations-revamp` passed (38). The new
+  `fulfilment-phase1` and `-phase2` specs failed first on two spec mistakes (orders created
+  without the order number the API requires; an ambiguous "Reserved" locator) and **one real
+  defect: the return page's Restock switch rendered at zero size** (the project's Switch is
+  unstyled; it now carries the track, thumb and a Yes / No, damaged label). Rerun: 3 of 3.
+- Rendered guards, full walk (E3 closes the module): `design-rules` audited 123 routes, none
+  unreachable, both themes; `scroll-containers` 82 routes. Both passed.
+- `scripts/seed_module_samples.py` now seeds `SAMPLE-SO-E3` with a posted one-unit delivery,
+  a draft delivery and a draft return, so both record routes are in the guards' walk.
+
+**Not done / deferred:** order priority field (manual reallocation covers urgency); printable
+delivery notes; webhooks for the two new events (wait for 4A Phase 2, as E2's); client-portal
+orders remain stock-free requests (§5 decision 7).
 
 ## ERP E3 — plan (2026-10-02)
 

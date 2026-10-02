@@ -1,7 +1,8 @@
 """Audit or rebuild cached inventory levels from the immutable movement ledger.
 
 Run without --apply to print drift. --apply locks tracked products in ID order and fixes
-levels and product totals in one transaction; stop posting while running a full rebuild.
+levels and product totals in one transaction, then re-validates order holds and recomputes
+each level's `reserved` from them; stop posting while running a full rebuild.
 """
 
 import argparse
@@ -11,8 +12,8 @@ from sqlalchemy import func
 
 from app.core.database import SessionLocal
 from app.modules.catalog.models import CatalogProduct
-from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove
-from app.modules.inventory.services.stock_ledger import ensure_product_levels
+from app.modules.inventory.models import InventoryReservation, InventoryStockLevel, InventoryStockMove
+from app.modules.inventory.services.stock_ledger import ensure_product_levels, rebuild_reservations
 
 
 def rebuild(*, tenant_id: int | None, apply: bool) -> int:
@@ -43,7 +44,17 @@ def rebuild(*, tenant_id: int | None, apply: bool) -> int:
                 if apply:
                     level = InventoryStockLevel(tenant_id=product.tenant_id, product_id=product.id, warehouse_id=warehouse_id, on_hand=expected[warehouse_id], reserved=0)
                     db.add(level)
+            held = {
+                warehouse_id: Decimal(quantity)
+                for warehouse_id, quantity in db.query(InventoryReservation.warehouse_id, func.sum(InventoryReservation.quantity)).filter(
+                    InventoryReservation.tenant_id == product.tenant_id,
+                    InventoryReservation.product_id == product.id,
+                ).group_by(InventoryReservation.warehouse_id)
+            }
             for level in levels:
+                if Decimal(level.reserved) != held.get(level.warehouse_id, Decimal(0)):
+                    print(f"tenant={product.tenant_id} product={product.id} warehouse={level.warehouse_id}: reserved {level.reserved} -> {held.get(level.warehouse_id, Decimal(0))}")
+                    changed += 1
                 correct = expected.get(level.warehouse_id, Decimal(0))
                 if Decimal(level.on_hand) != correct:
                     print(f"tenant={product.tenant_id} product={product.id} warehouse={level.warehouse_id}: {level.on_hand} -> {correct}")
@@ -59,6 +70,9 @@ def rebuild(*, tenant_id: int | None, apply: bool) -> int:
                     product.stock_quantity = correct_total
                     product.stock_status = correct_status
         if apply:
+            db.flush()
+            for tenant in sorted({product.tenant_id for product in products}):
+                rebuild_reservations(db, tenant_id=tenant)
             db.commit()
         else:
             db.rollback()

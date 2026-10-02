@@ -22,6 +22,8 @@ export const DASHBOARD_ROUTES = {
   inventoryMovements: "/dashboard/inventory/movements",
   inventoryAdjustments: "/dashboard/inventory/adjustments",
   inventoryTransfers: "/dashboard/inventory/transfers",
+  inventoryDeliveries: "/dashboard/inventory/deliveries",
+  inventoryReturns: "/dashboard/inventory/returns",
   reports: "/dashboard/reports",
 } as const;
 

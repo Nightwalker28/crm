@@ -7,6 +7,7 @@ from sqlalchemy.sql import expression
 from app.core.database import Base
 from app.modules.catalog.models import CatalogProduct, CatalogService  # noqa: F401 - line items point at the catalog
 from app.modules.client_portal.models import CustomerGroup  # noqa: F401
+from app.modules.inventory.models import InventoryWarehouse  # noqa: F401 - orders hold stock in a warehouse
 from app.modules.sales.opportunity_contact_roles import (
     DEFAULT_OPPORTUNITY_CONTACT_ROLE,
     OPPORTUNITY_CONTACT_ROLE_CHECK_SQL,
@@ -512,6 +513,10 @@ class SalesOrder(Base):
             "status IN ('draft', 'confirmed', 'fulfilled', 'cancelled')",
             name="ck_sales_orders_status",
         ),
+        CheckConstraint(
+            "delivery_status IN ('none', 'pending', 'partial', 'delivered', 'closed')",
+            name="ck_sales_orders_delivery_status",
+        ),
         Index("ix_sales_orders_tenant_status", "tenant_id", "status"),
         Index("ix_sales_orders_tenant_quote", "tenant_id", "quote_id"),
         Index("ix_sales_orders_tenant_created", "tenant_id", "created_at"),
@@ -533,6 +538,13 @@ class SalesOrder(Base):
     delivery_date = Column(Date, nullable=True)
     delivery_address = Column(Text, nullable=True)
     payment_terms = Column(Text, nullable=True)
+    # Where the order's stock is held and shipped from; NULL means the default warehouse.
+    warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=True, index=True)
+    # Cached from deliveries for lists and saved views: none (nothing stocked), pending,
+    # partial, delivered, or closed (the rest was deliberately not shipped).
+    delivery_status = Column(Text, nullable=False, server_default="none")
+    remaining_closed_at = Column(DateTime(timezone=True), nullable=True)
+    remaining_close_reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
     owner_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
@@ -552,7 +564,12 @@ class SalesOrder(Base):
     contact = relationship("SalesContact", lazy="selectin")
     opportunity = relationship("SalesOpportunity", lazy="selectin")
     owner_user = relationship("User", foreign_keys=[owner_id], lazy="selectin")
+    warehouse = relationship("InventoryWarehouse", lazy="selectin")
     items = relationship("SalesOrderItem", back_populates="order", cascade="all, delete-orphan", order_by="SalesOrderItem.sort_order")
+
+    @property
+    def warehouse_name(self) -> str | None:
+        return self.warehouse.name if self.warehouse else None
 
     @property
     def organization_name(self) -> str | None:

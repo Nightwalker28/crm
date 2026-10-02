@@ -49,6 +49,24 @@ REPORT_TEMPLATES: list[dict[str, Any]] = [
             date_filter={"field": "occurred_at", "range": "this_month"}),
     },
     {
+        "key": "backorders-by-product", "category": "Inventory", "name": "Backorders by product",
+        "description": "Units confirmed orders still need, by product.", "module_key": "inventory_backorders",
+        "config": _summary([{"field": "product"}], [{"aggregate": "sum", "field": "to_deliver"}, {"aggregate": "sum", "field": "waiting"}]),
+    },
+    {
+        "key": "deliveries-this-month", "category": "Inventory", "name": "Deliveries this month",
+        "description": "Units shipped this month, by warehouse.", "module_key": "inventory_deliveries",
+        "config": _summary([{"field": "warehouse"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "units"}],
+            date_filter={"field": "shipped_on", "range": "this_month"},
+            filters={"all_conditions": [{"id": "posted", "field": "status", "operator": "is", "value": "posted"}], "any_conditions": []}),
+    },
+    {
+        "key": "returns-by-reason", "category": "Inventory", "name": "Returns by reason",
+        "description": "Received returns grouped by the reason given.", "module_key": "inventory_returns",
+        "config": _summary([{"field": "reason"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "units"}],
+            filters={"all_conditions": [{"id": "received", "field": "status", "operator": "is", "value": "received"}], "any_conditions": []}),
+    },
+    {
         "key": "deals-pipeline-by-stage",
         "category": "Pipeline",
         "name": "Pipeline by stage",

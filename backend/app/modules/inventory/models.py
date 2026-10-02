@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, CheckConstraint, Column, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -156,3 +156,140 @@ class InventoryTransferLine(Base):
     quantity = Column(Numeric(12, 4), nullable=False)
 
     transfer = relationship("InventoryTransfer", back_populates="lines")
+
+
+class InventoryReservation(Base):
+    """A hold on stock for a confirmed sales order line; not a movement.
+
+    `inventory_stock_levels.reserved` is the cached sum of these rows. Only the ledger
+    service (`stock_ledger.py`) writes either.
+    """
+
+    __tablename__ = "inventory_reservations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "order_line_id", "warehouse_id", name="uq_inventory_reservation_line_warehouse"),
+        CheckConstraint("quantity > 0", name="ck_inventory_reservation_positive"),
+        Index("ix_inventory_reservations_tenant_product_warehouse", "tenant_id", "product_id", "warehouse_id"),
+        Index("ix_inventory_reservations_tenant_order", "tenant_id", "order_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False)
+    order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="CASCADE"), nullable=False)
+    order_line_id = Column(Integer, ForeignKey("sales_order_items.id", ondelete="CASCADE"), nullable=False)
+    product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="RESTRICT"), nullable=False)
+    warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Numeric(12, 4), nullable=False)
+    # Set by a user in the Reservations dialog; a shortage releases automatic holds first.
+    manual = Column(SmallInteger, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+
+
+
+class InventoryDelivery(Base):
+    """Goods leaving a warehouse for a sales order: one shipment, partial or complete."""
+
+    __tablename__ = "inventory_deliveries"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_inventory_delivery_number"),
+        CheckConstraint("status IN ('draft', 'posted', 'cancelled')", name="ck_inventory_delivery_status"),
+        Index("ix_inventory_deliveries_tenant_status_id", "tenant_id", "status", "id"),
+        Index("ix_inventory_deliveries_tenant_order", "tenant_id", "order_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    number = Column(String(50), nullable=False)
+    order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="RESTRICT"), nullable=False)
+    warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
+    status = Column(String(20), nullable=False, server_default="draft")
+    shipped_on = Column(Date)
+    carrier = Column(String(120))
+    tracking_number = Column(String(120))
+    notes = Column(Text)
+    posted_at = Column(DateTime(timezone=True))
+    posted_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    cancel_reason = Column(String(120))
+    # Created by the E3 migration for an order fulfilled before deliveries existed; its stock
+    # moves are the order's `sales_order` moves, so cancelling it reverses those.
+    migrated = Column(SmallInteger, nullable=False, server_default="0")
+    deleted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    warehouse = relationship("InventoryWarehouse")
+    lines = relationship("InventoryDeliveryLine", back_populates="delivery", cascade="all, delete-orphan", order_by="InventoryDeliveryLine.id")
+
+
+class InventoryDeliveryLine(Base):
+    __tablename__ = "inventory_delivery_lines"
+    __table_args__ = (
+        UniqueConstraint("delivery_id", "order_line_id", name="uq_inventory_delivery_line_order_line"),
+        CheckConstraint("quantity > 0", name="ck_inventory_delivery_line_positive"),
+        Index("ix_inventory_delivery_lines_tenant_order_line", "tenant_id", "order_line_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    delivery_id = Column(BigInteger, ForeignKey("inventory_deliveries.id", ondelete="CASCADE"), nullable=False, index=True)
+    order_line_id = Column(Integer, ForeignKey("sales_order_items.id", ondelete="RESTRICT"), nullable=False)
+    product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Numeric(12, 4), nullable=False)
+
+    delivery = relationship("InventoryDelivery", back_populates="lines")
+
+
+
+class InventoryReturn(Base):
+    """Goods a customer sends back against a posted delivery. Stock comes back on receipt."""
+
+    __tablename__ = "inventory_returns"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_inventory_return_number"),
+        CheckConstraint("status IN ('draft', 'received', 'cancelled')", name="ck_inventory_return_status"),
+        Index("ix_inventory_returns_tenant_status_id", "tenant_id", "status", "id"),
+        Index("ix_inventory_returns_tenant_delivery", "tenant_id", "delivery_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    number = Column(String(50), nullable=False)
+    delivery_id = Column(BigInteger, ForeignKey("inventory_deliveries.id", ondelete="RESTRICT"), nullable=False)
+    order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="RESTRICT"), nullable=False)
+    warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
+    status = Column(String(20), nullable=False, server_default="draft")
+    reason = Column(String(120), nullable=False)
+    notes = Column(Text)
+    received_at = Column(DateTime(timezone=True))
+    received_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    cancel_reason = Column(String(120))
+    deleted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    lines = relationship("InventoryReturnLine", back_populates="return_doc", cascade="all, delete-orphan", order_by="InventoryReturnLine.id")
+
+
+class InventoryReturnLine(Base):
+    __tablename__ = "inventory_return_lines"
+    __table_args__ = (
+        UniqueConstraint("return_id", "delivery_line_id", name="uq_inventory_return_line_delivery_line"),
+        CheckConstraint("quantity > 0", name="ck_inventory_return_line_positive"),
+        Index("ix_inventory_return_lines_tenant_delivery_line", "tenant_id", "delivery_line_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    return_id = Column(BigInteger, ForeignKey("inventory_returns.id", ondelete="CASCADE"), nullable=False, index=True)
+    delivery_line_id = Column(BigInteger, ForeignKey("inventory_delivery_lines.id", ondelete="RESTRICT"), nullable=False)
+    order_line_id = Column(Integer, ForeignKey("sales_order_items.id", ondelete="RESTRICT"), nullable=False)
+    product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Numeric(12, 4), nullable=False)
+    # Off for damaged goods: the return is recorded, nothing goes back into sellable stock.
+    restock = Column(SmallInteger, nullable=False, server_default="1")
+
+    return_doc = relationship("InventoryReturn", back_populates="lines")
+
+
+# Reservations point at sales order lines; load those tables wherever inventory's are.
+import app.modules.sales.models  # noqa: E402, F401

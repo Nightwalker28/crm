@@ -138,6 +138,7 @@ export const QUOTE_COLUMNS: TableColumnOption[] = [
 export const ORDER_COLUMNS: TableColumnOption[] = [
   { key: "order_number", label: "Order number" },
   { key: "status", label: "Status" },
+  { key: "delivery_status", label: "Delivery" },
   { key: "quote_id", label: "Quote ID" },
   { key: "organization_name", label: "Account" },
   { key: "contact_name", label: "Contact" },
@@ -288,7 +289,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   sales_orders: {
-    visible_columns: ["order_number", "organization_name", "status", "grand_total", "owner_name", "created_at"],
+    visible_columns: ["order_number", "organization_name", "status", "delivery_status", "grand_total", "owner_name", "created_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -618,6 +619,20 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "cancelled", label: "Cancelled" },
         ],
       },
+      {
+        key: "delivery_status",
+        label: "Delivery",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "none", label: "Nothing to ship" },
+          { value: "pending", label: "To deliver" },
+          { value: "partial", label: "Partly delivered" },
+          { value: "delivered", label: "Delivered" },
+          { value: "closed", label: "Closed" },
+        ],
+      },
+      { key: "waiting_for_stock", label: "Waiting for stock", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "grand_total", label: "Total", type: "number", operators: NUMBER_OPERATORS },
       { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },

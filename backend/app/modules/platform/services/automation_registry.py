@@ -77,6 +77,8 @@ USER_OPERATORS = ("equals", "not_equals", "is_empty", "is_not_empty", *CHANGE_OP
 AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("inventory.stock_low", "inventory_stock", "Stock low", "Available stock crosses the reorder point."),
     AutomationTrigger("inventory.adjustment_posted", "inventory_adjustments", "Adjustment posted", "A stock adjustment is posted."),
+    AutomationTrigger("inventory.delivery_posted", "inventory_deliveries", "Delivery posted", "A delivery for a sales order is posted."),
+    AutomationTrigger("inventory.return_received", "inventory_returns", "Return received", "A customer return is received."),
     AutomationTrigger("lead.created", "sales_leads", "Lead created", "A sales lead is created."),
     AutomationTrigger("lead.updated", "sales_leads", "Lead updated", "A sales lead is updated."),
     AutomationTrigger("lead.status_changed", "sales_leads", "Lead status changed", "A sales lead status changes."),
@@ -274,7 +276,7 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
-RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments")
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
 # note on a task or a document had nowhere to render.
 NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "finance_io")

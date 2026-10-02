@@ -149,7 +149,8 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
     return {
         "product_id": product.id, "track_inventory": bool(product.track_inventory),
         "on_hand": product.stock_quantity if product.track_inventory else None,
-        "available": product.stock_quantity if product.track_inventory else None,
+        "reserved": sum((Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
+        "available": sum((Decimal(level.on_hand) - Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
         "warehouses": [{"id": warehouse.id, "name": warehouse.name, "code": warehouse.code, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved)} for level, warehouse in levels],
         "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by)) for move in moves],
     }

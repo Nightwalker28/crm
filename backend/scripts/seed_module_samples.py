@@ -163,6 +163,7 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
         bump("support_cases", made)
 
     seed_inventory_drafts(db, tenant, bump)
+    seed_fulfilment_samples(db, tenant, owner, bump)
     return created
 
 
@@ -223,6 +224,64 @@ def seed_inventory_drafts(db: Session, tenant: Tenant, bump) -> None:
         transfer.lines.append(InventoryTransferLine(tenant_id=tenant.id, product_id=product.id, quantity=Decimal("1")))
         db.flush()
     bump("inventory_transfers", made)
+
+
+def seed_fulfilment_samples(db: Session, tenant: Tenant, owner: User, bump) -> None:
+    """A sample order with a posted delivery, a draft delivery and a draft return, so the
+    delivery and return record routes are reachable (E3). Unlike the drafts above, the posted
+    delivery is a real one-unit stock movement for a sample order, made through the services."""
+    from app.modules.inventory.models import InventoryDelivery, InventoryReturn
+    from app.modules.inventory.services import delivery_services, return_services
+    from app.modules.inventory.services.stock_ledger import ensure_default_warehouse, reserve_for_order
+    from app.modules.sales.models import SalesOrderItem
+
+    warehouse = ensure_default_warehouse(db, tenant_id=tenant.id)
+    product = (
+        db.query(CatalogProduct).join(InventoryStockLevel, InventoryStockLevel.product_id == CatalogProduct.id)
+        .filter(CatalogProduct.tenant_id == tenant.id, CatalogProduct.deleted_at.is_(None), CatalogProduct.is_active == 1,
+                CatalogProduct.track_inventory == 1, InventoryStockLevel.warehouse_id == warehouse.id,
+                InventoryStockLevel.on_hand - InventoryStockLevel.reserved >= 2)
+        .order_by(CatalogProduct.id.asc()).first()
+    )
+    existing = db.query(SalesOrder).filter_by(tenant_id=tenant.id, order_number="SAMPLE-SO-E3").one_or_none()
+    if existing is None and product is None:
+        return
+    order, made = get_or_create(
+        db, SalesOrder, tenant_id=tenant.id, order_number="SAMPLE-SO-E3",
+        defaults={"status": "confirmed", "currency": product.currency if product else "USD", "warehouse_id": warehouse.id,
+                  "owner_id": owner.id, "created_by_id": owner.id},
+    )
+    if made:
+        order.items.append(SalesOrderItem(tenant_id=tenant.id, catalog_product_id=product.id, name=product.name,
+            quantity=Decimal("3"), unit_price=product.public_unit_price, line_total=product.public_unit_price * 3, sort_order=0))
+        db.flush()
+        reserve_for_order(db, tenant_id=tenant.id, order=order, actor_user_id=owner.id)
+    bump("sales_orders", made)
+    line = order.items[0] if order.items else None
+    if line is None or order.status != "confirmed":
+        return
+
+    def delivery(number: str, *, post: bool):
+        doc = db.query(InventoryDelivery).filter_by(tenant_id=tenant.id, number=number).one_or_none()
+        if doc is not None:
+            return doc, False
+        doc = delivery_services.save_delivery(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "order_id": order.id, "carrier": "Sample carrier", "lines": [{"order_line_id": line.id, "quantity": "1"}]})
+        doc.number = number
+        db.flush()
+        if post:
+            delivery_services.post_delivery(db, tenant_id=tenant.id, actor_user_id=owner.id, delivery_id=doc.id)
+        return doc, True
+
+    shipped, made = delivery("SAMPLE-DEL-0001", post=True)
+    bump("inventory_deliveries", made)
+    _, made = delivery("SAMPLE-DEL-0002", post=False)
+    bump("inventory_deliveries", made)
+    if shipped.status == "posted" and db.query(InventoryReturn).filter_by(tenant_id=tenant.id, number="SAMPLE-RET-0001").one_or_none() is None:
+        doc = return_services.save_return(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={"delivery_id": shipped.id, "reason": "Sample return"})
+        doc.number = "SAMPLE-RET-0001"
+        db.flush()
+        bump("inventory_returns", True)
 
 
 def main() -> None:

@@ -39,6 +39,13 @@ export type Order = {
   grand_total: string | number;
   owner_id: number | null;
   owner_name?: string | null;
+  /** Where the order's stock is held and shipped from. */
+  warehouse_id?: number | null;
+  warehouse_name?: string | null;
+  /** none · pending · partial · delivered · closed, from the order's deliveries. */
+  delivery_status?: string;
+  remaining_closed_at?: string | null;
+  remaining_close_reason?: string | null;
   delivery_date?: string | null;
   delivery_address?: string | null;
   payment_terms?: string | null;

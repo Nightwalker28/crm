@@ -7,7 +7,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 export type Warehouse = { id: number; code: string; name: string; address: string | null; is_default: boolean; is_active: boolean; is_deleted: boolean };
 export type StockRow = { product_id: number; product_name: string; sku: string | null; category_name: string | null; warehouse_id: number; warehouse_name: string; on_hand: string; reserved: string; available: string; reorder_point: string; reorder_quantity: string; stock_status: string };
 export type StockMove = { id: number; product_id: number; product_name: string; warehouse_id: number; warehouse_name: string; quantity: string; on_hand_after: string; move_type: string; source_type: string; source_id: number; reason: string | null; note: string | null; created_by: number | null; actor_label: string; occurred_at: string };
-export type ProductStock = { product_id: number; track_inventory: boolean; on_hand: string | null; available: string | null; warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string }>; movements: StockMove[] };
+export type ProductStock = { product_id: number; track_inventory: boolean; on_hand: string | null; reserved: string | null; available: string | null; warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string }>; movements: StockMove[] };
 export type InventoryKind = "adjustments" | "transfers";
 export type InventoryDocumentLine = { id: number; product_id: number; product_name: string; sku: string | null; expected?: string; counted?: string | null; delta?: string | null; quantity?: string };
 export type InventoryDocument = {
@@ -31,8 +31,8 @@ async function inventoryRequest<T>(path: string, init?: RequestInit): Promise<T>
   return response.status === 204 ? null as T : response.json() as Promise<T>;
 }
 
-export function useWarehouses(includeDeleted = false) {
-  return useQuery({ queryKey: ["inventory", "warehouses", includeDeleted], queryFn: async () => (await inventoryRequest<{ results: Warehouse[] }>(`/warehouses${includeDeleted ? "?include_deleted=true" : ""}`)).results });
+export function useWarehouses(includeDeleted = false, enabled = true) {
+  return useQuery({ queryKey: ["inventory", "warehouses", includeDeleted], queryFn: async () => (await inventoryRequest<{ results: Warehouse[] }>(`/warehouses${includeDeleted ? "?include_deleted=true" : ""}`)).results, enabled });
 }
 
 export function useStock(page: number, pageSize: number, search: string, warehouseId?: string, levelFilter?: string, filtersAll?: string, filtersAny?: string) {

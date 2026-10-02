@@ -20,6 +20,9 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     # Removed inventory drafts go before products: their lines reference products.
     ("inventory_adjustments", "id"),
     ("inventory_transfers", "id"),
+    # Returns before deliveries: a return's lines point at its delivery's lines.
+    ("inventory_returns", "id"),
+    ("inventory_deliveries", "id"),
     ("catalog_products", "id"),
     ("catalog_services", "id"),
     ("tasks", "id"),
@@ -34,7 +37,12 @@ PURGE_GUARDS = {
     "catalog_products": """
             AND NOT EXISTS (SELECT 1 FROM inventory_stock_moves m WHERE m.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_adjustment_lines l WHERE l.product_id = catalog_products.id)
-            AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)""",
+            AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_delivery_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)""",
+    # A removed draft delivery that a return still points at stays until the return goes.
+    "inventory_deliveries": """
+            AND NOT EXISTS (SELECT 1 FROM inventory_returns r WHERE r.delivery_id = inventory_deliveries.id)""",
 }
 # A product without history can still hold zero balance rows, which also restrict the delete.
 PURGE_PREPARE = {
@@ -50,6 +58,8 @@ PURGE_PREPARE = {
             AND NOT EXISTS (SELECT 1 FROM inventory_stock_moves m WHERE m.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_adjustment_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_delivery_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)
         """
     ),
 }

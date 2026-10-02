@@ -37,6 +37,8 @@ MODULE_DISPLAY_NAMES = {
     "finance_io": "Insertion Orders",
     "reports": "Reports",
     "inventory_stock": "Inventory stock",
+    "inventory_deliveries": "Deliveries",
+    "inventory_returns": "Returns",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -53,6 +55,8 @@ MODULE_LINKS = {
     "finance_io": "/dashboard/finance/insertion-orders",
     "reports": "/dashboard/reports",
     "inventory_stock": "/dashboard/inventory/stock",
+    "inventory_deliveries": "/dashboard/inventory/deliveries",
+    "inventory_returns": "/dashboard/inventory/returns",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
@@ -94,7 +98,9 @@ def require_data_transfer_job_access(
         source_key = (job.payload or {}).get("source_module_key")
         if not isinstance(source_key, str):
             raise HTTPException(status_code=404, detail="Report export source is unavailable")
-        require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_stock" if source_key == "inventory_movements" else source_key, action="view")
+        # Report sources that are not modules of their own answer to the module they read.
+        permission_key = {"inventory_movements": "inventory_stock", "inventory_backorders": "sales_orders"}.get(source_key, source_key)
+        require_data_transfer_module_access(db, current_user=current_user, module_key=permission_key, action="view")
 
 
 def data_transfer_download_action(job: DataTransferJob) -> str:
@@ -807,6 +813,27 @@ def process_export_job(*, job_id: int) -> None:
                 raise ValueError("Inventory export kind must be levels or movements")
             exported_rows = len(rows)
             file_name = f"inventory_{export_kind}.csv"
+            media_type = "text/csv"
+        elif module_key in {"inventory_deliveries", "inventory_returns"}:
+            from app.core.module_export import dict_rows_to_csv_bytes
+            from app.modules.inventory.models import InventoryDelivery, InventoryReturn
+            from app.modules.inventory.services.delivery_services import serialize_delivery
+            from app.modules.inventory.services.return_services import serialize_return
+
+            if current_user is None:
+                raise ValueError("Inventory export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
+            if module_key == "inventory_deliveries":
+                docs = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == job.tenant_id, InventoryDelivery.deleted_at.is_(None)).order_by(InventoryDelivery.id).all()
+                rows = [serialize_delivery(db, tenant_id=job.tenant_id, doc=doc, include_lines=False) for doc in docs]
+                headers = ("number", "status", "order_number", "customer_name", "warehouse_name", "shipped_on", "carrier", "tracking_number", "total_quantity", "posted_at", "cancel_reason")
+            else:
+                docs = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == job.tenant_id, InventoryReturn.deleted_at.is_(None)).order_by(InventoryReturn.id).all()
+                rows = [serialize_return(db, tenant_id=job.tenant_id, doc=doc, include_lines=False) for doc in docs]
+                headers = ("number", "status", "reason", "delivery_number", "order_number", "customer_name", "warehouse_name", "total_quantity", "received_at", "cancel_reason")
+            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
+            exported_rows = len(rows)
+            file_name = f"{module_key}.csv"
             media_type = "text/csv"
         elif module_key == "finance_io":
             from app.modules.finance.models import FinanceIO

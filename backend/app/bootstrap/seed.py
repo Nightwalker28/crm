@@ -32,6 +32,8 @@ DEFAULT_MODULES = [
     {"name": "inventory_stock", "base_route": "/dashboard/inventory/stock", "description": "Stock and movements"},
     {"name": "inventory_adjustments", "base_route": "/dashboard/inventory/adjustments", "description": "Stock adjustments"},
     {"name": "inventory_transfers", "base_route": "/dashboard/inventory/transfers", "description": "Warehouse transfers"},
+    {"name": "inventory_deliveries", "base_route": "/dashboard/inventory/deliveries", "description": "Deliveries for sales orders"},
+    {"name": "inventory_returns", "base_route": "/dashboard/inventory/returns", "description": "Customer returns"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},

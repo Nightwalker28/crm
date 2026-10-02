@@ -691,24 +691,35 @@ def _get_or_create_system_saved_view(
     return system_view
 
 
-INVENTORY_STOCK_PRESET_VIEWS = (
-    ("Low stock", {"field": "low_stock", "operator": "is", "value": True}),
-    ("Out of stock", {"field": "available", "operator": "lte", "value": 0}),
-)
+# Preset views a module ships with, as (name, all-conditions). Users who already had views
+# for the module when its presets arrived got them from that module's migration.
+PRESET_SAVED_VIEWS = {
+    "inventory_stock": (
+        ("Low stock", [{"field": "low_stock", "operator": "is", "value": True}]),
+        ("Out of stock", [{"field": "available", "operator": "lte", "value": 0}]),
+    ),
+    # E3 (12a-erp-fulfilment.md §3.5); the same two are in migration 20260831_inventory_deliveries.
+    "sales_orders": (
+        ("To deliver", [{"field": "status", "operator": "is", "value": "confirmed"},
+                        {"field": "delivery_status", "operator": "is_not", "value": "none"}]),
+        ("Waiting for stock", [{"field": "waiting_for_stock", "operator": "is", "value": True}]),
+    ),
+}
 
 
-def _seed_inventory_stock_views(db: Session, user: User, visible_columns: list[str]) -> None:
-    """Give a user the stock presets on their first visit only, so a preset they delete or
+def _seed_preset_views(db: Session, user: User, module_key: str, visible_columns: list[str]) -> None:
+    """Give a user a module's presets on their first visit only, so a preset they delete or
     rename stays deleted or renamed."""
     has_views = db.query(UserSavedView.id).filter(
-        UserSavedView.user_id == user.id, UserSavedView.module_key == "inventory_stock",
+        UserSavedView.user_id == user.id, UserSavedView.module_key == module_key,
     ).first() is not None
     if has_views:
         return
-    for name, condition in INVENTORY_STOCK_PRESET_VIEWS:
-        db.add(UserSavedView(user_id=user.id, module_key="inventory_stock", name=name, is_default=0,
-            config=_normalize_saved_view_config("inventory_stock", {"visible_columns": visible_columns,
-                "filters": {"search": "", "all_conditions": [{"id": name.lower().replace(" ", "-"), **condition}], "any_conditions": []}})))
+    for name, conditions in PRESET_SAVED_VIEWS[module_key]:
+        slug = name.lower().replace(" ", "-")
+        db.add(UserSavedView(user_id=user.id, module_key=module_key, name=name, is_default=0,
+            config=_normalize_saved_view_config(module_key, {"visible_columns": visible_columns,
+                "filters": {"search": "", "all_conditions": [{"id": f"{slug}-{index}", **condition} for index, condition in enumerate(conditions)], "any_conditions": []}})))
     db.commit()
 
 
@@ -720,8 +731,8 @@ def list_saved_views(
     default_visible_columns: list[str],
 ) -> list[dict]:
     _ensure_supported_saved_view_module(db, user, module_key)
-    if module_key == "inventory_stock":
-        _seed_inventory_stock_views(db, user, default_visible_columns)
+    if module_key in PRESET_SAVED_VIEWS:
+        _seed_preset_views(db, user, module_key, default_visible_columns)
     legacy_preference = (
         get_user_table_preference(db, user, module_key)
         if module_key in TABLE_PREFERENCE_MODULES or module_key not in SAVED_VIEW_MODULES

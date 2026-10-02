@@ -49,6 +49,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useWarehouses } from "@/hooks/inventory/useInventory";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -69,6 +71,7 @@ type OrderForm = {
   delivery_address: string;
   payment_terms: string;
   notes: string;
+  warehouse_id: number | null;
 };
 const EMPTY_FORM: OrderForm = {
   order_number: "",
@@ -86,6 +89,7 @@ const EMPTY_FORM: OrderForm = {
   delivery_address: "",
   payment_terms: "",
   notes: "",
+  warehouse_id: null,
 };
 const STATUSES = [
   { value: "draft", label: "Draft" },
@@ -123,10 +127,12 @@ function orderSeed(order?: Order): OrderSeed {
       delivery_address: order.delivery_address ?? "",
       payment_terms: order.payment_terms ?? "",
       notes: order.notes ?? "",
+      warehouse_id: order.warehouse_id ?? null,
     },
     items: order.items?.length
       ? order.items.map((item) => ({
           ...createTransactionLineItem("order"),
+          id: item.id,
           ...transactionCatalogLink(item),
           name: item.name,
           description: item.description ?? "",
@@ -193,6 +199,13 @@ function OrderRecordFormEditor({
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
   const [form, setForm] = useState<OrderForm>(seed.form);
+  const { modules } = useAccessibleModules();
+  const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
+  const warehousesQuery = useWarehouses(false, canViewStock);
+  // A tenant with one warehouse never sees the choice (12-erp-inventory.md §4.2).
+  const warehouseOptions = (warehousesQuery.data ?? []).filter((warehouse) => warehouse.is_active || warehouse.id === form.warehouse_id);
+  const showWarehouse = warehouseOptions.length > 1;
+  const warehouseLocked = form.status === "fulfilled" || form.status === "cancelled";
   const [items, setItems] = useState<TransactionLineItem[]>(seed.items);
   const [initialSnapshot] = useState(() =>
     JSON.stringify([seed.form, seed.items]),
@@ -245,6 +258,7 @@ function OrderRecordFormEditor({
             delivery_address: form.delivery_address.trim() || null,
             payment_terms: form.payment_terms.trim() || null,
             notes: form.notes.trim() || null,
+            ...(form.warehouse_id ? { warehouse_id: form.warehouse_id } : {}),
             items: serializeTransactionItems(items),
           }),
         },
@@ -253,9 +267,15 @@ function OrderRecordFormEditor({
         id?: number;
         detail?: string;
       } | null;
-      if (!res.ok) throw new Error("The order could not be saved.");
+      if (!res.ok) {
+        // A stock refusal ("Insufficient available stock … short by 2") is the operator's
+        // next step, so it is shown as the server wrote it.
+        setSubmitError(typeof body?.detail === "string" ? body.detail : "Check the form and your connection, then try again.");
+        return;
+      }
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+        queryClient.invalidateQueries({ queryKey: ["sales-order-fulfilment"] }),
         queryClient.invalidateQueries({
           queryKey: ["sales-order-edit", orderId],
         }),
@@ -478,6 +498,26 @@ function OrderRecordFormEditor({
           description="Set fulfillment expectations and customer-facing payment terms."
         >
           <FieldGroup columns={2}>
+            {showWarehouse ? (
+              <Field className="md:col-span-2">
+                <FieldLabel htmlFor="order-warehouse">Warehouse</FieldLabel>
+                <Select
+                  value={String(form.warehouse_id ?? warehouseOptions.find((warehouse) => warehouse.is_default)?.id ?? "")}
+                  onValueChange={(value) => setForm({ ...form, warehouse_id: Number(value) })}
+                  disabled={warehouseLocked}
+                >
+                  <SelectTrigger id="order-warehouse"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {warehouseOptions.map((warehouse) => (
+                      <SelectItem key={warehouse.id} value={String(warehouse.id)}>{warehouse.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  {warehouseLocked ? "Stock has already left this warehouse." : "Stock is reserved and shipped from here."}
+                </FieldDescription>
+              </Field>
+            ) : null}
             <Field>
               <FieldLabel htmlFor="order-delivery-date">
                 Delivery date

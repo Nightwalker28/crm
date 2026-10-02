@@ -1,6 +1,7 @@
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
+from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -14,7 +15,8 @@ from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
-from app.modules.inventory.services import inventory_services
+from app.modules.inventory.services import inventory_services, reservation_services
+from app.modules.inventory.services.stock_ledger import ensure_default_warehouse, set_reservations
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload
 from app.modules.user_management.models import User
 
@@ -172,3 +174,29 @@ def product_stock(product_id: int, db: Session = Depends(get_db), user=Depends(r
 def quick_adjust(product_id: int, payload: QuickAdjustmentPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _create=Depends(require_action_access("inventory_adjustments", "create")), _post=Depends(require_action_access("inventory_adjustments", "edit"))):
     adjustment = inventory_services.quick_adjust(db, tenant_id=user.tenant_id, actor_user_id=user.id, product_id=product_id, **payload.model_dump())
     return {"id": adjustment.id, "number": adjustment.number, "status": adjustment.status}
+
+
+class ReservationHold(BaseModel):
+    order_line_id: int = Field(gt=0)
+    quantity: Decimal = Field(ge=0)
+
+
+class ReservationsPayload(BaseModel):
+    warehouse_id: int | None = Field(default=None, gt=0)
+    version: str = Field(min_length=1, max_length=64)
+    holds: list[ReservationHold] = Field(min_length=1, max_length=500)
+
+
+@router.get("/products/{product_id}/reservations")
+def product_reservations(product_id: int, warehouse_id: int | None = Query(default=None, gt=0), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view")), _orders=Depends(require_module_access("sales_orders")), _orders_view=Depends(require_action_access("sales_orders", "view"))):
+    return jsonable_encoder(reservation_services.product_reservations(db, tenant_id=user.tenant_id, product_id=product_id, warehouse_id=warehouse_id))
+
+
+@router.put("/products/{product_id}/reservations")
+def set_product_reservations(product_id: int, payload: ReservationsPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view")), _orders=Depends(require_module_access("sales_orders")), _orders_edit=Depends(require_action_access("sales_orders", "edit"))):
+    """Edit or move holds between orders for one product in one warehouse."""
+    warehouse_id = payload.warehouse_id or ensure_default_warehouse(db, tenant_id=user.tenant_id).id
+    set_reservations(db, tenant_id=user.tenant_id, actor_user_id=user.id, product_id=product_id, warehouse_id=warehouse_id,
+        holds=[(hold.order_line_id, hold.quantity) for hold in payload.holds], expected_version=payload.version)
+    db.commit()
+    return jsonable_encoder(reservation_services.product_reservations(db, tenant_id=user.tenant_id, product_id=product_id, warehouse_id=warehouse_id))

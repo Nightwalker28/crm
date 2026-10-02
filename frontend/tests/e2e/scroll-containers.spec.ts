@@ -32,6 +32,8 @@ const ROUTES = [
   "/dashboard/inventory/adjustments/new",
   "/dashboard/inventory/transfers",
   "/dashboard/inventory/transfers/new",
+  "/dashboard/inventory/deliveries",
+  "/dashboard/inventory/returns",
   "/dashboard/catalog/products/new",
   "/dashboard/catalog/services",
   "/dashboard/catalog/services/new",

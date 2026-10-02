@@ -26,6 +26,8 @@ from fastapi.encoders import jsonable_encoder
 
 from app.modules.inventory.repositories import document_repository as inventory_documents
 from app.modules.inventory.services.document_services import restore_draft as restore_inventory_draft, serialize_document as serialize_inventory_document
+from app.modules.inventory.models import InventoryDelivery, InventoryReturn
+from app.modules.inventory.services import delivery_services, return_services
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.document_services import list_deleted_documents, restore_document
 from app.modules.platform.services.activity_logs import log_activity
@@ -86,6 +88,8 @@ SUPPORTED_RECYCLE_MODULES = {
     "catalog_services",
     "inventory_adjustments",
     "inventory_transfers",
+    "inventory_deliveries",
+    "inventory_returns",
 }
 INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
@@ -293,6 +297,28 @@ def list_recycle_items(
             }
             for item in items
         ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "inventory_deliveries":
+        query = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == tenant_id, InventoryDelivery.deleted_at.isnot(None)).order_by(
+            InventoryDelivery.deleted_at.desc(), InventoryDelivery.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = delivery_services.serialize_delivery(db, tenant_id=tenant_id, doc=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details["order_number"], "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "inventory_returns":
+        query = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == tenant_id, InventoryReturn.deleted_at.isnot(None)).order_by(
+            InventoryReturn.deleted_at.desc(), InventoryReturn.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = return_services.serialize_return(db, tenant_id=tenant_id, doc=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details["delivery_number"], "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key in INVENTORY_DOCUMENT_KINDS:
@@ -522,6 +548,16 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
+
+    if module_key == "inventory_returns":
+        restored = return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)
+        db.commit()
+        return jsonable_encoder(return_services.serialize_return(db, tenant_id=current_user.tenant_id, doc=restored))
+
+    if module_key == "inventory_deliveries":
+        restored = delivery_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, delivery_id=record_id)
+        db.commit()
+        return jsonable_encoder(delivery_services.serialize_delivery(db, tenant_id=current_user.tenant_id, doc=restored))
 
     if module_key in INVENTORY_DOCUMENT_KINDS:
         kind = INVENTORY_DOCUMENT_KINDS[module_key]

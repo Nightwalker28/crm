@@ -18,6 +18,8 @@ import { formatMoney } from "@/lib/currency";
  */
 export type TransactionLineItem = {
   key: string;
+  /** A saved line's ID. Orders send it back so the line keeps its identity (and stock holds). */
+  id?: number | null;
   name: string;
   description: string;
   quantity: string;
@@ -39,7 +41,7 @@ export function transactionAmount(value: string) { const parsed = Number(value);
 export function transactionLineTotal(item: TransactionLineItem) { return Math.max(0, transactionAmount(item.quantity) * transactionAmount(item.unit_price) - transactionAmount(item.discount_amount) + transactionAmount(item.tax_amount)); }
 export function calculateTransactionTotals(items: TransactionLineItem[]): TransactionTotals { return items.reduce((result, item) => { result.subtotal += transactionAmount(item.quantity) * transactionAmount(item.unit_price); result.discount += transactionAmount(item.discount_amount); result.tax += transactionAmount(item.tax_amount); result.total += transactionLineTotal(item); return result; }, { subtotal: 0, discount: 0, tax: 0, total: 0 }); }
 export function areTransactionItemsValid(items: TransactionLineItem[]) { return items.length > 0 && items.every((item) => item.name.trim() && transactionAmount(item.quantity) > 0 && transactionAmount(item.unit_price) >= 0 && transactionAmount(item.discount_amount) >= 0 && transactionAmount(item.tax_amount) >= 0 && transactionAmount(item.discount_amount) <= transactionAmount(item.quantity) * transactionAmount(item.unit_price) + transactionAmount(item.tax_amount)); }
-export function serializeTransactionItems(items: TransactionLineItem[]) { return items.map((item, index) => ({ ...transactionCatalogLink(item), name: item.name.trim(), description: item.description.trim() || null, quantity: item.quantity, unit_price: item.unit_price, discount_amount: item.discount_amount, tax_amount: item.tax_amount, sort_order: index })); }
+export function serializeTransactionItems(items: TransactionLineItem[]) { return items.map((item, index) => ({ ...(item.id ? { id: item.id } : {}), ...transactionCatalogLink(item), name: item.name.trim(), description: item.description.trim() || null, quantity: item.quantity, unit_price: item.unit_price, discount_amount: item.discount_amount, tax_amount: item.tax_amount, sort_order: index })); }
 
 /** The first line of a catalog description, short enough for the line's one-line field. */
 function catalogDescriptionLine(value: unknown) {

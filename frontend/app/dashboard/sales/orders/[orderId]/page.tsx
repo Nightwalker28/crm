@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
+import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { OrderFulfilmentPanel } from "@/components/inventory/OrderFulfilmentPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
@@ -30,6 +32,7 @@ import {
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
+import { useWarehouses } from "@/hooks/inventory/useInventory";
 import type { Order } from "@/hooks/sales/useOrders";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
@@ -101,6 +104,9 @@ export default function OrderDetailPage() {
   const canCreateDocuments = Boolean(documentActions?.can_create);
   const canEditDocuments = Boolean(documentActions?.can_edit);
   const canDeleteDocuments = Boolean(documentActions?.can_delete);
+  const canViewStock = Boolean(moduleActions("inventory_stock")?.can_view);
+  const warehousesQuery = useWarehouses(false, canViewStock);
+  const multipleWarehouses = (warehousesQuery.data?.filter((warehouse) => warehouse.is_active).length ?? 0) > 1;
 
   const orderQuery = useQuery({
     queryKey: ["sales-order", params.orderId],
@@ -125,9 +131,17 @@ export default function OrderDetailPage() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ status: next }),
     });
-    if (!res.ok) throw new Error("The order status could not be saved.");
+    if (!res.ok) {
+      // A refused fulfilment names the product and the shortfall; that is the next step.
+      const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+      const message = typeof body?.detail === "string" ? body.detail : "The order status could not be saved.";
+      toast.error(message);
+      throw new Error(message);
+    }
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-order-fulfilment", order.id] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
       queryClient.invalidateQueries({
         queryKey: ["record-audit-history", "sales_orders", params.orderId],
       }),
@@ -283,6 +297,19 @@ export default function OrderDetailPage() {
           createActionVariant="outline"
         />
       ) : undefined}
+      extraTabs={order && order.items?.some((item) => item.catalog_product_id) ? [{
+        id: "fulfilment",
+        label: "Fulfilment",
+        content: (
+          <OrderFulfilmentPanel
+            orderId={order.id}
+            canEdit={canEdit}
+            canReallocate={canEdit && canViewStock}
+            canCreateDelivery={Boolean(moduleActions("inventory_deliveries")?.can_create)}
+            showWarehouse={multipleWarehouses}
+          />
+        ),
+      }] : undefined}
       files={order && canViewDocuments ? (
         <RecordDocumentsPanel
           moduleKey="sales_orders"

@@ -277,6 +277,7 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `settings/warehouses/page.tsx` | — | — | new | crm-evolution ERP E2 Phase 1 | **born on the system** — archetype 4, `RecordTable` + `EditorPanel` |
 | `inventory/stock/page.tsx`, `inventory/movements/page.tsx` | — | — | new | crm-evolution ERP E2 Phase 1 | **born on the system** — archetype 1, `PageShell` + `RecordTable` |
 | `inventory/adjustments/{page,new/page,[id]/page}.tsx`, `inventory/transfers/{page,new/page,[id]/page}.tsx` | — | — | new | crm-evolution ERP E2 Phase 2 | **born on the system** — list, document form and document detail shims over shared inventory document components |
+| `inventory/deliveries/{page,new/page,[id]/page}.tsx`, `inventory/returns/{page,new/page,[id]/page}.tsx` | — | — | new | crm-evolution ERP E3 Phases 2–3 | **born on the system** — archetype 1 lists (`PageShell` + `RecordTable` + `Pagination`, no create action: each starts from its order or delivery) and document shims |
 | `settings/automation/page.tsx` | 156 | 5.6 | rebuild | | **done, batches 3 + 5 + 7d** — denied state, then the address vocabulary; in 7d the page-local `RouteLoadingState` and `Card`+`EmptyState` moved onto `AutomationRunsTable`, which has owned both states since 4a |
 | `settings/integrations/page.tsx` | 67 | 5.6 | rebuild | | **done, batches 3 + 7d** — denied state; **audited clean in 7d** |
 | `settings/domains/page.tsx` | 61 | 5.6 | rebuild | | **done, batches 3 + 7d** — it had re-created `Pill`: a nested ternary painting a coloured capsule per domain. `StatusValue` + `Chip`, the prose loading line → `PanelLoading`, the panel heading → `SectionHeading` |
@@ -363,6 +364,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `catalog/CatalogRecordDetailPage.tsx` | 238 | 5.3 | rebuild | Archetype 6 — `PageShell actions=` with no record header | done |
 | `catalog/CatalogItemSalesPanel.tsx` | 100 | — | new | crm-evolution ERP E1: the product and service record's *Sales* tab, through `extraTabs` | **born on the system** — `Card` + `SectionHeading`, `FactList` counts, a read-only `RecordTable` with all four states |
 | `inventory/InventoryDocumentListPage.tsx`, `inventory/InventoryDocumentPage.tsx` | — | — | new | crm-evolution ERP E2 Phase 2 | **born on the system** — shared list and document form, `PageShell`, `RecordTable`, `FormFooter` and `EditorPanel` |
+| `inventory/OrderFulfilmentPanel.tsx` | 110 | — | new | crm-evolution ERP E3 Phase 1: the order record's *Fulfilment* tab, through `extraTabs` | **born on the system** — `Card` + `SectionHeading`, `FactList`, a read-only `RecordTable` with all four states and `rowActions`; availability through `StatusValue` (`getOrderAvailability`) |
+| `inventory/ReservationsDialog.tsx` | 170 | — | new | crm-evolution ERP E3 Phase 1: edit or move one product's holds between orders | **born on the system** — `QuickCreateSurface` (dirty-close, pending, errors), `FactList`, a `lineItems` `RecordTable` with one input per row |
+| `inventory/DeliveryDocumentPage.tsx`, `inventory/ReturnDocumentPage.tsx` | — | — | new | crm-evolution ERP E3 Phases 2–3: delivery and return documents | **born on the system** — E2's document layout: `PageShell variant="document"`, `FactList`, a `lineItems` `RecordTable` while a draft and a read-only one after, `FormFooter`, `EditorPanel` for cancel-with-reason |
 
 ### 2.3 Tables and lists (20) — owner 5.5
 

@@ -19,6 +19,8 @@ SUPPORTED_CHANNEL_PROVIDERS = {"slack", "teams"}
 CRM_EVENT_TYPES = {
     "inventory.stock_low",
     "inventory.adjustment_posted",
+    "inventory.delivery_posted",
+    "inventory.return_received",
     "lead.created",
     "lead.updated",
     "lead.converted",

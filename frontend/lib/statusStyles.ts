@@ -154,6 +154,38 @@ const ORDER_STATUS: Record<string, StatusDescriptor> = {
   cancelled: c("Cancelled"),
 };
 
+/**
+ * Whether a confirmed order's stock is held. *Reserved* is the expected state; a line still
+ * waiting for stock is the exception an operator scans for.
+ */
+const ORDER_AVAILABILITY: Record<string, StatusDescriptor> = {
+  reserved: n("Reserved"),
+  partly_reserved: a("Partly reserved"),
+  waiting: a("Waiting"),
+};
+
+/** An order's shipping progress (`sales_orders.delivery_status`). */
+const ORDER_DELIVERY_STATUS: Record<string, StatusDescriptor> = {
+  none: n("Nothing to ship"),
+  pending: n("To deliver"),
+  partial: n("Partly delivered"),
+  delivered: s("Delivered"),
+  closed: n("Closed"),
+};
+
+/** Delivery and return documents, as E2's adjustments and transfers. */
+const DELIVERY_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  posted: s("Posted"),
+  cancelled: n("Cancelled"),
+};
+
+const RETURN_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  received: s("Received"),
+  cancelled: n("Cancelled"),
+};
+
 const TASK_STATUS: Record<string, StatusDescriptor> = {
   todo: n("To do"),
   in_progress: n("In progress"),
@@ -189,6 +221,10 @@ export const getPosPaymentStatus = (v: string) => descriptorFrom(POS_PAYMENT_STA
 export const getLeadStatus = (v: string) => descriptorFrom(LEAD_STATUS, v);
 export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);
+export const getOrderAvailability = (v: string) => descriptorFrom(ORDER_AVAILABILITY, v);
+export const getOrderDeliveryStatus = (v: string) => descriptorFrom(ORDER_DELIVERY_STATUS, v);
+export const getDeliveryStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, v);
+export const getReturnStatus = (v: string) => descriptorFrom(RETURN_STATUS, v);
 export const getTaskStatus = (v: string) => descriptorFrom(TASK_STATUS, v);
 export const getSupportCaseStatus = (v: string) => descriptorFrom(SUPPORT_CASE_STATUS, v);
 export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK_STATUS, v);

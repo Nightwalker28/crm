@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Boxes, Plus } from "lucide-react";
+import { Boxes, ListChecks, Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { ReservationsDialog } from "@/components/inventory/ReservationsDialog";
 import { QuickCreateSurface } from "@/components/ui/QuickCreateSurface";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
@@ -25,7 +26,13 @@ function quantity(value: string | number | null) {
   return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
 }
 
-export function CatalogItemStockPanel({ productId, canAdjust }: { productId: number; canAdjust: boolean }) {
+export function CatalogItemStockPanel({ productId, canAdjust, canManageReservations = false }: {
+  productId: number;
+  canAdjust: boolean;
+  /** `view` on stock and `edit` on orders: the Reservations dialog, which edits holds. */
+  canManageReservations?: boolean;
+}) {
+  const [reservationsOpen, setReservationsOpen] = useState(false);
   const stock = useProductStock(productId);
   const warehouses = useWarehouses();
   const { adjust } = useInventoryActions();
@@ -58,11 +65,15 @@ export function CatalogItemStockPanel({ productId, canAdjust }: { productId: num
     <Card className="min-w-0 p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <SectionHeading description="Balances and recent posted changes for this product.">Stock</SectionHeading>
-        {canAdjust && data?.track_inventory ? <Button type="button" size="sm" onClick={() => setOpen(true)}><Plus />Adjust stock</Button> : null}
+        <div className="flex flex-wrap gap-2">
+          {canManageReservations && data?.track_inventory ? <Button type="button" variant="outline" size="sm" onClick={() => setReservationsOpen(true)}><ListChecks />Reservations</Button> : null}
+          {canAdjust && data?.track_inventory ? <Button type="button" size="sm" onClick={() => setOpen(true)}><Plus />Adjust stock</Button> : null}
+        </div>
       </div>
       {data?.track_inventory ? (
-        <FactList className="mt-4 grid-cols-2">
+        <FactList className="mt-4 grid-cols-3">
           <Fact label="On hand"><span className="tabular-nums">{quantity(data.on_hand)}</span></Fact>
+          <Fact label="Reserved"><span className="tabular-nums">{quantity(data.reserved)}</span></Fact>
           <Fact label="Available"><span className="tabular-nums">{quantity(data.available)}</span></Fact>
         </FactList>
       ) : <p className="mt-4 text-p-sm text-copy-secondary">Inventory is not tracked for this product.</p>}
@@ -71,7 +82,7 @@ export function CatalogItemStockPanel({ productId, canAdjust }: { productId: num
           <SectionHeading>By warehouse</SectionHeading>
           <RecordTable variant="readOnly" shellVariant="nested" label="Warehouse stock" rows={data.warehouses} rowKey={(row) => row.id}
             emptyState={{ icon: Boxes, title: "No warehouse balances" }}
-            columns={[{ key: "name", label: "Warehouse", render: (row) => row.name }, { key: "on_hand", label: "On hand", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.on_hand)}</span> }, { key: "available", label: "Available", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.available)}</span> }]} />
+            columns={[{ key: "name", label: "Warehouse", render: (row) => row.name }, { key: "on_hand", label: "On hand", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.on_hand)}</span> }, { key: "reserved", label: "Reserved", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.reserved)}</span> }, { key: "available", label: "Available", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.available)}</span> }]} />
         </div>
       ) : null}
       <div className="mt-6">
@@ -81,6 +92,7 @@ export function CatalogItemStockPanel({ productId, canAdjust }: { productId: num
           emptyState={{ icon: Boxes, title: "No movements yet", description: "Opening balances and adjustments appear here." }}
           columns={[{ key: "date", label: "Date", render: (row) => formatDateTime(row.occurred_at) }, { key: "type", label: "Type", render: (row) => row.move_type.replaceAll("_", " ") }, { key: "warehouse", label: "Warehouse", render: (row) => row.warehouse_name }, { key: "actor", label: "By", render: (row) => row.actor_label }, { key: "quantity", label: "Change", align: "right", render: (row) => <span className="tabular-nums">{Number(row.quantity) > 0 ? "+" : ""}{quantity(row.quantity)}</span> }, { key: "after", label: "On hand after", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.on_hand_after)}</span> }]} />
       </div>
+      {canManageReservations ? <ReservationsDialog open={reservationsOpen} onOpenChange={setReservationsOpen} productId={productId} /> : null}
       <QuickCreateSurface open={open} onOpenChange={setOpen} title="Adjust stock" description="Post a reasoned change to the inventory ledger." showCreateAndOpen={false} createLabel="Post adjustment" pendingLabel="Posting…" isDirty={dirty} onSubmit={submit} onSubmitError={(error) => toast.error(error instanceof Error ? error.message : "Stock could not be adjusted.")}>
         <div className="grid gap-4">
           {multipleWarehouses ? <Field><FieldLabel>Warehouse</FieldLabel><Select value={warehouseId || String(warehouses.data?.find((row) => row.is_default)?.id ?? "")} onValueChange={setWarehouseId}><SelectTrigger aria-label="Warehouse"><SelectValue /></SelectTrigger><SelectContent>{warehouses.data?.filter((row) => row.is_active).map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent></Select></Field> : null}

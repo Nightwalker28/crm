@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Sequence
 
 from fastapi import HTTPException, status
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
@@ -12,7 +12,13 @@ from app.core.module_filters import apply_filter_conditions
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.catalog.services.line_links import normalize_catalog_line_links
 from app.modules.catalog.models import CatalogProduct
-from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves, reverse_moves
+from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryWarehouse
+from app.modules.inventory.services.delivery_services import (
+    deliver_remaining, delivered_line_ids, has_live_deliveries, refresh_delivery_status,
+)
+from app.modules.inventory.services.stock_ledger import (
+    _tracked_lines, delivered_quantity, ensure_default_warehouse, line_outstanding, release_for_order, reserve_for_order,
+)
 from app.modules.sales.models import SalesOrder, SalesOrderItem, SalesQuote
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
@@ -29,6 +35,7 @@ ORDER_SORT_FIELDS = {
     "opportunity_id": SalesOrder.opportunity_id,
     "owner_id": SalesOrder.owner_id,
     "status": SalesOrder.status,
+    "delivery_status": SalesOrder.delivery_status,
     "currency": SalesOrder.currency,
     "subtotal": SalesOrder.subtotal,
     "tax_total": SalesOrder.tax_total,
@@ -133,7 +140,16 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
         data["order_number"] = _coerce_optional(data.get("order_number")) or _generate_order_number(db, tenant_id=tenant_id)
         data["owner_id"] = data.get("owner_id") or (current_user.id if current_user else None)
         data["created_by_id"] = current_user.id if current_user else None
+        data["warehouse_id"] = data.get("warehouse_id") or ensure_default_warehouse(db, tenant_id=tenant_id).id
+    elif "warehouse_id" in data and not data["warehouse_id"]:
+        data.pop("warehouse_id")
     _ensure_linked_records(db, data, tenant_id=tenant_id)
+    if data.get("warehouse_id"):
+        warehouse = db.query(InventoryWarehouse).filter(InventoryWarehouse.id == data["warehouse_id"], InventoryWarehouse.tenant_id == tenant_id, InventoryWarehouse.deleted_at.is_(None)).first()
+        if warehouse is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Warehouse not found")
+        if not warehouse.is_active:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{warehouse.name} is inactive")
     return data
 
 
@@ -143,6 +159,31 @@ def _normalize_items(db: Session, items: list[dict], *, tenant_id: int) -> list[
         _normalize_item_payload(item, tenant_id=tenant_id, sort_order=index, catalog_link=catalog_links[index])
         for index, item in enumerate(items)
     ]
+
+
+def _apply_items(db: Session, order: SalesOrder, items: list[dict]) -> tuple[list[SalesOrderItem], list[int]]:
+    """Merge submitted lines into the order: a line with an `id` is updated in place, so it
+    keeps its identity (stock holds and movements point at it); the rest are new.
+
+    Returns the order's new lines and the IDs of the lines that were removed.
+    """
+    existing = {line.id: line for line in order.items}
+    normalized = _normalize_items(db, items, tenant_id=order.tenant_id)
+    result: list[SalesOrderItem] = []
+    kept: set[int] = set()
+    for payload, fresh in zip(items, normalized):
+        line_id = payload.get("id")
+        if not line_id:
+            result.append(fresh)
+            continue
+        line = existing.get(line_id)
+        if line is None or line_id in kept:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order line not found")
+        kept.add(line_id)
+        for field in ("catalog_product_id", "catalog_service_id", "name", "description", "quantity", "unit_price", "discount_amount", "tax_amount", "line_total", "sort_order"):
+            setattr(line, field, getattr(fresh, field))
+        result.append(line)
+    return result, [line_id for line_id in existing if line_id not in kept]
 
 
 def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int, catalog_link: dict[str, int | None]) -> SalesOrderItem:
@@ -175,6 +216,29 @@ def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int, cata
     )
 
 
+def _waiting_for_stock_expression():
+    """A confirmed order with a stocked line that needs more than is delivered and held."""
+    delivered = (
+        select(func.coalesce(func.sum(InventoryDeliveryLine.quantity), 0))
+        .join(InventoryDelivery, InventoryDelivery.id == InventoryDeliveryLine.delivery_id)
+        .where(InventoryDeliveryLine.order_line_id == SalesOrderItem.id, InventoryDelivery.status == "posted")
+        .scalar_subquery()
+    )
+    held = (
+        select(func.coalesce(func.sum(InventoryReservation.quantity), 0))
+        .where(InventoryReservation.order_line_id == SalesOrderItem.id)
+        .scalar_subquery()
+    )
+    waiting_line = (
+        select(SalesOrderItem.id)
+        .join(CatalogProduct, and_(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id))
+        .where(SalesOrderItem.order_id == SalesOrder.id, CatalogProduct.track_inventory == 1, CatalogProduct.deleted_at.is_(None),
+               SalesOrderItem.quantity > delivered + held)
+        .exists()
+    )
+    return and_(SalesOrder.status == "confirmed", SalesOrder.remaining_closed_at.is_(None), waiting_line)
+
+
 def build_orders_query(
     db: Session,
     *,
@@ -196,6 +260,8 @@ def build_orders_query(
         "grand_total": {"expression": SalesOrder.grand_total, "type": "number"},
         "created_at": {"expression": SalesOrder.created_at, "type": "date"},
         "updated_at": {"expression": SalesOrder.updated_at, "type": "date"},
+        "delivery_status": {"expression": SalesOrder.delivery_status, "type": "text"},
+        "waiting_for_stock": {"expression": _waiting_for_stock_expression(), "type": "boolean"},
     }
     query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
     query = apply_filter_conditions(query, conditions=any_filter_conditions, logic="any", field_map=field_map)
@@ -284,8 +350,11 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     db.add(order)
     try:
         db.flush()
+        actor_user_id = current_user.id if current_user else None
         if order.status == "fulfilled":
-            _post_fulfilment(db, order, actor_user_id=current_user.id if current_user else None)
+            deliver_remaining(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, order=order)
+        reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
+        refresh_delivery_status(db, order=order)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -344,36 +413,40 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
     return create_sales_order(db, payload, current_user)
 
 
-def _post_fulfilment(db: Session, order: SalesOrder, *, actor_user_id: int | None) -> None:
-    product_ids = {item.catalog_product_id for item in order.items if item.catalog_product_id is not None}
-    if not product_ids:
-        return
-    tracked = {row.id for row in db.query(CatalogProduct).filter(CatalogProduct.tenant_id == order.tenant_id, CatalogProduct.id.in_(product_ids), CatalogProduct.track_inventory == 1)}
-    if not tracked:
-        return
-    warehouse = ensure_default_warehouse(db, tenant_id=order.tenant_id)
-    post_moves(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, moves=[
-        MoveSpec(product_id=item.catalog_product_id, warehouse_id=warehouse.id, quantity=-Decimal(item.quantity),
-                 move_type="sales_order", source_type="sales_order", source_id=order.id,
-                 source_line_id=item.id, reason="Order fulfilled")
-        for item in order.items if item.catalog_product_id in tracked
-    ])
-
-
 def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_user_id: int | None = None) -> SalesOrder:
     previous_status = order.status
     next_status = payload.get("status", previous_status)
     if previous_status == "cancelled" and next_status != "cancelled":
         raise HTTPException(status_code=409, detail="A cancelled order cannot be reopened")
     if previous_status == "fulfilled" and next_status not in {"fulfilled", "cancelled"}:
-        raise HTTPException(status_code=409, detail="A fulfilled order can only be cancelled")
+        raise HTTPException(status_code=409, detail="A fulfilled order can only be cancelled; to ship more, cancel one of its deliveries")
     if previous_status == "fulfilled" and payload.get("items") is not None:
         raise HTTPException(status_code=409, detail="Fulfilled order lines cannot be edited")
+    shipped = has_live_deliveries(db, tenant_id=order.tenant_id, order_id=order.id, posted_only=True)
+    if next_status == "cancelled" and previous_status != "cancelled" and shipped:
+        raise HTTPException(status_code=409, detail="This order has posted deliveries; cancel them or return the goods before cancelling the order")
+    if next_status == "draft" and previous_status != "draft" and shipped:
+        raise HTTPException(status_code=409, detail="A partly delivered order cannot go back to draft")
+    if payload.get("warehouse_id") and payload["warehouse_id"] != order.warehouse_id and has_live_deliveries(db, tenant_id=order.tenant_id, order_id=order.id):
+        raise HTTPException(status_code=409, detail="The warehouse cannot change once the order has deliveries")
     items_payload = payload.pop("items", None)
     data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True)
     normalized_items = None
+    removed_line_ids: list[int] = []
     if items_payload is not None:
-        normalized_items = _normalize_items(db, items_payload, tenant_id=order.tenant_id)
+        products_before = {line.id: line.catalog_product_id for line in order.items}
+        history = delivered_line_ids(db, tenant_id=order.tenant_id, line_ids=products_before)
+        normalized_items, removed_line_ids = _apply_items(db, order, items_payload)
+        # A line a delivery points at is history: it keeps its product and cannot go.
+        if history & set(removed_line_ids):
+            raise HTTPException(status_code=409, detail="A line that has been on a delivery cannot be removed")
+        for line in normalized_items:
+            if line.id in history:
+                if line.catalog_product_id != products_before[line.id]:
+                    raise HTTPException(status_code=409, detail=f"{line.name} has been on a delivery, so its product cannot change")
+                delivered = delivered_quantity(db, line)
+                if Decimal(line.quantity) < delivered:
+                    raise HTTPException(status_code=409, detail=f"{line.name}: {delivered.normalize():f} already delivered, so the quantity cannot be lower")
         data.update(
             {
                 "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
@@ -382,6 +455,8 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
                 "grand_total": sum((item.line_total for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
             }
         )
+    # Holds on removed lines go before the lines do, so the cached totals stay in step.
+    release_for_order(db, tenant_id=order.tenant_id, order=order, line_ids=removed_line_ids, actor_user_id=actor_user_id)
     for field, value in data.items():
         setattr(order, field, value)
     if normalized_items is not None:
@@ -390,12 +465,19 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
     try:
         db.flush()
         if previous_status != "fulfilled" and order.status == "fulfilled":
-            _post_fulfilment(db, order, actor_user_id=actor_user_id)
-        elif previous_status == "fulfilled" and order.status == "cancelled":
-            reverse_moves(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, source_type="sales_order", source_id=order.id, reason="Order cancelled")
+            # The one-click path: everything left ships now, through a delivery.
+            deliver_remaining(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, order=order)
+        # Confirmed: hold what each line needs. Draft, fulfilled or cancelled: release everything.
+        reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
+        refresh_delivery_status(db, order=order)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order could not be updated") from exc
     db.refresh(order)
     return get_order_or_404(db, tenant_id=order.tenant_id, order_id=order.id)
+
+
+def order_needs_delivery(db: Session, order: SalesOrder) -> bool:
+    """Whether marking the order fulfilled would ship stock (and so needs delivery access)."""
+    return any(line_outstanding(db, line, order) > 0 for line in _tracked_lines(db, order))

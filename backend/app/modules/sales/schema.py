@@ -530,7 +530,8 @@ class SalesOrderItemBase(BaseModel):
 
 
 class SalesOrderItemCreate(SalesOrderItemBase):
-    pass
+    # An existing line's ID keeps that line (and its stock holds) on update; omit for a new one.
+    id: int | None = Field(default=None, gt=0)
 
 
 class SalesOrderItemResponse(SalesOrderItemBase):
@@ -557,6 +558,7 @@ class SalesOrderCreateRequest(BaseModel):
     payment_terms: str | None = None
     notes: str | None = None
     owner_id: int | None = None
+    warehouse_id: int | None = Field(default=None, gt=0)
     items: list[SalesOrderItemCreate] = Field(default_factory=list)
 
 
@@ -572,6 +574,7 @@ class SalesOrderUpdateRequest(BaseModel):
     delivery_address: str | None = None
     payment_terms: str | None = None
     notes: str | None = None
+    warehouse_id: int | None = Field(default=None, gt=0)
     items: list[SalesOrderItemCreate] | None = Field(default=None, min_length=1)
 
 
@@ -598,6 +601,11 @@ class SalesOrderResponse(BaseModel):
     notes: str | None = None
     owner_id: int | None = None
     owner_name: str | None = None
+    warehouse_id: int | None = None
+    warehouse_name: str | None = None
+    delivery_status: str = "none"
+    remaining_closed_at: datetime | None = None
+    remaining_close_reason: str | None = None
     created_by_id: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -617,6 +625,7 @@ class SalesOrderListItem(BaseModel):
     contact_name: str | None = None
     opportunity_name: str | None = None
     status: str
+    delivery_status: str = "none"
     currency: str
     grand_total: Decimal
     owner_id: int | None = None
