@@ -8,7 +8,7 @@ import hashlib
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy import and_, event, func, or_, text
+from sqlalchemy import and_, case, event, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct
@@ -397,17 +397,22 @@ def release_for_order(db: Session, *, tenant_id: int, order: SalesOrder, line_id
     db.flush()
 
 
+def priority_rank():
+    """Urgent before high before normal: the order arriving stock is offered in."""
+    return case((SalesOrder.priority == "urgent", 0), (SalesOrder.priority == "high", 1), else_=2)
+
+
 def open_order_lines_query(db: Session, *, tenant_id: int, product_id: int, warehouse: InventoryWarehouse):
     in_warehouse = SalesOrder.warehouse_id == warehouse.id
     if warehouse.is_default:
         in_warehouse = or_(in_warehouse, SalesOrder.warehouse_id.is_(None))
     return db.query(SalesOrderItem, SalesOrder).join(SalesOrder, and_(SalesOrder.id == SalesOrderItem.order_id, SalesOrder.tenant_id == tenant_id)).filter(
         SalesOrderItem.tenant_id == tenant_id, SalesOrderItem.catalog_product_id == product_id, SalesOrder.status == "confirmed", in_warehouse,
-    ).order_by(SalesOrder.created_at, SalesOrder.id, SalesOrderItem.sort_order, SalesOrderItem.id)
+    ).order_by(priority_rank(), SalesOrder.created_at, SalesOrder.id, SalesOrderItem.sort_order, SalesOrderItem.id)
 
 
 def _allocate_waiting(db: Session, *, tenant_id: int, level: InventoryStockLevel, warehouse: InventoryWarehouse) -> None:
-    """Offer free stock to waiting lines of confirmed orders, oldest order first."""
+    """Offer free stock to waiting lines of confirmed orders: highest priority, then oldest."""
     free = Decimal(level.on_hand) - Decimal(level.reserved)
     if free <= 0:
         return
@@ -440,11 +445,12 @@ def _fully_reserved(db: Session, *, order: SalesOrder) -> bool:
 
 
 def _release_excess(db: Session, *, tenant_id: int, actor_user_id: int | None, level: InventoryStockLevel, product: CatalogProduct) -> None:
-    """Stock fell below what is held: release automatic holds before manual ones, newest order first."""
+    """Stock fell below what is held: release automatic holds before manual ones, and within
+    each the lowest priority, newest order first."""
     excess = Decimal(level.reserved) - Decimal(level.on_hand)
     rows = db.query(InventoryReservation, SalesOrder).join(SalesOrder, SalesOrder.id == InventoryReservation.order_id).filter(
         InventoryReservation.tenant_id == tenant_id, InventoryReservation.product_id == level.product_id, InventoryReservation.warehouse_id == level.warehouse_id,
-    ).order_by(InventoryReservation.manual, SalesOrder.created_at.desc(), SalesOrder.id.desc(), InventoryReservation.id.desc()).all()
+    ).order_by(InventoryReservation.manual, priority_rank().desc(), SalesOrder.created_at.desc(), SalesOrder.id.desc(), InventoryReservation.id.desc()).all()
     for row, order in rows:
         if excess <= 0:
             break

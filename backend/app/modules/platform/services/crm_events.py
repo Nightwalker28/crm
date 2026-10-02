@@ -21,6 +21,7 @@ CRM_EVENT_TYPES = {
     "inventory.adjustment_posted",
     "inventory.delivery_posted",
     "inventory.return_received",
+    "purchase.receipt_posted",
     "lead.created",
     "lead.updated",
     "lead.converted",

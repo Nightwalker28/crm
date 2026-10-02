@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
+import { TextLink } from "@/components/ui/TextLink";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -68,6 +69,8 @@ type WebsiteOrderLine = {
 type WebsiteOrder = {
   id: number;
   pos_invoice_id: number | null;
+  /** A confirmed client-portal order's CRM sales order, which holds and ships its stock. */
+  sales_order_id?: number | null;
   external_reference: string;
   source_platform: string | null;
   status: string;
@@ -304,7 +307,7 @@ export function IntegrationWebsiteWorkspace() {
     if (nextStatus === "cancelled" || nextStatus === "rejected") {
       const confirmed = await confirm({
         title: `${nextStatus === "cancelled" ? "Cancel" : "Reject"} ${order.external_reference}?`,
-        description: "Any stock this order took goes back to the warehouse. The order cannot be reopened afterwards.",
+        description: "Any stock this order took goes back to the warehouse, and any it holds is released. The order cannot be reopened afterwards.",
         confirmLabel: nextStatus === "cancelled" ? "Cancel order" : "Reject order",
         variant: "destructive",
       });
@@ -570,6 +573,9 @@ export function IntegrationWebsiteWorkspace() {
                   {order.external_reference}
                 </div>
                 <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
+                {order.sales_order_id ? (
+                  <div className="mt-1 text-xs"><TextLink href={`/dashboard/sales/orders/${order.sales_order_id}?tab=fulfilment`}>Sales order</TextLink></div>
+                ) : null}
                 <div className="mt-2 max-w-[180px]">
                   <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving || order.status === "cancelled" || order.status === "rejected"}>
                     <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>

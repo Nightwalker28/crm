@@ -164,6 +164,13 @@ const ORDER_AVAILABILITY: Record<string, StatusDescriptor> = {
   waiting: a("Waiting"),
 };
 
+/** Which waiting order arriving stock goes to first. Urgent is the exception worth seeing. */
+const ORDER_PRIORITY: Record<string, StatusDescriptor> = {
+  urgent: a("Urgent"),
+  high: n("High"),
+  normal: n("Normal"),
+};
+
 /** An order's shipping progress (`sales_orders.delivery_status`). */
 const ORDER_DELIVERY_STATUS: Record<string, StatusDescriptor> = {
   none: n("Nothing to ship"),
@@ -183,6 +190,16 @@ const DELIVERY_STATUS: Record<string, StatusDescriptor> = {
 const RETURN_STATUS: Record<string, StatusDescriptor> = {
   draft: n("Draft"),
   received: s("Received"),
+  cancelled: n("Cancelled"),
+};
+
+/** Purchase orders (E4). *Partly received* is shown from `receipt_status` while ordered. */
+const PURCHASE_ORDER_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  ordered: n("Ordered"),
+  partial: n("Partly received"),
+  received: s("Received"),
+  closed: n("Closed"),
   cancelled: n("Cancelled"),
 };
 
@@ -223,8 +240,11 @@ export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);
 export const getOrderAvailability = (v: string) => descriptorFrom(ORDER_AVAILABILITY, v);
 export const getOrderDeliveryStatus = (v: string) => descriptorFrom(ORDER_DELIVERY_STATUS, v);
+export const getOrderPriority = (v: string) => descriptorFrom(ORDER_PRIORITY, v);
 export const getDeliveryStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, v);
 export const getReturnStatus = (v: string) => descriptorFrom(RETURN_STATUS, v);
+export const getPurchaseOrderStatus = (v: string) => descriptorFrom(PURCHASE_ORDER_STATUS, v);
+export const getPurchaseReceiptStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, v);
 export const getTaskStatus = (v: string) => descriptorFrom(TASK_STATUS, v);
 export const getSupportCaseStatus = (v: string) => descriptorFrom(SUPPORT_CASE_STATUS, v);
 export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK_STATUS, v);

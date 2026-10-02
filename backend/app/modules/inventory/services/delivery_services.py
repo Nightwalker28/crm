@@ -336,6 +336,8 @@ def serialize_delivery(db: Session, *, tenant_id: int, doc: InventoryDelivery, i
         "id": doc.id, "number": doc.number, "status": doc.status, "order_id": doc.order_id,
         "order_number": order.order_number if order else None,
         "customer_name": (order.organization_name or order.contact_name) if order else None,
+        "contact_name": order.contact_name if order else None,
+        "delivery_address": order.delivery_address if order else None,
         "warehouse_id": doc.warehouse_id, "warehouse_name": warehouse.name if warehouse else None,
         "shipped_on": doc.shipped_on, "carrier": doc.carrier, "tracking_number": doc.tracking_number, "notes": doc.notes,
         "posted_at": doc.posted_at, "posted_by": doc.posted_by, "cancel_reason": doc.cancel_reason,

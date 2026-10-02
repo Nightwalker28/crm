@@ -164,6 +164,7 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
 
     seed_inventory_drafts(db, tenant, bump)
     seed_fulfilment_samples(db, tenant, owner, bump)
+    seed_purchasing_samples(db, tenant, owner, bump)
     return created
 
 
@@ -282,6 +283,58 @@ def seed_fulfilment_samples(db: Session, tenant: Tenant, owner: User, bump) -> N
         doc.number = "SAMPLE-RET-0001"
         db.flush()
         bump("inventory_returns", True)
+
+
+def seed_purchasing_samples(db: Session, tenant: Tenant, owner: User, bump) -> None:
+    """A sample vendor, a placed purchase order with a posted receipt, and a draft one, so the
+    purchasing record routes are reachable (E4). The receipt is a real two-unit stock move."""
+    from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+    from app.modules.purchasing.services import purchase_order_services, receipt_services
+    from app.modules.sales.models import SalesOrganization
+
+    product = (
+        db.query(CatalogProduct)
+        .filter_by(tenant_id=tenant.id, deleted_at=None, is_active=1, track_inventory=1)
+        .order_by(CatalogProduct.id.asc())
+        .first()
+    )
+    if product is None:
+        return
+    vendor, made = get_or_create(
+        db, SalesOrganization, tenant_id=tenant.id, org_name="Sample Supplier Ltd",
+        defaults={"primary_email": "orders@sample-supplier.test", "is_vendor": 1, "assigned_to": owner.id},
+    )
+    bump("sales_organizations", made)
+    if not vendor.is_vendor:
+        vendor.is_vendor = 1
+    if product.preferred_vendor_id is None:
+        product.preferred_vendor_id = vendor.org_id
+    db.flush()
+
+    def purchase_order(number: str, *, place: bool):
+        order = db.query(PurchaseOrder).filter_by(tenant_id=tenant.id, number=number).one_or_none()
+        if order is not None:
+            return order, False
+        order = purchase_order_services.save_order(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "vendor_id": vendor.org_id, "currency": product.currency, "vendor_reference": "SAMPLE",
+            "lines": [{"product_id": product.id, "quantity": "5", "unit_cost": product.cost_price or 1}]})
+        order.number = number
+        db.flush()
+        if place:
+            purchase_order_services.mark_ordered(db, tenant_id=tenant.id, actor_user_id=owner.id, order_id=order.id)
+        return order, True
+
+    placed, made = purchase_order("SAMPLE-PO-0001", place=True)
+    bump("purchase_orders", made)
+    _, made = purchase_order("SAMPLE-PO-0002", place=False)
+    bump("purchase_orders", made)
+    if placed.status == "ordered" and db.query(PurchaseReceipt).filter_by(tenant_id=tenant.id, number="SAMPLE-RCV-0001").one_or_none() is None:
+        receipt = receipt_services.save_receipt(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "order_id": placed.id, "vendor_delivery_ref": "SAMPLE", "lines": [{"order_line_id": placed.lines[0].id, "quantity": "2"}]})
+        receipt.number = "SAMPLE-RCV-0001"
+        db.flush()
+        receipt_services.post_receipt(db, tenant_id=tenant.id, actor_user_id=owner.id, receipt_id=receipt.id)
+        bump("purchase_receipts", True)
 
 
 def main() -> None:

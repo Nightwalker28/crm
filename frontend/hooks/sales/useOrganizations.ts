@@ -17,6 +17,7 @@ export type Organization = {
   industry?: string;
   annual_revenue?: string;
   billing_country?: string;
+  is_vendor?: boolean;
   assigned_to?: number | null;
   assigned_to_name?: string | null;
   customer_group_id?: number | null;

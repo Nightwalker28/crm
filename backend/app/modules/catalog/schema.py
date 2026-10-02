@@ -28,6 +28,9 @@ class CatalogProductBase(BaseModel):
     cost_price: Decimal | None = Field(default=None, ge=0)
     unit: str = Field(default="unit", min_length=1, max_length=40)
     barcode: str | None = Field(default=None, max_length=100)
+    preferred_vendor_id: int | None = Field(default=None, gt=0)
+    vendor_sku: str | None = Field(default=None, max_length=100)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
     is_public: bool = False
     is_active: bool = True
 
@@ -84,6 +87,9 @@ class CatalogProductUpdateRequest(BaseModel):
     cost_price: Decimal | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, min_length=1, max_length=40)
     barcode: str | None = Field(default=None, max_length=100)
+    preferred_vendor_id: int | None = Field(default=None, gt=0)
+    vendor_sku: str | None = Field(default=None, max_length=100)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
     is_public: bool | None = None
     is_active: bool | None = None
 
@@ -142,6 +148,10 @@ class CatalogProductResponse(BaseModel):
     cost_price: Decimal | None = None
     unit: str = "unit"
     barcode: str | None = None
+    preferred_vendor_id: int | None = None
+    preferred_vendor_name: str | None = None
+    vendor_sku: str | None = None
+    lead_time_days: int | None = None
     is_public: bool
     is_active: bool
     media_url: str | None = None

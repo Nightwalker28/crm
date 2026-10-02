@@ -26,7 +26,7 @@ export type OrderFulfilment = {
 
 export type ReservationLine = {
   order_line_id: number; order_id: number; order_number: string; customer_name: string | null;
-  confirmed_at: string; delivery_date: string | null; to_deliver: string; reserved: string; manual: boolean;
+  confirmed_at: string; priority: string; delivery_date: string | null; to_deliver: string; reserved: string; manual: boolean;
 };
 
 export type ProductReservations = {

@@ -102,6 +102,8 @@ function renderCell(org: Organization, column: string) {
       ) : (
         <span className="text-sm text-copy-disabled">—</span>
       );
+    case "is_vendor":
+      return <span className="text-sm text-copy-secondary">{org.is_vendor ? "Vendor" : "—"}</span>;
     case "industry":
       return org.industry ? <Chip className="max-w-36">{org.industry}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
     case "annual_revenue":

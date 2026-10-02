@@ -15,6 +15,7 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { TextLink } from "@/components/ui/TextLink";
 import { useProductReservations, useReservationActions, type ReservationLine } from "@/hooks/inventory/useReservations";
 import { formatDateOnly } from "@/lib/datetime";
+import { getOrderPriority } from "@/lib/statusStyles";
 
 function quantity(value: string | number | null | undefined) {
   if (value == null || value === "") return "—";
@@ -105,7 +106,7 @@ export function ReservationsDialog({
       open={open}
       onOpenChange={changeOpen}
       title={data ? `Reservations · ${data.product_name}` : "Reservations"}
-      description="Stock held for confirmed orders, oldest first. Change a quantity to move stock to a more urgent order."
+      description="Stock held for confirmed orders, in the order new stock is offered: priority, then oldest. Change a quantity to move stock to a more urgent order."
       showCreateAndOpen={false}
       createLabel="Save reservations"
       pendingLabel="Saving…"
@@ -157,6 +158,7 @@ export function ReservationsDialog({
                 </span>
               ) },
               { key: "customer", label: "Customer", render: (row) => row.customer_name ?? "—" },
+              { key: "priority", label: "Priority", size: "sm", render: (row) => <StatusValue status={getOrderPriority(row.priority)} /> },
               { key: "confirmed", label: "Confirmed", size: "sm", render: (row) => formatDateOnly(row.confirmed_at) },
               { key: "delivery", label: "Delivery date", size: "sm", render: (row) => (row.delivery_date ? formatDateOnly(row.delivery_date) : "—") },
               { key: "to_deliver", label: "To deliver", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.to_deliver)}</span> },

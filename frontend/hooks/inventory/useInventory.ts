@@ -5,9 +5,9 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { ApiError, apiFetch } from "@/lib/api";
 
 export type Warehouse = { id: number; code: string; name: string; address: string | null; is_default: boolean; is_active: boolean; is_deleted: boolean };
-export type StockRow = { product_id: number; product_name: string; sku: string | null; category_name: string | null; warehouse_id: number; warehouse_name: string; on_hand: string; reserved: string; available: string; reorder_point: string; reorder_quantity: string; stock_status: string };
+export type StockRow = { product_id: number; product_name: string; sku: string | null; category_name: string | null; warehouse_id: number; warehouse_name: string; on_hand: string; reserved: string; available: string; incoming?: string; reorder_point: string; reorder_quantity: string; stock_status: string };
 export type StockMove = { id: number; product_id: number; product_name: string; warehouse_id: number; warehouse_name: string; quantity: string; on_hand_after: string; move_type: string; source_type: string; source_id: number; reason: string | null; note: string | null; created_by: number | null; actor_label: string; occurred_at: string };
-export type ProductStock = { product_id: number; track_inventory: boolean; on_hand: string | null; reserved: string | null; available: string | null; warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string }>; movements: StockMove[] };
+export type ProductStock = { product_id: number; track_inventory: boolean; on_hand: string | null; reserved: string | null; available: string | null; incoming: string | null; backordered: string | null; projected: string | null; warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string; incoming: string }>; movements: StockMove[] };
 export type InventoryKind = "adjustments" | "transfers";
 export type InventoryDocumentLine = { id: number; product_id: number; product_name: string; sku: string | null; expected?: string; counted?: string | null; delta?: string | null; quantity?: string };
 export type InventoryDocument = {

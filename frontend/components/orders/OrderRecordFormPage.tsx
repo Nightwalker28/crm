@@ -72,6 +72,7 @@ type OrderForm = {
   payment_terms: string;
   notes: string;
   warehouse_id: number | null;
+  priority: string;
 };
 const EMPTY_FORM: OrderForm = {
   order_number: "",
@@ -90,6 +91,7 @@ const EMPTY_FORM: OrderForm = {
   payment_terms: "",
   notes: "",
   warehouse_id: null,
+  priority: "normal",
 };
 const STATUSES = [
   { value: "draft", label: "Draft" },
@@ -128,6 +130,7 @@ function orderSeed(order?: Order): OrderSeed {
       payment_terms: order.payment_terms ?? "",
       notes: order.notes ?? "",
       warehouse_id: order.warehouse_id ?? null,
+      priority: order.priority ?? "normal",
     },
     items: order.items?.length
       ? order.items.map((item) => ({
@@ -259,6 +262,7 @@ function OrderRecordFormEditor({
             payment_terms: form.payment_terms.trim() || null,
             notes: form.notes.trim() || null,
             ...(form.warehouse_id ? { warehouse_id: form.warehouse_id } : {}),
+            priority: form.priority,
             items: serializeTransactionItems(items),
           }),
         },
@@ -518,6 +522,18 @@ function OrderRecordFormEditor({
                 </FieldDescription>
               </Field>
             ) : null}
+            <Field>
+              <FieldLabel htmlFor="order-priority">Priority</FieldLabel>
+              <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
+                <SelectTrigger id="order-priority"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="normal">Normal</SelectItem>
+                  <SelectItem value="high">High</SelectItem>
+                  <SelectItem value="urgent">Urgent</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>Arriving stock goes to waiting orders by priority, then oldest first.</FieldDescription>
+            </Field>
             <Field>
               <FieldLabel htmlFor="order-delivery-date">
                 Delivery date

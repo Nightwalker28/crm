@@ -27,6 +27,7 @@ from app.modules.inventory.models import (
     InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
 from app.modules.finance.repositories import io_repository
+from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.finance.services.io_search_services import get_finance_module_id
 from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
 from app.modules.platform.services import custom_modules
@@ -468,6 +469,60 @@ def _return_fields(db: Session, user) -> list[ReportField]:
     ]
 
 
+def _purchase_orders_query(db: Session, user, search: str | None):
+    query = db.query(PurchaseOrder).filter(PurchaseOrder.tenant_id == user.tenant_id, PurchaseOrder.deleted_at.is_(None))
+    return query.filter(or_(PurchaseOrder.number.ilike(f"%{search}%"), PurchaseOrder.vendor_reference.ilike(f"%{search}%"))) if search else query
+
+
+def _purchase_order_fields(db: Session, user) -> list[ReportField]:
+    vendor = select(SalesOrganization.org_name).where(SalesOrganization.org_id == PurchaseOrder.vendor_id, SalesOrganization.tenant_id == PurchaseOrder.tenant_id).scalar_subquery()
+    warehouse_name = select(InventoryWarehouse.name).where(InventoryWarehouse.id == PurchaseOrder.warehouse_id, InventoryWarehouse.tenant_id == PurchaseOrder.tenant_id).scalar_subquery()
+    return [
+        ReportField("number", "Number", "text", PurchaseOrder.number, groupable=False),
+        ReportField("status", "Status", "select", PurchaseOrder.status, labels="humanize"),
+        ReportField("receipt_status", "Received", "select", PurchaseOrder.receipt_status, labels="humanize"),
+        ReportField("vendor", "Vendor", "text", vendor),
+        ReportField("warehouse", "Warehouse", "text", warehouse_name),
+        ReportField("currency", "Currency", "text", PurchaseOrder.currency),
+        ReportField("subtotal", "Total", "number", PurchaseOrder.subtotal),
+        ReportField("expected_date", "Expected", "date", PurchaseOrder.expected_date),
+        ReportField("ordered_at", "Ordered", "datetime", PurchaseOrder.ordered_at),
+    ]
+
+
+def _purchase_lines_query(db: Session, user, search: str | None):
+    """Lines of placed purchase orders that still have something to receive."""
+    received = select(func.coalesce(func.sum(PurchaseReceiptLine.quantity), 0)).join(PurchaseReceipt, PurchaseReceipt.id == PurchaseReceiptLine.receipt_id).where(
+        PurchaseReceiptLine.order_line_id == PurchaseOrderLine.id, PurchaseReceipt.status == "posted").scalar_subquery()
+    query = db.query(PurchaseOrderLine).join(PurchaseOrder, and_(PurchaseOrder.id == PurchaseOrderLine.order_id, PurchaseOrder.tenant_id == PurchaseOrderLine.tenant_id)).filter(
+        PurchaseOrderLine.tenant_id == user.tenant_id, PurchaseOrder.status == "ordered", PurchaseOrder.deleted_at.is_(None), PurchaseOrderLine.quantity > received)
+    if search:
+        query = query.join(CatalogProduct, CatalogProduct.id == PurchaseOrderLine.product_id).filter(or_(
+            CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"), PurchaseOrder.number.ilike(f"%{search}%")))
+    return query
+
+
+def _purchase_line_fields(db: Session, user) -> list[ReportField]:
+    received = select(func.coalesce(func.sum(PurchaseReceiptLine.quantity), 0)).join(PurchaseReceipt, PurchaseReceipt.id == PurchaseReceiptLine.receipt_id).where(
+        PurchaseReceiptLine.order_line_id == PurchaseOrderLine.id, PurchaseReceipt.status == "posted").scalar_subquery()
+    product = select(CatalogProduct.name).where(CatalogProduct.id == PurchaseOrderLine.product_id, CatalogProduct.tenant_id == PurchaseOrderLine.tenant_id).scalar_subquery()
+    sku = select(CatalogProduct.sku).where(CatalogProduct.id == PurchaseOrderLine.product_id, CatalogProduct.tenant_id == PurchaseOrderLine.tenant_id).scalar_subquery()
+    number = select(PurchaseOrder.number).where(PurchaseOrder.id == PurchaseOrderLine.order_id).scalar_subquery()
+    expected = select(PurchaseOrder.expected_date).where(PurchaseOrder.id == PurchaseOrderLine.order_id).scalar_subquery()
+    vendor = select(SalesOrganization.org_name).join(PurchaseOrder, PurchaseOrder.vendor_id == SalesOrganization.org_id).where(PurchaseOrder.id == PurchaseOrderLine.order_id).scalar_subquery()
+    return [
+        ReportField("product", "Product", "text", product),
+        ReportField("sku", "SKU", "text", sku),
+        ReportField("order", "Purchase order", "text", number),
+        ReportField("vendor", "Vendor", "text", vendor),
+        ReportField("expected_date", "Expected", "date", expected),
+        ReportField("ordered", "Ordered", "number", PurchaseOrderLine.quantity),
+        ReportField("received", "Received", "number", received),
+        ReportField("to_receive", "To receive", "number", PurchaseOrderLine.quantity - received),
+        ReportField("unit_cost", "Unit cost", "number", PurchaseOrderLine.unit_cost),
+    ]
+
+
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
     "inventory_deliveries": ReportSource(
         "inventory_deliveries", "Deliveries", InventoryDelivery, InventoryDelivery.id, lambda db: InventoryDelivery.number,
@@ -478,6 +533,15 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         lambda db: select(CatalogProduct.name).where(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id).scalar_subquery(),
         _backorder_query, _backorder_fields, None, ("order", "delivery_date", "ordered", "delivered", "to_deliver", "waiting"),
         label_field="product", permission_module_key="sales_orders"),
+    "purchase_orders": ReportSource(
+        "purchase_orders", "Purchase orders", PurchaseOrder, PurchaseOrder.id, lambda db: PurchaseOrder.number,
+        _purchase_orders_query, _purchase_order_fields, "/dashboard/purchasing/orders/{id}",
+        ("status", "vendor", "warehouse", "subtotal", "expected_date"), default_date_field="ordered_at", label_field="number"),
+    "purchase_lines": ReportSource(
+        "purchase_lines", "Purchase lines to receive", PurchaseOrderLine, PurchaseOrderLine.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == PurchaseOrderLine.product_id).scalar_subquery(),
+        _purchase_lines_query, _purchase_line_fields, None, ("order", "vendor", "expected_date", "ordered", "received", "to_receive"),
+        label_field="product", permission_module_key="purchase_orders"),
     "inventory_returns": ReportSource(
         "inventory_returns", "Returns", InventoryReturn, InventoryReturn.id, lambda db: InventoryReturn.number,
         _returns_query, _return_fields, "/dashboard/inventory/returns/{id}",

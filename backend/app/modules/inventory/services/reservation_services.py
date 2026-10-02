@@ -98,7 +98,7 @@ def product_reservations(db: Session, *, tenant_id: int, product_id: int, wareho
         row = rows.get(line.id)
         lines.append({
             "order_line_id": line.id, "order_id": order.id, "order_number": order.order_number,
-            "customer_name": order.organization_name or order.contact_name, "confirmed_at": order.created_at,
+            "customer_name": order.organization_name or order.contact_name, "confirmed_at": order.created_at, "priority": order.priority,
             "delivery_date": order.delivery_date, "to_deliver": to_deliver,
             "reserved": Decimal(row.quantity) if row is not None else Decimal(0), "manual": bool(row.manual) if row is not None else False,
         })

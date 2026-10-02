@@ -44,6 +44,7 @@ export default function InventoryStockPage() {
     ...(showWarehouse ? [{ key: "warehouse", label: "Warehouse", render: (row: StockRow) => row.warehouse_name }] : []),
     { key: "on_hand", label: "On hand", align: "right", render: (row) => <span className="tabular-nums">{amount(row.on_hand)}</span> },
     { key: "available", label: "Available", align: "right", render: (row) => <span className="tabular-nums">{amount(row.available)}</span> },
+    { key: "incoming", label: "Incoming", align: "right", render: (row) => <span className="tabular-nums">{amount(row.incoming ?? "0")}</span> },
     { key: "reorder_point", label: "Reorder point", align: "right", render: (row) => <span className="tabular-nums">{amount(row.reorder_point)}</span> },
     { key: "status", label: "Status", render: (row) => Number(row.available) <= 0
       ? <StatusValue status={{ label: "Out of stock", tone: "critical" }} />

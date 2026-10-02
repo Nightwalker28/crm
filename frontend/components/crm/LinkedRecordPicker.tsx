@@ -12,7 +12,7 @@ import { apiFetch } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatSnakeCaseLabel } from "@/lib/module-display";
 
-export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global" | "catalog_item" | "inventory_product";
+export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global" | "catalog_item" | "inventory_product" | "vendor";
 
 export type LinkedRecordFilters = {
   contactId?: number | null;
@@ -112,6 +112,8 @@ async function searchLinkedRecords(
     endpoint = `/catalog/items/search?${catalogParams.toString()}`;
   } else if (recordType === "inventory_product") {
     endpoint = `/inventory/products/search?query=${encodeURIComponent(search)}&limit=10`;
+  } else if (recordType === "vendor") {
+    endpoint = `/purchasing/vendors/search?query=${encodeURIComponent(search)}&limit=10`;
   } else if (recordType === "contact") {
     endpoint = `/sales/contacts/search?${params.toString()}`;
   } else if (recordType === "organization") {
@@ -176,6 +178,12 @@ async function searchLinkedRecords(
         ].filter(Boolean).join(" · "),
         raw: record,
       };
+    }
+    if (recordType === "vendor") {
+      // A vendor is an Account flagged as one (E4); it opens as the Account it is.
+      return { id: Number(record.id), entity_id: String(record.id), module_key: "sales_organizations",
+        label: typeof record.label === "string" ? record.label : "Vendor",
+        description: typeof record.email === "string" ? record.email : null, raw: record };
     }
     if (recordType === "inventory_product") {
       return { id: Number(record.id), entity_id: String(record.id), module_key: "catalog_products",

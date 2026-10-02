@@ -49,6 +49,7 @@ def build_organization_query(
         "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "text"},
         "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
         "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+        "is_vendor": {"expression": SalesOrganization.is_vendor == 1, "type": "boolean"},
         "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
         "assigned_to": {"expression": SalesOrganization.assigned_to, "type": "number"},
         "updated_at": {"expression": SalesOrganization.updated_at, "type": "date"},

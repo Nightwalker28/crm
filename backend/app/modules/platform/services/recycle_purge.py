@@ -20,6 +20,9 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     # Removed inventory drafts go before products: their lines reference products.
     ("inventory_adjustments", "id"),
     ("inventory_transfers", "id"),
+    # Receipts before purchase orders, and both before products: lines point at them.
+    ("purchase_receipts", "id"),
+    ("purchase_orders", "id"),
     # Returns before deliveries: a return's lines point at its delivery's lines.
     ("inventory_returns", "id"),
     ("inventory_deliveries", "id"),
@@ -39,7 +42,11 @@ PURGE_GUARDS = {
             AND NOT EXISTS (SELECT 1 FROM inventory_adjustment_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_delivery_lines l WHERE l.product_id = catalog_products.id)
-            AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)""",
+            AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM purchase_order_lines l WHERE l.product_id = catalog_products.id)""",
+    # A removed draft purchase order that a receipt points at stays until the receipt goes.
+    "purchase_orders": """
+            AND NOT EXISTS (SELECT 1 FROM purchase_receipts r WHERE r.order_id = purchase_orders.id)""",
     # A removed draft delivery that a return still points at stays until the return goes.
     "inventory_deliveries": """
             AND NOT EXISTS (SELECT 1 FROM inventory_returns r WHERE r.delivery_id = inventory_deliveries.id)""",
@@ -60,6 +67,7 @@ PURGE_PREPARE = {
             AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_delivery_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM purchase_order_lines l WHERE l.product_id = catalog_products.id)
         """
     ),
 }

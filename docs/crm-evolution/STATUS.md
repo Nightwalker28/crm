@@ -26,7 +26,69 @@ Last updated 2026-10-02.
 | ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
 | ERP E2 | **Done (2026-10-02).** Phase 1 `a7a1dc4`; Phases 2–3 and the review fixes `f7a80d6`. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
 | ERP E3 | **Implemented (2026-10-02): reservation, deliveries, returns.** Phase 0 committed as `9ed7e7b`; Phases 1–3 committed together. See below | `20260830_order_reservations` → `20260901_inventory_returns`, `stock_ledger.py` (reservations), `delivery_services.py`, `return_services.py`, `reservation_services.py`; `OrderFulfilmentPanel`, `ReservationsDialog`, `DeliveryDocumentPage`, `ReturnDocumentPage`; `test_inventory_reservations/deliveries/returns.py`, `fulfilment-phase1/2.spec.ts` |
-| **Next, owner-set order** | **E4 purchasing (`12-erp-inventory.md` §2): benchmark first, then plan, per the ERP rule.** Its receipts will fill E3 backorders automatically (waiting lines are reserved, oldest first, when stock arrives). | |
+| ERP E3 follow-ups | **Implemented (2026-10-02): delivery notes, client-portal orders hold stock once confirmed, order priority.** `12a-erp-fulfilment.md` §6a. Verified and committed with E4 | `20260902_e3_followups`, `deliveries/[id]/print`, `_apply_portal_status`, `priority_rank`; `test_e3_followups.py` |
+| ERP E4 | **Implemented (2026-10-02): purchasing, all three phases.** Plan `12b-erp-purchasing.md`; §5 decisions taken as recommended (owner asked for all phases before testing). One test pass, all green; committed | `20260903_purchasing`, `modules/purchasing/`, `/dashboard/purchasing/*`; `test_purchasing.py`, `purchasing.spec.ts` |
+| **Next, owner-set order** | **E5 invoicing and bills (`12-erp-inventory.md` §2): benchmark first, then plan.** Owner to review E4 §5 decisions taken on their behalf. | |
+
+## ERP E3 follow-ups and E4 purchasing (2026-10-02)
+
+The owner asked for three items the first E3 cut had left out, then all of E4 before one
+test pass.
+
+**E3 follow-ups** (`12a-erp-fulfilment.md` §6a, migration `20260902_e3_followups`):
+- Delivery note: `/dashboard/inventory/deliveries/{id}/print`, quantities only, ship-to from
+  the order's delivery address; the `print-document` rule prints semantic tokens as black on
+  white, so no design exemption.
+- Client-portal orders (replaces §5 decision 7): confirming one creates a linked CRM sales order
+  (`website_integration_orders.sales_order_id`) that holds stock; *Completed* ships what is left
+  through a delivery; *Cancelled* / *Rejected* releases the holds (refused once shipped);
+  back to review is refused. Website API orders are unchanged.
+- Order priority (urgent / high / normal), editable in place on the record: arriving stock goes
+  by priority, then age; a shortage releases automatic holds before manual ones, lowest
+  priority and newest first.
+- Also fixed: Movements now links every move to its source document (E3 had promised it for
+  deliveries and returns; only sales orders were linked).
+
+**E4 purchasing** (`12b-erp-purchasing.md`, migration `20260903_purchasing`, new area
+`app/modules/purchasing/`):
+- Vendors are Accounts with a *Vendor* flag (form switch, column, filter, *Vendors* preset);
+  products gain preferred vendor, vendor SKU and lead time.
+- Purchase orders: draft → placed → received, *Close remaining*, cancel before anything arrives,
+  print. Receipts: partial, posted at the PO line's unit cost (`move_type` `receipt`), filling
+  waiting sales orders at once; cancel by reversal (a closed PO reopens).
+- Incoming on the Stock list and product Stock tab; Projected = Available − Backordered +
+  Incoming, the same on the Stock tab and the Reorder screen.
+- Reorder screen: products at or below their reorder point (or short of backorders), grouped by
+  preferred vendor; selected rows become one draft PO per vendor, warehouse and currency.
+- Platform: `purchase.receipt_posted` trigger and record sources; report sources *Purchase
+  orders*, *Purchase lines to receive*; templates *Incoming stock by product*, *Spend by vendor
+  this month*; CSV exports; recycle bin and purge; inventory backup set.
+- Modules `purchase_orders`, `purchase_receipts`; sidebar group *Purchasing*.
+- **Decisions taken on the owner's behalf (§5, for review):** separate receipts with the rest
+  on the PO line; tracked products only; suggestions never order automatically; suggested
+  quantity = max(reorder quantity, point − projected); over-receipt refused; cost from the PO
+  line; no approvals, RFQs, vendor price lists or emailed POs yet.
+
+**Verification (one pass, after all of the above).**
+- Focused backend run first: 84 tests, one failure in my own test setup (a product inserted
+  without its balance rows, which real creation always makes); fixed.
+- `codex-check.sh`: migration replay at `20260903_purchasing`, OpenAPI 434 paths, contract
+  drift, backend 1444 of 1444. The design rules then failed once: the PO page formatted a total
+  with a local `Intl.NumberFormat` (now `formatMoney`). Lint passed; the build caught one type
+  error on the Stock list's Incoming column; fixed, build passed.
+- Browser, production build: `purchasing` (new), `fulfilment-phase1/2`, `inventory-phase1/2/3`,
+  `orders-revamp`, `catalog-revamp`, `catalog-line-items`, `accounts-revamp`,
+  `recycle-bin-revamp`, `integrations-revamp`. Failures: `accounts-revamp` timed out at the 30 s
+  budget and passed at 90 s (the known slow-budget case, not the new Vendor switch); the
+  purchasing spec found **a real defect: on the Reorder screen with several warehouses, every
+  quantity box had the same accessible name** (now names the warehouse), then two locator
+  mistakes of mine. Final: all passed.
+- Full rendered walk: `design-rules` audited 129 routes, none unreachable; `scroll-containers`
+  86 routes passed. The audit found **one real defect: the purchase order line's product picker
+  had no accessible name**; fixed and re-verified with the walk scoped to `/dashboard/purchasing`
+  (6 routes) plus the purchasing spec.
+- The seed script now also creates *Sample Supplier Ltd* (a vendor), `SAMPLE-PO-0001` placed with
+  `SAMPLE-RCV-0001` posted (a real two-unit receipt) and `SAMPLE-PO-0002` as a draft.
 
 ## ERP E3 — sales fulfilment, implemented (2026-10-02)
 

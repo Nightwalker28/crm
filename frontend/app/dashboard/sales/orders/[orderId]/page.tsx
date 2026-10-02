@@ -42,13 +42,18 @@ import {
 import { apiFetch } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
-import { getOrderStatus } from "@/lib/statusStyles";
+import { getOrderPriority, getOrderStatus } from "@/lib/statusStyles";
 
 const ORDER_STATUS_VALUES = ["draft", "confirmed", "fulfilled", "cancelled"] as const;
 
 const ORDER_STATUS_OPTIONS: InlineFieldEditOption[] = ORDER_STATUS_VALUES.map((value) => ({
   value,
   ...getOrderStatus(value),
+}));
+
+const ORDER_PRIORITY_OPTIONS: InlineFieldEditOption[] = ["normal", "high", "urgent"].map((value) => ({
+  value,
+  ...getOrderPriority(value),
 }));
 
 /** `cancelled` ends the order without fulfilling it, so it is an exit rather than a step. */
@@ -63,7 +68,7 @@ const ORDER_TRACK_STEPS = ORDER_TRACK_VALUES.map((value) => ({
  * Fields `Details` must not draw a second time (design.md §4.7): the header owns the order
  * number, and the spine owns status, owner and every relationship.
  */
-const SPINE_OWNED_FIELDS = ["order_number", "status", "owner_id"] as const;
+const SPINE_OWNED_FIELDS = ["order_number", "status", "owner_id", "priority"] as const;
 
 /** Money fields in the seeded layout, which render through the order's own currency. */
 const MONEY_FIELDS = new Set(["subtotal", "discount_total", "tax_total", "grand_total"]);
@@ -149,6 +154,21 @@ export default function OrderDetailPage() {
     ]);
   }
 
+  async function updatePriority(next: string) {
+    if (!order || order.priority === next) return;
+    const res = await apiFetch(`/sales/orders/${params.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: next }),
+    });
+    if (!res.ok) throw new Error("The order priority could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["record-audit-history", "sales_orders", params.orderId] }),
+      orderQuery.refetch(),
+    ]);
+  }
+
   async function updateOwner(nextOwnerId: number | null) {
     const res = await apiFetch(`/sales/orders/${params.orderId}`, {
       method: "PATCH",
@@ -228,6 +248,18 @@ export default function OrderDetailPage() {
                     />
                   ) : (
                     <StatusValue status={getOrderStatus(order.status)} context="record" />
+                  )}
+                </RecordSpineField>
+                <RecordSpineField label="Priority">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Priority"
+                      value={order.priority ?? "normal"}
+                      options={ORDER_PRIORITY_OPTIONS}
+                      onCommit={(next) => updatePriority(next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getOrderPriority(order.priority ?? "normal")} context="record" />
                   )}
                 </RecordSpineField>
                 <RecordOwnerField

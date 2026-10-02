@@ -61,6 +61,31 @@ def _ensure_slug_available(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists.")
 
 
+def _purchasing_fields(db: Session, *, tenant_id: int, payload: dict, partial: bool) -> dict:
+    """Preferred vendor (a vendor-flagged Account in the tenant), vendor SKU and lead time."""
+    from app.modules.sales.models import SalesOrganization
+
+    fields: dict = {}
+    if "preferred_vendor_id" in payload or not partial:
+        vendor_id = payload.get("preferred_vendor_id")
+        if vendor_id:
+            vendor = db.query(SalesOrganization).filter(SalesOrganization.tenant_id == tenant_id, SalesOrganization.org_id == vendor_id,
+                SalesOrganization.deleted_at.is_(None)).first()
+            if vendor is None:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Preferred vendor not found")
+            if not vendor.is_vendor:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{vendor.org_name} is not marked as a vendor")
+        fields["preferred_vendor_id"] = vendor_id or None
+    if "vendor_sku" in payload or not partial:
+        fields["vendor_sku"] = (payload.get("vendor_sku") or "").strip() or None
+    if "lead_time_days" in payload or not partial:
+        days = payload.get("lead_time_days")
+        if days is not None and (not isinstance(days, int) or days < 0):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead time must be a whole number of days")
+        fields["lead_time_days"] = days
+    return fields
+
+
 def _product_state(product: CatalogProduct) -> dict:
     return CatalogProductResponse.model_validate(serialize_product(product)).model_dump(mode="json")
 
@@ -81,6 +106,10 @@ def serialize_product(product: CatalogProduct) -> dict:
         "reorder_quantity": product.reorder_quantity,
         **catalog_detail_payload(product),
         "barcode": product.barcode,
+        "preferred_vendor_id": product.preferred_vendor_id,
+        "preferred_vendor_name": product.preferred_vendor.org_name if product.preferred_vendor else None,
+        "vendor_sku": product.vendor_sku,
+        "lead_time_days": product.lead_time_days,
         "is_public": bool(product.is_public),
         "is_active": bool(product.is_active),
         **catalog_media_payload(product),
@@ -178,6 +207,7 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         sku=normalize_catalog_code(payload.get("sku")),
         barcode=normalize_catalog_code(payload.get("barcode")),
         **normalize_catalog_detail_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
+        **_purchasing_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
         currency=normalize_catalog_currency(payload.get("currency")),
         public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
         stock_status=("out_of_stock" if tracked else _normalize_stock_status(payload.get("stock_status"))),
@@ -243,6 +273,8 @@ def update_product(
     if enabling and requested_tracking is False:
         raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
     for field, value in normalize_catalog_detail_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
+        setattr(product, field, value)
+    for field, value in _purchasing_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
         setattr(product, field, value)
     required_fields = {"name", "currency", "public_unit_price", "stock_status", "reorder_point", "reorder_quantity"}
     for field in [

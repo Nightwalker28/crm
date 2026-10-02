@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
+import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
@@ -46,6 +47,10 @@ type FormState = {
   reorder_point: string;
   reorder_quantity: string;
   track_inventory: boolean;
+  preferred_vendor_id: number | null;
+  preferred_vendor_name: string;
+  vendor_sku: string;
+  lead_time_days: string;
   is_public: boolean;
   is_active: boolean;
 };
@@ -68,6 +73,10 @@ const EMPTY_FORM: FormState = {
   reorder_point: "0",
   reorder_quantity: "0",
   track_inventory: false,
+  preferred_vendor_id: null,
+  preferred_vendor_name: "",
+  vendor_sku: "",
+  lead_time_days: "",
   is_public: false,
   is_active: true,
 };
@@ -90,6 +99,10 @@ function formSeed(record?: CatalogRecord): FormState {
     reorder_point: String(record.reorder_point ?? 0),
     reorder_quantity: String(record.reorder_quantity ?? 0),
     track_inventory: Boolean(record.track_inventory),
+    preferred_vendor_id: record.preferred_vendor_id ?? null,
+    preferred_vendor_name: record.preferred_vendor_name ?? "",
+    vendor_sku: record.vendor_sku ?? "",
+    lead_time_days: record.lead_time_days == null ? "" : String(record.lead_time_days),
     is_public: record.is_public,
     is_active: record.is_active,
   };
@@ -239,6 +252,9 @@ function CatalogRecordFormEditor({
       track_inventory: isProduct ? form.track_inventory : undefined,
       reorder_point: isProduct ? Number(form.reorder_point) : undefined,
       reorder_quantity: isProduct ? Number(form.reorder_quantity) : undefined,
+      preferred_vendor_id: isProduct ? form.preferred_vendor_id : undefined,
+      vendor_sku: isProduct ? form.vendor_sku.trim() || null : undefined,
+      lead_time_days: isProduct ? (form.lead_time_days.trim() && Number.isInteger(Number(form.lead_time_days)) && Number(form.lead_time_days) >= 0 ? Number(form.lead_time_days) : null) : undefined,
       is_public: form.is_public,
       is_active: form.is_active,
     };
@@ -405,6 +421,35 @@ function CatalogRecordFormEditor({
                 {mode === "edit" && record?.track_inventory ? <FieldDescription>Use Adjust stock on the product record to change this balance.</FieldDescription> : null}
               </Field>
               {form.track_inventory ? <><Field><FieldLabel htmlFor="catalog-reorder-point">Reorder point</FieldLabel><Input id="catalog-reorder-point" type="number" min="0" step="0.0001" value={form.reorder_point} onChange={(event) => { setForm((current) => ({ ...current, reorder_point: event.target.value })); setReorderError(null); }} aria-invalid={Boolean(reorderError)} aria-describedby={reorderError ? "catalog-reorder-error" : undefined} /><FieldDescription>Alert when available stock reaches this quantity. Zero turns alerts off.</FieldDescription>{reorderError ? <FieldError id="catalog-reorder-error">{reorderError}</FieldError> : null}</Field><Field><FieldLabel htmlFor="catalog-reorder-quantity">Reorder quantity</FieldLabel><Input id="catalog-reorder-quantity" type="number" min="0" step="0.0001" value={form.reorder_quantity} onChange={(event) => { setForm((current) => ({ ...current, reorder_quantity: event.target.value })); setReorderError(null); }} /></Field></> : null}
+            </FieldGroup>
+          </FormSection>
+        ) : null}
+
+        {isProduct && form.track_inventory ? (
+          <FormSection title="Purchasing" description="Who you buy this from. The Reorder screen groups suggestions by preferred vendor.">
+            <FieldGroup columns={2}>
+              <Field className="md:col-span-2">
+                <FieldLabel htmlFor="catalog-preferred-vendor">Preferred vendor</FieldLabel>
+                <LinkedRecordPicker
+                  inputId="catalog-preferred-vendor"
+                  recordType="vendor"
+                  valueId={form.preferred_vendor_id}
+                  displayValue={form.preferred_vendor_name}
+                  onDisplayValueChange={(value) => setForm((current) => ({ ...current, preferred_vendor_name: value, preferred_vendor_id: null }))}
+                  onSelect={(option) => setForm((current) => ({ ...current, preferred_vendor_id: option.id, preferred_vendor_name: option.label }))}
+                  onClear={() => setForm((current) => ({ ...current, preferred_vendor_id: null, preferred_vendor_name: "" }))}
+                  placeholder="Search vendors"
+                />
+                <FieldDescription>Only Accounts marked as vendors are offered.</FieldDescription>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-vendor-sku">Vendor SKU</FieldLabel>
+                <Input id="catalog-vendor-sku" value={form.vendor_sku} maxLength={100} onChange={(event) => setForm((current) => ({ ...current, vendor_sku: event.target.value }))} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-lead-time">Lead time (days)</FieldLabel>
+                <Input id="catalog-lead-time" type="number" min="0" step="1" inputMode="numeric" value={form.lead_time_days} onChange={(event) => setForm((current) => ({ ...current, lead_time_days: event.target.value }))} />
+              </Field>
             </FieldGroup>
           </FormSection>
         ) : null}

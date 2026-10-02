@@ -433,10 +433,32 @@ cadence, implement the whole phase, then test once and fix once.
   tracked lines (§3.4). Seeded roles that edit orders get delivery permissions, so this
   affects only custom roles.
 
+## 6a. Follow-ups (owner, 2026-10-02)
+
+The owner asked for three items the first E3 cut left out:
+
+1. **Delivery notes.** `/dashboard/inventory/deliveries/{id}/print` is a packing slip: company,
+   ship-to (the order's delivery address), order, carrier and tracking, quantities only (no
+   prices), a signature line. It is drawn in semantic tokens, and the `print-document` print
+   rule turns it into black ink on white paper, so it needs no design exemption.
+2. **Client-portal orders and stock** (replaces §5 decision 7). A portal order stays a request
+   while staff review it. Confirming it (or moving it to in progress or completed) creates a
+   linked CRM sales order (`website_integration_orders.sales_order_id`), which holds stock
+   like any confirmed order. *Completed* ships everything left through a delivery, refused
+   with the shortfall named; *cancelled* or *rejected* cancels the sales order and releases
+   its holds, refused once it has shipped. A confirmed portal order cannot go back to review.
+   Website API orders keep taking stock at submission.
+3. **Order priority**: urgent, high or normal (default) on the order, editable in place on
+   the record. Arriving stock goes to waiting orders by priority, then oldest; a shortage
+   releases automatic holds before manual ones and, within each, the lowest priority, newest
+   order first. Raising a priority does not take stock from other orders on its own; use
+   the Reservations dialog for that.
+
+Webhooks for the two E3 events still wait for 4A Phase 2.
+
 ## 7. Out of scope
 
 Pick/pack/ship steps, packages, shipping labels, carrier rate quotes and tracking sync, drop
-shipping, delivery notes as printable documents (a later Documents template), order
-a priority field on orders (manual reallocation covers urgency), reservation for draft orders or quotes,
+shipping, reservation for draft orders or quotes,
 credit notes and refunds (E5), purchase-driven backorders (E4), and everything in
 `12-erp-inventory.md` §8.

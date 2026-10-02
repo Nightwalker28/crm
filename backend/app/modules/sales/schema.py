@@ -35,6 +35,8 @@ class SalesOrganizationBase(BaseModel):
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    # Vendors are Accounts we buy from (E4); the same company can also be a customer.
+    is_vendor: bool = False
     custom_fields: dict[str, Any] | None = None
 
 
@@ -56,6 +58,7 @@ class SalesOrganizationUpdate(BaseModel):
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    is_vendor: bool | None = None
     assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
 
@@ -81,6 +84,7 @@ class SalesOrganizationListItem(BaseModel):
     industry: str | None = None
     annual_revenue: str | None = None
     billing_country: str | None = None
+    is_vendor: bool = False
     customer_group_id: int | None = None
     assigned_to: int | None = None
     assigned_to_name: str | None = None
@@ -559,6 +563,7 @@ class SalesOrderCreateRequest(BaseModel):
     notes: str | None = None
     owner_id: int | None = None
     warehouse_id: int | None = Field(default=None, gt=0)
+    priority: str = "normal"
     items: list[SalesOrderItemCreate] = Field(default_factory=list)
 
 
@@ -575,6 +580,7 @@ class SalesOrderUpdateRequest(BaseModel):
     payment_terms: str | None = None
     notes: str | None = None
     warehouse_id: int | None = Field(default=None, gt=0)
+    priority: str | None = None
     items: list[SalesOrderItemCreate] | None = Field(default=None, min_length=1)
 
 
@@ -604,6 +610,7 @@ class SalesOrderResponse(BaseModel):
     warehouse_id: int | None = None
     warehouse_name: str | None = None
     delivery_status: str = "none"
+    priority: str = "normal"
     remaining_closed_at: datetime | None = None
     remaining_close_reason: str | None = None
     created_by_id: int | None = None
@@ -626,6 +633,7 @@ class SalesOrderListItem(BaseModel):
     opportunity_name: str | None = None
     status: str
     delivery_status: str = "none"
+    priority: str = "normal"
     currency: str
     grand_total: Decimal
     owner_id: int | None = None

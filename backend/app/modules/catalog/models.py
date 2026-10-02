@@ -100,6 +100,10 @@ class CatalogProduct(Base):
     cost_price = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(40), nullable=False, server_default="unit")
     barcode = Column(String(100), nullable=True)
+    # Purchasing (E4): who this is normally bought from, under which code, and how long it takes.
+    preferred_vendor_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="SET NULL"), nullable=True, index=True)
+    vendor_sku = Column(String(100), nullable=True)
+    lead_time_days = Column(Integer, nullable=True)
     is_public = Column(SmallInteger, nullable=False, server_default="0", index=True)
     is_active = Column(SmallInteger, nullable=False, server_default="1", index=True)
     media_path = Column(String(500), nullable=True)
@@ -115,6 +119,7 @@ class CatalogProduct(Base):
     creator = relationship("User", foreign_keys=[created_by_user_id])
     updated_by = relationship("User", foreign_keys=[updated_by_user_id])
     category = relationship("CatalogCategory", lazy="selectin")
+    preferred_vendor = relationship("SalesOrganization", lazy="selectin")
 
 
 class CatalogService(Base):
@@ -168,3 +173,7 @@ class CatalogService(Base):
     creator = relationship("User", foreign_keys=[created_by_user_id])
     updated_by = relationship("User", foreign_keys=[updated_by_user_id])
     category = relationship("CatalogCategory", lazy="selectin")
+
+
+# Products point at their preferred vendor, an Account; load those tables wherever these are.
+import app.modules.sales.models  # noqa: E402, F401

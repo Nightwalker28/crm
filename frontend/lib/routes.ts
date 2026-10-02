@@ -24,6 +24,9 @@ export const DASHBOARD_ROUTES = {
   inventoryTransfers: "/dashboard/inventory/transfers",
   inventoryDeliveries: "/dashboard/inventory/deliveries",
   inventoryReturns: "/dashboard/inventory/returns",
+  purchaseOrders: "/dashboard/purchasing/orders",
+  purchaseReceipts: "/dashboard/purchasing/receipts",
+  purchaseReorder: "/dashboard/purchasing/reorder",
   reports: "/dashboard/reports",
 } as const;
 

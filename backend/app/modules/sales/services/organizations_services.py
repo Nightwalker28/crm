@@ -39,6 +39,7 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_state = payload.billing_state
     organization.billing_postal_code = payload.billing_postal_code
     organization.billing_country = payload.billing_country
+    organization.is_vendor = int(bool(getattr(payload, "is_vendor", False)))
     organization.custom_data = payload.custom_fields or None
     organization.assigned_to = payload.assigned_to if payload.assigned_to is not None else current_user.id if current_user else None
 
@@ -179,6 +180,7 @@ def _build_organization_query(
         "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "text"},
         "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
         "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
+        "is_vendor": {"expression": SalesOrganization.is_vendor == 1, "type": "boolean"},
         "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,
@@ -322,6 +324,8 @@ def update_existing_organization(
 ) -> SalesOrganization:
     """Update an already-loaded organization."""
     data = payload.model_dump(exclude_unset=True)
+    if "is_vendor" in data:
+        data["is_vendor"] = int(bool(data["is_vendor"]))
     if "assigned_to" in data:
         if data["assigned_to"] is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assigned_to cannot be null")

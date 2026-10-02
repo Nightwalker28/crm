@@ -144,6 +144,12 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
         raise HTTPException(status_code=404, detail="Product not found")
     levels = db.query(InventoryStockLevel, InventoryWarehouse).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(InventoryStockLevel.tenant_id == tenant_id, InventoryStockLevel.product_id == product_id).order_by(InventoryWarehouse.name).all()
     moves = db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id, InventoryStockMove.product_id == product_id).order_by(InventoryStockMove.id.desc()).limit(10).all()
+    from app.modules.purchasing.services.purchase_order_services import incoming
+
+    from app.modules.purchasing.services.reorder_services import _waiting
+
+    on_order = incoming(db, tenant_id=tenant_id, product_ids=[product_id])
+    waiting = sum((_waiting(db, tenant_id=tenant_id, product=product, warehouse=warehouse) for _level, warehouse in levels), Decimal(0)) if product.track_inventory else Decimal(0)
     actor_ids = {move.created_by for move in moves if move.created_by is not None}
     actors = {user.id: " ".join(part for part in (user.first_name, user.last_name) if part).strip() or user.email for user in db.query(User).filter(User.tenant_id == tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
     return {
@@ -151,7 +157,13 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
         "on_hand": product.stock_quantity if product.track_inventory else None,
         "reserved": sum((Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
         "available": sum((Decimal(level.on_hand) - Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
-        "warehouses": [{"id": warehouse.id, "name": warehouse.name, "code": warehouse.code, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved)} for level, warehouse in levels],
+        "incoming": sum(on_order.values(), Decimal(0)) if product.track_inventory else None,
+        # Projected = available, less what confirmed orders still wait for, plus what is on order:
+        # the same figure the Reorder screen compares with the reorder point.
+        "backordered": waiting if product.track_inventory else None,
+        "projected": (sum((Decimal(level.on_hand) - Decimal(level.reserved) for level, _ in levels), Decimal(0)) - waiting + sum(on_order.values(), Decimal(0))) if product.track_inventory else None,
+        "warehouses": [{"id": warehouse.id, "name": warehouse.name, "code": warehouse.code, "on_hand": level.on_hand, "reserved": level.reserved,
+            "available": Decimal(level.on_hand) - Decimal(level.reserved), "incoming": on_order.get((product.id, warehouse.id), Decimal(0))} for level, warehouse in levels],
         "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by)) for move in moves],
     }
 

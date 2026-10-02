@@ -109,6 +109,9 @@ class WebsiteIntegrationOrder(Base):
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     api_key_id = Column(BigInteger, ForeignKey("website_integration_api_keys.id", ondelete="SET NULL"), nullable=True, index=True)
     pos_invoice_id = Column(BigInteger, ForeignKey("finance_pos_invoices.id", ondelete="SET NULL"), nullable=True, index=True)
+    # A client-portal order becomes a CRM sales order when staff confirm it; that order holds
+    # and ships the stock (12a-erp-fulfilment.md, E3 follow-ups).
+    sales_order_id = Column(Integer, ForeignKey("sales_orders.id", ondelete="SET NULL"), nullable=True, index=True)
     external_reference = Column(String(180), nullable=False, index=True)
     source_platform = Column(String(80), nullable=True, index=True)
     status = Column(String(20), nullable=False, server_default="confirmed", index=True)

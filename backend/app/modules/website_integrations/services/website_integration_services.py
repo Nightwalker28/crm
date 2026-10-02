@@ -161,6 +161,7 @@ def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool
     return {
         "id": order.id,
         "pos_invoice_id": order.pos_invoice_id,
+        "sales_order_id": order.sales_order_id,
         "external_reference": order.external_reference,
         "source_platform": order.source_platform,
         "status": order.status,
@@ -455,6 +456,8 @@ def update_order_status(db: Session, *, current_user, order_id: int, status_valu
         return order
     if order.status in CLOSED_ORDER_STATUSES:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A {order.status} order cannot be reopened")
+    if order.source_platform == PORTAL_SOURCE:
+        _apply_portal_status(db, order=order, status_value=normalized_status, current_user=current_user)
     order.status = normalized_status
     db.add(order)
     if normalized_status in CLOSED_ORDER_STATUSES:
@@ -481,6 +484,86 @@ def update_order_status(db: Session, *, current_user, order_id: int, status_valu
         after_state=_order_state(order),
     )
     return order
+
+
+PORTAL_SOURCE = "client_portal"
+PORTAL_REVIEW_STATUSES = {"submitted", "under_review"}
+
+
+def _portal_sales_order(db: Session, *, order: WebsiteIntegrationOrder, current_user):
+    """The CRM sales order behind a confirmed portal order, created on first confirmation.
+
+    It is committed with the link straight away, so a later refusal (stock short on
+    completion) cannot leave an order nobody can find.
+    """
+    from app.modules.sales.models import SalesOrder
+    from app.modules.sales.services.orders_services import create_sales_order
+
+    if order.sales_order_id:
+        linked = db.query(SalesOrder).filter(SalesOrder.tenant_id == order.tenant_id, SalesOrder.id == order.sales_order_id).first()
+        if linked is not None:
+            return linked
+    meta = order.metadata_json if isinstance(order.metadata_json, dict) else {}
+    details = (meta.get("details") or "").strip()
+    payload = {
+        "status": "confirmed",
+        "currency": order.currency,
+        "contact_id": meta.get("contact_id") if isinstance(meta.get("contact_id"), int) else None,
+        "organization_id": meta.get("organization_id") if isinstance(meta.get("organization_id"), int) else None,
+        "notes": "\n".join(part for part in (f"From client portal order {order.external_reference}.", details) if part),
+        "items": [
+            {"catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id, "name": line.name,
+             "quantity": line.quantity, "unit_price": Decimal(line.unit_price_snapshot).quantize(Decimal("0.01")), "sort_order": index}
+            for index, line in enumerate(order.line_items)
+        ],
+    }
+    sales_order = create_sales_order(db, payload, current_user)
+    order.sales_order_id = sales_order.id
+    db.add(order)
+    db.commit()
+    log_activity(db, tenant_id=order.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="website_integrations",
+        entity_type="website_order", entity_id=order.id, action="website_order.sales_order_created",
+        description=f"Confirmed portal order {order.external_reference} as sales order {sales_order.order_number}")
+    return sales_order
+
+
+def _apply_portal_status(db: Session, *, order: WebsiteIntegrationOrder, status_value: str, current_user) -> None:
+    """Client-portal orders hold no stock while staff review them (§5 decision 7). Confirming
+    one makes it a sales order, which holds stock; completing it ships everything left;
+    cancelling or rejecting it releases the holds. Never commits the status itself."""
+    from app.modules.inventory.services.delivery_services import deliver_remaining, has_live_deliveries, refresh_delivery_status
+    from app.modules.inventory.services.stock_ledger import release_for_order
+    from app.modules.sales.models import SalesOrder
+
+    actor_user_id = current_user.id if current_user else None
+    linked = db.query(SalesOrder).filter(SalesOrder.tenant_id == order.tenant_id, SalesOrder.id == order.sales_order_id).first() if order.sales_order_id else None
+    if status_value in PORTAL_REVIEW_STATUSES:
+        if linked is not None and linked.status != "cancelled":
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"This order is confirmed as {linked.order_number}; cancel or reject it instead of returning it to review")
+        return
+    if status_value in CLOSED_ORDER_STATUSES:
+        if linked is None or linked.status == "cancelled":
+            return
+        if has_live_deliveries(db, tenant_id=order.tenant_id, order_id=linked.id, posted_only=True):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{linked.order_number} has shipped; cancel its delivery or record a return first")
+        release_for_order(db, tenant_id=order.tenant_id, order=linked, actor_user_id=actor_user_id)
+        linked.status = "cancelled"
+        refresh_delivery_status(db, order=linked)
+        db.add(linked)
+        log_activity(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, module_key="sales_orders", entity_type="sales_order",
+            entity_id=linked.id, action="sales_order.cancelled_from_portal", description=f"Cancelled with portal order {order.external_reference}", commit=False)
+        return
+    # confirmed, in_progress, completed: the sales order exists and holds stock.
+    linked = _portal_sales_order(db, order=order, current_user=current_user)
+    if linked.status == "cancelled":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{linked.order_number} is cancelled")
+    if status_value == "completed" and linked.status != "fulfilled":
+        deliver_remaining(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, order=linked)
+        if linked.status != "fulfilled":
+            # Nothing stocked to ship: the order is complete by hand, as on the order page.
+            linked.status = "fulfilled"
+        refresh_delivery_status(db, order=linked)
+        db.add(linked)
 
 
 def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):

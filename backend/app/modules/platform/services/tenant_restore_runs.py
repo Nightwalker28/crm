@@ -50,7 +50,10 @@ def _read_json(zipf: zipfile.ZipFile, name: str) -> Any:
 
 # Inventory files added after backups were first taken (E3 deliveries and returns). A backup
 # made before them simply has none, which restores as none.
-OPTIONAL_INVENTORY_FILES = {"inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json"}
+OPTIONAL_INVENTORY_FILES = {
+    "inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json",
+    "purchase_orders.json", "purchase_order_lines.json", "purchase_receipts.json", "purchase_receipt_lines.json",
+}
 
 
 def _read_inventory_rows(zipf: zipfile.ZipFile, filename: str) -> Any:

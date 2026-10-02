@@ -23,7 +23,7 @@ router = APIRouter(prefix="/orders", tags=["Sales"])
 
 ORDER_LIST_FIELDS = {
     "order_number", "quote_id", "organization_id", "contact_id", "opportunity_id", "status", "currency", "grand_total",
-    "owner_id", "created_at", "updated_at", "delivery_status",
+    "owner_id", "created_at", "updated_at", "delivery_status", "priority",
 }
 
 

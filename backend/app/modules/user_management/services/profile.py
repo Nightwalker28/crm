@@ -704,6 +704,10 @@ PRESET_SAVED_VIEWS = {
                         {"field": "delivery_status", "operator": "is_not", "value": "none"}]),
         ("Waiting for stock", [{"field": "waiting_for_stock", "operator": "is", "value": True}]),
     ),
+    # E4; the same preset is in migration 20260903_purchasing for users who had account views.
+    "sales_organizations": (
+        ("Vendors", [{"field": "is_vendor", "operator": "is", "value": True}]),
+    ),
 }
 
 

@@ -90,6 +90,8 @@ SUPPORTED_RECYCLE_MODULES = {
     "inventory_transfers",
     "inventory_deliveries",
     "inventory_returns",
+    "purchase_orders",
+    "purchase_receipts",
 }
 INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
@@ -308,6 +310,22 @@ def list_recycle_items(
             details = delivery_services.serialize_delivery(db, tenant_id=tenant_id, doc=item, include_lines=False)
             serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
                 "subtitle": details["order_number"], "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in {"purchase_orders", "purchase_receipts"}:
+        from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+        from app.modules.purchasing.services.purchase_order_services import serialize_order
+        from app.modules.purchasing.services.receipt_services import serialize_receipt
+
+        model = PurchaseOrder if module_key == "purchase_orders" else PurchaseReceipt
+        query = db.query(model).filter(model.tenant_id == tenant_id, model.deleted_at.isnot(None)).order_by(model.deleted_at.desc(), model.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = serialize_order(db, tenant_id=tenant_id, order=item, include_lines=False) if module_key == "purchase_orders" \
+                else serialize_receipt(db, tenant_id=tenant_id, receipt=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details.get("vendor_name"), "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "inventory_returns":
@@ -548,6 +566,17 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
+
+    if module_key in {"purchase_orders", "purchase_receipts"}:
+        from app.modules.purchasing.services import purchase_order_services, receipt_services
+
+        if module_key == "purchase_orders":
+            restored = purchase_order_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, order_id=record_id)
+            db.commit()
+            return jsonable_encoder(purchase_order_services.serialize_order(db, tenant_id=current_user.tenant_id, order=restored))
+        restored = receipt_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, receipt_id=record_id)
+        db.commit()
+        return jsonable_encoder(receipt_services.serialize_receipt(db, tenant_id=current_user.tenant_id, receipt=restored))
 
     if module_key == "inventory_returns":
         restored = return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)

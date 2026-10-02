@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, Numeric, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, Numeric, SmallInteger, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
@@ -70,6 +70,9 @@ class SalesOrganization(Base):
     billing_state = Column(Text, nullable=True)
     billing_postal_code = Column(Text, nullable=True)
     billing_country = Column(Text, nullable=True)
+    # A vendor is an Account that sells to us (12-erp-inventory.md §7 decision 6); the same
+    # company can be a customer too.
+    is_vendor = Column(SmallInteger, nullable=False, server_default="0")
     search_doc = Column(
         Text,
         Computed(
@@ -517,6 +520,7 @@ class SalesOrder(Base):
             "delivery_status IN ('none', 'pending', 'partial', 'delivered', 'closed')",
             name="ck_sales_orders_delivery_status",
         ),
+        CheckConstraint("priority IN ('urgent', 'high', 'normal')", name="ck_sales_orders_priority"),
         Index("ix_sales_orders_tenant_status", "tenant_id", "status"),
         Index("ix_sales_orders_tenant_quote", "tenant_id", "quote_id"),
         Index("ix_sales_orders_tenant_created", "tenant_id", "created_at"),
@@ -543,6 +547,8 @@ class SalesOrder(Base):
     # Cached from deliveries for lists and saved views: none (nothing stocked), pending,
     # partial, delivered, or closed (the rest was deliberately not shipped).
     delivery_status = Column(Text, nullable=False, server_default="none")
+    # Arriving stock goes to waiting orders by priority, then oldest first.
+    priority = Column(Text, nullable=False, server_default="normal")
     remaining_closed_at = Column(DateTime(timezone=True), nullable=True)
     remaining_close_reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)

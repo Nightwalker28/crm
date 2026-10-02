@@ -67,6 +67,17 @@ REPORT_TEMPLATES: list[dict[str, Any]] = [
             filters={"all_conditions": [{"id": "received", "field": "status", "operator": "is", "value": "received"}], "any_conditions": []}),
     },
     {
+        "key": "incoming-by-product", "category": "Purchasing", "name": "Incoming stock by product",
+        "description": "Units on placed purchase orders still to arrive, by product.", "module_key": "purchase_lines",
+        "config": _summary([{"field": "product"}], [{"aggregate": "sum", "field": "to_receive"}]),
+    },
+    {
+        "key": "spend-by-vendor-month", "category": "Purchasing", "name": "Spend by vendor this month",
+        "description": "Purchase orders placed this month, by vendor.", "module_key": "purchase_orders",
+        "config": _summary([{"field": "vendor"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "subtotal"}],
+            date_filter={"field": "ordered_at", "range": "this_month"}),
+    },
+    {
         "key": "deals-pipeline-by-stage",
         "category": "Pipeline",
         "name": "Pipeline by stage",

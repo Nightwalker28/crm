@@ -32,6 +32,7 @@ export type ModuleGroupKey =
   | "sales"
   | "catalog"
   | "inventory"
+  | "purchasing"
   | "support"
   | "finance"
   | "reports"
@@ -73,6 +74,10 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   // Deliveries and returns start from their order and delivery, so neither has a quick action.
   { key: "inventory_deliveries", label: "Deliveries", route: DASHBOARD_ROUTES.inventoryDeliveries, group: "inventory", status: "tier1", enabled: true, sortOrder: 50 },
   { key: "inventory_returns", label: "Returns", route: DASHBOARD_ROUTES.inventoryReturns, group: "inventory", status: "tier1", enabled: true, sortOrder: 60 },
+  { key: "purchase_orders", label: "Purchase orders", route: DASHBOARD_ROUTES.purchaseOrders, group: "purchasing", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "New purchase order", description: "Order stock from a vendor", href: `${DASHBOARD_ROUTES.purchaseOrders}/new` } },
+  // Receipts start from their purchase order, so there is no quick action.
+  { key: "purchase_receipts", label: "Receipts", route: DASHBOARD_ROUTES.purchaseReceipts, group: "purchasing", status: "tier1", enabled: true, sortOrder: 20 },
+  { key: "purchase_reorder", label: "Reorder", route: DASHBOARD_ROUTES.purchaseReorder, group: "purchasing", status: "tier1", enabled: true, sortOrder: 30, requiredModuleKey: "purchase_orders" },
   { key: "documents", label: "Documents", route: DASHBOARD_ROUTES.documents, group: "workspace", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Upload document", description: "Open the document upload workflow", href: `${DASHBOARD_ROUTES.documents}/upload` } },
   { key: "calendar", label: "Calendar", route: DASHBOARD_ROUTES.calendar, group: "workspace", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create event", description: "Schedule a calendar event", href: `${DASHBOARD_ROUTES.calendar}?action=create` } },
   { key: "mail", label: "Mail", route: DASHBOARD_ROUTES.mail, group: "workspace", status: "tier1", enabled: true, sortOrder: 30, quickAction: { label: "Compose email", description: "Write a CRM email", href: `${DASHBOARD_ROUTES.mail}/compose` } },

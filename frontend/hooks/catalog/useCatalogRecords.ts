@@ -28,6 +28,11 @@ export type CatalogRecord = {
   category_id?: number | null;
   category_name?: string | null;
   cost_price?: number | string | null;
+  /** Products only (E4): who it is normally bought from, under which code, and how long it takes. */
+  preferred_vendor_id?: number | null;
+  preferred_vendor_name?: string | null;
+  vendor_sku?: string | null;
+  lead_time_days?: number | null;
   unit?: string;
   is_public: boolean;
   is_active: boolean;
@@ -53,6 +58,9 @@ export type CatalogRecordPayload = {
   barcode?: string | null;
   category_id?: number | null;
   cost_price?: number | null;
+  preferred_vendor_id?: number | null;
+  vendor_sku?: string | null;
+  lead_time_days?: number | null;
   unit?: string;
   is_public: boolean;
   is_active: boolean;

@@ -39,6 +39,8 @@ MODULE_DISPLAY_NAMES = {
     "inventory_stock": "Inventory stock",
     "inventory_deliveries": "Deliveries",
     "inventory_returns": "Returns",
+    "purchase_orders": "Purchase orders",
+    "purchase_receipts": "Receipts",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -57,6 +59,8 @@ MODULE_LINKS = {
     "inventory_stock": "/dashboard/inventory/stock",
     "inventory_deliveries": "/dashboard/inventory/deliveries",
     "inventory_returns": "/dashboard/inventory/returns",
+    "purchase_orders": "/dashboard/purchasing/orders",
+    "purchase_receipts": "/dashboard/purchasing/receipts",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
@@ -99,7 +103,7 @@ def require_data_transfer_job_access(
         if not isinstance(source_key, str):
             raise HTTPException(status_code=404, detail="Report export source is unavailable")
         # Report sources that are not modules of their own answer to the module they read.
-        permission_key = {"inventory_movements": "inventory_stock", "inventory_backorders": "sales_orders"}.get(source_key, source_key)
+        permission_key = {"inventory_movements": "inventory_stock", "inventory_backorders": "sales_orders", "purchase_lines": "purchase_orders"}.get(source_key, source_key)
         require_data_transfer_module_access(db, current_user=current_user, module_key=permission_key, action="view")
 
 
@@ -831,6 +835,27 @@ def process_export_job(*, job_id: int) -> None:
                 docs = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == job.tenant_id, InventoryReturn.deleted_at.is_(None)).order_by(InventoryReturn.id).all()
                 rows = [serialize_return(db, tenant_id=job.tenant_id, doc=doc, include_lines=False) for doc in docs]
                 headers = ("number", "status", "reason", "delivery_number", "order_number", "customer_name", "warehouse_name", "total_quantity", "received_at", "cancel_reason")
+            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
+            exported_rows = len(rows)
+            file_name = f"{module_key}.csv"
+            media_type = "text/csv"
+        elif module_key in {"purchase_orders", "purchase_receipts"}:
+            from app.core.module_export import dict_rows_to_csv_bytes
+            from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+            from app.modules.purchasing.services.purchase_order_services import serialize_order
+            from app.modules.purchasing.services.receipt_services import serialize_receipt
+
+            if current_user is None:
+                raise ValueError("Purchasing export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
+            if module_key == "purchase_orders":
+                docs = db.query(PurchaseOrder).filter(PurchaseOrder.tenant_id == job.tenant_id, PurchaseOrder.deleted_at.is_(None)).order_by(PurchaseOrder.id).all()
+                rows = [serialize_order(db, tenant_id=job.tenant_id, order=doc, include_lines=False) for doc in docs]
+                headers = ("number", "status", "receipt_status", "vendor_name", "warehouse_name", "currency", "subtotal", "expected_date", "vendor_reference", "ordered_at", "close_reason", "cancel_reason")
+            else:
+                docs = db.query(PurchaseReceipt).filter(PurchaseReceipt.tenant_id == job.tenant_id, PurchaseReceipt.deleted_at.is_(None)).order_by(PurchaseReceipt.id).all()
+                rows = [serialize_receipt(db, tenant_id=job.tenant_id, receipt=doc, include_lines=False) for doc in docs]
+                headers = ("number", "status", "order_number", "vendor_name", "warehouse_name", "received_on", "vendor_delivery_ref", "total_quantity", "posted_at", "cancel_reason")
             content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
             exported_rows = len(rows)
             file_name = f"{module_key}.csv"

@@ -26,6 +26,7 @@ from app.modules.sales.services.quotes_services import get_quote_or_404
 
 
 ORDER_STATUSES = {"draft", "confirmed", "fulfilled", "cancelled"}
+ORDER_PRIORITIES = {"urgent", "high", "normal"}
 
 ORDER_SORT_FIELDS = {
     "order_number": SalesOrder.order_number,
@@ -36,6 +37,7 @@ ORDER_SORT_FIELDS = {
     "owner_id": SalesOrder.owner_id,
     "status": SalesOrder.status,
     "delivery_status": SalesOrder.delivery_status,
+    "priority": SalesOrder.priority,
     "currency": SalesOrder.currency,
     "subtotal": SalesOrder.subtotal,
     "tax_total": SalesOrder.tax_total,
@@ -123,6 +125,11 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
     for field in {"quote_id", "organization_id", "contact_id", "opportunity_id", "owner_id"}:
         if data.get(field) == "":
             data[field] = None
+    if "priority" in data:
+        priority = (data["priority"] or "normal").strip().lower()
+        if priority not in ORDER_PRIORITIES:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Priority must be urgent, high or normal")
+        data["priority"] = priority
     if "status" in data:
         data["status"] = _validate_status(data["status"])
     elif not partial:
@@ -261,6 +268,7 @@ def build_orders_query(
         "created_at": {"expression": SalesOrder.created_at, "type": "date"},
         "updated_at": {"expression": SalesOrder.updated_at, "type": "date"},
         "delivery_status": {"expression": SalesOrder.delivery_status, "type": "text"},
+        "priority": {"expression": SalesOrder.priority, "type": "text"},
         "waiting_for_stock": {"expression": _waiting_for_stock_expression(), "type": "boolean"},
     }
     query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)

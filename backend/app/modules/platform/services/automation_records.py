@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session
 from app.modules.calendar.models import MeetingBooking
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryAdjustment, InventoryDelivery, InventoryReturn
+from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
 from app.modules.documents.models import Document
 from app.modules.finance.models import FinanceIO
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesQuote
@@ -105,6 +106,8 @@ AUTOMATION_RECORD_SOURCES: dict[str, AutomationRecordSource] = {
         AutomationRecordSource("inventory_adjustment", "inventory_adjustments", InventoryAdjustment, "id", "/dashboard/inventory/adjustments/{id}", owner_field="posted_by", label_fields=(("number",),)),
         AutomationRecordSource("inventory_delivery", "inventory_deliveries", InventoryDelivery, "id", "/dashboard/inventory/deliveries/{id}", owner_field="posted_by", label_fields=(("number",),)),
         AutomationRecordSource("inventory_return", "inventory_returns", InventoryReturn, "id", "/dashboard/inventory/returns/{id}", owner_field="received_by", label_fields=(("number",),)),
+        AutomationRecordSource("purchase_order", "purchase_orders", PurchaseOrder, "id", "/dashboard/purchasing/orders/{id}", owner_field="owner_id", label_fields=(("number",),)),
+        AutomationRecordSource("purchase_receipt", "purchase_receipts", PurchaseReceipt, "id", "/dashboard/purchasing/receipts/{id}", owner_field="posted_by", label_fields=(("number",),)),
         AutomationRecordSource("sales_lead", "sales_leads", SalesLead, "lead_id", "/dashboard/sales/leads/{id}", owner_field="assigned_to", extras=_lead_extras, label_fields=(("first_name", "last_name"), ("company",), ("primary_email",))),
         AutomationRecordSource("sales_contact", "sales_contacts", SalesContact, "contact_id", "/dashboard/sales/contacts/{id}", owner_field="assigned_to", label_fields=(("first_name", "last_name"), ("primary_email",))),
         AutomationRecordSource("sales_opportunity", "sales_opportunities", SalesOpportunity, "opportunity_id", "/dashboard/sales/opportunities/{id}", owner_field="assigned_to", extras=_opportunity_extras, label_fields=(("opportunity_name",), ("client",))),

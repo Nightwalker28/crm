@@ -71,10 +71,12 @@ export function CatalogItemStockPanel({ productId, canAdjust, canManageReservati
         </div>
       </div>
       {data?.track_inventory ? (
-        <FactList className="mt-4 grid-cols-3">
+        <FactList className="mt-4 grid-cols-2 sm:grid-cols-5">
           <Fact label="On hand"><span className="tabular-nums">{quantity(data.on_hand)}</span></Fact>
           <Fact label="Reserved"><span className="tabular-nums">{quantity(data.reserved)}</span></Fact>
           <Fact label="Available"><span className="tabular-nums">{quantity(data.available)}</span></Fact>
+          <Fact label="Incoming"><span className="tabular-nums">{quantity(data.incoming ?? 0)}</span></Fact>
+          <Fact label="Projected"><span className="tabular-nums" title="Available, less backordered demand, plus incoming">{quantity(data.projected)}</span></Fact>
         </FactList>
       ) : <p className="mt-4 text-p-sm text-copy-secondary">Inventory is not tracked for this product.</p>}
       {multipleWarehouses && data?.track_inventory ? (

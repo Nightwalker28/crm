@@ -51,6 +51,7 @@ def search_tracked_products(query: str = Query(default="", max_length=100), limi
         ("inventory_stock", "view"),
         ("inventory_adjustments", "create"), ("inventory_adjustments", "edit"),
         ("inventory_transfers", "create"), ("inventory_transfers", "edit"),
+        ("purchase_orders", "create"), ("purchase_orders", "edit"),
     ))
     if not allowed:
         raise HTTPException(status_code=403, detail="Inventory access required")
@@ -60,7 +61,8 @@ def search_tracked_products(query: str = Query(default="", max_length=100), limi
         pattern = f"%{query.strip()}%"
         products = products.filter(or_(CatalogProduct.name.ilike(pattern), CatalogProduct.sku.ilike(pattern), CatalogProduct.barcode == query.strip()))
     rows = products.order_by(CatalogProduct.name, CatalogProduct.id).limit(limit).all()
-    return {"results": [{"id": row.id, "name": row.name, "sku": row.sku} for row in rows]}
+    return {"results": [{"id": row.id, "name": row.name, "sku": row.sku, "cost_price": row.cost_price, "vendor_sku": row.vendor_sku,
+        "preferred_vendor_id": row.preferred_vendor_id} for row in rows]}
 
 
 def _warehouse(row: InventoryWarehouse) -> dict:
@@ -124,7 +126,10 @@ def stock(search: str | None = Query(default=None, max_length=100), warehouse_id
         query = query.filter(available <= 0)
     total = query.count()
     rows = query.order_by(CatalogProduct.name, CatalogProduct.id, InventoryWarehouse.name).offset(pagination.offset).limit(pagination.limit).all()
-    return build_paged_response([{"product_id": product.id, "product_name": product.name, "sku": product.sku, "category_name": product.category.full_name if product.category else None, "warehouse_id": warehouse.id, "warehouse_name": warehouse.name, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved), "reorder_point": product.reorder_point, "reorder_quantity": product.reorder_quantity, "stock_status": product.stock_status} for product, level, warehouse in rows], total, pagination)
+    from app.modules.purchasing.services.purchase_order_services import incoming
+
+    on_order = incoming(db, tenant_id=user.tenant_id, product_ids={product.id for product, _, _ in rows})
+    return build_paged_response([{"incoming": on_order.get((product.id, warehouse.id), Decimal(0)), "product_id": product.id, "product_name": product.name, "sku": product.sku, "category_name": product.category.full_name if product.category else None, "warehouse_id": warehouse.id, "warehouse_name": warehouse.name, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved), "reorder_point": product.reorder_point, "reorder_quantity": product.reorder_quantity, "stock_status": product.stock_status} for product, level, warehouse in rows], total, pagination)
 
 
 @router.post("/stock/export-job", status_code=202)

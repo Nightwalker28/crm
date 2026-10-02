@@ -19,6 +19,7 @@ from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
     InventoryReturn, InventoryReturnLine, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
+from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
@@ -85,6 +86,10 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("inventory_delivery_lines.json", InventoryDeliveryLine),
         ("inventory_returns.json", InventoryReturn),
         ("inventory_return_lines.json", InventoryReturnLine),
+        ("purchase_orders.json", PurchaseOrder),
+        ("purchase_order_lines.json", PurchaseOrderLine),
+        ("purchase_receipts.json", PurchaseReceipt),
+        ("purchase_receipt_lines.json", PurchaseReceiptLine),
         ("inventory_stock_moves.json", InventoryStockMove),
         ("inventory_stock_levels.json", InventoryStockLevel),
     ],

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormFooter } from "@/components/ui/ActionBar";
@@ -167,6 +168,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
         <div className="flex flex-wrap gap-2">
           {doc ? <StatusValue status={getDeliveryStatus(doc.status)} context="record" /> : null}
           {doc?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
+          {doc && doc.status !== "cancelled" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryDeliveries}/${doc.id}/print`}><Printer />Delivery note</Link></Button> : null}
           {canReturn && doc ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryReturns}/new?delivery_id=${doc.id}`}>Record return</Link></Button> : null}
           {doc?.status === "posted" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel delivery</Button> : null}
           {doc?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}

@@ -14,6 +14,7 @@ export type DeliveryLine = {
 
 export type Delivery = {
   id: number; number: string; status: DeliveryStatus; order_id: number; order_number: string | null; customer_name: string | null;
+  contact_name: string | null; delivery_address: string | null;
   warehouse_id: number; warehouse_name: string | null; shipped_on: string | null; carrier: string | null; tracking_number: string | null;
   notes: string | null; posted_at: string | null; posted_by: number | null; cancel_reason: string | null; migrated: boolean;
   created_at: string; is_deleted: boolean; line_count: number; total_quantity: string; lines?: DeliveryLine[];

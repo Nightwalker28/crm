@@ -6,6 +6,7 @@ import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { COUNTRIES } from "@/lib/countries";
@@ -24,6 +25,8 @@ export type OrganizationFormValue = {
   billing_state: string;
   billing_postal_code: string;
   billing_country: string;
+  /** We buy from this account (E4). The same company can be a customer too. */
+  is_vendor: boolean;
   assigned_to: number | null;
   assigned_to_name: string;
 };
@@ -42,6 +45,7 @@ export const EMPTY_ORGANIZATION_FORM: OrganizationFormValue = {
   billing_state: "",
   billing_postal_code: "",
   billing_country: "",
+  is_vendor: false,
   assigned_to: null,
   assigned_to_name: "",
 };
@@ -97,8 +101,24 @@ export function OrganizationFormMainFields({ value, onChange, customFields, cust
 export function OrganizationFormSidebarFields({ value, onChange, moduleFields, mode }: Pick<Props, "value" | "onChange" | "moduleFields" | "mode">) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return (
-    <FormSection title="Ownership" description="Assign responsibility for this account.">
-      {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
-    </FormSection>
+    <>
+      <FormSection title="Ownership" description="Assign responsibility for this account.">
+        {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
+      </FormSection>
+      <FormSection title="Purchasing" description="Mark accounts you buy stock from.">
+        <Field orientation="horizontal">
+          <Switch
+            id="account-is-vendor"
+            checked={value.is_vendor}
+            onCheckedChange={(is_vendor) => onChange({ ...value, is_vendor })}
+            className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
+          >
+            <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
+          </Switch>
+          <FieldLabel htmlFor="account-is-vendor">Vendor</FieldLabel>
+        </Field>
+        <FieldDescription>Vendors can be chosen on purchase orders and as a product&apos;s preferred vendor.</FieldDescription>
+      </FormSection>
+    </>
   );
 }
