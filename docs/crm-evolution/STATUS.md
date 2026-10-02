@@ -24,8 +24,86 @@ Last updated 2026-10-02.
 | Reports rebuild | **Phases 1–3 done (2026-10-01)**: engine v2, library, viewer, builder, shared dashboards, scheduled email and XLSX. Phase 4 deferred. See below | `11-reports.md`, `report_engine.py`, `report_dashboards.py`, `report_subscriptions.py`, `test_report_engine.py`, `test_report_subscriptions.py`, `reports-revamp.spec.ts` |
 | ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
 | ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
-| ERP E2 | **Phase 1 implemented and verified (2026-10-02), uncommitted.** Ledger, backfill, website and sales-order posting, product stock, warehouse settings and stock lists are implemented. See below | `20260826_inventory_ledger`, `20260827_inventory_append_only`, `inventory/services/stock_ledger.py`, `CatalogItemStockPanel`, `inventory-phase1.spec.ts` |
-| **Next, owner-set order** | **Review and commit E2 Phase 1, then build E2 Phase 2 adjustments, counts and transfers (`12-erp-inventory.md` §6).** | |
+| ERP E2 | **Phase 1 committed as `a7a1dc4`; Phases 2–3 implemented and through the consolidated test pass (2026-10-02), uncommitted.** Review findings 1–3 are open and block the commit. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
+| **Next, owner-set order** | **Fix E2 review findings 1–3 (owner to confirm scope), one verification pass, then commit E2.** | |
+
+## ERP E2 — Phases 2 and 3, consolidated test pass (2026-10-02)
+
+Implemented (Codex): adjustment documents (quantity and count modes) and transfer documents
+with draft → post → cancel-by-reversal, draft removal and restore
+(`20260828_inventory_documents`, `document_services.py`, `document_routes.py`, the
+Adjustments and Transfers screens); per-product reorder point and quantity
+(`20260829_inventory_reorder`); low-stock notification and `inventory.stock_low` /
+`inventory.adjustment_posted` automation events (staged with the posting transaction and
+dispatched after commit); automation triggers and record sources; stock report sources and
+templates; *Low stock* and *Out of stock* saved views; stock-move items in the product
+Activity; CSV opening-stock import and levels/movements export through data-transfer jobs;
+inventory in tenant backup and restore (append-only aware).
+
+Consolidated pass, one run of each: `codex-check.sh` (one backend failure, automation
+registry sources for the new triggers, fixed along with a report query's Cartesian-product
+warning; the three affected test modules then passed), `check-design.sh`, lint, production
+build. Browser run at `--workers=1`: `inventory-phase1`, `-phase3`, `scroll-containers` and
+the phase2 render test passed. Three failures, all fixed:
+
+- Two `inventory-phase2` tests: the confirm click used `.last()`, which resolved to the
+  page's *Remove draft* button behind the dialog backdrop. Now scoped to the dialog.
+- `design-rules`: the adjustment and transfer record routes were unreachable because the
+  tenant had no documents. `scripts/seed_module_samples.py` now adds a draft adjustment, a
+  draft transfer and a second sample warehouse (drafts never touch the ledger; idempotent).
+
+Rerun of the failures: `design-rules` passed (119 routes, none unreachable) and
+`inventory-phase2` passed 3 of 3. The whole backend suite was not rerun after the
+two-module fix.
+
+**Review of everything since 2026-10-01 (Claude Code), all fixed in the same pass:**
+
+1. Inventory restore rewrote the catalog: the `inventory_stock` backup carried all
+   `catalog_products` and `catalog_categories`, so a replace or whole-tenant restore overwrote
+   every product and soft-deleted newer ones. Catalog rows are out of the inventory set now
+   (older backups' catalog files are ignored); the restore summary reports real
+   `updated`/`soft_deleted` counts.
+2. The *Low stock* / *Out of stock* saved views were re-created on every read. They are now
+   seeded once, on a user's first visit, so a delete or rename sticks.
+3. Removed adjustment and transfer drafts now live in the shared Recycle Bin (list, restore,
+   purge), like products; the per-list *Show removed* toggle is gone.
+4. A count draft re-snapshots expected quantities on every save, so a stale count is
+   refreshed by saving again instead of being abandoned (`12-erp-inventory.md` §5.5 updated).
+5. **Found while fixing 3, a Phase 1 defect:** the nightly recycle purge hard-deletes
+   products past retention, but every tracked product has `inventory_stock_levels` rows and
+   possibly ledger rows (`ON DELETE RESTRICT`), so one binned tracked product would fail the
+   purge for every tenant on every run. Products with stock history are now kept (the ledger
+   is append-only); for the rest, zero balance rows are cleared first.
+6. Minor: document lists show status chips (`StatusValue`); Stock and the document lists use
+   the shared `Pagination`; the Stock status filter is per balance row with *In stock*, *Low
+   stock* and *Out of stock*, matching the Status column (the product-level `stock_status`
+   query parameter is replaced by `level_filter`); a warehouse used by a live draft cannot be
+   removed; the opening-import error names the warehouse code.
+
+Fix-pass verification: `codex-check.sh` passed whole (compileall, migration replay at
+`20260829_inventory_reorder`, OpenAPI 402 paths, contract drift, backend 1395 of 1395, design
+rules, lint, build). New tests: count refresh, recycle-bin list and restore with tenant
+isolation, warehouse guard, backup set excludes catalog, purge guard statement. The purge SQL
+was exercised on PostgreSQL in a rolled-back transaction: a binned product with history was
+kept, one with only zero balances was purged.
+
+Browser: on the dev server, the full `design-rules` walk (119 routes, none unreachable),
+`scroll-containers` and `recycle-bin-revamp` passed with these changes; the phase2/phase3
+inventory specs timed out there on pages still recompiling after their edits (the API
+returned 200 throughout). On the production build (`scripts/e2e.sh`, below) phase1, phase2
+and phase3 passed with the guards scoped to the inventory, warehouse and recycle-bin routes.
+That run also caught a nested link: document list numbers were a link inside the row's own
+link. The cell is plain text now, as on Stock.
+
+**Browser-test flow changed (owner, 2026-10-02):** `scripts/e2e.sh` serves the production
+build on :3000 in place of the dev server; `--routes` scopes the guards while fixing, and the
+full walk runs once at a module's close. See "Browser tests" in `AGENTS.md`. The same specs
+took 2.6 minutes against 16 on the dev server.
+
+Checked and fine: ledger locking, idempotency and reversal; order fulfil and cancel; three
+access layers on document routes; report engine scoping and subscriptions; E1 line-link
+tenant check; call-log access; migration IDs and downgrades; inventory events kept out of the
+webhook contract per plan.
 
 ## ERP E2 — Phase 1 implementation (2026-10-02)
 
@@ -68,8 +146,8 @@ unreachable. `inventory-phase1.spec.ts` passed in dark
 and light themes, opening the Stock, Movements and Warehouses screens, the warehouse editor,
 and the product Stock tab and adjustment dialog. Frontend lint passed again after adding
 that spec. The repository-wide `alembic check` still reports extensive pre-existing model
-drift across older modules; it is not a clean global check. E2 Phase 1 remains uncommitted;
-Phase 2 remains unstarted.
+drift across older modules; it is not a clean global check. E2 Phase 1 was committed as
+`a7a1dc4`. Phase 2 and 3 changes remain uncommitted until the whole E2 module is complete.
 
 ## ERP E1 — products and services, first class (2026-10-02)
 

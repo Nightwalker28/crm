@@ -18,6 +18,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
 )
 from app.modules.catalog.routes.item_routes import router as catalog_items_router
 from app.modules.inventory.routes.inventory_routes import router as inventory_router
+from app.modules.inventory.routes.document_routes import router as inventory_document_router
 from app.modules.catalog.routes.product_routes import router as catalog_products_router
 from app.modules.catalog.routes.service_routes import router as catalog_services_router
 from app.modules.contracts.routes.contracts_routes import router as contracts_router
@@ -126,6 +127,7 @@ router.include_router(catalog_items_router)
 router.include_router(catalog_products_router)
 router.include_router(catalog_services_router)
 router.include_router(inventory_router)
+router.include_router(inventory_document_router)
 router.include_router(contracts_router)
 router.include_router(documents_router)
 router.include_router(mail_router)

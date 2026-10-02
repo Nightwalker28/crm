@@ -77,6 +77,8 @@ def serialize_product(product: CatalogProduct) -> dict:
         "stock_status": product.stock_status,
         "stock_quantity": product.stock_quantity,
         "track_inventory": bool(product.track_inventory),
+        "reorder_point": product.reorder_point,
+        "reorder_quantity": product.reorder_quantity,
         **catalog_detail_payload(product),
         "barcode": product.barcode,
         "is_public": bool(product.is_public),
@@ -181,6 +183,8 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         stock_status=("out_of_stock" if tracked else _normalize_stock_status(payload.get("stock_status"))),
         stock_quantity=(Decimal("0") if tracked else None),
         track_inventory=int(tracked),
+        reorder_point=_coerce_nonnegative_decimal(payload.get("reorder_point", 0), field_name="reorder_point", required=True),
+        reorder_quantity=_coerce_nonnegative_decimal(payload.get("reorder_quantity", 0), field_name="reorder_quantity", required=True),
         is_public=coerce_catalog_bool(payload.get("is_public", False), field_name="is_public"),
         is_active=coerce_catalog_bool(payload.get("is_active", True), field_name="is_active"),
         created_by_user_id=actor_user_id,
@@ -240,7 +244,7 @@ def update_product(
         raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
     for field, value in normalize_catalog_detail_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
         setattr(product, field, value)
-    required_fields = {"name", "currency", "public_unit_price", "stock_status"}
+    required_fields = {"name", "currency", "public_unit_price", "stock_status", "reorder_point", "reorder_quantity"}
     for field in [
         "name",
         "slug",
@@ -249,6 +253,8 @@ def update_product(
         "barcode",
         "currency",
         "public_unit_price",
+        "reorder_point",
+        "reorder_quantity",
         "is_public",
         "is_active",
     ]:
@@ -268,7 +274,7 @@ def update_product(
             value = str(value).strip()
         elif field == "currency" and value is not None:
             value = normalize_catalog_currency(value)
-        elif field in {"public_unit_price", "stock_quantity"} and value is not None:
+        elif field in {"public_unit_price", "stock_quantity", "reorder_point", "reorder_quantity"} and value is not None:
             value = _coerce_nonnegative_decimal(value, field_name=field, required=field in required_fields)
         elif field == "stock_status" and value is not None:
             value = _normalize_stock_status(value)

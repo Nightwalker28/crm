@@ -43,6 +43,8 @@ type FormState = {
   cost_price: string;
   stock_status: string;
   stock_quantity: string;
+  reorder_point: string;
+  reorder_quantity: string;
   track_inventory: boolean;
   is_public: boolean;
   is_active: boolean;
@@ -63,6 +65,8 @@ const EMPTY_FORM: FormState = {
   cost_price: "",
   stock_status: "untracked",
   stock_quantity: "",
+  reorder_point: "0",
+  reorder_quantity: "0",
   track_inventory: false,
   is_public: false,
   is_active: true,
@@ -83,6 +87,8 @@ function formSeed(record?: CatalogRecord): FormState {
     cost_price: record.cost_price == null ? "" : String(record.cost_price),
     stock_status: record.stock_status ?? "untracked",
     stock_quantity: record.stock_quantity == null ? "" : String(record.stock_quantity),
+    reorder_point: String(record.reorder_point ?? 0),
+    reorder_quantity: String(record.reorder_quantity ?? 0),
     track_inventory: Boolean(record.track_inventory),
     is_public: record.is_public,
     is_active: record.is_active,
@@ -157,6 +163,7 @@ function CatalogRecordFormEditor({
   const [currencyError, setCurrencyError] = useState<string | null>(null);
   const [priceError, setPriceError] = useState<string | null>(null);
   const [stockError, setStockError] = useState<string | null>(null);
+  const [reorderError, setReorderError] = useState<string | null>(null);
   const [costError, setCostError] = useState<string | null>(null);
   const [unitError, setUnitError] = useState<string | null>(null);
   const categories = useCatalogCategories();
@@ -190,12 +197,14 @@ function CatalogRecordFormEditor({
     const nextStockError = isProduct && optionalDecimal(form.stock_quantity) === null
       ? "Stock quantity must be blank or zero or greater."
       : null;
+    const nextReorderError = isProduct && (requiredDecimal(form.reorder_point) === null || requiredDecimal(form.reorder_quantity) === null) ? "Reorder values must be zero or greater." : null;
     const nextCostError = optionalDecimal(form.cost_price) === null ? "Cost must be blank or zero or greater." : null;
     const nextUnitError = form.unit.trim() ? null : "Enter the unit this is sold in, such as unit, hour or box.";
     setNameError(nextNameError);
     setCurrencyError(nextCurrencyError);
     setPriceError(nextPriceError);
     setStockError(nextStockError);
+    setReorderError(nextReorderError);
     setCostError(nextCostError);
     setUnitError(nextUnitError);
     if (nextNameError) document.getElementById("catalog-name")?.focus();
@@ -204,7 +213,8 @@ function CatalogRecordFormEditor({
     else if (nextPriceError) document.getElementById("catalog-price")?.focus();
     else if (nextCostError) document.getElementById("catalog-cost")?.focus();
     else if (nextStockError) document.getElementById("catalog-stock-quantity")?.focus();
-    return !nextNameError && !nextUnitError && !nextCurrencyError && !nextPriceError && !nextCostError && !nextStockError;
+    else if (nextReorderError) document.getElementById("catalog-reorder-point")?.focus();
+    return !nextNameError && !nextUnitError && !nextCurrencyError && !nextPriceError && !nextCostError && !nextStockError && !nextReorderError;
   }
 
   async function submit() {
@@ -212,7 +222,7 @@ function CatalogRecordFormEditor({
     const price = requiredDecimal(form.public_unit_price);
     const stockQuantity = optionalDecimal(form.stock_quantity);
     const cost = optionalDecimal(form.cost_price);
-    if (price == null || stockQuantity === null || cost === null) return;
+    if (price == null || stockQuantity === null || cost === null || requiredDecimal(form.reorder_point) === null || requiredDecimal(form.reorder_quantity) === null) return;
     const payload: CatalogRecordPayload = {
       name: form.name.trim(),
       slug: form.slug.trim().toLowerCase() || null,
@@ -227,6 +237,8 @@ function CatalogRecordFormEditor({
       stock_status: isProduct && !form.track_inventory ? form.stock_status : undefined,
       stock_quantity: isProduct && !(mode === "edit" && record?.track_inventory) && form.track_inventory ? stockQuantity ?? null : undefined,
       track_inventory: isProduct ? form.track_inventory : undefined,
+      reorder_point: isProduct ? Number(form.reorder_point) : undefined,
+      reorder_quantity: isProduct ? Number(form.reorder_quantity) : undefined,
       is_public: form.is_public,
       is_active: form.is_active,
     };
@@ -392,6 +404,7 @@ function CatalogRecordFormEditor({
                 {stockError ? <FieldError id="catalog-stock-error">{stockError}</FieldError> : null}
                 {mode === "edit" && record?.track_inventory ? <FieldDescription>Use Adjust stock on the product record to change this balance.</FieldDescription> : null}
               </Field>
+              {form.track_inventory ? <><Field><FieldLabel htmlFor="catalog-reorder-point">Reorder point</FieldLabel><Input id="catalog-reorder-point" type="number" min="0" step="0.0001" value={form.reorder_point} onChange={(event) => { setForm((current) => ({ ...current, reorder_point: event.target.value })); setReorderError(null); }} aria-invalid={Boolean(reorderError)} aria-describedby={reorderError ? "catalog-reorder-error" : undefined} /><FieldDescription>Alert when available stock reaches this quantity. Zero turns alerts off.</FieldDescription>{reorderError ? <FieldError id="catalog-reorder-error">{reorderError}</FieldError> : null}</Field><Field><FieldLabel htmlFor="catalog-reorder-quantity">Reorder quantity</FieldLabel><Input id="catalog-reorder-quantity" type="number" min="0" step="0.0001" value={form.reorder_quantity} onChange={(event) => { setForm((current) => ({ ...current, reorder_quantity: event.target.value })); setReorderError(null); }} /></Field></> : null}
             </FieldGroup>
           </FormSection>
         ) : null}

@@ -16,11 +16,13 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import Any, Callable
 
 from fastapi import HTTPException, status
-from sqlalchemy import Date, Numeric, String, cast, func, or_, select
+from sqlalchemy import Date, Numeric, String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope, require_role_module_action_access
 from app.modules.finance.models import FinanceIO
+from app.modules.catalog.models import CatalogProduct
+from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.finance.repositories import io_repository
 from app.modules.finance.services.io_search_services import get_finance_module_id
 from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
@@ -120,6 +122,7 @@ class ReportSource:
     aliases: dict[str, str] = dataclass_field(default_factory=dict)
     # The field the record label already shows, so a record list does not repeat it.
     label_field: str | None = None
+    permission_module_key: str | None = None
 
 
 def _enabled(db: Session, *, tenant_id: int, module_key: str, fields: list[ReportField]) -> list[ReportField]:
@@ -338,7 +341,63 @@ def _finance_base_query(db: Session, user, search: str | None):
     )
 
 
+def _inventory_levels_query(db: Session, user, search: str | None):
+    query = db.query(InventoryStockLevel).join(CatalogProduct, CatalogProduct.id == InventoryStockLevel.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(
+        InventoryStockLevel.tenant_id == user.tenant_id, CatalogProduct.tenant_id == user.tenant_id,
+        InventoryWarehouse.tenant_id == user.tenant_id, CatalogProduct.deleted_at.is_(None), CatalogProduct.track_inventory == 1)
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"))) if search else query
+
+
+def _inventory_moves_query(db: Session, user, search: str | None):
+    query = db.query(InventoryStockMove).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(
+        InventoryStockMove.tenant_id == user.tenant_id, CatalogProduct.tenant_id == user.tenant_id,
+        InventoryWarehouse.tenant_id == user.tenant_id)
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"))) if search else query
+
+
+def _inventory_level_fields(db: Session, user) -> list[ReportField]:
+    available = InventoryStockLevel.on_hand - InventoryStockLevel.reserved
+    reorder_point = select(CatalogProduct.reorder_point).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery()
+    product_name = select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery()
+    product_sku = select(CatalogProduct.sku).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery()
+    warehouse_name = select(InventoryWarehouse.name).where(InventoryWarehouse.id == InventoryStockLevel.warehouse_id, InventoryWarehouse.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery()
+    health = case((available <= 0, "out_of_stock"), (reorder_point > 0, case((available <= reorder_point, "low_stock"), else_="in_stock")), else_="in_stock")
+    return [
+        ReportField("product", "Product", "text", product_name),
+        ReportField("sku", "SKU", "text", product_sku),
+        ReportField("warehouse", "Warehouse", "text", warehouse_name),
+        ReportField("on_hand", "On hand", "number", InventoryStockLevel.on_hand),
+        ReportField("reserved", "Reserved", "number", InventoryStockLevel.reserved),
+        ReportField("available", "Available", "number", available),
+        ReportField("reorder_point", "Reorder point", "number", reorder_point),
+        ReportField("low_stock", "Low stock", "boolean", and_(reorder_point > 0, available <= reorder_point)),
+        ReportField("stock_health", "Stock health", "select", health, labels="humanize"),
+    ]
+
+
+def _inventory_move_fields(db: Session, user) -> list[ReportField]:
+    product_name = select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockMove.product_id, CatalogProduct.tenant_id == InventoryStockMove.tenant_id).scalar_subquery()
+    warehouse_name = select(InventoryWarehouse.name).where(InventoryWarehouse.id == InventoryStockMove.warehouse_id, InventoryWarehouse.tenant_id == InventoryStockMove.tenant_id).scalar_subquery()
+    return [
+        ReportField("product", "Product", "text", product_name),
+        ReportField("warehouse", "Warehouse", "text", warehouse_name),
+        ReportField("move_type", "Type", "select", InventoryStockMove.move_type, labels="humanize"),
+        ReportField("quantity", "Change", "number", InventoryStockMove.quantity),
+        ReportField("on_hand_after", "On hand after", "number", InventoryStockMove.on_hand_after),
+        ReportField("occurred_at", "Date", "datetime", InventoryStockMove.occurred_at),
+    ]
+
+
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
+    "inventory_stock": ReportSource(
+        "inventory_stock", "Stock levels", InventoryStockLevel, InventoryStockLevel.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery(), _inventory_levels_query, _inventory_level_fields,
+        None, ("sku", "warehouse", "on_hand", "available", "reorder_point", "stock_health"), label_field="product"),
+    "inventory_movements": ReportSource(
+        "inventory_movements", "Stock movements", InventoryStockMove, InventoryStockMove.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockMove.product_id, CatalogProduct.tenant_id == InventoryStockMove.tenant_id).scalar_subquery(), _inventory_moves_query, _inventory_move_fields,
+        None, ("warehouse", "move_type", "quantity", "on_hand_after", "occurred_at"),
+        default_date_field="occurred_at", label_field="product", permission_module_key="inventory_stock"),
     "sales_leads": ReportSource(
         "sales_leads", "Leads", SalesLead, SalesLead.lead_id,
         lambda db: _full_name(SalesLead.first_name, SalesLead.last_name),
@@ -497,7 +556,7 @@ def resolve_source(db: Session, current_user, module_key: str) -> tuple[ReportSo
     """The source and its fields, after checking the viewer may view the module."""
     source = BUILT_IN_SOURCES.get(module_key)
     if source:
-        _require_view(db, current_user, module_key)
+        _require_view(db, current_user, source.permission_module_key or module_key)
         return source, source.fields(db, current_user)
     return _custom_source(db, current_user, module_key)
 
@@ -514,7 +573,7 @@ def list_sources(db: Session, current_user) -> list[tuple[ReportSource, list[Rep
     results: list[tuple[ReportSource, list[ReportField]]] = []
     for module_key, source in BUILT_IN_SOURCES.items():
         try:
-            require_role_module_action_access(db, user=current_user, module_key=module_key, action="view")
+            _require_view(db, current_user, source.permission_module_key or module_key)
         except (PermissionError, ValueError):
             continue
         results.append((source, source.fields(db, current_user)))

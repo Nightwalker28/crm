@@ -246,6 +246,11 @@ export const USER_COLUMNS: TableColumnOption[] = [
 ];
 
 export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
+  inventory_stock: {
+    visible_columns: ["product", "sku", "category", "warehouse", "on_hand", "available", "reorder_point", "status"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
+    sort: null,
+  },
   tasks: {
     visible_columns: ["title", "priority", "status", "due_at", "assignees", "updated_at"],
     filters: {
@@ -340,6 +345,23 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
 };
 
 export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
+  inventory_stock: {
+    key: "inventory_stock", label: "Stock", route: "/dashboard/inventory/stock",
+    columns: [
+      { key: "product", label: "Product" }, { key: "sku", label: "SKU" }, { key: "category", label: "Category" },
+      { key: "warehouse", label: "Warehouse" }, { key: "on_hand", label: "On hand" },
+      { key: "available", label: "Available" }, { key: "reorder_point", label: "Reorder point" }, { key: "status", label: "Status" },
+    ],
+    filterFields: [
+      { key: "product_name", label: "Product", type: "text", operators: TEXT_OPERATORS },
+      { key: "sku", label: "SKU", type: "text", operators: TEXT_OPERATORS },
+      { key: "on_hand", label: "On hand", type: "number", operators: NUMBER_OPERATORS },
+      { key: "available", label: "Available", type: "number", operators: NUMBER_OPERATORS },
+      { key: "reorder_point", label: "Reorder point", type: "number", operators: NUMBER_OPERATORS },
+      { key: "low_stock", label: "Low stock", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.inventory_stock,
+  },
   tasks: {
     key: "tasks",
     label: "Tasks",

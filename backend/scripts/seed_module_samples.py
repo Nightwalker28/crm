@@ -1,7 +1,8 @@
 """Seed a couple of sample records for the modules the demo seed does not cover.
 
 `seed_demo_crm.py` populates organizations, contacts, opportunities, catalog, finance
-and tasks, but leaves leads, quotes, orders, contracts and support cases empty. That is
+and tasks, but leaves leads, quotes, orders, contracts, support cases and inventory
+documents empty. That is
 fine for a demo walkthrough, but it means every `[id]` detail route for those modules is
 unreachable — so UI audits and browser tests silently skip them.
 
@@ -25,7 +26,12 @@ from app.core.database import SessionLocal
 # Contract carries a foreign key to documents; the model must be registered on the
 # shared metadata before any mapper is configured, even though nothing here uses it.
 from app.modules.documents import models as _documents_models  # noqa: F401
+from app.modules.catalog.models import CatalogProduct
 from app.modules.contracts.models import Contract
+from app.modules.inventory.models import (
+    InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel,
+    InventoryTransfer, InventoryTransferLine, InventoryWarehouse,
+)
 from app.modules.sales.models import SalesLead, SalesOrder, SalesQuote, SalesQuoteDocument
 from app.modules.support.models import SupportCase
 from app.modules.user_management.models import Tenant, User
@@ -156,7 +162,67 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
         )
         bump("support_cases", made)
 
+    seed_inventory_drafts(db, tenant, bump)
     return created
+
+
+def seed_inventory_drafts(db: Session, tenant: Tenant, bump) -> None:
+    """One draft adjustment and one draft transfer. Drafts never post to the stock ledger,
+    so balances are untouched; they exist so the document record routes are reachable."""
+    warehouse = (
+        db.query(InventoryWarehouse)
+        .filter_by(tenant_id=tenant.id, deleted_at=None, is_active=1)
+        .order_by(InventoryWarehouse.is_default.desc(), InventoryWarehouse.id.asc())
+        .first()
+    )
+    product = (
+        db.query(CatalogProduct)
+        .filter_by(tenant_id=tenant.id, deleted_at=None, is_active=1, track_inventory=1)
+        .order_by(CatalogProduct.id.asc())
+        .first()
+    )
+    if warehouse is None or product is None:
+        return
+
+    level = db.query(InventoryStockLevel).filter_by(
+        tenant_id=tenant.id, warehouse_id=warehouse.id, product_id=product.id,
+    ).one_or_none()
+    adjustment, made = get_or_create(
+        db,
+        InventoryAdjustment,
+        tenant_id=tenant.id,
+        number="SAMPLE-ADJ-0001",
+        defaults={"warehouse_id": warehouse.id, "mode": "quantity", "reason": "Sample adjustment"},
+    )
+    if made:
+        adjustment.lines.append(InventoryAdjustmentLine(
+            tenant_id=tenant.id, product_id=product.id,
+            expected=level.on_hand if level else Decimal("0"), delta=Decimal("1"),
+        ))
+        db.flush()
+    bump("inventory_adjustments", made)
+
+    target, made = get_or_create(
+        db,
+        InventoryWarehouse,
+        tenant_id=tenant.id,
+        code="SAMPLE-WH",
+        defaults={"name": "Sample warehouse"},
+    )
+    bump("inventory_warehouses", made)
+    if target.id == warehouse.id or target.deleted_at is not None or not target.is_active:
+        return
+    transfer, made = get_or_create(
+        db,
+        InventoryTransfer,
+        tenant_id=tenant.id,
+        number="SAMPLE-TRF-0001",
+        defaults={"from_warehouse_id": warehouse.id, "to_warehouse_id": target.id},
+    )
+    if made:
+        transfer.lines.append(InventoryTransferLine(tenant_id=tenant.id, product_id=product.id, quantity=Decimal("1")))
+        db.flush()
+    bump("inventory_transfers", made)
 
 
 def main() -> None:
@@ -179,7 +245,7 @@ def main() -> None:
 
         print(f"Sample records for {tenant.name} ({tenant.slug}):")
         for table, count in sorted(created.items()):
-            print(f"  {table:20} +{count}")
+            print(f"  {table:24} +{count}")
         print("Re-running is a no-op; records are keyed by reference number.")
     except Exception:
         db.rollback()

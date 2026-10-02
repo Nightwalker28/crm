@@ -81,6 +81,7 @@ class InventoryAdjustment(Base):
         UniqueConstraint("tenant_id", "number", name="uq_inventory_adjustment_number"),
         CheckConstraint("mode IN ('quantity', 'count')", name="ck_inventory_adjustment_mode"),
         CheckConstraint("status IN ('draft', 'posted', 'cancelled')", name="ck_inventory_adjustment_status"),
+        Index("ix_inventory_adjustments_tenant_status_id", "tenant_id", "status", "id"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
@@ -113,3 +114,45 @@ class InventoryAdjustmentLine(Base):
     delta = Column(Numeric(12, 4))
 
     adjustment = relationship("InventoryAdjustment", back_populates="lines")
+
+
+class InventoryTransfer(Base):
+    __tablename__ = "inventory_transfers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_inventory_transfer_number"),
+        CheckConstraint("status IN ('draft', 'posted', 'cancelled')", name="ck_inventory_transfer_status"),
+        CheckConstraint("from_warehouse_id <> to_warehouse_id", name="ck_inventory_transfer_distinct_warehouses"),
+        Index("ix_inventory_transfers_tenant_status_id", "tenant_id", "status", "id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    number = Column(String(50), nullable=False)
+    from_warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
+    to_warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
+    status = Column(String(20), nullable=False, server_default="draft")
+    notes = Column(Text)
+    posted_at = Column(DateTime(timezone=True))
+    posted_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    deleted_at = Column(DateTime(timezone=True))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    lines = relationship("InventoryTransferLine", back_populates="transfer", cascade="all, delete-orphan")
+    from_warehouse = relationship("InventoryWarehouse", foreign_keys=[from_warehouse_id])
+    to_warehouse = relationship("InventoryWarehouse", foreign_keys=[to_warehouse_id])
+
+
+class InventoryTransferLine(Base):
+    __tablename__ = "inventory_transfer_lines"
+    __table_args__ = (
+        UniqueConstraint("transfer_id", "product_id", name="uq_inventory_transfer_line_product"),
+        CheckConstraint("quantity > 0", name="ck_inventory_transfer_positive_quantity"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    transfer_id = Column(BigInteger, ForeignKey("inventory_transfers.id", ondelete="CASCADE"), nullable=False, index=True)
+    product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="RESTRICT"), nullable=False)
+    quantity = Column(Numeric(12, 4), nullable=False)
+
+    transfer = relationship("InventoryTransfer", back_populates="lines")

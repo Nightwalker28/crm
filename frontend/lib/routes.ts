@@ -20,6 +20,8 @@ export const DASHBOARD_ROUTES = {
   services: "/dashboard/catalog/services",
   inventoryStock: "/dashboard/inventory/stock",
   inventoryMovements: "/dashboard/inventory/movements",
+  inventoryAdjustments: "/dashboard/inventory/adjustments",
+  inventoryTransfers: "/dashboard/inventory/transfers",
   reports: "/dashboard/reports",
 } as const;
 

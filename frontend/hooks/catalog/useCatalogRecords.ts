@@ -20,6 +20,8 @@ export type CatalogRecord = {
   public_unit_price: number | string;
   stock_status?: "untracked" | "in_stock" | "out_of_stock" | "preorder";
   stock_quantity?: number | string | null;
+  reorder_point?: number | string;
+  reorder_quantity?: number | string;
   track_inventory?: boolean;
   /** Products only. */
   barcode?: string | null;
@@ -45,6 +47,8 @@ export type CatalogRecordPayload = {
   public_unit_price: number;
   stock_status?: string;
   stock_quantity?: number | null;
+  reorder_point?: number;
+  reorder_quantity?: number;
   track_inventory?: boolean;
   barcode?: string | null;
   category_id?: number | null;

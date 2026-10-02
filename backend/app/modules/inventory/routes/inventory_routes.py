@@ -1,12 +1,13 @@
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Response, UploadFile
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.module_filters import apply_filter_conditions, parse_filter_conditions
 from app.core.access_control import PermissionPolicy
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
@@ -14,6 +15,7 @@ from app.core.security import require_user
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services import inventory_services
+from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload
 from app.modules.user_management.models import User
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -38,6 +40,25 @@ class QuickAdjustmentPayload(BaseModel):
         if (self.quantity is None) == (self.change is None):
             raise ValueError("Provide either a new quantity or a change")
         return self
+
+
+@router.get("/products/search")
+def search_tracked_products(query: str = Query(default="", max_length=100), limit: int = Query(default=10, ge=1, le=20), db: Session = Depends(get_db), user=Depends(require_user)):
+    policy = PermissionPolicy(db, user)
+    allowed = any(policy.can_view_module(module) and policy.can_perform_action(module, action) for module, action in (
+        ("inventory_stock", "view"),
+        ("inventory_adjustments", "create"), ("inventory_adjustments", "edit"),
+        ("inventory_transfers", "create"), ("inventory_transfers", "edit"),
+    ))
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Inventory access required")
+    products = db.query(CatalogProduct).filter(CatalogProduct.tenant_id == user.tenant_id,
+        CatalogProduct.deleted_at.is_(None), CatalogProduct.is_active == 1, CatalogProduct.track_inventory == 1)
+    if query.strip():
+        pattern = f"%{query.strip()}%"
+        products = products.filter(or_(CatalogProduct.name.ilike(pattern), CatalogProduct.sku.ilike(pattern), CatalogProduct.barcode == query.strip()))
+    rows = products.order_by(CatalogProduct.name, CatalogProduct.id).limit(limit).all()
+    return {"results": [{"id": row.id, "name": row.name, "sku": row.sku} for row in rows]}
 
 
 def _warehouse(row: InventoryWarehouse) -> dict:
@@ -74,20 +95,55 @@ def restore_warehouse(warehouse_id: int, db: Session = Depends(get_db), user=Dep
 
 
 @router.get("/stock")
-def stock(search: str | None = Query(default=None, max_length=100), warehouse_id: int | None = Query(default=None, gt=0), stock_status: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
+def stock(search: str | None = Query(default=None, max_length=100), warehouse_id: int | None = Query(default=None, gt=0), level_filter: str | None = Query(default=None, pattern="^(in_stock|low_stock|out_of_stock)$"), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
     query = db.query(CatalogProduct, InventoryStockLevel, InventoryWarehouse).join(InventoryStockLevel, InventoryStockLevel.product_id == CatalogProduct.id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(CatalogProduct.tenant_id == user.tenant_id, InventoryStockLevel.tenant_id == user.tenant_id, InventoryWarehouse.tenant_id == user.tenant_id, CatalogProduct.deleted_at.is_(None), CatalogProduct.track_inventory == 1)
     if search:
         pattern = f"%{search.strip()}%"
         query = query.filter(or_(CatalogProduct.name.ilike(pattern), CatalogProduct.sku.ilike(pattern)))
     if warehouse_id:
         query = query.filter(InventoryStockLevel.warehouse_id == warehouse_id)
-    if stock_status:
-        if stock_status not in {"in_stock", "out_of_stock"}:
-            raise HTTPException(status_code=400, detail="Invalid stock status")
-        query = query.filter(CatalogProduct.stock_status == stock_status)
+    available = InventoryStockLevel.on_hand - InventoryStockLevel.reserved
+    field_map = {"on_hand": {"expression": InventoryStockLevel.on_hand, "type": "number"},
+        "available": {"expression": available, "type": "number"},
+        "reorder_point": {"expression": CatalogProduct.reorder_point, "type": "number"},
+        "low_stock": {"expression": (CatalogProduct.reorder_point > 0) & (available <= CatalogProduct.reorder_point), "type": "boolean"},
+        "sku": {"expression": CatalogProduct.sku, "type": "text"},
+        "product_name": {"expression": CatalogProduct.name, "type": "text"},
+        "warehouse_id": {"expression": InventoryWarehouse.id, "type": "number"}}
+    query = apply_filter_conditions(query, conditions=parse_filter_conditions(filters_all), logic="all", field_map=field_map)
+    query = apply_filter_conditions(query, conditions=parse_filter_conditions(filters_any), logic="any", field_map=field_map)
+    # Per balance row, the same rule as the list's Status column: out of stock at or below
+    # zero, low at or below a positive reorder point, otherwise in stock.
+    if level_filter == "in_stock":
+        query = query.filter(available > 0, or_(CatalogProduct.reorder_point <= 0, available > CatalogProduct.reorder_point))
+    elif level_filter == "low_stock":
+        query = query.filter(available > 0, CatalogProduct.reorder_point > 0, available <= CatalogProduct.reorder_point)
+    elif level_filter == "out_of_stock":
+        query = query.filter(available <= 0)
     total = query.count()
     rows = query.order_by(CatalogProduct.name, CatalogProduct.id, InventoryWarehouse.name).offset(pagination.offset).limit(pagination.limit).all()
-    return build_paged_response([{"product_id": product.id, "product_name": product.name, "sku": product.sku, "warehouse_id": warehouse.id, "warehouse_name": warehouse.name, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved), "stock_status": product.stock_status} for product, level, warehouse in rows], total, pagination)
+    return build_paged_response([{"product_id": product.id, "product_name": product.name, "sku": product.sku, "category_name": product.category.full_name if product.category else None, "warehouse_id": warehouse.id, "warehouse_name": warehouse.name, "on_hand": level.on_hand, "reserved": level.reserved, "available": Decimal(level.on_hand) - Decimal(level.reserved), "reorder_point": product.reorder_point, "reorder_quantity": product.reorder_quantity, "stock_status": product.stock_status} for product, level, warehouse in rows], total, pagination)
+
+
+@router.post("/stock/export-job", status_code=202)
+def export_stock(kind: str = Query(pattern="^(levels|movements)$"), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _export=Depends(require_action_access("inventory_stock", "export"))):
+    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key="inventory_stock", operation_type="export", payload={"kind": kind})
+    enqueue_export_job(job.id)
+    return {"job_id": job.id}
+
+
+@router.post("/stock/opening-import-job", status_code=202)
+async def import_opening_stock(file: UploadFile = File(...), db: Session = Depends(get_db), user=Depends(require_user), _stock=Depends(require_module_access("inventory_stock")), _stock_view=Depends(require_action_access("inventory_stock", "view")), _module=Depends(require_module_access("inventory_adjustments")), _create=Depends(require_action_access("inventory_adjustments", "create")), _edit=Depends(require_action_access("inventory_adjustments", "edit"))):
+    content = await file.read(2_000_001)
+    if len(content) > 2_000_000 or not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=400, detail="Upload a CSV file no larger than 2 MB")
+    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key="inventory_stock", operation_type="import", payload={"filename": file.filename})
+    path = persist_job_upload(job_id=job.id, filename="opening-stock.csv", file_bytes=content)
+    job.payload = {**(job.payload or {}), "source_file_path": path}
+    db.add(job)
+    db.commit()
+    enqueue_import_job(job.id)
+    return {"job_id": job.id}
 
 
 @router.get("/movements")

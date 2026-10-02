@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 
 SUPPORTED_CHANNEL_PROVIDERS = {"slack", "teams"}
 CRM_EVENT_TYPES = {
+    "inventory.stock_low",
+    "inventory.adjustment_posted",
     "lead.created",
     "lead.updated",
     "lead.converted",

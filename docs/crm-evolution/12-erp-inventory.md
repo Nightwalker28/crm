@@ -335,7 +335,8 @@ CRUD   /inventory/warehouses                admin
   for 4 products in Main warehouse. It can be reversed by cancelling, not edited").
 - **Stock count** is an adjustment in `count` mode: choose a warehouse and products (or a
   category), the expected quantity is snapshotted, the counter fills *Counted*, and the
-  *Difference* column shows what posting will do (Odoo).
+  *Difference* column shows what posting will do (Odoo). Each save of the draft re-snapshots
+  the expected quantities; posting is refused if stock moved after the last save.
 - **Movements** reads like a bank statement: date, product, warehouse, type, document
   (linked), change (+/−), on hand after, by whom.
 

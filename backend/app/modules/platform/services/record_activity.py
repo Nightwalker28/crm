@@ -25,6 +25,7 @@ import base64
 import binascii
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from decimal import Decimal
 from typing import Any, Callable
 
 from fastapi import HTTPException, status
@@ -33,6 +34,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.core.access_control import PermissionPolicy
 from app.modules.calendar.models import CalendarEvent
+from app.modules.inventory.models import InventoryStockMove, InventoryWarehouse
 from app.modules.mail.models import MailMessage, MailRecordAssociation
 from app.modules.platform.models import RecordComment, RecordFollowUp
 from app.modules.platform.services.record_comments import get_record_reference
@@ -488,6 +490,30 @@ def _fetch_whatsapp(db, *, tenant_id, module_key, entity_id, limit, cursor, view
 SUPPORT_CASES_MODULE_KEY = "support_cases"
 
 
+def _fetch_stock_moves(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
+    if module_key != "catalog_products":
+        return []
+    try:
+        product_id = int(entity_id)
+    except (TypeError, ValueError):
+        return []
+    query = db.query(InventoryStockMove, InventoryWarehouse).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(
+        InventoryStockMove.tenant_id == tenant_id, InventoryStockMove.product_id == product_id,
+        InventoryWarehouse.tenant_id == tenant_id)
+    predicate = _keyset_filter(InventoryStockMove.occurred_at, InventoryStockMove.id, item_type="stock_move", cursor=cursor)
+    if predicate is not None:
+        query = query.filter(predicate)
+    rows = query.order_by(None).order_by(InventoryStockMove.occurred_at.desc(), InventoryStockMove.id.desc()).limit(limit).all()
+    actor_ids = {move.created_by for move, _ in rows if move.created_by is not None}
+    actors = {user.id: user for user in db.query(User).filter(User.tenant_id == tenant_id, User.id.in_(actor_ids)).all()} if actor_ids else {}
+    return [ActivityItem(type="stock_move", source_id=move.id, source_module_key="inventory_stock",
+        occurred_at=_as_utc(move.occurred_at), title=f"Stock {move.move_type.replace('_', ' ')}",
+        summary=f"{Decimal(move.quantity):+} in {warehouse.name}" + (f" · {move.reason}" if move.reason else ""),
+        actor_user_id=move.created_by, actor_name=_user_label(actors.get(move.created_by)),
+        capabilities=(), meta={"warehouse_id": warehouse.id, "source_type": move.source_type, "source_id": move.source_id})
+        for move, warehouse in rows]
+
+
 def _fetch_case_replies(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
     """The support case conversation.
 
@@ -557,6 +583,7 @@ class _Adapter:
 
 
 ADAPTERS: tuple[_Adapter, ...] = (
+    _Adapter("stock_move", _fetch_stock_moves, "inventory_stock", frozenset({"catalog_products"})),
     # Record-scoped: the thread belongs to the case, so it inherits the case's own
     # permission and the adapter is inert for every other module.
     _Adapter("case_reply", _fetch_case_replies, None, frozenset({SUPPORT_CASES_MODULE_KEY})),

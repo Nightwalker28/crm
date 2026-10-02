@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { InventoryDataTransferActions } from "@/components/inventory/InventoryDataTransferActions";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useMovements, useWarehouses } from "@/hooks/inventory/useInventory";
 import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -24,6 +26,8 @@ export default function InventoryMovementsPage() {
   const [warehouseId, setWarehouseId] = useState("");
   const [moveType, setMoveType] = useState("");
   const warehouses = useWarehouses();
+  const { modules } = useAccessibleModules();
+  const stockActions = modules.find((module) => module.name === "inventory_stock")?.actions;
   const moves = useMovements(cursor, productId, warehouseId, moveType);
   const showWarehouse = (warehouses.data?.filter((row) => row.is_active).length ?? 0) > 1;
   function changeFilter(update: () => void) { update(); setCursor(null); setHistory([]); }
@@ -32,6 +36,7 @@ export default function InventoryMovementsPage() {
       {showWarehouse ? <Select value={warehouseId || "all"} onValueChange={(value) => changeFilter(() => setWarehouseId(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter warehouse"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All warehouses</SelectItem>{warehouses.data?.filter((row) => row.is_active).map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent></Select> : null}
       <Select value={moveType || "all"} onValueChange={(value) => changeFilter(() => setMoveType(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter movement type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{["opening", "adjustment", "sales_order", "website_order", "reversal"].map((type) => <SelectItem key={type} value={type}>{type.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select>
     </div>
+    <InventoryDataTransferActions kind="movements" canExport={Boolean(stockActions?.can_export)} />
     <RecordTable label="Stock movements" rows={moves.data?.results ?? []} rowKey={(row) => row.id}
       isLoading={moves.isLoading} isPermissionDenied={isForbiddenError(moves.error)} hasError={Boolean(moves.error) && !isForbiddenError(moves.error)} onRetry={() => void moves.refetch()}
       emptyState={{ icon: History, title: "No movements", description: "Opening stock, orders and adjustments appear here when posted." }}

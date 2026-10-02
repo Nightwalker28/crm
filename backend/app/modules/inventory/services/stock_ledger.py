@@ -4,13 +4,46 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
+import logging
 
 from fastapi import HTTPException
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+from app.modules.platform.models import CrmEvent
+from app.modules.user_management.models import User, UserStatus
+from app.core.access_control import PermissionPolicy
+from app.modules.platform.services.notifications import create_notification
+
+
+logger = logging.getLogger(__name__)
+
+
+@event.listens_for(Session, "after_commit")
+def _dispatch_inventory_events(session: Session) -> None:
+    from app.modules.platform.services.crm_events import enqueue_crm_event_automation
+
+    for event_id in session.info.pop("inventory_automation_event_ids", []):
+        try:
+            enqueue_crm_event_automation(event_id)
+        except Exception:
+            logger.exception("Could not dispatch inventory automation", extra={"event_id": event_id})
+
+
+@event.listens_for(Session, "after_rollback")
+def _discard_inventory_events(session: Session) -> None:
+    session.info.pop("inventory_automation_event_ids", None)
+
+
+def stage_inventory_event(db: Session, *, tenant_id: int, actor_user_id: int | None, event_type: str, entity_type: str, entity_id: int, payload: dict) -> None:
+    """Persist automation input with the stock transaction; dispatch only after commit."""
+    record = CrmEvent(tenant_id=tenant_id, actor_user_id=actor_user_id, event_type=event_type,
+        entity_type=entity_type, entity_id=str(entity_id), payload={"entity_type": entity_type, "entity_id": str(entity_id), **payload})
+    db.add(record)
+    db.flush()
+    db.info.setdefault("inventory_automation_event_ids", []).append(record.id)
 
 
 @dataclass(frozen=True)
@@ -25,6 +58,7 @@ class MoveSpec:
     reverses_move_id: int | None = None
     reason: str | None = None
     note: str | None = None
+    unit_cost: Decimal | None = None
 
 
 def _quantity(value: Decimal) -> Decimal:
@@ -116,6 +150,7 @@ def post_moves(
     levels = {}
     for product_id, warehouse_id in sorted({(spec.product_id, spec.warehouse_id) for spec, _ in normalized}):
         levels[(product_id, warehouse_id)] = _level_for_update(db, tenant_id=tenant_id, product_id=product_id, warehouse_id=warehouse_id)
+    available_before = {key: Decimal(level.on_hand) - Decimal(level.reserved) for key, level in levels.items()}
 
     posted = []
     touched = set()
@@ -147,7 +182,7 @@ def post_moves(
             tenant_id=tenant_id, product_id=spec.product_id, warehouse_id=spec.warehouse_id,
             quantity=quantity, move_type=spec.move_type, source_type=spec.source_type,
             source_id=spec.source_id, source_line_id=spec.source_line_id,
-            reverses_move_id=spec.reverses_move_id, unit_cost=products[spec.product_id].cost_price,
+            reverses_move_id=spec.reverses_move_id, unit_cost=spec.unit_cost if spec.unit_cost is not None else products[spec.product_id].cost_price,
             on_hand_after=after, reason=spec.reason, note=spec.note, created_by=actor_user_id,
         )
         db.add(level)
@@ -161,6 +196,28 @@ def post_moves(
         product.stock_quantity = total
         product.stock_status = "in_stock" if total > 0 else "out_of_stock"
         db.add(product)
+    for (product_id, warehouse_id), level in levels.items():
+        if product_id not in touched:
+            continue
+        product = products[product_id]
+        threshold = Decimal(product.reorder_point or 0)
+        available_now = Decimal(level.on_hand) - Decimal(level.reserved)
+        if threshold <= 0 or available_before[(product_id, warehouse_id)] <= threshold or available_now > threshold:
+            continue
+        warehouse = warehouses[warehouse_id]
+        for user in db.query(User).filter(User.tenant_id == tenant_id, User.is_active == UserStatus.active).all():
+            policy = PermissionPolicy(db, user)
+            if policy.can_view_module("inventory_stock") and policy.can_perform_action("inventory_stock", "view"):
+                create_notification(db, tenant_id=tenant_id, user_id=user.id, category="inventory_stock_low",
+                    title=f"Low stock: {product.name}", message=f"{product.name} has {available_now} available in {warehouse.name}; reorder point {threshold}.",
+                    link_url=f"/dashboard/catalog/products/{product.id}?tab=stock",
+                    metadata={"product_id": product_id, "warehouse_id": warehouse_id, "available": str(available_now)}, commit=False)
+        stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
+            event_type="inventory.stock_low", entity_type="catalog_product", entity_id=product_id,
+            payload={"product_id": product_id, "warehouse_id": warehouse_id, "product_name": product.name,
+                "warehouse_name": warehouse.name, "available": str(available_now), "reorder_point": str(threshold),
+                "reorder_quantity": str(product.reorder_quantity or 0), "record_label": product.name,
+                "record_url": f"/dashboard/catalog/products/{product_id}?tab=stock"})
     db.flush()
     return posted
 

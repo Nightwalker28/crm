@@ -75,6 +75,8 @@ USER_OPERATORS = ("equals", "not_equals", "is_empty", "is_not_empty", *CHANGE_OP
 
 
 AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
+    AutomationTrigger("inventory.stock_low", "inventory_stock", "Stock low", "Available stock crosses the reorder point."),
+    AutomationTrigger("inventory.adjustment_posted", "inventory_adjustments", "Adjustment posted", "A stock adjustment is posted."),
     AutomationTrigger("lead.created", "sales_leads", "Lead created", "A sales lead is created."),
     AutomationTrigger("lead.updated", "sales_leads", "Lead updated", "A sales lead is updated."),
     AutomationTrigger("lead.status_changed", "sales_leads", "Lead status changed", "A sales lead status changes."),
@@ -272,7 +274,7 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
-RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io")
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
 # note on a task or a document had nowhere to render.
 NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "finance_io")
@@ -493,6 +495,11 @@ class AutomationTemplate:
 
 
 AUTOMATION_TEMPLATES: tuple[AutomationTemplate, ...] = (
+    AutomationTemplate(
+        "inventory_low_stock_task", "Review low stock", "Create a task when a product crosses its reorder point.",
+        "Inventory", "inventory.stock_low",
+        ({"type": "create_task", "title": "Reorder {{payload.record_label}}", "description": "Available: {{payload.available}} in {{payload.warehouse_name}}. Reorder quantity: {{payload.reorder_quantity}}.", "priority": "high", "due_in_days": 0, "assignee_user_id": "actor"},),
+    ),
     AutomationTemplate(
         "new_lead_follow_up",
         "Follow up on every new lead",

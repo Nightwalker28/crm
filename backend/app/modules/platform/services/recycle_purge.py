@@ -17,6 +17,9 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("sales_quotes", "quote_id"),
     ("finance_io", "id"),
     ("finance_pos_invoices", "id"),
+    # Removed inventory drafts go before products: their lines reference products.
+    ("inventory_adjustments", "id"),
+    ("inventory_transfers", "id"),
     ("catalog_products", "id"),
     ("catalog_services", "id"),
     ("tasks", "id"),
@@ -25,6 +28,31 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("custom_module_records", "id"),
 )
 RECORD_TAG_MODULE_KEYS = {"sales_leads": "sales_leads"}
+# A product with stock history is kept: the ledger is append-only and references it
+# (ON DELETE RESTRICT). Without this guard one such product fails every purge run.
+PURGE_GUARDS = {
+    "catalog_products": """
+            AND NOT EXISTS (SELECT 1 FROM inventory_stock_moves m WHERE m.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_adjustment_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)""",
+}
+# A product without history can still hold zero balance rows, which also restrict the delete.
+PURGE_PREPARE = {
+    "catalog_products": text(
+        """
+        DELETE FROM inventory_stock_levels
+        USING catalog_products
+        WHERE inventory_stock_levels.product_id = catalog_products.id
+            AND inventory_stock_levels.tenant_id = catalog_products.tenant_id
+            AND inventory_stock_levels.on_hand = 0
+            AND inventory_stock_levels.reserved = 0
+            AND catalog_products.deleted_at < now() - (:retention_days * interval '1 day')
+            AND NOT EXISTS (SELECT 1 FROM inventory_stock_moves m WHERE m.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_adjustment_lines l WHERE l.product_id = catalog_products.id)
+            AND NOT EXISTS (SELECT 1 FROM inventory_transfer_lines l WHERE l.product_id = catalog_products.id)
+        """
+    ),
+}
 
 
 def _quote_purge_identifier(identifier: str) -> str:
@@ -56,7 +84,7 @@ def _build_purge_statement(table_name: str, pk_column: str):
         WITH rows_to_delete AS (
             SELECT {pk_identifier}
             FROM {table_identifier}
-            WHERE deleted_at < now() - (:retention_days * interval '1 day')
+            WHERE deleted_at < now() - (:retention_days * interval '1 day'){PURGE_GUARDS.get(table_name, "")}
             ORDER BY deleted_at ASC, {pk_identifier} ASC
             LIMIT :batch_size
         ){tag_cleanup}
@@ -72,6 +100,8 @@ def purge_expired_recycle_bin_records(db: Session, *, retention_days: int | None
     limit = batch_size if batch_size is not None else settings.RECYCLE_BIN_PURGE_BATCH_SIZE
     purged: dict[str, int] = {}
     for table_name, pk_column in PURGE_TARGETS:
+        if table_name in PURGE_PREPARE:
+            db.execute(PURGE_PREPARE[table_name], {"retention_days": days})
         result = db.execute(
             _build_purge_statement(table_name, pk_column),
             {"retention_days": days, "batch_size": limit},

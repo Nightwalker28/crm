@@ -22,6 +22,10 @@ from app.modules.finance.services.io_search_services import (
     list_deleted_insertion_orders,
     restore_insertion_order,
 )
+from fastapi.encoders import jsonable_encoder
+
+from app.modules.inventory.repositories import document_repository as inventory_documents
+from app.modules.inventory.services.document_services import restore_draft as restore_inventory_draft, serialize_document as serialize_inventory_document
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.document_services import list_deleted_documents, restore_document
 from app.modules.platform.services.activity_logs import log_activity
@@ -80,7 +84,10 @@ SUPPORTED_RECYCLE_MODULES = {
     "documents",
     "catalog_products",
     "catalog_services",
+    "inventory_adjustments",
+    "inventory_transfers",
 }
+INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
 
 def list_recycle_items(
@@ -286,6 +293,23 @@ def list_recycle_items(
             }
             for item in items
         ]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in INVENTORY_DOCUMENT_KINDS:
+        kind = INVENTORY_DOCUMENT_KINDS[module_key]
+        query = inventory_documents.deleted_list(db, tenant_id=tenant_id, kind=kind)
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = serialize_inventory_document(db, tenant_id=tenant_id, kind=kind, doc=item, include_lines=False)
+            serialized.append({
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.number,
+                "subtitle": details["warehouse_name"] if kind == "adjustments" else f"{details['from_warehouse_name']} → {details['to_warehouse_name']}",
+                "deleted_at": item.deleted_at,
+                "details": jsonable_encoder(details),
+            })
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if custom_modules.is_custom_module_key(db, tenant_id=tenant_id, module_key=module_key):
@@ -498,6 +522,11 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
+
+    if module_key in INVENTORY_DOCUMENT_KINDS:
+        kind = INVENTORY_DOCUMENT_KINDS[module_key]
+        restored = restore_inventory_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, kind=kind, document_id=record_id)
+        return jsonable_encoder(serialize_inventory_document(db, tenant_id=current_user.tenant_id, kind=kind, doc=restored))
 
     if custom_modules.is_custom_module_key(db, tenant_id=current_user.tenant_id, module_key=module_key):
         return custom_modules.restore_record(

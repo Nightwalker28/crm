@@ -36,6 +36,7 @@ MODULE_DISPLAY_NAMES = {
     "sales_quotes": "Quotes",
     "finance_io": "Insertion Orders",
     "reports": "Reports",
+    "inventory_stock": "Inventory stock",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -51,6 +52,7 @@ MODULE_LINKS = {
     "sales_quotes": "/dashboard/sales/quotes",
     "finance_io": "/dashboard/finance/insertion-orders",
     "reports": "/dashboard/reports",
+    "inventory_stock": "/dashboard/inventory/stock",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
@@ -86,17 +88,13 @@ def require_data_transfer_job_access(
     job: DataTransferJob,
     action: str = "view",
 ) -> None:
-    require_data_transfer_module_access(
-        db,
-        current_user=current_user,
-        module_key=job.module_key,
-        action=action,
-    )
+    access_module = "inventory_adjustments" if job.module_key == "inventory_stock" and job.operation_type == "import" and action == "create" else job.module_key
+    require_data_transfer_module_access(db, current_user=current_user, module_key=access_module, action=action)
     if job.operation_type == "report_export":
         source_key = (job.payload or {}).get("source_module_key")
         if not isinstance(source_key, str):
             raise HTTPException(status_code=404, detail="Report export source is unavailable")
-        require_data_transfer_module_access(db, current_user=current_user, module_key=source_key, action="view")
+        require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_stock" if source_key == "inventory_movements" else source_key, action="view")
 
 
 def data_transfer_download_action(job: DataTransferJob) -> str:
@@ -586,6 +584,15 @@ def process_import_job(*, job_id: int) -> None:
                     skip_duplicates=False,
                     create_new_records=False,
                 )
+            elif module_key == "inventory_stock":
+                from app.modules.inventory.services.opening_import import import_opening_stock
+
+                if current_user is None:
+                    raise ValueError("Opening stock import has no actor")
+                for action in ("create", "edit"):
+                    require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_adjustments", action=action)
+                update_job_progress(db, job, progress_percent=65, progress_message="Posting opening stock.")
+                summary = import_opening_stock(db, tenant_id=job.tenant_id, actor_user_id=current_user.id, file_bytes=file_bytes, job_id=job.id)
             else:
                 raise ValueError(f"Unsupported import module '{module_key}'.")
 
@@ -773,6 +780,33 @@ def process_export_job(*, job_id: int) -> None:
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing quotes export.")
             content = export_quotes_to_csv(records, field_keys=payload.get("field_keys"))
             file_name = "sales_quotes.csv"
+            media_type = "text/csv"
+        elif module_key == "inventory_stock":
+            from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+            from app.modules.catalog.models import CatalogProduct
+            from app.core.module_export import dict_rows_to_csv_bytes
+
+            if current_user is None:
+                raise ValueError("Inventory export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_stock", action="export")
+            export_kind = payload.get("kind")
+            if export_kind == "levels":
+                rows = db.query(InventoryStockLevel, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockLevel.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(InventoryStockLevel.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockLevel.id).all()
+                headers = ("sku", "product", "warehouse_code", "on_hand", "reserved", "available", "reorder_point")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"sku": product.sku, "product": product.name, "warehouse_code": warehouse.code,
+                    "on_hand": level.on_hand, "reserved": level.reserved, "available": level.on_hand - level.reserved,
+                    "reorder_point": product.reorder_point} for level, product, warehouse in rows))
+            elif export_kind == "movements":
+                rows = db.query(InventoryStockMove, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(InventoryStockMove.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockMove.id).all()
+                headers = ("id", "occurred_at", "sku", "product", "warehouse_code", "move_type", "quantity", "on_hand_after", "source_type", "source_id", "unit_cost")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"id": move.id, "occurred_at": move.occurred_at,
+                    "sku": product.sku, "product": product.name, "warehouse_code": warehouse.code,
+                    "move_type": move.move_type, "quantity": move.quantity, "on_hand_after": move.on_hand_after,
+                    "source_type": move.source_type, "source_id": move.source_id, "unit_cost": move.unit_cost} for move, product, warehouse in rows))
+            else:
+                raise ValueError("Inventory export kind must be levels or movements")
+            exported_rows = len(rows)
+            file_name = f"inventory_{export_kind}.csv"
             media_type = "text/csv"
         elif module_key == "finance_io":
             from app.modules.finance.models import FinanceIO

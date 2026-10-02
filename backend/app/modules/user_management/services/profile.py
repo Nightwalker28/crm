@@ -31,6 +31,7 @@ SAVED_VIEW_MODULES = {
     "finance_payments",
     "catalog_products",
     "catalog_services",
+    "inventory_stock",
 }
 # Sentence case (design.md 3.5). Views stored under the old "Default View" are renamed by
 # _resync_system_saved_view on their next read, so no migration is needed.
@@ -690,6 +691,27 @@ def _get_or_create_system_saved_view(
     return system_view
 
 
+INVENTORY_STOCK_PRESET_VIEWS = (
+    ("Low stock", {"field": "low_stock", "operator": "is", "value": True}),
+    ("Out of stock", {"field": "available", "operator": "lte", "value": 0}),
+)
+
+
+def _seed_inventory_stock_views(db: Session, user: User, visible_columns: list[str]) -> None:
+    """Give a user the stock presets on their first visit only, so a preset they delete or
+    rename stays deleted or renamed."""
+    has_views = db.query(UserSavedView.id).filter(
+        UserSavedView.user_id == user.id, UserSavedView.module_key == "inventory_stock",
+    ).first() is not None
+    if has_views:
+        return
+    for name, condition in INVENTORY_STOCK_PRESET_VIEWS:
+        db.add(UserSavedView(user_id=user.id, module_key="inventory_stock", name=name, is_default=0,
+            config=_normalize_saved_view_config("inventory_stock", {"visible_columns": visible_columns,
+                "filters": {"search": "", "all_conditions": [{"id": name.lower().replace(" ", "-"), **condition}], "any_conditions": []}})))
+    db.commit()
+
+
 def list_saved_views(
     db: Session,
     user: User,
@@ -698,6 +720,8 @@ def list_saved_views(
     default_visible_columns: list[str],
 ) -> list[dict]:
     _ensure_supported_saved_view_module(db, user, module_key)
+    if module_key == "inventory_stock":
+        _seed_inventory_stock_views(db, user, default_visible_columns)
     legacy_preference = (
         get_user_table_preference(db, user, module_key)
         if module_key in TABLE_PREFERENCE_MODULES or module_key not in SAVED_VIEW_MODULES

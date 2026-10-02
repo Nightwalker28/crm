@@ -61,6 +61,8 @@ class CatalogProduct(Base):
         CheckConstraint("public_unit_price >= 0", name="ck_catalog_products_public_price_nonnegative"),
         CheckConstraint("stock_quantity IS NULL OR stock_quantity >= 0", name="ck_catalog_products_stock_nonnegative"),
         CheckConstraint("cost_price IS NULL OR cost_price >= 0", name="ck_catalog_products_cost_nonnegative"),
+        CheckConstraint("reorder_point >= 0", name="ck_catalog_products_reorder_point_nonnegative"),
+        CheckConstraint("reorder_quantity >= 0", name="ck_catalog_products_reorder_quantity_nonnegative"),
         Index(
             "uq_catalog_products_active_tenant_barcode",
             "tenant_id",
@@ -92,6 +94,8 @@ class CatalogProduct(Base):
     stock_status = Column(String(20), nullable=False, server_default="untracked", index=True)
     stock_quantity = Column(Numeric(12, 4), nullable=True)
     track_inventory = Column(SmallInteger, nullable=False, server_default="0")
+    reorder_point = Column(Numeric(12, 4), nullable=False, server_default="0")
+    reorder_quantity = Column(Numeric(12, 4), nullable=False, server_default="0")
     category_id = Column(BigInteger, ForeignKey("catalog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     cost_price = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(40), nullable=False, server_default="unit")

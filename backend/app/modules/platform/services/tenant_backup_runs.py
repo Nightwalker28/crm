@@ -17,6 +17,8 @@ from app.core.pagination import Pagination
 from app.core.uploads import UPLOADS_DIR
 from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
+from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel,
+    InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
@@ -57,6 +59,7 @@ DESTINATION_PROVIDERS = {
 }
 
 SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
+    "inventory_stock": ("inventory_warehouses.json", InventoryWarehouse),
     "sales_leads": ("sales_leads.json", SalesLead),
     "sales_contacts": ("sales_contacts.json", SalesContact),
     "sales_organizations": ("sales_organizations.json", SalesOrganization),
@@ -70,6 +73,16 @@ SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
 }
 
 MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
+    # Catalog rows are not part of the inventory set: restoring stock must never rewrite
+    # product names, prices or categories. Product stock caches are rebuilt from the ledger.
+    "inventory_stock": [
+        ("inventory_adjustments.json", InventoryAdjustment),
+        ("inventory_adjustment_lines.json", InventoryAdjustmentLine),
+        ("inventory_transfers.json", InventoryTransfer),
+        ("inventory_transfer_lines.json", InventoryTransferLine),
+        ("inventory_stock_moves.json", InventoryStockMove),
+        ("inventory_stock_levels.json", InventoryStockLevel),
+    ],
     "sales_opportunities": [
         ("sales_opportunity_contacts.json", SalesOpportunityContact),
         ("sales_pipelines.json", SalesPipeline),

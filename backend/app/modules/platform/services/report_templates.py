@@ -31,6 +31,24 @@ def _open_tasks() -> dict[str, Any]:
 
 REPORT_TEMPLATES: list[dict[str, Any]] = [
     {
+        "key": "stock-on-hand-by-warehouse", "category": "Inventory", "name": "Stock on hand by warehouse",
+        "description": "On hand units in each warehouse.", "module_key": "inventory_stock",
+        "config": _summary([{"field": "warehouse"}], [{"aggregate": "sum", "field": "on_hand"}]),
+    },
+    {
+        "key": "low-stock", "category": "Inventory", "name": "Low stock",
+        "description": "Products at or below their reorder point.", "module_key": "inventory_stock",
+        "config": {"version": 2, "format": "tabular", "groupings": [], "measures": [], "scope": "all",
+            "date_filter": None, "filters": {"all_conditions": [{"id": "low", "field": "low_stock", "operator": "is", "value": True}], "any_conditions": []},
+            "columns": ["sku", "warehouse", "on_hand", "available", "reorder_point"]},
+    },
+    {
+        "key": "stock-movements-by-type-month", "category": "Inventory", "name": "Movements by type this month",
+        "description": "Stock changes grouped by movement type this month.", "module_key": "inventory_movements",
+        "config": _summary([{"field": "move_type"}], [{"aggregate": "sum", "field": "quantity"}],
+            date_filter={"field": "occurred_at", "range": "this_month"}),
+    },
+    {
         "key": "deals-pipeline-by-stage",
         "category": "Pipeline",
         "name": "Pipeline by stage",
