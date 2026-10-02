@@ -30,7 +30,7 @@ import { isForbiddenError } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
-import { getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
+import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
 
 type DraftLine = { key: number; productId: number | null; name: string; description: string; quantity: string; unitCost: string };
 let nextKey = 1;
@@ -57,6 +57,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "purchase_orders")?.actions;
   const receiptActions = modules.find((module) => module.name === "purchase_receipts")?.actions;
+  const billActions = modules.find((module) => module.name === "purchase_bills")?.actions;
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
   const warehouses = useWarehouses(false, canViewStock);
   const currencies = useCompanyCurrencies().data;
@@ -173,6 +174,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           {order?.status === "ordered" && toReceive && receiptActions?.can_create ? (
             <Button asChild><Link href={`${DASHBOARD_ROUTES.purchaseReceipts}/new?order_id=${order.id}`}><PackagePlus />Receive</Link></Button>
           ) : null}
+          {/* E5 (12c §3.5): bill what was received and not yet billed. */}
+          {order?.bill_status === "to_bill" && billActions?.can_create ? (
+            <Button asChild variant={toReceive && receiptActions?.can_create ? "outline" : "default"}><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?order_id=${order.id}`}>Create bill</Link></Button>
+          ) : null}
           {order && order.status !== "draft" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseOrders}/${order.id}/print`}><Printer />Print</Link></Button> : null}
           {order?.status === "ordered" && order.receipt_status === "partial" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("close"); }}>Close remaining</Button> : null}
           {(order?.status === "ordered" && order.receipt_status === "none") && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("cancel"); }}>Cancel order</Button> : null}
@@ -215,6 +220,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           {activeWarehouses.length > 1 ? <Fact label="Deliver to">{order.warehouse_name ?? "—"}</Fact> : null}
           {order.vendor_reference ? <Fact label="Vendor reference">{order.vendor_reference}</Fact> : null}
           <Fact label="Total"><Money amount={order.subtotal} currency={order.currency} /></Fact>
+          {order.bill_status && order.bill_status !== "none" ? <Fact label="Billing"><StatusValue status={getPurchaseOrderBillStatus(order.bill_status)} /></Fact> : null}
           {order.close_reason ? <Fact label="Rest closed because">{order.close_reason}</Fact> : null}
           {order.cancel_reason ? <Fact label="Cancelled because">{order.cancel_reason}</Fact> : null}
         </FactList>
@@ -271,6 +277,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
               { key: "total", label: "Total", size: "sm", align: "right", render: (line) => <Money amount={line.line_total} currency={order?.currency ?? currencyCode} /> },
               { key: "received", label: "Received", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.received)}</span> },
               { key: "to_receive", label: "To receive", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.to_receive)}</span> },
+              { key: "billed", label: "Billed", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.billed)}</span> },
             ]}
           />
         )}
@@ -292,6 +299,27 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
               { key: "received", label: "Received on", size: "sm", render: (row) => (row.received_on ? formatDateOnly(row.received_on) : "—") },
               { key: "reference", label: "Vendor delivery ref", render: (row) => row.vendor_delivery_ref ?? "—" },
               { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.total_quantity)}</span> },
+            ]}
+          />
+        </section>
+      ) : null}
+
+      {order?.bills?.length ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Bills</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Bills for this purchase order"
+            rows={order.bills}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.purchaseBills}/${row.id}`}
+            emptyState={{ title: "No bills" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getBillStatus(row.status)} /> },
+              { key: "reference", label: "Vendor invoice", size: "md", render: (row) => row.vendor_invoice_number },
+              { key: "payment", label: "Payment", size: "sm", render: (row) => (row.status !== "posted" ? "—" : row.is_overdue ? <StatusValue status={OVERDUE_STATUS} /> : <StatusValue status={getPosPaymentStatus(row.payment_status)} />) },
+              { key: "total", label: "Total", size: "sm", align: "right", render: (row) => <Money amount={row.total} currency={row.currency} /> },
             ]}
           />
         </section>

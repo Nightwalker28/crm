@@ -10,7 +10,7 @@ import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useMod
 import { apiFetch } from "@/lib/api";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
-const ALWAYS_SUBMITTED_FIELDS = ["org_name", "primary_email", "custom_fields", "is_vendor"];
+const ALWAYS_SUBMITTED_FIELDS = ["org_name", "primary_email", "custom_fields", "is_vendor", "payment_terms_days"];
 
 export function validateOrganizationName(rawName: string): string | null {
   return rawName.trim() ? null : "Account name is required.";
@@ -45,6 +45,7 @@ export function buildOrganizationPayload(
       billing_postal_code: form.billing_postal_code.trim() || null,
       billing_country: form.billing_country || null,
       is_vendor: form.is_vendor,
+      payment_terms_days: form.payment_terms_days.trim() === "" ? null : Math.max(0, Math.min(365, Math.round(Number(form.payment_terms_days)) || 0)),
       // An edit that clears the owner would otherwise reassign the account to the editor.
       assigned_to: mode === "edit" && form.assigned_to === null ? undefined : form.assigned_to,
       custom_fields: customFieldValues,

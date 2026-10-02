@@ -5,6 +5,7 @@ import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +28,8 @@ export type OrganizationFormValue = {
   billing_country: string;
   /** We buy from this account (E4). The same company can be a customer too. */
   is_vendor: boolean;
+  /** Days to pay (E5): sets due dates on its invoices and bills. Blank uses the company default. */
+  payment_terms_days: string;
   assigned_to: number | null;
   assigned_to_name: string;
 };
@@ -46,6 +49,7 @@ export const EMPTY_ORGANIZATION_FORM: OrganizationFormValue = {
   billing_postal_code: "",
   billing_country: "",
   is_vendor: false,
+  payment_terms_days: "",
   assigned_to: null,
   assigned_to_name: "",
 };
@@ -105,7 +109,7 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
       <FormSection title="Ownership" description="Assign responsibility for this account.">
         {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
       </FormSection>
-      <FormSection title="Purchasing" description="Mark accounts you buy stock from.">
+      <FormSection title="Billing and purchasing" description="Payment terms, and whether you buy from this account.">
         <Field orientation="horizontal">
           <Switch
             id="account-is-vendor"
@@ -118,6 +122,12 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
           <FieldLabel htmlFor="account-is-vendor">Vendor</FieldLabel>
         </Field>
         <FieldDescription>Vendors can be chosen on purchase orders and as a product&apos;s preferred vendor.</FieldDescription>
+        <Field>
+          <FieldLabel htmlFor="account-payment-terms">Payment terms (days)</FieldLabel>
+          <Input id="account-payment-terms" type="number" min={0} max={365} step={1} inputMode="numeric" value={value.payment_terms_days}
+            onChange={(event) => onChange({ ...value, payment_terms_days: event.target.value })} />
+          <FieldDescription>Sets the due date on this account&apos;s invoices and bills. Blank uses the company default.</FieldDescription>
+        </Field>
       </FormSection>
     </>
   );

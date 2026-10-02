@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import type { PosInvoice, RecordPaymentPayload } from "@/hooks/finance/usePosInvoices";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
+import { todayIsoDate } from "@/lib/datetime";
 
 type Props = {
   open: boolean;
@@ -28,6 +29,8 @@ function money(amount: number, currency: string) {
 export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClose, onSubmit }: Props) {
   const [amount, setAmount] = useState(() => invoice ? invoice.balance_due.toFixed(2) : "");
   const [paymentMethod, setPaymentMethod] = useState(() => invoice?.payment_method ?? "");
+  const [paidOn, setPaidOn] = useState(() => todayIsoDate());
+  const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
@@ -43,7 +46,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
     }
     try {
       setError(null);
-      await onSubmit({ amount: parsedAmount, payment_method: paymentMethod.trim() || null });
+      await onSubmit({ amount: parsedAmount, payment_method: paymentMethod.trim() || null, paid_on: paidOn || null, reference: reference.trim() || null });
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "We could not record this payment.");
@@ -62,7 +65,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
           {invoice ? (
             <div className="mt-4 space-y-4">
               <div>
-                <div className="text-sm font-semibold text-copy-primary">{invoice.invoice_number}</div>
+                <div className="text-sm font-semibold text-copy-primary">{invoice.invoice_number ?? "Draft invoice"}</div>
                 <div className="mt-1 text-sm text-copy-secondary">{invoice.customer_name}</div>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div><dt className="text-copy-muted">Already paid</dt><dd className="mt-1 font-medium text-copy-primary">{money(invoice.amount_paid, invoice.currency)}</dd></div>
@@ -80,6 +83,14 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
                 <Field>
                   <FieldLabel htmlFor="payment-method">Payment method</FieldLabel>
                   <Input id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} placeholder="Bank transfer, card, cash…" maxLength={100} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="payment-date">Paid on</FieldLabel>
+                  <Input id="payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="payment-reference">Reference</FieldLabel>
+                  <Input id="payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} placeholder="Transfer or cheque number" maxLength={200} />
                 </Field>
               </FieldGroup>
             </div>

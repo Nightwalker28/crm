@@ -102,7 +102,7 @@ type RelatedOrder = {
 };
 type RelatedInvoice = {
   id: number;
-  invoice_number: string;
+  invoice_number: string | null;
   status: string;
   payment_status: string;
   currency: string;
@@ -147,6 +147,9 @@ type OrganizationSummary = {
   order_count: number;
   invoice_count: number;
   insertion_order_count: number;
+  /** E5: open balances on issued invoices (receivables) and posted bills (payables), per currency. */
+  receivables?: Array<{ currency: string; amount: number; count: number }>;
+  payables?: Array<{ currency: string; amount: number; count: number }>;
 };
 
 /** Fields the spine owns, which `Details` must not draw a second time (design.md §4.7). */
@@ -416,6 +419,16 @@ export default function OrganizationDetailPage() {
                       org.customer_group?.name ?? "No group"
                     )}
                   </RecordSpineField>
+                  {summary.receivables?.length ? (
+                    <RecordSpineField label="Receivables">
+                      <span className="tabular-nums">{summary.receivables.map((row) => formatMoney(row.amount, row.currency) ?? EMPTY_CELL_VALUE).join(" · ")}</span>
+                    </RecordSpineField>
+                  ) : null}
+                  {summary.payables?.length ? (
+                    <RecordSpineField label="Payables">
+                      <span className="tabular-nums">{summary.payables.map((row) => formatMoney(row.amount, row.currency) ?? EMPTY_CELL_VALUE).join(" · ")}</span>
+                    </RecordSpineField>
+                  ) : null}
                 </RecordSpineBlock>
 
                 <RecordSpineBlock title="Connected">
@@ -742,7 +755,7 @@ function RelatedRecords({
             <RecordRelatedLink
               key={invoice.id}
               href={`/dashboard/finance/pos/${invoice.id}`}
-              title={invoice.invoice_number}
+              title={invoice.invoice_number ?? "Draft invoice"}
               detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
             />
           ))}

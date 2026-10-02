@@ -40,6 +40,7 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.billing_postal_code = payload.billing_postal_code
     organization.billing_country = payload.billing_country
     organization.is_vendor = int(bool(getattr(payload, "is_vendor", False)))
+    organization.payment_terms_days = getattr(payload, "payment_terms_days", None)
     organization.custom_data = payload.custom_fields or None
     organization.assigned_to = payload.assigned_to if payload.assigned_to is not None else current_user.id if current_user else None
 

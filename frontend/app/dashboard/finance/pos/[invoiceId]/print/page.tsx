@@ -101,6 +101,9 @@ export default function PosInvoicePrintPage() {
   const accentColor = safeAccentColor(invoice.accent_color);
   const invoiceStatus = getPosInvoiceStatus(invoice.status);
   const paymentStatus = getPosPaymentStatus(invoice.payment_status);
+  // A draft has no number and owes nothing yet; its print is a preview of the full amount.
+  const displayNumber = invoice.invoice_number ?? "Draft";
+  const balance = invoice.status === "draft" ? invoice.total_amount : invoice.balance_due;
 
   // Printable customer documents use fixed colors so exports remain stable
   // regardless of the dashboard theme selected by the current CRM user.
@@ -109,7 +112,7 @@ export default function PosInvoicePrintPage() {
     <PageShell
       headerClassName="print:hidden"
       title="Print invoice"
-      description={`Review ${invoice.invoice_number} before opening the browser print dialog.`}
+      description={`Review ${displayNumber} before opening the browser print dialog.`}
       actions={
         <>
           <Button asChild variant="outline">
@@ -117,7 +120,7 @@ export default function PosInvoicePrintPage() {
               <ArrowLeft /> Back to invoice
             </Link>
           </Button>
-          <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${invoice.invoice_number}`}>
+          <Button type="button" onClick={() => window.print()} aria-label={`Print invoice ${displayNumber}`}>
             <Printer /> Print invoice
           </Button>
         </>
@@ -186,7 +189,7 @@ export default function PosInvoicePrintPage() {
                 POS Invoice
               </div>
               <h2 id="print-invoice-number" className="mt-2 text-2xl font-semibold">
-                {invoice.invoice_number}
+                {displayNumber}
               </h2>
               <dl
                 className={`mt-4 grid grid-cols-2 gap-2 text-sm ${isClassic ? "text-neutral-700" : "text-neutral-400"}`}
@@ -269,7 +272,7 @@ export default function PosInvoicePrintPage() {
             className={`overflow-x-auto rounded-[var(--radius-control)] border ${isCompact ? "mt-4" : "mt-8"} ${isClassic ? "border-neutral-300" : "border-neutral-800"}`}
           >
             <table className="w-full min-w-[560px] border-collapse text-sm">
-              <caption className="sr-only">Line items for invoice {invoice.invoice_number}</caption>
+              <caption className="sr-only">Line items for invoice {displayNumber}</caption>
               <thead style={{ backgroundColor: accentColor }}>
                 <tr className="text-left text-white">
                   <th className="px-4 py-3">Description</th>
@@ -329,6 +332,12 @@ export default function PosInvoicePrintPage() {
                 <dt>Tax</dt>
                 <dd>{money(invoice.tax_amount, invoice.currency)}</dd>
               </div>
+              {(invoice.amount_credited ?? 0) > 0 ? (
+                <div className="flex justify-between py-1 text-sm">
+                  <dt>Credited</dt>
+                  <dd>− {money(invoice.amount_credited ?? 0, invoice.currency)}</dd>
+                </div>
+              ) : null}
               <div className="flex justify-between py-1 text-sm">
                 <dt>Paid</dt>
                 <dd>− {money(invoice.amount_paid, invoice.currency)}</dd>
@@ -338,7 +347,7 @@ export default function PosInvoicePrintPage() {
                 style={{ borderColor: accentColor }}
               >
                 <dt>Balance due</dt>
-                <dd>{money(invoice.balance_due, invoice.currency)}</dd>
+                <dd>{money(balance, invoice.currency)}</dd>
               </div>
             </dl>
           </div>

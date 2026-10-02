@@ -18,6 +18,8 @@ export type Organization = {
   annual_revenue?: string;
   billing_country?: string;
   is_vendor?: boolean;
+  /** Days to pay, for invoices to and bills from this account (E5); none uses the company default. */
+  payment_terms_days?: number | null;
   assigned_to?: number | null;
   assigned_to_name?: string | null;
   customer_group_id?: number | null;

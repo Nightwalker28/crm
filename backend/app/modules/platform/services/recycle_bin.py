@@ -92,6 +92,10 @@ SUPPORTED_RECYCLE_MODULES = {
     "inventory_returns",
     "purchase_orders",
     "purchase_receipts",
+    # E5: drafts only; issued invoices, credit notes and posted bills are voided, never removed.
+    "finance_pos",
+    "finance_credit_notes",
+    "purchase_bills",
 }
 INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
@@ -326,6 +330,30 @@ def list_recycle_items(
                 else serialize_receipt(db, tenant_id=tenant_id, receipt=item, include_lines=False)
             serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
                 "subtitle": details.get("vendor_name"), "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in {"finance_pos", "finance_credit_notes", "purchase_bills"}:
+        from app.modules.finance.models import FinanceCreditNote, FinancePosInvoice
+        from app.modules.finance.services import credit_note_services
+        from app.modules.finance.services.pos_invoice_services import serialize_invoice
+        from app.modules.purchasing.models import PurchaseBill
+        from app.modules.purchasing.services.bill_services import serialize_bill
+
+        model = {"finance_pos": FinancePosInvoice, "finance_credit_notes": FinanceCreditNote, "purchase_bills": PurchaseBill}[module_key]
+        query = db.query(model).filter(model.tenant_id == tenant_id, model.deleted_at.isnot(None)).order_by(model.deleted_at.desc(), model.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            if module_key == "finance_pos":
+                details, title, subtitle = serialize_invoice(item, include_lines=False), item.invoice_number or "Draft invoice", item.customer_name
+            elif module_key == "finance_credit_notes":
+                details = credit_note_services.serialize(db, item, include_lines=False)
+                title, subtitle = item.number or "Draft credit note", details.get("invoice_number")
+            else:
+                details = serialize_bill(db, tenant_id=tenant_id, bill=item, include_lines=False)
+                title, subtitle = item.number, details.get("vendor_name")
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": title, "subtitle": subtitle,
+                "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "inventory_returns":
@@ -577,6 +605,27 @@ def restore_recycle_item(
         restored = receipt_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, receipt_id=record_id)
         db.commit()
         return jsonable_encoder(receipt_services.serialize_receipt(db, tenant_id=current_user.tenant_id, receipt=restored))
+
+    if module_key == "finance_pos":
+        from app.modules.finance.services import pos_invoice_services
+
+        restored = pos_invoice_services.restore_draft(db, current_user, record_id)
+        db.commit()
+        return jsonable_encoder(pos_invoice_services.serialize_invoice(restored, current_user=current_user))
+
+    if module_key == "finance_credit_notes":
+        from app.modules.finance.services import credit_note_services
+
+        restored = credit_note_services.restore_draft(db, current_user, record_id)
+        db.commit()
+        return jsonable_encoder(credit_note_services.serialize(db, restored, include_lines=False))
+
+    if module_key == "purchase_bills":
+        from app.modules.purchasing.services import bill_services
+
+        restored = bill_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, bill_id=record_id)
+        db.commit()
+        return jsonable_encoder(bill_services.serialize_bill(db, tenant_id=current_user.tenant_id, bill=restored, include_lines=False))
 
     if module_key == "inventory_returns":
         restored = return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)

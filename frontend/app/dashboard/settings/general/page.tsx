@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { ImageAssetField, validateImageAssetFile } from "@/components/ui/ImageAssetField";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
@@ -28,6 +29,8 @@ type CompanyResponse = {
   operating_currencies?: string[] | null;
   billing_address?: string | null;
   logo_url?: string | null;
+  invoicing_policy?: "delivered" | "ordered";
+  default_payment_terms_days?: number | null;
 };
 
 type CompanyForm = {
@@ -39,6 +42,8 @@ type CompanyForm = {
   country: string;
   operating_currencies: string;
   billing_address: string;
+  invoicing_policy: "delivered" | "ordered";
+  default_payment_terms_days: string;
 };
 
 const emptyForm: CompanyForm = {
@@ -50,6 +55,8 @@ const emptyForm: CompanyForm = {
   country: "",
   operating_currencies: "USD",
   billing_address: "",
+  invoicing_policy: "delivered",
+  default_payment_terms_days: "",
 };
 
 function companyToForm(data: CompanyResponse): CompanyForm {
@@ -65,6 +72,8 @@ function companyToForm(data: CompanyResponse): CompanyForm {
         ? data.operating_currencies.join(", ")
         : "USD",
     billing_address: data.billing_address ?? "",
+    invoicing_policy: data.invoicing_policy === "ordered" ? "ordered" : "delivered",
+    default_payment_terms_days: data.default_payment_terms_days != null ? String(data.default_payment_terms_days) : "",
   };
 }
 
@@ -85,6 +94,10 @@ function companyPayload(form: CompanyForm) {
       ),
     ),
     billing_address: form.billing_address.trim() || null,
+    invoicing_policy: form.invoicing_policy,
+    default_payment_terms_days: form.default_payment_terms_days.trim() === ""
+      ? null
+      : Math.max(0, Math.min(365, Math.round(Number(form.default_payment_terms_days)) || 0)),
   };
 }
 
@@ -289,6 +302,29 @@ export default function CompanyPage() {
               <FieldLabel htmlFor="company-billing-address">Billing address</FieldLabel>
               <Textarea id="company-billing-address" value={form.billing_address} onChange={(event) => setForm((current) => ({ ...current, billing_address: event.target.value }))} rows={5} />
               <FieldDescription>One primary company record is supported. Multi-company tenancy remains deferred.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </FormSection>
+
+        {/* E5 (12c-erp-invoicing.md §3.5). */}
+        <FormSection title="Invoicing" description="When orders become invoiceable, and when invoices and bills fall due.">
+          <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="company-invoicing-policy">Invoice stocked products when</FieldLabel>
+              <Select value={form.invoicing_policy} onValueChange={(value) => setForm((current) => ({ ...current, invoicing_policy: value === "ordered" ? "ordered" : "delivered" }))}>
+                <SelectTrigger id="company-invoicing-policy"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="delivered">They are delivered</SelectItem>
+                  <SelectItem value="ordered">They are ordered</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>Services and products you do not stock are always invoiced as ordered.</FieldDescription>
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="company-payment-terms">Default payment terms (days)</FieldLabel>
+              <Input id="company-payment-terms" type="number" min={0} max={365} step={1} inputMode="numeric" value={form.default_payment_terms_days}
+                onChange={(event) => setForm((current) => ({ ...current, default_payment_terms_days: event.target.value }))} placeholder="30" />
+              <FieldDescription>Sets an invoice&apos;s or bill&apos;s due date when its account has no terms of its own. Blank leaves the due date open.</FieldDescription>
             </Field>
           </FieldGroup>
         </FormSection>

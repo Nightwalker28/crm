@@ -52,6 +52,7 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const { confirm } = useConfirm();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "inventory_returns")?.actions;
+  const canCredit = Boolean(modules.find((module) => module.name === "finance_credit_notes")?.actions?.can_create);
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
   const warehouses = useWarehouses(false, canViewStock);
   const query = useReturn(returnId);
@@ -165,6 +166,8 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
         <div className="flex flex-wrap gap-2">
           {doc ? <StatusValue status={getReturnStatus(doc.status)} context="record" /> : null}
           {doc?.status === "draft" && actions?.can_edit ? <Button onClick={() => void receive()} disabled={mutations.isSaving}>Receive</Button> : null}
+          {/* E5 (12c §3.5): credit what came back, against the invoice that charged for it. */}
+          {doc?.status === "received" && canCredit ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.creditNotes}/new?return_id=${doc.id}`}>Create credit note</Link></Button> : null}
           {doc?.status === "received" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel return</Button> : null}
           {doc?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>

@@ -41,6 +41,10 @@ MODULE_DISPLAY_NAMES = {
     "inventory_returns": "Returns",
     "purchase_orders": "Purchase orders",
     "purchase_receipts": "Receipts",
+    "purchase_bills": "Bills",
+    "finance_pos": "Invoices",
+    "finance_credit_notes": "Credit notes",
+    "finance_payments": "Payments",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -61,6 +65,10 @@ MODULE_LINKS = {
     "inventory_returns": "/dashboard/inventory/returns",
     "purchase_orders": "/dashboard/purchasing/orders",
     "purchase_receipts": "/dashboard/purchasing/receipts",
+    "purchase_bills": "/dashboard/purchasing/bills",
+    "finance_pos": "/dashboard/finance/pos",
+    "finance_credit_notes": "/dashboard/finance/credit-notes",
+    "finance_payments": "/dashboard/finance/payments",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
@@ -856,6 +864,49 @@ def process_export_job(*, job_id: int) -> None:
                 docs = db.query(PurchaseReceipt).filter(PurchaseReceipt.tenant_id == job.tenant_id, PurchaseReceipt.deleted_at.is_(None)).order_by(PurchaseReceipt.id).all()
                 rows = [serialize_receipt(db, tenant_id=job.tenant_id, receipt=doc, include_lines=False) for doc in docs]
                 headers = ("number", "status", "order_number", "vendor_name", "warehouse_name", "received_on", "vendor_delivery_ref", "total_quantity", "posted_at", "cancel_reason")
+            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
+            exported_rows = len(rows)
+            file_name = f"{module_key}.csv"
+            media_type = "text/csv"
+        elif module_key in {"purchase_bills", "finance_pos", "finance_credit_notes", "finance_payments"}:
+            # E5 (12c-erp-invoicing.md §3.6): the finance lists, in the finance visibility scope.
+            from app.core.module_export import dict_rows_to_csv_bytes
+            from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePosInvoice
+            from app.modules.finance.services import credit_note_services, payment_services
+            from app.modules.finance.services.pos_invoice_services import serialize_invoice
+            from app.modules.purchasing.models import PurchaseBill
+            from app.modules.purchasing.services.bill_services import serialize_bill
+
+            if current_user is None:
+                raise ValueError("Finance export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
+            scope_user_id = get_finance_user_scope(db, current_user).user_id_filter
+            if module_key == "purchase_bills":
+                docs = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == job.tenant_id, PurchaseBill.deleted_at.is_(None)).order_by(PurchaseBill.id).all()
+                rows = [serialize_bill(db, tenant_id=job.tenant_id, bill=doc, include_lines=False) for doc in docs]
+                headers = ("number", "status", "vendor_name", "vendor_invoice_number", "order_number", "bill_date", "due_date", "currency",
+                           "subtotal", "tax_total", "total", "amount_paid", "balance_due", "payment_status", "match_status", "void_reason")
+            elif module_key == "finance_pos":
+                query = db.query(FinancePosInvoice).filter(FinancePosInvoice.tenant_id == job.tenant_id, FinancePosInvoice.deleted_at.is_(None))
+                if scope_user_id is not None:
+                    query = query.filter(FinancePosInvoice.user_id == scope_user_id)
+                rows = [serialize_invoice(doc, include_lines=False) for doc in query.order_by(FinancePosInvoice.id).all()]
+                headers = ("invoice_number", "status", "payment_status", "is_overdue", "customer_name", "customer_email", "issue_date", "due_date",
+                           "currency", "subtotal_amount", "discount_amount", "tax_amount", "total_amount", "amount_paid", "amount_credited",
+                           "balance_due", "source", "void_reason")
+            elif module_key == "finance_credit_notes":
+                query = credit_note_services._scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == job.tenant_id,
+                    FinanceCreditNote.deleted_at.is_(None)), db, current_user)
+                rows = [credit_note_services.serialize(db, doc, include_lines=False) for doc in query.order_by(FinanceCreditNote.id).all()]
+                headers = ("number", "status", "invoice_number", "customer_name", "reason", "issue_date", "currency", "subtotal_amount",
+                           "tax_amount", "total_amount", "refund_due", "void_reason")
+            else:
+                query = payment_services._scoped(db.query(FinancePayment).filter(FinancePayment.tenant_id == job.tenant_id), db, current_user)
+                rows = payment_services.serialize_payments(db, query.order_by(FinancePayment.id).all())
+                for row in rows:
+                    row["documents"] = "; ".join(allocation["document_label"] or "" for allocation in row["allocations"])
+                headers = ("number", "status", "direction", "kind", "paid_on", "party_name", "documents", "method", "reference", "currency",
+                           "amount", "void_reason")
             content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
             exported_rows = len(rows)
             file_name = f"{module_key}.csv"

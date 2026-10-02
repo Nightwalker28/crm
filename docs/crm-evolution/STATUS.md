@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-02.
+Last updated 2026-10-03.
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -28,7 +28,104 @@ Last updated 2026-10-02.
 | ERP E3 | **Implemented (2026-10-02): reservation, deliveries, returns.** Phase 0 committed as `9ed7e7b`; Phases 1–3 committed together. See below | `20260830_order_reservations` → `20260901_inventory_returns`, `stock_ledger.py` (reservations), `delivery_services.py`, `return_services.py`, `reservation_services.py`; `OrderFulfilmentPanel`, `ReservationsDialog`, `DeliveryDocumentPage`, `ReturnDocumentPage`; `test_inventory_reservations/deliveries/returns.py`, `fulfilment-phase1/2.spec.ts` |
 | ERP E3 follow-ups | **Implemented (2026-10-02): delivery notes, client-portal orders hold stock once confirmed, order priority.** `12a-erp-fulfilment.md` §6a. Verified and committed with E4 | `20260902_e3_followups`, `deliveries/[id]/print`, `_apply_portal_status`, `priority_rank`; `test_e3_followups.py` |
 | ERP E4 | **Implemented (2026-10-02): purchasing, all three phases.** Plan `12b-erp-purchasing.md`; §5 decisions taken as recommended (owner asked for all phases before testing). One test pass, all green; committed | `20260903_purchasing`, `modules/purchasing/`, `/dashboard/purchasing/*`; `test_purchasing.py`, `purchasing.spec.ts` |
-| **Next, owner-set order** | **E5 invoicing and bills (`12-erp-inventory.md` §2): benchmark first, then plan.** Owner to review E4 §5 decisions taken on their behalf. | |
+| ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
+| **Next, owner-set order** | **E6 costing and valuation (`12-erp-inventory.md` §2): benchmark first, then plan (started 2026-10-03).** Owner still to review E4 §5 decisions taken on their behalf. | |
+
+## ERP E5 — invoicing and bills, implemented (2026-10-03)
+
+Plan `12c-erp-invoicing.md`. The owner accepted all twelve §5 decisions and asked that every
+deferred item be built so adding it later is additive (§5a: payments and credits reach
+documents only through allocation rows; every invoice and bill line names its own source
+line; quantities, line amounts and serialization each live in one function).
+
+**Phase 1, invoices become documents.** The Invoices module (`finance_pos`, key and paths
+kept) is draft → issued → void; an issued invoice changes only due date, notes, payment terms
+and template (*Void*, *Void and correct*, or a credit note otherwise). Numbers per tenant,
+`INV-YYYYMMDD-NNNN`, given at issue; existing numbers kept. Line discount and tax as on orders;
+the header discount and rate stay for POS. Payments are records (`finance_payments` +
+`finance_payment_allocations`), voidable; balances are derived (`invoice_balances.py`). POS
+fast path: *Issue and mark paid*. Account and company payment terms set due dates. The
+Payments page lists payment records (its old saved views listed invoices and are dropped).
+
+**Phase 2, order invoicing and credit notes.** Company setting *Invoice stocked products when
+delivered / ordered* (default delivered; services always as ordered). Order *Invoicing* tab
+and `invoice_status` (none · pending · to_invoice · partial · invoiced) with an orders column,
+filter and *To invoice* preset; *Create invoice* from an order or a delivery drafts what is
+left, pro-rating line discount and tax (the last invoice takes the remainder). Guards: an
+invoiced order cannot be cancelled until fully credited, go back to draft, or lose an invoiced
+line; a delivery an issued invoice charges for cannot be cancelled. Credit notes from an
+invoice or a received return, never above what was invoiced; excess over the balance is
+*Refund due*, settled by a refund payment.
+
+**Phase 3, vendor bills** (`purchase_bills`, under Purchasing): from a PO, a receipt, or blank;
+billed against received quantities (over-billing refused); a different price is flagged
+(*Price differs from purchase order*), stock cost unchanged until E6; vendor invoice number
+unique per vendor; PO `bill_status`; a receipt a posted bill charges for cannot be cancelled.
+
+**Phase 4, the platform.** Triggers `finance.invoice_issued`, `finance.invoice_overdue`,
+`finance.payment_recorded`, `finance.credit_note_issued`, `purchase.bill_posted`,
+`purchase.bill_overdue` (the overdue pair from `scan_overdue_documents` on the hourly task
+scan) and record sources; report sources *Invoices*, *Invoice lines*, *Credit notes*,
+*Payments*, *Bills* with five templates; CSV exports of all four lists; drafts in the recycle
+bin and purge; a `finance_pos` backup set (create-missing restore only: issued documents are
+final) and bills in the inventory set; global search over credit notes and bills; Account
+rail *Receivables* / *Payables*.
+
+**Dev database.** Before migrating: 22 invoices (12 paid, 4 part-paid, 6 unpaid, none
+refunded). After: all *issued*, 16 migrated payments equal to the old paid amounts
+(mismatch 0); order invoice statuses backfilled.
+
+**Verification (one pass).**
+- Focused backend run before the frontend: 99 tests, two real defects fixed (a new bill was
+  flushed before its vendor was set; test setup ids); three pre-E5 invoice unit tests that
+  asserted the old mutable behaviour were removed or updated.
+- `codex-check.sh`: migration replay at `20260904_invoicing`, OpenAPI, contract drift passed;
+  backend 1465 tests with **12 errors from one real defect** (the Account summary's
+  receivables keys landed in the contact summary); fixed, those modules rerun green. Design
+  rules 21/21, lint clean. The build was OOM-killed inside the running dev container (6 GB cap,
+  build plus dev server); in a one-off container it found **one type error** (the void-invoice
+  edit state), fixed, build passed.
+- Browser, production build: `invoicing` (new), `payments-revamp`, `invoices-revamp`,
+  `purchasing`, `fulfilment-phase1/2`, `orders-revamp`, `accounts-revamp`,
+  `recycle-bin-revamp`, with `design-rules` and `scroll-containers` scoped to the touched
+  routes: 33 of 36. The 3 failures were spec locators (a record title is drawn twice; the
+  line editor now has its own discount field); fixed, rerun 9 of 9. `payments-revamp` and
+  `invoices-revamp` were updated where E5 changes behaviour on purpose (Payments lists
+  payment records; an issued invoice's edit page is locked); their rule that payment failures
+  never echo backend detail is kept.
+- Full rendered walk: `design-rules` audited 129 routes, none unreachable, both themes;
+  `scroll-containers` 86 routes; both passed. **The guards' route lists are hand-kept, so that
+  walk had missed every new E5 page**; they are now listed (credit notes, bills, new bill, and
+  the credit note, bill and payment records), and a walk scoped to Finance and Purchasing
+  audited 23 routes, none unreachable: both passed.
+- `scripts/seed_module_samples.py` now seeds an issued, part-paid invoice with a credit note,
+  a draft invoice, and a posted, part-paid bill for `SAMPLE-PO-0001`.
+
+**Not done, by decision or deferral:** record comments on credit notes, bills and payments
+(document pages, as E3/E4's); bill print; an *Orders to invoice* report template (no order
+report source; the orders list's *To invoice* preset covers it); webhooks for the new events
+(wait for 4A Phase 2); payments accept a date up to one day ahead (a user's today can be the
+server's tomorrow).
+
+## ERP E5 — plan (2026-10-03)
+
+Benchmark and plan in `12c-erp-invoicing.md`; no code changed. What reading the code found
+(§1): **an issued, paid or void invoice can be rewritten by `PUT`**, including its status,
+payment status and amount paid; payments are a running total, not records (the Payments page
+is the invoice list); **invoice numbers come from one sequence shared by all tenants**
+(`finance_pos_invoice_number_seq`), unlike every other document's `allocate_business_number`;
+sales orders cannot be invoiced; invoices use a header tax rate where quotes and orders use
+per-line amounts; `invoice.overdue` belongs to insertion orders, so invoices never go
+overdue; no bills, credit notes, invoice report sources, or invoices in the backup set.
+
+Proposed: evolve the existing Invoices module (`finance_pos`) into draft → issued → void with
+issued invoices final, per-tenant numbers at issue, payment records; invoice from an order or
+delivery against a tenant policy (tracked products as delivered by default); Invoiced / To
+invoice and an invoice status on the order; credit notes from invoices and returns, refunds;
+vendor bills from POs, receipts or blank, billed against received quantities with price
+variances flagged. Phases: 1 invoices as documents and payments, 2 order invoicing and credit
+notes, 3 vendor bills, 4 the platform. **Twelve §5 decisions wait for the owner.** The dev
+database's invoice counts were not checked (stack down); Phase 1 starts with that.
 
 ## ERP E3 follow-ups and E4 purchasing (2026-10-02)
 

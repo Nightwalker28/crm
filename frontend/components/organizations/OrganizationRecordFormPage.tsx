@@ -116,6 +116,7 @@ export default function OrganizationRecordFormPage({
       billing_postal_code: organization.billing_postal_code ?? "",
       billing_country: organization.billing_country ?? "",
       is_vendor: Boolean(organization.is_vendor),
+      payment_terms_days: organization.payment_terms_days != null ? String(organization.payment_terms_days) : "",
       assigned_to: organization.assigned_to ?? null,
       assigned_to_name: organization.assigned_to_name ?? "",
     };

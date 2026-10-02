@@ -20,14 +20,14 @@ from sqlalchemy import Date, Numeric, String, and_, case, cast, func, or_, selec
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope, require_role_module_action_access
-from app.modules.finance.models import FinanceIO
+from app.modules.finance.models import FinanceCreditNote, FinanceIO, FinancePayment, FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryReturn, InventoryReturnLine,
     InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
 from app.modules.finance.repositories import io_repository
-from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.finance.services.io_search_services import get_finance_module_id
 from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
 from app.modules.platform.services import custom_modules
@@ -523,6 +523,139 @@ def _purchase_line_fields(db: Session, user) -> list[ReportField]:
     ]
 
 
+
+# E5 invoicing and bills (12c-erp-invoicing.md §3.6) -------------------------------------------
+
+def _finance_scope_user(db: Session, user) -> int | None:
+    return get_finance_user_scope(db, user).user_id_filter
+
+
+def _invoices_query(db: Session, user, search: str | None):
+    query = db.query(FinancePosInvoice).filter(FinancePosInvoice.tenant_id == user.tenant_id, FinancePosInvoice.deleted_at.is_(None))
+    scoped = _finance_scope_user(db, user)
+    if scoped is not None:
+        query = query.filter(FinancePosInvoice.user_id == scoped)
+    return query.filter(or_(FinancePosInvoice.invoice_number.ilike(f"%{search}%"), FinancePosInvoice.customer_name.ilike(f"%{search}%"))) if search else query
+
+
+def _overdue_expression(status_column, balance_column, due_column):
+    return case((and_(status_column.in_(["issued", "posted"]), balance_column > 0, due_column < func.current_date()), True), else_=False)
+
+
+def _invoice_fields(db: Session, user) -> list[ReportField]:
+    return [
+        ReportField("invoice_number", "Number", "text", FinancePosInvoice.invoice_number, groupable=False),
+        ReportField("customer_name", "Customer", "text", FinancePosInvoice.customer_name),
+        ReportField("customer_organization_id", "Account", "reference", FinancePosInvoice.customer_organization_id, labels="organization"),
+        ReportField("status", "Status", "select", FinancePosInvoice.status, labels="humanize"),
+        ReportField("payment_status", "Payment", "select", FinancePosInvoice.payment_status, labels="humanize"),
+        ReportField("overdue", "Overdue", "boolean", _overdue_expression(FinancePosInvoice.status, FinancePosInvoice.balance_due, FinancePosInvoice.due_date)),
+        ReportField("source", "Source", "select", FinancePosInvoice.source, labels="humanize"),
+        ReportField("user_id", "Raised by", "user", FinancePosInvoice.user_id, labels="user"),
+        ReportField("currency", "Currency", "text", FinancePosInvoice.currency),
+        ReportField("issue_date", "Issue date", "date", FinancePosInvoice.issue_date),
+        ReportField("due_date", "Due date", "date", FinancePosInvoice.due_date),
+        ReportField("total_amount", "Total", "money", FinancePosInvoice.total_amount),
+        ReportField("amount_paid", "Paid", "money", FinancePosInvoice.amount_paid),
+        ReportField("amount_credited", "Credited", "money", FinancePosInvoice.amount_credited),
+        ReportField("balance_due", "Balance due", "money", FinancePosInvoice.balance_due),
+    ]
+
+
+def _invoice_lines_query(db: Session, user, search: str | None):
+    query = db.query(FinancePosInvoiceLine).join(FinancePosInvoice, FinancePosInvoice.id == FinancePosInvoiceLine.invoice_id).filter(
+        FinancePosInvoice.tenant_id == user.tenant_id, FinancePosInvoice.deleted_at.is_(None), FinancePosInvoice.status == "issued")
+    scoped = _finance_scope_user(db, user)
+    if scoped is not None:
+        query = query.filter(FinancePosInvoice.user_id == scoped)
+    return query.filter(FinancePosInvoiceLine.description.ilike(f"%{search}%")) if search else query
+
+
+def _invoice_line_fields(db: Session, user) -> list[ReportField]:
+    invoice = lambda column: select(column).where(FinancePosInvoice.id == FinancePosInvoiceLine.invoice_id).scalar_subquery()  # noqa: E731
+    product = select(CatalogProduct.name).where(CatalogProduct.id == FinancePosInvoiceLine.catalog_product_id).scalar_subquery()
+    return [
+        ReportField("description", "Description", "text", FinancePosInvoiceLine.description),
+        ReportField("product", "Product", "text", product),
+        ReportField("invoice", "Invoice", "text", invoice(FinancePosInvoice.invoice_number)),
+        ReportField("customer_name", "Customer", "text", invoice(FinancePosInvoice.customer_name)),
+        ReportField("issue_date", "Issue date", "date", invoice(FinancePosInvoice.issue_date)),
+        ReportField("currency", "Currency", "text", invoice(FinancePosInvoice.currency)),
+        ReportField("quantity", "Quantity", "number", FinancePosInvoiceLine.quantity),
+        ReportField("unit_price", "Unit price", "money", FinancePosInvoiceLine.unit_price),
+        ReportField("discount_amount", "Discount", "money", FinancePosInvoiceLine.discount_amount),
+        ReportField("tax_amount", "Tax", "money", FinancePosInvoiceLine.tax_amount),
+        ReportField("line_total", "Line total", "money", FinancePosInvoiceLine.line_total),
+    ]
+
+
+def _credit_notes_query(db: Session, user, search: str | None):
+    from app.modules.finance.services.credit_note_services import _scoped
+
+    query = _scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == user.tenant_id, FinanceCreditNote.deleted_at.is_(None)), db, user)
+    return query.filter(or_(FinanceCreditNote.number.ilike(f"%{search}%"), FinanceCreditNote.reason.ilike(f"%{search}%"))) if search else query
+
+
+def _credit_note_fields(db: Session, user) -> list[ReportField]:
+    invoice = lambda column: select(column).where(FinancePosInvoice.id == FinanceCreditNote.invoice_id).scalar_subquery()  # noqa: E731
+    return [
+        ReportField("number", "Number", "text", FinanceCreditNote.number, groupable=False),
+        ReportField("status", "Status", "select", FinanceCreditNote.status, labels="humanize"),
+        ReportField("invoice", "Invoice", "text", invoice(FinancePosInvoice.invoice_number)),
+        ReportField("customer_name", "Customer", "text", invoice(FinancePosInvoice.customer_name)),
+        ReportField("reason", "Reason", "text", FinanceCreditNote.reason),
+        ReportField("issue_date", "Issue date", "date", FinanceCreditNote.issue_date),
+        ReportField("currency", "Currency", "text", FinanceCreditNote.currency),
+        ReportField("total_amount", "Total", "money", FinanceCreditNote.total_amount),
+        ReportField("refund_due", "Refund due", "money", FinanceCreditNote.refund_due),
+    ]
+
+
+def _payments_query(db: Session, user, search: str | None):
+    from app.modules.finance.services.payment_services import _scoped
+
+    query = _scoped(db.query(FinancePayment).filter(FinancePayment.tenant_id == user.tenant_id), db, user)
+    return query.filter(or_(FinancePayment.number.ilike(f"%{search}%"), FinancePayment.party_name.ilike(f"%{search}%"),
+                            FinancePayment.reference.ilike(f"%{search}%"))) if search else query
+
+
+def _payment_fields(db: Session, user) -> list[ReportField]:
+    return [
+        ReportField("number", "Number", "text", FinancePayment.number, groupable=False),
+        ReportField("direction", "Direction", "select", FinancePayment.direction, labels="humanize"),
+        ReportField("kind", "Kind", "select", FinancePayment.kind, labels="humanize"),
+        ReportField("status", "Status", "select", FinancePayment.status, labels="humanize"),
+        ReportField("party_name", "Customer or vendor", "text", FinancePayment.party_name),
+        ReportField("method", "Method", "text", FinancePayment.method),
+        ReportField("paid_on", "Paid on", "date", FinancePayment.paid_on),
+        ReportField("currency", "Currency", "text", FinancePayment.currency),
+        ReportField("amount", "Amount", "money", FinancePayment.amount),
+        ReportField("created_by", "Recorded by", "user", FinancePayment.created_by, labels="user"),
+    ]
+
+
+def _bills_query(db: Session, user, search: str | None):
+    query = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == user.tenant_id, PurchaseBill.deleted_at.is_(None))
+    return query.filter(or_(PurchaseBill.number.ilike(f"%{search}%"), PurchaseBill.vendor_invoice_number.ilike(f"%{search}%"))) if search else query
+
+
+def _bill_fields(db: Session, user) -> list[ReportField]:
+    vendor = select(SalesOrganization.org_name).where(SalesOrganization.org_id == PurchaseBill.vendor_id, SalesOrganization.tenant_id == PurchaseBill.tenant_id).scalar_subquery()
+    return [
+        ReportField("number", "Number", "text", PurchaseBill.number, groupable=False),
+        ReportField("vendor_invoice_number", "Vendor invoice", "text", PurchaseBill.vendor_invoice_number, groupable=False),
+        ReportField("vendor", "Vendor", "text", vendor),
+        ReportField("status", "Status", "select", PurchaseBill.status, labels="humanize"),
+        ReportField("payment_status", "Payment", "select", PurchaseBill.payment_status, labels="humanize"),
+        ReportField("match_status", "Matching", "select", PurchaseBill.match_status, labels="humanize"),
+        ReportField("overdue", "Overdue", "boolean", _overdue_expression(PurchaseBill.status, PurchaseBill.balance_due, PurchaseBill.due_date)),
+        ReportField("currency", "Currency", "text", PurchaseBill.currency),
+        ReportField("bill_date", "Bill date", "date", PurchaseBill.bill_date),
+        ReportField("due_date", "Due date", "date", PurchaseBill.due_date),
+        ReportField("total", "Total", "money", PurchaseBill.total),
+        ReportField("balance_due", "Balance due", "money", PurchaseBill.balance_due),
+    ]
+
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
     "inventory_deliveries": ReportSource(
         "inventory_deliveries", "Deliveries", InventoryDelivery, InventoryDelivery.id, lambda db: InventoryDelivery.number,
@@ -542,6 +675,27 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         lambda db: select(CatalogProduct.name).where(CatalogProduct.id == PurchaseOrderLine.product_id).scalar_subquery(),
         _purchase_lines_query, _purchase_line_fields, None, ("order", "vendor", "expected_date", "ordered", "received", "to_receive"),
         label_field="product", permission_module_key="purchase_orders"),
+    "finance_pos": ReportSource(
+        "finance_pos", "Invoices", FinancePosInvoice, FinancePosInvoice.id, lambda db: FinancePosInvoice.invoice_number,
+        _invoices_query, _invoice_fields, "/dashboard/finance/pos/{id}",
+        ("customer_name", "status", "payment_status", "due_date", "total_amount", "balance_due"), default_date_field="issue_date",
+        label_field="invoice_number"),
+    "finance_invoice_lines": ReportSource(
+        "finance_invoice_lines", "Invoice lines", FinancePosInvoiceLine, FinancePosInvoiceLine.id, lambda db: FinancePosInvoiceLine.description,
+        _invoice_lines_query, _invoice_line_fields, None, ("invoice", "customer_name", "issue_date", "quantity", "line_total"),
+        default_date_field="issue_date", label_field="description", permission_module_key="finance_pos"),
+    "finance_credit_notes": ReportSource(
+        "finance_credit_notes", "Credit notes", FinanceCreditNote, FinanceCreditNote.id, lambda db: FinanceCreditNote.number,
+        _credit_notes_query, _credit_note_fields, "/dashboard/finance/credit-notes/{id}",
+        ("status", "invoice", "customer_name", "reason", "total_amount", "refund_due"), default_date_field="issue_date", label_field="number"),
+    "finance_payments": ReportSource(
+        "finance_payments", "Payments", FinancePayment, FinancePayment.id, lambda db: FinancePayment.number,
+        _payments_query, _payment_fields, "/dashboard/finance/payments/{id}",
+        ("direction", "party_name", "method", "paid_on", "amount"), default_date_field="paid_on", label_field="number"),
+    "purchase_bills": ReportSource(
+        "purchase_bills", "Bills", PurchaseBill, PurchaseBill.id, lambda db: PurchaseBill.number,
+        _bills_query, _bill_fields, "/dashboard/purchasing/bills/{id}",
+        ("vendor", "vendor_invoice_number", "status", "due_date", "total", "balance_due"), default_date_field="bill_date", label_field="number"),
     "inventory_returns": ReportSource(
         "inventory_returns", "Returns", InventoryReturn, InventoryReturn.id, lambda db: InventoryReturn.number,
         _returns_query, _return_fields, "/dashboard/inventory/returns/{id}",

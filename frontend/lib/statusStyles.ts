@@ -107,10 +107,11 @@ const CONTRACT_STATUS: Record<string, StatusDescriptor> = {
   cancelled: c("Cancelled"),
 };
 
+// E5 (12c-erp-invoicing.md §3.3): draft → issued → void. Whether it is paid is the payment
+// status; overdue is derived and passed as a tone by the caller.
 const POS_INVOICE_STATUS: Record<string, StatusDescriptor> = {
   draft: n("Draft"),
   issued: n("Issued"),
-  paid: s("Paid"),
   void: c("Void"),
 };
 
@@ -121,8 +122,46 @@ const POS_PAYMENT_STATUS: Record<string, StatusDescriptor> = {
   // than an enum value — the caller computes it and passes `tone` to `StatusValue` directly.
   unpaid: n("Unpaid"),
   partial: n("Partially paid"),
-  refunded: n("Refunded"),
   paid: s("Paid"),
+};
+
+const ORDER_INVOICE_STATUS: Record<string, StatusDescriptor> = {
+  none: n("Not invoiced"),
+  pending: n("Awaiting delivery"),
+  // Something delivered (or ordered) is not invoiced yet: money waiting to be asked for.
+  to_invoice: a("To invoice"),
+  partial: n("Partly invoiced"),
+  invoiced: s("Invoiced"),
+};
+
+const CREDIT_NOTE_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  issued: n("Issued"),
+  void: c("Void"),
+};
+
+const PAYMENT_RECORD_STATUS: Record<string, StatusDescriptor> = {
+  posted: n("Posted"),
+  void: c("Void"),
+};
+
+const BILL_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  posted: n("Posted"),
+  void: c("Void"),
+};
+
+const BILL_MATCH_STATUS: Record<string, StatusDescriptor> = {
+  none: n("No purchase order"),
+  matched: n("Matches purchase order"),
+  variance: a("Price differs from purchase order"),
+};
+
+const PURCHASE_ORDER_BILL_STATUS: Record<string, StatusDescriptor> = {
+  none: n("Not billed"),
+  to_bill: a("To bill"),
+  partial: n("Partly billed"),
+  billed: s("Billed"),
 };
 
 const LEAD_STATUS: Record<string, StatusDescriptor> = {
@@ -235,6 +274,14 @@ export const getInsertionOrderStatus = (v: string) => descriptorFrom(INSERTION_O
 export const getContractStatus = (v: string) => descriptorFrom(CONTRACT_STATUS, v);
 export const getPosInvoiceStatus = (v: string) => descriptorFrom(POS_INVOICE_STATUS, v);
 export const getPosPaymentStatus = (v: string) => descriptorFrom(POS_PAYMENT_STATUS, v);
+export const getOrderInvoiceStatus = (v: string) => descriptorFrom(ORDER_INVOICE_STATUS, v);
+export const getCreditNoteStatus = (v: string) => descriptorFrom(CREDIT_NOTE_STATUS, v);
+export const getPaymentRecordStatus = (v: string) => descriptorFrom(PAYMENT_RECORD_STATUS, v);
+export const getBillStatus = (v: string) => descriptorFrom(BILL_STATUS, v);
+export const getBillMatchStatus = (v: string) => descriptorFrom(BILL_MATCH_STATUS, v);
+export const getPurchaseOrderBillStatus = (v: string) => descriptorFrom(PURCHASE_ORDER_BILL_STATUS, v);
+/** An unpaid balance past its due date: the one invoice state that takes colour in a list. */
+export const OVERDUE_STATUS: StatusDescriptor = { tone: "critical", label: "Overdue" };
 export const getLeadStatus = (v: string) => descriptorFrom(LEAD_STATUS, v);
 export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);

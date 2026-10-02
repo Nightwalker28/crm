@@ -19,7 +19,9 @@ from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
     InventoryReturn, InventoryReturnLine, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
-from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.finance.models import (FinanceCreditAllocation, FinanceCreditNote, FinanceCreditNoteLine, FinancePayment,
+    FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
@@ -71,6 +73,8 @@ SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
     "documents": ("documents.json", Document),
     "support_cases": ("support_cases.json", SupportCase),
     "contracts": ("contracts.json", Contract),
+    # E5: invoices with their lines, credit notes and payments (12c §3.6).
+    "finance_pos": ("finance_invoices.json", FinancePosInvoice),
 }
 
 MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
@@ -90,6 +94,8 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("purchase_order_lines.json", PurchaseOrderLine),
         ("purchase_receipts.json", PurchaseReceipt),
         ("purchase_receipt_lines.json", PurchaseReceiptLine),
+        ("purchase_bills.json", PurchaseBill),
+        ("purchase_bill_lines.json", PurchaseBillLine),
         ("inventory_stock_moves.json", InventoryStockMove),
         ("inventory_stock_levels.json", InventoryStockLevel),
     ],
@@ -99,6 +105,15 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("sales_pipeline_stages.json", SalesPipelineStage),
     ],
     "sales_orders": [("sales_order_items.json", SalesOrderItem)],
+    # Order matters on restore: each file only points at the ones before it.
+    "finance_pos": [
+        ("finance_invoice_lines.json", FinancePosInvoiceLine),
+        ("finance_credit_notes.json", FinanceCreditNote),
+        ("finance_credit_note_lines.json", FinanceCreditNoteLine),
+        ("finance_credit_allocations.json", FinanceCreditAllocation),
+        ("finance_payments.json", FinancePayment),
+        ("finance_payment_allocations.json", FinancePaymentAllocation),
+    ],
     "documents": [("document_versions.json", DocumentVersion), ("document_links.json", DocumentLink)],
 }
 

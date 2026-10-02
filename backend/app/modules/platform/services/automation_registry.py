@@ -80,6 +80,13 @@ AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("inventory.delivery_posted", "inventory_deliveries", "Delivery posted", "A delivery for a sales order is posted."),
     AutomationTrigger("inventory.return_received", "inventory_returns", "Return received", "A customer return is received."),
     AutomationTrigger("purchase.receipt_posted", "purchase_receipts", "Receipt posted", "Stock is received against a purchase order."),
+    # E5 (12c-erp-invoicing.md §3.6). `invoice.overdue` below is the insertion-order trigger.
+    AutomationTrigger("finance.invoice_issued", "finance_pos", "Invoice issued", "An invoice is issued to a customer."),
+    AutomationTrigger("finance.invoice_overdue", "finance_pos", "Invoice past due", "An issued invoice passes its due date with a balance."),
+    AutomationTrigger("finance.payment_recorded", "finance_payments", "Payment recorded", "A payment or refund is recorded."),
+    AutomationTrigger("finance.credit_note_issued", "finance_credit_notes", "Credit note issued", "A credit note is issued against an invoice."),
+    AutomationTrigger("purchase.bill_posted", "purchase_bills", "Bill posted", "A vendor bill is posted."),
+    AutomationTrigger("purchase.bill_overdue", "purchase_bills", "Bill past due", "A posted bill passes its due date unpaid."),
     AutomationTrigger("lead.created", "sales_leads", "Lead created", "A sales lead is created."),
     AutomationTrigger("lead.updated", "sales_leads", "Lead updated", "A sales lead is updated."),
     AutomationTrigger("lead.status_changed", "sales_leads", "Lead status changed", "A sales lead status changes."),
@@ -277,7 +284,7 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
-RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts")
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
 # note on a task or a document had nowhere to render.
 NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "finance_io")

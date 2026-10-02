@@ -182,6 +182,10 @@ def receive_return(db: Session, *, tenant_id: int, actor_user_id: int | None, re
     db.add(doc)
     db.flush()
     order = db.query(SalesOrder).filter(SalesOrder.tenant_id == tenant_id, SalesOrder.id == doc.order_id).first()
+    if order is not None:
+        from app.modules.finance.services.invoicing_services import refresh_invoice_status
+
+        refresh_invoice_status(db, order=order)
     stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="inventory.return_received",
         entity_type="inventory_return", entity_id=doc.id,
         payload={"number": doc.number, "reason": doc.reason, "delivery_id": delivery.id, "delivery_number": delivery.number,
@@ -200,10 +204,19 @@ def cancel_return(db: Session, *, tenant_id: int, actor_user_id: int | None, ret
     doc = _return_or_404(db, tenant_id=tenant_id, return_id=return_id, lock=True)
     if doc.status != "received":
         raise HTTPException(status_code=409, detail="Only a received return can be cancelled")
+    from app.modules.finance.models import FinanceCreditNote
+
+    credited = db.query(FinanceCreditNote.number).filter(FinanceCreditNote.tenant_id == tenant_id, FinanceCreditNote.return_id == doc.id,
+        FinanceCreditNote.deleted_at.is_(None), FinanceCreditNote.status == "issued").first()
+    if credited is not None:
+        raise HTTPException(status_code=409, detail=f"Credit note {credited[0]} was issued for this return; void it first")
     reverse_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, source_type="inventory_return", source_id=doc.id, reason=reason)
     doc.status, doc.cancel_reason = "cancelled", reason
     db.add(doc)
     db.flush()
+    from app.modules.finance.services.invoicing_services import refresh_for_order_id
+
+    refresh_for_order_id(db, tenant_id=tenant_id, order_id=doc.order_id)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, doc=doc, action="cancel", description=f"Cancelled return {doc.number}: {reason}")
     return doc
 

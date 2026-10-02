@@ -45,6 +45,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   const { confirm } = useConfirm();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "purchase_receipts")?.actions;
+  const canBill = Boolean(modules.find((module) => module.name === "purchase_bills")?.actions?.can_create);
   const query = usePurchaseReceipt(receiptId);
   const receipt = query.data;
   const effectiveOrderId = receipt?.order_id ?? orderId;
@@ -152,6 +153,9 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
         <div className="flex flex-wrap gap-2">
           {receipt ? <StatusValue status={getPurchaseReceiptStatus(receipt.status)} context="record" /> : null}
           {receipt?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
+          {receipt?.status === "posted" && canBill && order.data?.bill_status === "to_bill" ? (
+            <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?receipt_id=${receipt.id}`}>Bill this receipt</Link></Button>
+          ) : null}
           {receipt?.status === "posted" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel receipt</Button> : null}
           {receipt?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>

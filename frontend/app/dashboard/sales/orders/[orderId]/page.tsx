@@ -8,6 +8,7 @@ import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { OrderFulfilmentPanel } from "@/components/inventory/OrderFulfilmentPanel";
+import { OrderInvoicingPanel } from "@/components/finance/OrderInvoicingPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
@@ -329,19 +330,33 @@ export default function OrderDetailPage() {
           createActionVariant="outline"
         />
       ) : undefined}
-      extraTabs={order && order.items?.some((item) => item.catalog_product_id) ? [{
-        id: "fulfilment",
-        label: "Fulfilment",
-        content: (
-          <OrderFulfilmentPanel
-            orderId={order.id}
-            canEdit={canEdit}
-            canReallocate={canEdit && canViewStock}
-            canCreateDelivery={Boolean(moduleActions("inventory_deliveries")?.can_create)}
-            showWarehouse={multipleWarehouses}
-          />
-        ),
-      }] : undefined}
+      extraTabs={order ? [
+        ...(order.items?.some((item) => item.catalog_product_id) ? [{
+          id: "fulfilment",
+          label: "Fulfilment",
+          content: (
+            <OrderFulfilmentPanel
+              orderId={order.id}
+              canEdit={canEdit}
+              canReallocate={canEdit && canViewStock}
+              canCreateDelivery={Boolean(moduleActions("inventory_deliveries")?.can_create)}
+              showWarehouse={multipleWarehouses}
+            />
+          ),
+        }] : []),
+        // E5 (12c-erp-invoicing.md §3.5): what is invoiced and what is left, for any order.
+        ...(order.status !== "draft" ? [{
+          id: "invoicing",
+          label: "Invoicing",
+          content: (
+            <OrderInvoicingPanel
+              orderId={order.id}
+              canCreateInvoice={Boolean(moduleActions("finance_pos")?.can_create)}
+              canViewInvoices={Boolean(moduleActions("finance_pos")?.can_view)}
+            />
+          ),
+        }] : []),
+      ] : undefined}
       files={order && canViewDocuments ? (
         <RecordDocumentsPanel
           moduleKey="sales_orders"

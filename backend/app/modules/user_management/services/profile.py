@@ -219,9 +219,20 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
             setattr(profile, field, _clean(payload[field]))
     if "operating_currencies" in payload:
         profile.operating_currencies = _clean_currency_list(payload["operating_currencies"])
+    policy_changed = False
+    if payload.get("invoicing_policy") in {"delivered", "ordered"} and payload["invoicing_policy"] != profile.invoicing_policy:
+        profile.invoicing_policy = payload["invoicing_policy"]
+        policy_changed = True
+    if "default_payment_terms_days" in payload:
+        profile.default_payment_terms_days = payload["default_payment_terms_days"]
 
     profile.updated_by = current_user.id if current_user else None
     db.add(profile)
+    if policy_changed:
+        from app.modules.finance.services.invoicing_services import recompute_tenant
+
+        db.flush()
+        recompute_tenant(db, tenant_id=current_user.tenant_id)
     db.commit()
     db.refresh(profile)
     if should_invalidate_currencies:
@@ -703,6 +714,12 @@ PRESET_SAVED_VIEWS = {
         ("To deliver", [{"field": "status", "operator": "is", "value": "confirmed"},
                         {"field": "delivery_status", "operator": "is_not", "value": "none"}]),
         ("Waiting for stock", [{"field": "waiting_for_stock", "operator": "is", "value": True}]),
+        # E5; also in migration 20260904_invoicing.
+        ("To invoice", [{"field": "invoice_status", "operator": "is", "value": "to_invoice"}]),
+    ),
+    # E5 (12c-erp-invoicing.md §3.5); also in migration 20260904_invoicing.
+    "finance_pos": (
+        ("Overdue", [{"field": "overdue", "operator": "is", "value": True}]),
     ),
     # E4; the same preset is in migration 20260903_purchasing for users who had account views.
     "sales_organizations": (

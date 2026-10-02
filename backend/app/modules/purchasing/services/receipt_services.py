@@ -139,6 +139,9 @@ def post_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, rece
     db.add(receipt)
     db.flush()
     refresh_receipt_status(db, order=order)
+    from app.modules.purchasing.services.bill_services import refresh_bill_status
+
+    refresh_bill_status(db, order=order)
     filled = _held(db, tenant_id=tenant_id, product_ids={line.product_id for line, _ in lines}, warehouse_id=receipt.warehouse_id) - held_before
     stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="purchase.receipt_posted",
         entity_type="purchase_receipt", entity_id=receipt.id,
@@ -165,6 +168,9 @@ def cancel_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, re
     if receipt.status != "posted":
         raise HTTPException(status_code=409, detail="Only a posted receipt can be cancelled")
     order = order_or_404(db, tenant_id=tenant_id, order_id=receipt.order_id, lock=True)
+    from app.modules.purchasing.services.bill_services import guard_receipt_cancel, refresh_bill_status
+
+    guard_receipt_cancel(db, order=order, receipt=receipt)
     reverse_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, source_type="purchase_receipt", source_id=receipt.id, reason=reason)
     receipt.status, receipt.cancel_reason = "cancelled", reason
     db.add(receipt)
@@ -173,6 +179,7 @@ def cancel_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, re
         order.status, order.closed_at, order.close_reason = "ordered", None, None
     db.flush()
     refresh_receipt_status(db, order=order)
+    refresh_bill_status(db, order=order)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, receipt=receipt, order=order, action="cancel",
         description=f"Cancelled receipt {receipt.number} for {order.number}: {reason}")
     return receipt

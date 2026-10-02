@@ -37,6 +37,7 @@ ORDER_SORT_FIELDS = {
     "owner_id": SalesOrder.owner_id,
     "status": SalesOrder.status,
     "delivery_status": SalesOrder.delivery_status,
+    "invoice_status": SalesOrder.invoice_status,
     "priority": SalesOrder.priority,
     "currency": SalesOrder.currency,
     "subtotal": SalesOrder.subtotal,
@@ -268,6 +269,7 @@ def build_orders_query(
         "created_at": {"expression": SalesOrder.created_at, "type": "date"},
         "updated_at": {"expression": SalesOrder.updated_at, "type": "date"},
         "delivery_status": {"expression": SalesOrder.delivery_status, "type": "text"},
+        "invoice_status": {"expression": SalesOrder.invoice_status, "type": "text"},
         "priority": {"expression": SalesOrder.priority, "type": "text"},
         "waiting_for_stock": {"expression": _waiting_for_stock_expression(), "type": "boolean"},
     }
@@ -435,6 +437,13 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         raise HTTPException(status_code=409, detail="This order has posted deliveries; cancel them or return the goods before cancelling the order")
     if next_status == "draft" and previous_status != "draft" and shipped:
         raise HTTPException(status_code=409, detail="A partly delivered order cannot go back to draft")
+    from app.modules.finance.services import invoicing_services
+
+    if next_status == "cancelled" and previous_status != "cancelled":
+        invoicing_services.guard_order_cancel(db, order=order)
+    invoiced_lines = invoicing_services.invoiced_line_quantities(db, order=order)
+    if next_status == "draft" and previous_status != "draft" and any(quantity > 0 for quantity in invoiced_lines.values()):
+        raise HTTPException(status_code=409, detail="An invoiced order cannot go back to draft")
     if payload.get("warehouse_id") and payload["warehouse_id"] != order.warehouse_id and has_live_deliveries(db, tenant_id=order.tenant_id, order_id=order.id):
         raise HTTPException(status_code=409, detail="The warehouse cannot change once the order has deliveries")
     items_payload = payload.pop("items", None)
@@ -448,7 +457,15 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         # A line a delivery points at is history: it keeps its product and cannot go.
         if history & set(removed_line_ids):
             raise HTTPException(status_code=409, detail="A line that has been on a delivery cannot be removed")
+        # A line an invoice points at is billed history too (12c §3.3).
+        on_invoices = invoicing_services.invoice_line_links(db, order=order)
+        if on_invoices & set(removed_line_ids):
+            raise HTTPException(status_code=409, detail="A line that is on an invoice cannot be removed")
         for line in normalized_items:
+            if line.id in on_invoices and line.catalog_product_id != products_before.get(line.id):
+                raise HTTPException(status_code=409, detail=f"{line.name} is on an invoice, so its product cannot change")
+            if Decimal(line.quantity) < invoiced_lines.get(line.id, Decimal(0)):
+                raise HTTPException(status_code=409, detail=f"{line.name}: {invoiced_lines[line.id].normalize():f} already invoiced, so the quantity cannot be lower")
             if line.id in history:
                 if line.catalog_product_id != products_before[line.id]:
                     raise HTTPException(status_code=409, detail=f"{line.name} has been on a delivery, so its product cannot change")

@@ -1,11 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
-import { useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, Pencil, ReceiptText } from "lucide-react";
+import { useState } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { Ban, CopyX, CreditCard, ExternalLink, FileMinus, Pencil, ReceiptText } from "lucide-react";
+import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import RecordPaymentDialog from "@/components/finance/payments/RecordPaymentDialog";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
@@ -18,9 +20,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { EditorPanel } from "@/components/ui/EditorPanel";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
-import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { Field, FieldLabel } from "@/components/ui/field";
+import { Money } from "@/components/ui/Money";
 import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import { RecordTable } from "@/components/ui/RecordTable";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { Textarea } from "@/components/ui/textarea";
+import { TextLink } from "@/components/ui/TextLink";
 import {
   RecordSpine,
   RecordSpineBlock,
@@ -33,6 +41,8 @@ import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import {
+  invoiceDisplayNumber,
+  useInvoiceActions,
   usePosInvoice,
   PosInvoiceRequestError,
   type PosInvoice,
@@ -42,25 +52,20 @@ import {
   useResolvedRecordLayout,
   type ResolvedRecordLayout as ResolvedRecordLayoutContract,
 } from "@/hooks/useResolvedRecordLayout";
-import { apiFetch } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
-import { formatDateTime } from "@/lib/datetime";
-import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { DASHBOARD_ROUTES } from "@/lib/routes";
+import { OVERDUE_STATUS, getCreditNoteStatus, getPaymentRecordStatus, getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 
-const INVOICE_STATUS_VALUES = ["draft", "issued", "paid", "void"] as const;
-
-const INVOICE_STATUS_OPTIONS: InlineFieldEditOption[] = INVOICE_STATUS_VALUES.map((value) => ({
-  value,
-  ...getPosInvoiceStatus(value),
-}));
-
-/** `void` cancels the invoice rather than completing it, so it is an exit, not a step. */
-const INVOICE_TRACK_VALUES = ["draft", "issued", "paid"] as const;
-
-const INVOICE_TRACK_STEPS = INVOICE_TRACK_VALUES.map((value) => ({
-  id: value,
-  label: getPosInvoiceStatus(value).label,
-}));
+/**
+ * Draft → issued → paid (12c-erp-invoicing.md §3.3). `Paid` is the payment status reaching
+ * paid, not a status of its own; `void` ends the invoice, so it is an exit, not a step.
+ */
+const INVOICE_TRACK_STEPS = [
+  { id: "draft", label: "Draft" },
+  { id: "issued", label: "Issued" },
+  { id: "paid", label: "Paid" },
+];
 
 /**
  * Fields `Details` must not draw a second time (design.md §4.7): the header owns the invoice
@@ -81,12 +86,18 @@ const MONEY_FIELDS = new Set([
   "tax_amount",
   "total_amount",
   "amount_paid",
+  "amount_credited",
 ]);
 
 export default function InvoiceDetailPage() {
   const params = useParams<{ invoiceId: string }>();
-  const queryClient = useQueryClient();
+  const router = useRouter();
   const { modules } = useAccessibleModules();
+  const lifecycle = useInvoiceActions();
+  const [paying, setPaying] = useState(false);
+  const [voidPanel, setVoidPanel] = useState<"void" | "copy" | null>(null);
+  const [voidReason, setVoidReason] = useState("");
+  const [voidError, setVoidError] = useState<string | null>(null);
 
   const invoiceId = /^\d+$/.test(params.invoiceId) ? Number(params.invoiceId) : null;
   const query = usePosInvoice(invoiceId);
@@ -98,7 +109,12 @@ export default function InvoiceDetailPage() {
   const taskActions = moduleActions("tasks");
   const documentActions = moduleActions("documents");
   const canEdit = Boolean(invoiceActions?.can_edit);
+  const canCreate = Boolean(invoiceActions?.can_create);
   const canDelete = Boolean(invoiceActions?.can_delete);
+  const canRecordPayment = Boolean(moduleActions("finance_payments")?.can_create);
+  const canViewPayments = Boolean(moduleActions("finance_payments")?.can_view);
+  const canCreateCredit = Boolean(moduleActions("finance_credit_notes")?.can_create);
+  const canViewCredits = Boolean(moduleActions("finance_credit_notes")?.can_view);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
@@ -112,28 +128,49 @@ export default function InvoiceDetailPage() {
   const notFound =
     invoiceId === null
     || (invoiceError instanceof PosInvoiceRequestError && invoiceError.status === 404);
-  const invoiceName = invoice?.invoice_number || "Invoice";
+  const invoiceName = invoice ? invoiceDisplayNumber(invoice) : "Invoice";
   const recordHref = `/dashboard/finance/pos/${params.invoiceId}`;
   const editHref = useRecordTabHref(`${recordHref}/edit`);
 
-  async function updateStatus(next: string) {
-    if (!invoice || invoice.status === next) return;
-    const res = await apiFetch(`/finance/pos-invoices/${invoice.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ status: next }),
-    });
-    if (!res.ok) throw new Error("The invoice status could not be saved.");
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ["pos-invoices"] }),
-      queryClient.invalidateQueries({
-        queryKey: ["record-audit-history", "finance_pos", String(invoice.id)],
-      }),
-      query.refetch(),
-    ]);
+  async function issue() {
+    if (!invoice) return;
+    try {
+      const issued = await lifecycle.issue(invoice.id);
+      toast.success(issued.invoice_number ? `Invoice ${issued.invoice_number} issued.` : "Invoice issued.");
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : "The invoice could not be issued.");
+    }
   }
 
+  async function submitVoid() {
+    if (!invoice || !voidPanel) return;
+    if (!voidReason.trim()) { setVoidError("Enter a reason."); return; }
+    try {
+      setVoidError(null);
+      if (voidPanel === "copy") {
+        const copy = await lifecycle.voidAndCopy({ id: invoice.id, reason: voidReason.trim() });
+        toast.success(`${invoiceName} voided; correct the draft copy and issue it.`);
+        router.push(`/dashboard/finance/pos/${copy.id}/edit`);
+      } else {
+        await lifecycle.voidInvoice({ id: invoice.id, reason: voidReason.trim() });
+        toast.success(`${invoiceName} voided.`);
+      }
+      setVoidPanel(null);
+      setVoidReason("");
+    } catch (failure) {
+      setVoidError(failure instanceof Error ? failure.message : "The invoice could not be voided.");
+    }
+  }
+
+  const issued = invoice?.status === "issued";
+  const isDraft = invoice?.status === "draft";
+  const owing = issued && (invoice?.balance_due ?? 0) > 0;
+  const hasMoney = Boolean(invoice?.payments?.some((payment) => payment.status === "posted"))
+    || Boolean(invoice?.credit_notes?.some((note) => note.status !== "void"));
+  const trackId = invoice ? (invoice.status === "issued" && invoice.payment_status === "paid" ? "paid" : invoice.status) : "draft";
+
   return (
+    <>
     <RecordWorkspace
       title={invoiceName}
       description="Review the invoice's balance, line items, terms, and activity."
@@ -153,7 +190,7 @@ export default function InvoiceDetailPage() {
           backLabel="Back to invoices"
         />
       ) : undefined}
-      status={invoice ? <StatusValue status={getPosInvoiceStatus(invoice.status)} context="record" /> : null}
+      status={invoice ? <StatusValue status={invoice.is_overdue ? OVERDUE_STATUS : getPosInvoiceStatus(invoice.status)} context="record" /> : null}
       subtitle={invoice ? (
         <>
           <span>{invoice.customer_name}</span>
@@ -161,18 +198,22 @@ export default function InvoiceDetailPage() {
         </>
       ) : null}
       /*
-       * No filled button: an invoice moves forward by changing its status, and the rail owns
-       * that field (§4.7). `Print` and `Open payments` are neither destructive nor primary,
-       * so they sit in the `[⋯]` menu rather than setting a second and third control beside
-       * `Edit` — the pre-5.3 header carried all four in a row.
+       * One filled button, the invoice's next step (§2.2): *Issue* on a draft, *Record payment*
+       * while a balance is due. Credit, void and print are in the `[⋯]` menu.
        */
-      actions={invoice && canEdit ? (
-        <Button asChild variant="outline">
-          <Link href={editHref}>
-            <Pencil />
-            Edit
-          </Link>
-        </Button>
+      actions={invoice ? (
+        <div className="flex flex-wrap gap-2">
+          {isDraft && canEdit ? <Button onClick={() => void issue()} disabled={lifecycle.isSaving}>Issue invoice</Button> : null}
+          {owing && canRecordPayment ? <Button onClick={() => setPaying(true)}><CreditCard />Record payment</Button> : null}
+          {(isDraft || issued) && canEdit ? (
+            <Button asChild variant="outline">
+              <Link href={editHref}>
+                <Pencil />
+                Edit
+              </Link>
+            </Button>
+          ) : null}
+        </div>
       ) : null}
       overflowActions={invoice ? (
         <>
@@ -182,13 +223,35 @@ export default function InvoiceDetailPage() {
               Print
             </Link>
           </DropdownMenuItem>
+          {issued && canCreateCredit ? (
+            <DropdownMenuItem asChild>
+              <Link href={`${DASHBOARD_ROUTES.creditNotes}/new?invoice_id=${invoice.id}`}>
+                <FileMinus />
+                Create credit note
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {issued && canEdit && !hasMoney ? (
+            <>
+              <DropdownMenuItem onSelect={() => { setVoidError(null); setVoidPanel("void"); }}>
+                <Ban />
+                Void invoice
+              </DropdownMenuItem>
+              {canCreate ? (
+                <DropdownMenuItem onSelect={() => { setVoidError(null); setVoidPanel("copy"); }}>
+                  <CopyX />
+                  Void and correct
+                </DropdownMenuItem>
+              ) : null}
+            </>
+          ) : null}
           <DropdownMenuItem asChild>
             <Link href="/dashboard/finance/payments">
               <ReceiptText />
               Open payments
             </Link>
           </DropdownMenuItem>
-          {canDelete ? (
+          {isDraft && canDelete ? (
             <RecordDeleteButton
               as="menuItem"
               endpoint={`/finance/pos-invoices/${invoice.id}`}
@@ -204,45 +267,59 @@ export default function InvoiceDetailPage() {
         <RecordSpine>
           {invoice ? (
             <>
-              {INVOICE_TRACK_VALUES.includes(invoice.status as (typeof INVOICE_TRACK_VALUES)[number]) ? (
+              {invoice.status !== "void" ? (
                 <RecordSpineTrack
                   steps={INVOICE_TRACK_STEPS}
-                  currentId={invoice.status}
+                  currentId={trackId}
                   label="Invoice lifecycle"
                 />
               ) : null}
 
               <RecordSpineBlock title="State">
-                <RecordSpineField label="Status">
-                  {canEdit ? (
-                    <InlineFieldEdit
-                      fieldLabel="Status"
-                      value={invoice.status}
-                      options={INVOICE_STATUS_OPTIONS}
-                      onCommit={(next) => updateStatus(next.value)}
-                    />
-                  ) : (
-                    <StatusValue status={getPosInvoiceStatus(invoice.status)} context="record" />
-                  )}
-                </RecordSpineField>
                 {/*
-                  Read-only although it is enum-shaped, which is §4.7's one exception to R2's
-                  shape rule: `payment_status` is written by recording a payment, from
-                  `amount_paid`. An `InlineFieldEdit` here could say `Paid` over an
-                  outstanding balance.
+                  Both read-only (§4.7): the status moves by its actions (Issue, Void), and the
+                  payment status is derived from payments and credit notes (12c §3.2).
                 */}
-                <RecordSpineField label="Payment">
-                  <StatusValue status={getPosPaymentStatus(invoice.payment_status)} context="record" />
+                <RecordSpineField label="Status">
+                  <StatusValue status={getPosInvoiceStatus(invoice.status)} context="record" />
                 </RecordSpineField>
-                <RecordSpineField label="Balance due">
-                  <span className="tabular-nums">
-                    {money(invoice.balance_due, invoice.currency)}
-                  </span>
+                {issued ? (
+                  <RecordSpineField label="Payment">
+                    <StatusValue status={invoice.is_overdue ? OVERDUE_STATUS : getPosPaymentStatus(invoice.payment_status)} context="record" />
+                  </RecordSpineField>
+                ) : null}
+                <RecordSpineField label="Total">
+                  <span className="tabular-nums">{money(invoice.total_amount, invoice.currency)}</span>
                 </RecordSpineField>
+                {issued && (invoice.amount_credited ?? 0) > 0 ? (
+                  <RecordSpineField label="Credited">
+                    <span className="tabular-nums">{money(invoice.amount_credited ?? 0, invoice.currency)}</span>
+                  </RecordSpineField>
+                ) : null}
+                {issued ? (
+                  <RecordSpineField label="Paid">
+                    <span className="tabular-nums">{money(invoice.amount_paid, invoice.currency)}</span>
+                  </RecordSpineField>
+                ) : null}
+                {issued ? (
+                  <RecordSpineField label="Balance due">
+                    <span className="tabular-nums">
+                      {money(invoice.balance_due, invoice.currency)}
+                    </span>
+                  </RecordSpineField>
+                ) : null}
+                {invoice.void_reason ? (
+                  <RecordSpineField label="Voided because">{invoice.void_reason}</RecordSpineField>
+                ) : null}
               </RecordSpineBlock>
 
               <RecordSpineBlock title="Connected">
                 <RecordSpineLink label="Raised by" value={invoice.user_name} />
+                <RecordSpineLink
+                  label="Order"
+                  value={invoice.sales_order_number ?? null}
+                  href={invoice.sales_order_id ? `/dashboard/sales/orders/${invoice.sales_order_id}?tab=invoicing` : null}
+                />
                 <RecordSpineLink
                   label="Contact"
                   value={invoice.customer_contact_name}
@@ -275,6 +352,8 @@ export default function InvoiceDetailPage() {
           isLayoutLoading={detailLayoutQuery.isLoading}
           layoutError={detailLayoutQuery.error}
           onRetryLayout={() => void detailLayoutQuery.refetch()}
+          showPayments={canViewPayments}
+          showCredits={canViewCredits}
         />
       ) : null}
       timeline={invoice ? (
@@ -302,6 +381,33 @@ export default function InvoiceDetailPage() {
         />
       ) : undefined}
     />
+    <RecordPaymentDialog
+      key={paying ? `pay-${invoice?.id}-${invoice?.balance_due}` : "closed"}
+      open={paying}
+      invoice={invoice}
+      isSubmitting={lifecycle.isSaving}
+      onClose={() => setPaying(false)}
+      onSubmit={async (payload) => {
+        if (!invoice) return;
+        await lifecycle.recordPayment({ id: invoice.id, payload });
+        toast.success("Payment recorded.");
+      }}
+    />
+    <EditorPanel
+      open={voidPanel !== null}
+      onOpenChange={(open) => { if (!open) setVoidPanel(null); }}
+      title={voidPanel === "copy" ? `Void and correct ${invoiceName}` : `Void ${invoiceName}`}
+      description={voidPanel === "copy"
+        ? "The invoice stays on record as void, and a draft copy opens for you to correct and issue under a new number."
+        : "The invoice stays on record as void and no longer counts as owed. Use a credit note instead once money has been received."}
+      closeLabel="Close panel"
+      onSubmit={() => void submitVoid()}
+      status={voidError ? <span role="alert">{voidError}</span> : null}
+      footer={<><Button variant="outline" onClick={() => setVoidPanel(null)}>Back</Button><Button type="submit" variant="destructive" disabled={lifecycle.isSaving}>{voidPanel === "copy" ? "Void and copy" : "Void invoice"}</Button></>}
+    >
+      <Field><FieldLabel htmlFor="invoice-void-reason">Reason</FieldLabel><Textarea id="invoice-void-reason" maxLength={500} value={voidReason} onChange={(event) => setVoidReason(event.target.value)} /></Field>
+    </EditorPanel>
+    </>
   );
 }
 
@@ -318,12 +424,16 @@ function InvoiceOverview({
   isLayoutLoading,
   layoutError,
   onRetryLayout,
+  showPayments,
+  showCredits,
 }: {
   invoice: PosInvoice;
   layout?: ResolvedRecordLayoutContract;
   isLayoutLoading: boolean;
   layoutError: Error | null;
   onRetryLayout: () => void;
+  showPayments: boolean;
+  showCredits: boolean;
 }) {
   if (isLayoutLoading || !layout) {
     return (
@@ -358,15 +468,57 @@ function InvoiceOverview({
             name: line.description,
             quantity: line.quantity,
             unit_price: line.unit_price,
+            discount_amount: line.discount_amount ?? 0,
+            tax_amount: line.tax_amount ?? 0,
             line_total: line.line_total ?? line.quantity * line.unit_price,
             catalog_product_id: line.catalog_product_id,
             catalog_service_id: line.catalog_service_id,
           }))}
           currency={invoice.currency}
           itemLabel="Description"
-          showAdjustments={false}
           linkCatalogItems
         />
+      ) : null}
+      {showPayments && invoice.status !== "draft" ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Payments</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Payments on this invoice"
+            rows={invoice.payments ?? []}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.payments}/${row.id}`}
+            emptyState={{ title: "No payments yet" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
+              { key: "paid_on", label: "Paid on", size: "sm", render: (row) => formatDateOnly(row.paid_on) },
+              { key: "method", label: "Method", size: "sm", render: (row) => row.method ?? "—" },
+              { key: "reference", label: "Reference", size: "md", render: (row) => row.reference ?? "—" },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPaymentRecordStatus(row.status)} /> },
+              { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.allocations.find((allocation) => allocation.document_type === "invoice" && allocation.document_id === invoice.id)?.amount ?? row.amount} currency={invoice.currency} /> },
+            ]}
+          />
+        </section>
+      ) : null}
+      {showCredits && (invoice.credit_notes?.length ?? 0) > 0 ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Credit notes</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Credit notes against this invoice"
+            rows={invoice.credit_notes ?? []}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.creditNotes}/${row.id}`}
+            emptyState={{ title: "No credit notes" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <TextLink href={`${DASHBOARD_ROUTES.creditNotes}/${row.id}`}>{row.number ?? "Draft"}</TextLink> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getCreditNoteStatus(row.status)} /> },
+              { key: "issue_date", label: "Issued", size: "sm", render: (row) => (row.issue_date ? formatDateOnly(row.issue_date) : "—") },
+              { key: "reason", label: "Reason", size: "lg", render: (row) => row.reason ?? "—" },
+              { key: "total", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.total_amount} currency={row.currency} /> },
+            ]}
+          />
+        </section>
       ) : null}
     </div>
   );

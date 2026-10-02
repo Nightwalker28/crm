@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 import type { PosInvoice, PosInvoiceSortState } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { OVERDUE_STATUS, getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
 
@@ -34,6 +34,7 @@ const SORTABLE = new Set([
   "status",
   "payment_status",
   "total_amount",
+  "balance_due",
   "issue_date",
   "due_date",
   "template_id",
@@ -47,7 +48,8 @@ const HEADERS: Record<string, string> = {
   payment_status: "Payment",
   total_amount: "Total",
   amount_paid: "Paid",
-  balance_due: "Balance",
+  amount_credited: "Credited",
+  balance_due: "Balance due",
   issue_date: "Issue date",
   due_date: "Due date",
   payment_method: "Method",
@@ -63,7 +65,7 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   template_id: "sm",
 };
 
-const MONEY_COLUMNS = new Set(["total_amount", "amount_paid", "balance_due"]);
+const MONEY_COLUMNS = new Set(["total_amount", "amount_paid", "amount_credited", "balance_due"]);
 
 // The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
 // the empty spelling this surface wants (3.6).
@@ -74,7 +76,7 @@ function money(amount: number, currency: string) {
 function renderCell(invoice: PosInvoice, column: string) {
   switch (column) {
     case "invoice_number":
-      return <span className="text-xs font-semibold tabular-nums text-copy-primary">{invoice.invoice_number}</span>;
+      return <span className="text-xs font-semibold tabular-nums text-copy-primary">{invoice.invoice_number ?? "Draft"}</span>;
     case "customer_name":
       return <span className="text-sm font-medium text-copy-primary">{invoice.customer_name}</span>;
     case "status": {
@@ -82,6 +84,9 @@ function renderCell(invoice: PosInvoice, column: string) {
       return <StatusValue status={style} />;
     }
     case "payment_status": {
+      // Overdue is the one state worth colour in a receivables list (R5); it is derived.
+      if (invoice.is_overdue) return <StatusValue status={OVERDUE_STATUS} />;
+      if (invoice.status !== "issued") return <span className="text-sm text-copy-disabled">—</span>;
       const style = getPosPaymentStatus(invoice.payment_status);
       return <StatusValue status={style} />;
     }
@@ -89,6 +94,8 @@ function renderCell(invoice: PosInvoice, column: string) {
       return <span className="text-sm font-medium tabular-nums text-copy-primary">{money(invoice.total_amount, invoice.currency)}</span>;
     case "amount_paid":
       return <span className="text-sm tabular-nums text-copy-secondary">{money(invoice.amount_paid, invoice.currency)}</span>;
+    case "amount_credited":
+      return <span className="text-sm tabular-nums text-copy-secondary">{money(invoice.amount_credited ?? 0, invoice.currency)}</span>;
     case "balance_due":
       return (
         <span className={`text-sm font-semibold tabular-nums ${invoice.balance_due > 0 ? "text-copy-primary" : "text-copy-muted"}`}>

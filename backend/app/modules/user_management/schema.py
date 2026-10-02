@@ -482,6 +482,8 @@ class CompanyProfileResponse(BaseModel):
     operating_currencies: list[str] = []
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
+    invoicing_policy: str = "delivered"
+    default_payment_terms_days: Optional[int] = None
     updated_by: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -498,6 +500,9 @@ class CompanyProfileUpdateRequest(BaseModel):
     country: Optional[str] = None
     operating_currencies: list[str] | None = None
     billing_address: Optional[str] = None
+    # E5: tracked products invoice what was delivered, or what was ordered (12c §3.5).
+    invoicing_policy: Optional[Literal["delivered", "ordered"]] = None
+    default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
 
     model_config = ConfigDict(extra="forbid")
 

@@ -165,6 +165,7 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
     seed_inventory_drafts(db, tenant, bump)
     seed_fulfilment_samples(db, tenant, owner, bump)
     seed_purchasing_samples(db, tenant, owner, bump)
+    seed_invoicing_samples(db, tenant, owner, bump)
     return created
 
 
@@ -335,6 +336,50 @@ def seed_purchasing_samples(db: Session, tenant: Tenant, owner: User, bump) -> N
         db.flush()
         receipt_services.post_receipt(db, tenant_id=tenant.id, actor_user_id=owner.id, receipt_id=receipt.id)
         bump("purchase_receipts", True)
+
+
+def seed_invoicing_samples(db: Session, tenant: Tenant, owner: User, bump) -> None:
+    """An issued, part-paid invoice with a credit note, a draft invoice, and a posted, part-paid
+    bill for the sample purchase order, so every E5 record route is reachable. Keyed by
+    markers in their notes, reason and vendor invoice number, since their numbers are allocated."""
+    from app.modules.finance.models import FinanceCreditNote, FinancePosInvoice
+    from app.modules.finance.services import credit_note_services, payment_services, pos_invoice_services
+    from app.modules.purchasing.models import PurchaseBill, PurchaseOrder
+    from app.modules.purchasing.services import bill_services
+
+    # The services take the acting user as `current_user`; the owner is an admin here.
+    invoice = db.query(FinancePosInvoice).filter_by(tenant_id=tenant.id, notes="SAMPLE-E5-INV").one_or_none()
+    if invoice is None:
+        invoice = pos_invoice_services.create_invoice(db, owner, {
+            "customer_name": "Sample Customer", "customer_email": "ap@sample-customer.test", "issue": True, "notes": "SAMPLE-E5-INV",
+            "lines": [{"description": "Sample service", "quantity": 2, "unit_price": 50, "tax_amount": 10}]}, commit=False)
+        db.flush()
+        payment_services.record_payment(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "direction": "received", "method": "Bank transfer", "reference": "SAMPLE",
+            "allocations": [{"invoice_id": invoice.id, "amount": "40"}]})
+        bump("finance_pos_invoices", True)
+        bump("finance_payments", True)
+    if db.query(FinanceCreditNote).filter_by(tenant_id=tenant.id, reason="SAMPLE-E5-CN").one_or_none() is None and invoice.status == "issued":
+        note = credit_note_services.save_draft(db, owner, payload={"invoice_id": invoice.id, "reason": "SAMPLE-E5-CN",
+            "lines": [{"invoice_line_id": invoice.lines[0].id, "quantity": 1}]})
+        credit_note_services.issue(db, owner, note.id)
+        bump("finance_credit_notes", True)
+    if db.query(FinancePosInvoice).filter_by(tenant_id=tenant.id, notes="SAMPLE-E5-DRAFT").one_or_none() is None:
+        pos_invoice_services.create_invoice(db, owner, {"customer_name": "Sample Customer", "notes": "SAMPLE-E5-DRAFT",
+            "lines": [{"description": "Sample draft line", "quantity": 1, "unit_price": 25}]}, commit=False)
+        bump("finance_pos_invoices", True)
+
+    order = db.query(PurchaseOrder).filter_by(tenant_id=tenant.id, number="SAMPLE-PO-0001").one_or_none()
+    if order is not None and order.receipt_status != "none" and db.query(PurchaseBill).filter_by(
+            tenant_id=tenant.id, vendor_invoice_number="SAMPLE-BILL-1").one_or_none() is None:
+        bill = bill_services.save_bill(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "order_id": order.id, "vendor_invoice_number": "SAMPLE-BILL-1"})
+        bill_services.post_bill(db, tenant_id=tenant.id, actor_user_id=owner.id, bill_id=bill.id)
+        payment_services.record_payment(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "direction": "made", "method": "Bank transfer", "allocations": [{"bill_id": bill.id, "amount": "1"}]})
+        bump("purchase_bills", True)
+        bump("finance_payments", True)
+    db.flush()
 
 
 def main() -> None:

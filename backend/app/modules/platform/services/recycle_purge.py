@@ -16,7 +16,11 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     ("sales_opportunities", "opportunity_id"),
     ("sales_quotes", "quote_id"),
     ("finance_io", "id"),
+    # Draft credit notes before invoices (they point at them); the guard keeps any invoice
+    # that a credit note or payment still references.
+    ("finance_credit_notes", "id"),
     ("finance_pos_invoices", "id"),
+    ("purchase_bills", "id"),
     # Removed inventory drafts go before products: their lines reference products.
     ("inventory_adjustments", "id"),
     ("inventory_transfers", "id"),
@@ -44,6 +48,13 @@ PURGE_GUARDS = {
             AND NOT EXISTS (SELECT 1 FROM inventory_delivery_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM inventory_return_lines l WHERE l.product_id = catalog_products.id)
             AND NOT EXISTS (SELECT 1 FROM purchase_order_lines l WHERE l.product_id = catalog_products.id)""",
+    "finance_pos_invoices": """
+            AND NOT EXISTS (SELECT 1 FROM finance_credit_notes c WHERE c.invoice_id = finance_pos_invoices.id)
+            AND NOT EXISTS (SELECT 1 FROM finance_payment_allocations a WHERE a.invoice_id = finance_pos_invoices.id)""",
+    "finance_credit_notes": """
+            AND NOT EXISTS (SELECT 1 FROM finance_payment_allocations a WHERE a.credit_note_id = finance_credit_notes.id)""",
+    "purchase_bills": """
+            AND NOT EXISTS (SELECT 1 FROM finance_payment_allocations a WHERE a.bill_id = purchase_bills.id)""",
     # A removed draft purchase order that a receipt points at stays until the receipt goes.
     "purchase_orders": """
             AND NOT EXISTS (SELECT 1 FROM purchase_receipts r WHERE r.order_id = purchase_orders.id)""",

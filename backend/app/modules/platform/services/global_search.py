@@ -85,7 +85,15 @@ GLOBAL_SEARCH_MODULES = (
     },
     {
         "module_key": "finance_pos",
-        "module_label": "POS",
+        "module_label": "Invoices",
+    },
+    {
+        "module_key": "finance_credit_notes",
+        "module_label": "Credit notes",
+    },
+    {
+        "module_key": "purchase_bills",
+        "module_label": "Bills",
     },
 )
 GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS = 1500
@@ -570,14 +578,38 @@ def _finance_pos_results(db: Session, *, tenant_id: int, query: str, limit: int,
     return [
         {
             "module_key": "finance_pos",
-            "module_label": "POS",
+            "module_label": "Invoices",
             "record_id": str(record.id),
-            "title": record.invoice_number,
-            "subtitle": " · ".join(part for part in [record.customer_name, record.payment_status.title(), record.currency] if part) or None,
-            "href": f"/dashboard/finance/pos?invoiceId={record.id}",
+            "title": record.invoice_number or "Draft invoice",
+            "subtitle": " · ".join(part for part in [record.customer_name, record.status.title(), record.currency] if part) or None,
+            "href": f"/dashboard/finance/pos/{record.id}",
         }
         for record in items
     ]
+
+
+def _credit_note_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.finance.models import FinanceCreditNote
+    from app.modules.finance.services.credit_note_services import _scoped
+
+    pattern = f"%{query}%"
+    rows = _scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == tenant_id, FinanceCreditNote.deleted_at.is_(None),
+        or_(FinanceCreditNote.number.ilike(pattern), FinanceCreditNote.reason.ilike(pattern))), db, current_user).order_by(
+        FinanceCreditNote.id.desc()).limit(limit).all()
+    return [{"module_key": "finance_credit_notes", "module_label": "Credit notes", "record_id": str(row.id),
+             "title": row.number or "Draft credit note", "subtitle": " · ".join(part for part in [row.reason, row.status.title()] if part) or None,
+             "href": f"/dashboard/finance/credit-notes/{row.id}"} for row in rows]
+
+
+def _bill_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.purchasing.models import PurchaseBill
+
+    pattern = f"%{query}%"
+    rows = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id, PurchaseBill.deleted_at.is_(None),
+        or_(PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern))).order_by(PurchaseBill.id.desc()).limit(limit).all()
+    return [{"module_key": "purchase_bills", "module_label": "Bills", "record_id": str(row.id), "title": row.number,
+             "subtitle": " · ".join(part for part in [row.vendor.org_name if row.vendor else None, row.vendor_invoice_number, row.status.title()] if part) or None,
+             "href": f"/dashboard/purchasing/bills/{row.id}"} for row in rows]
 
 
 def _custom_module_results(db: Session, *, current_user, query: str, limit: int) -> list[dict]:
@@ -639,6 +671,8 @@ SEARCH_BUILDERS = {
     "support_cases": _support_case_results,
     "finance_io": _finance_io_results,
     "finance_pos": _finance_pos_results,
+    "finance_credit_notes": _credit_note_results,
+    "purchase_bills": _bill_results,
 }
 
 

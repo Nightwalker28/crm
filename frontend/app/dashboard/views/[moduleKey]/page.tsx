@@ -40,10 +40,9 @@ export default function ManageModuleViewPage() {
   const { confirm } = useConfirm();
   const builtInDefinition = getModuleViewDefinition(moduleKey);
   const shouldLoadCustomModule = !builtInDefinition;
-  const fieldConfigModuleKey = moduleKey === "finance_payments" ? "finance_pos" : moduleKey;
   const customFieldsQuery = useModuleCustomFields(moduleKey, CUSTOM_FIELD_SUPPORTED_MODULES.has(moduleKey));
   const customModuleSchema = useCustomModuleSchema(moduleKey, shouldLoadCustomModule);
-  const moduleFieldsQuery = useModuleFieldConfigs(fieldConfigModuleKey);
+  const moduleFieldsQuery = useModuleFieldConfigs(moduleKey);
   const definition = useMemo(() => {
     const built = buildModuleViewDefinition(moduleKey, customFieldsQuery.data ?? [], moduleFieldsQuery.fields);
     if (built) return built;

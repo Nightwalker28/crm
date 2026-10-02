@@ -21,6 +21,7 @@ import { TextLink } from "@/components/ui/TextLink";
 import { useDelivery, useDeliveryActions, type DeliveryLine } from "@/hooks/inventory/useDeliveries";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useOrderFulfilment, type OrderFulfilmentLine } from "@/hooks/inventory/useReservations";
+import { useInvoiceActions } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
@@ -51,6 +52,8 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "inventory_deliveries")?.actions;
   const returnActions = modules.find((module) => module.name === "inventory_returns")?.actions;
+  const canInvoice = Boolean(modules.find((module) => module.name === "finance_pos")?.actions?.can_create);
+  const invoicing = useInvoiceActions();
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
   const warehouses = useWarehouses(false, canViewStock);
   const query = useDelivery(deliveryId);
@@ -170,6 +173,14 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
           {doc?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
           {doc && doc.status !== "cancelled" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryDeliveries}/${doc.id}/print`}><Printer />Delivery note</Link></Button> : null}
           {canReturn && doc ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryReturns}/new?delivery_id=${doc.id}`}>Record return</Link></Button> : null}
+          {/* E5 (12c §3.5): invoice exactly what this delivery shipped (Business Central's Get Shipment Lines). */}
+          {doc?.status === "posted" && canInvoice ? (
+            <Button variant="outline" disabled={invoicing.isSaving} onClick={() => void invoicing.draftFromSource({ order_id: doc.order_id, delivery_id: doc.id })
+              .then((draft) => router.push(`${DASHBOARD_ROUTES.financePos}/${draft.id}`))
+              .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "The invoice could not be drafted."))}>
+              Create invoice
+            </Button>
+          ) : null}
           {doc?.status === "posted" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel delivery</Button> : null}
           {doc?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>

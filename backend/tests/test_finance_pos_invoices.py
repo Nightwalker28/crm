@@ -197,7 +197,7 @@ class FinancePosInvoiceTests(unittest.TestCase):
             user_id=1,
             invoice_number="POS-1",
             mode="pos",
-            status="issued",
+            status="draft",  # E5: only drafts can be removed
             payment_status="unpaid",
             template_id="modern",
             accent_color="#14b8a6",
@@ -234,93 +234,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
             pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"tax_rate": 101})
 
         self.assertEqual(exc.exception.status_code, 400)
-
-    def test_apply_totals_rejects_overpayment(self):
-        invoice = FinancePosInvoice(discount_amount=Decimal("0"), tax_rate=Decimal("0"), amount_paid=Decimal("0"))
-
-        with self.assertRaises(HTTPException) as exc:
-            pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"amount_paid": 101})
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Amount paid cannot exceed invoice total")
-
-    def test_record_invoice_payment_updates_balance_status_and_activity(self):
-        invoice = FinancePosInvoice(
-            id=1,
-            tenant_id=10,
-            user_id=1,
-            invoice_number="POS-1",
-            mode="pos",
-            status="issued",
-            payment_status="unpaid",
-            payment_method=None,
-            template_id="modern",
-            accent_color="#14b8a6",
-            customer_name="Buyer",
-            currency="USD",
-            subtotal_amount=Decimal("100.00"),
-            discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
-            tax_amount=Decimal("0.00"),
-            total_amount=Decimal("100.00"),
-            amount_paid=Decimal("25.00"),
-        )
-        invoice.lines = []
-        db = FakePaymentDB()
-        current_user = SimpleNamespace(id=1, tenant_id=10)
-
-        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
-            result = pos_invoice_services.record_invoice_payment(
-                db,
-                current_user,
-                invoice_id=1,
-                amount=Decimal("75.00"),
-                payment_method="Bank transfer",
-            )
-
-        self.assertIs(result, invoice)
-        self.assertEqual(invoice.amount_paid, Decimal("100.00"))
-        self.assertEqual(invoice.payment_status, "paid")
-        self.assertEqual(invoice.status, "paid")
-        self.assertEqual(invoice.payment_method, "Bank transfer")
-        self.assertTrue(db.flushed)
-        self.assertTrue(db.committed)
-        self.assertIs(db.refreshed, invoice)
-        self.assertEqual(len(db.added), 2)
-        self.assertEqual(db.added[1].action, "payment.record")
-
-    def test_record_invoice_payment_rejects_amount_above_locked_balance(self):
-        invoice = FinancePosInvoice(
-            id=1,
-            tenant_id=10,
-            invoice_number="POS-1",
-            mode="pos",
-            status="issued",
-            payment_status="partial",
-            template_id="modern",
-            accent_color="#14b8a6",
-            customer_name="Buyer",
-            currency="USD",
-            subtotal_amount=Decimal("100.00"),
-            discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
-            tax_amount=Decimal("0.00"),
-            total_amount=Decimal("100.00"),
-            amount_paid=Decimal("90.00"),
-        )
-        invoice.lines = []
-
-        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
-            with self.assertRaises(HTTPException) as exc:
-                pos_invoice_services.record_invoice_payment(
-                    FakePaymentDB(),
-                    SimpleNamespace(id=1, tenant_id=10),
-                    invoice_id=1,
-                    amount=Decimal("10.01"),
-                )
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Payment amount cannot exceed the outstanding balance")
 
     def test_apply_lines_preserves_existing_rows_by_id(self):
         invoice = FinancePosInvoice(id=1, tenant_id=10, invoice_number="POS-1")

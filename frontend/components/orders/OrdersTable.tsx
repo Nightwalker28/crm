@@ -11,7 +11,7 @@ import type { Order } from "@/hooks/sales/useOrders";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getOrderDeliveryStatus, getOrderPriority, getOrderStatus } from "@/lib/statusStyles";
+import { getOrderDeliveryStatus, getOrderInvoiceStatus, getOrderPriority, getOrderStatus } from "@/lib/statusStyles";
 import { Money } from "@/components/ui/Money";
 
 type OrdersTableProps = {
@@ -37,6 +37,7 @@ const SORTABLE_COLUMNS = new Set([
   "owner_id",
   "status",
   "delivery_status",
+  "invoice_status",
   "priority",
   "currency",
   "subtotal",
@@ -51,6 +52,7 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   order_number: "sm",
   status: "sm",
   delivery_status: "sm",
+  invoice_status: "sm",
   priority: "sm",
   currency: "sm",
   organization_name: "lg",
@@ -69,6 +71,8 @@ function renderCell(order: Order, column: string) {
       return <StatusValue status={getOrderPriority(order.priority ?? "normal")} />;
     case "delivery_status":
       return <StatusValue status={getOrderDeliveryStatus(order.delivery_status ?? "none")} />;
+    case "invoice_status":
+      return <StatusValue status={getOrderInvoiceStatus(order.invoice_status ?? "none")} />;
     case "grand_total":
       return <span className="text-sm text-copy-primary"><Money amount={order.grand_total} currency={order.currency} /></span>;
     case "organization_name":

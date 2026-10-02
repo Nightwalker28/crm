@@ -53,41 +53,41 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
-test("Payments provides a responsive receivables list and records a payment", async ({ page }) => {
+// E5 (12c-erp-invoicing.md §3.5): Payments lists payment records, not invoices with a balance.
+function paymentFixture() {
+  return {
+    id: 4242, number: "PAY-20990710-0001", direction: "received", kind: "payment", status: "posted",
+    organization_id: 51, contact_id: 41, party_name: "Acme Operations", amount: "250.00", currency: "USD",
+    paid_on: "2099-07-10", method: "Bank transfer", reference: "TRX-1", notes: null, voided_at: null, void_reason: null,
+    created_by: 1, created_at: "2099-07-10T10:00:00Z", allocated: "250.00",
+    allocations: [{ id: 1, document_type: "invoice", document_id: invoiceId, document_label: "INV-PAY-001", amount: "250.00" }],
+  };
+}
+
+test("Payments lists payment records on a phone", async ({ page }) => {
+  await page.route("**/finance/payments?**", async (route) => {
+    const url = new URL(route.request().url());
+    const pageSize = Number(url.searchParams.get("page_size") ?? 10);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [paymentFixture()], range_start: 1, range_end: 1, total_count: 1, total_pages: 1, page: 1, page_size: pageSize }) });
+  });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/finance/payments");
 
   await expect(page.getByRole("heading", { name: "Payments" })).toBeVisible();
-  await expect(page.getByPlaceholder("Search payments by invoice, customer, method, or status")).toBeVisible();
-  await expect(page.getByRole("combobox", { name: "Payment status" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "INV-PAY-001" })).toBeVisible();
-
-  await page.getByRole("button", { name: "Record payment" }).click();
-  await expect(page.getByRole("heading", { name: "Record payment", level: 2 })).toBeVisible();
-  await expect(page.getByLabel("Payment amount")).toHaveValue("750.00");
-  await page.getByLabel("Payment method").fill("Card");
-  await page.getByRole("button", { name: "Record payment", exact: true }).last().click();
-  await expect(page.getByText("Payment recorded.")).toBeVisible();
-  // "Paid" is also a quick filter; the assertion is about the row's status.
-  await expect(page.locator('[data-slot="status-value"]', { hasText: "Paid" }).first()).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Filter direction" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "PAY-20990710-0001" })).toBeVisible();
+  await expect(page.getByText("INV-PAY-001")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Record payment" })).toBeVisible();
 });
 
-test("Payments distinguishes filtered empty results", async ({ page }) => {
-  await page.route("**/finance/pos-invoices?**", async (route) => {
+test("Payments says when there is nothing to list", async ({ page }) => {
+  await page.route("**/finance/payments?**", async (route) => {
     const url = new URL(route.request().url());
     const pageSize = Number(url.searchParams.get("page_size") ?? 10);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], range_start: 0, range_end: 0, total_count: 0, total_pages: 0, page: 1, page_size: pageSize }) });
   });
   await page.goto("/dashboard/finance/payments");
-  // Type after the list has rendered its first state: a controlled input filled before
-  // hydration resets, which made this pass or fail by timing. (Not networkidle: the page
-  // holds a realtime connection open, so the network is never idle.)
-  await expect(page.getByText("No invoices available for payment tracking")).toBeVisible();
-  const search = page.getByPlaceholder("Search payments by invoice, customer, method, or status");
-  await search.fill("missing customer");
-  await expect(search).toHaveValue("missing customer");
-  await expect(page.getByText("No payments match these filters")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Clear filters" })).toBeVisible();
+  await expect(page.getByText("No payments", { exact: true })).toBeVisible();
 });
 
 test("Payment recording provides a responsive routed workflow with bounded amounts", async ({ page }) => {
@@ -123,7 +123,7 @@ test("Payment recording provides a responsive routed workflow with bounded amoun
   await page.getByRole("button", { name: "Record payment", exact: true }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/payments\\?recordedInvoiceId=${invoiceId}$`));
-  expect(submittedPayload).toEqual({ amount: 750, payment_method: "Card" });
+  expect(submittedPayload).toEqual(expect.objectContaining({ amount: 750, payment_method: "Card", reference: null }));
 });
 
 test("Payment recording hides backend failure details", async ({ page }) => {

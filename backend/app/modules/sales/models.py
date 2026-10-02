@@ -73,6 +73,9 @@ class SalesOrganization(Base):
     # A vendor is an Account that sells to us (12-erp-inventory.md §7 decision 6); the same
     # company can be a customer too.
     is_vendor = Column(SmallInteger, nullable=False, server_default="0")
+    # Days from an invoice's or bill's date to its due date (12c §3.5); none uses the
+    # company default.
+    payment_terms_days = Column(Integer, nullable=True)
     search_doc = Column(
         Text,
         Computed(
@@ -521,6 +524,10 @@ class SalesOrder(Base):
             name="ck_sales_orders_delivery_status",
         ),
         CheckConstraint("priority IN ('urgent', 'high', 'normal')", name="ck_sales_orders_priority"),
+        CheckConstraint(
+            "invoice_status IN ('none', 'pending', 'to_invoice', 'partial', 'invoiced')",
+            name="ck_sales_orders_invoice_status",
+        ),
         Index("ix_sales_orders_tenant_status", "tenant_id", "status"),
         Index("ix_sales_orders_tenant_quote", "tenant_id", "quote_id"),
         Index("ix_sales_orders_tenant_created", "tenant_id", "created_at"),
@@ -547,6 +554,9 @@ class SalesOrder(Base):
     # Cached from deliveries for lists and saved views: none (nothing stocked), pending,
     # partial, delivered, or closed (the rest was deliberately not shipped).
     delivery_status = Column(Text, nullable=False, server_default="none")
+    # Cached by `invoicing_services.refresh_invoice_status` (12c §3.2): none (draft or
+    # cancelled) · pending (nothing to invoice yet) · to_invoice · partial · invoiced.
+    invoice_status = Column(Text, nullable=False, server_default="none")
     # Arriving stock goes to waiting orders by priority, then oldest first.
     priority = Column(Text, nullable=False, server_default="normal")
     remaining_closed_at = Column(DateTime(timezone=True), nullable=True)

@@ -210,6 +210,10 @@ def close_remaining(db: Session, *, tenant_id: int, actor_user_id: int | None, o
         raise HTTPException(status_code=409, detail="Post or remove the draft receipts first")
     order.status, order.closed_at, order.close_reason = "closed", datetime.now(timezone.utc), reason
     db.add(order)
+    db.flush()
+    from app.modules.purchasing.services.bill_services import refresh_bill_status
+
+    refresh_bill_status(db, order=order)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, order=order, action="close", description=f"Closed the rest of {order.number}: {reason}")
     return order
 
@@ -253,6 +257,7 @@ def restore_draft(db: Session, *, tenant_id: int, actor_user_id: int | None, ord
 def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, include_lines: bool = True) -> dict:
     result = {
         "id": order.id, "number": order.number, "status": order.status, "receipt_status": order.receipt_status,
+        "bill_status": order.bill_status,
         "vendor_id": order.vendor_id, "vendor_name": order.vendor.org_name if order.vendor else None,
         "vendor_email": order.vendor.primary_email if order.vendor else None,
         "vendor_address": "\n".join(part for part in ((order.vendor.billing_address, order.vendor.billing_city, order.vendor.billing_state,
@@ -265,13 +270,18 @@ def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, includ
         "line_count": len(order.lines), "total_quantity": sum((Decimal(line.quantity) for line in order.lines), Decimal(0)),
     }
     if include_lines:
+        from app.modules.purchasing.services.bill_services import billing_lines, order_bills
+
+        billing = billing_lines(db, order=order)
         received = received_by_line(db, tenant_id=tenant_id, line_ids=[line.id for line in order.lines])
         result["lines"] = [{
             "id": line.id, "product_id": line.product_id, "product_name": line.product.name if line.product else "Product",
             "sku": line.product.sku if line.product else None, "vendor_sku": line.product.vendor_sku if line.product else None,
             "description": line.description, "quantity": line.quantity, "unit_cost": line.unit_cost, "line_total": line.line_total,
             "received": received.get(line.id, Decimal(0)), "to_receive": to_receive(order, line, received.get(line.id, Decimal(0))),
+            "billed": billing[line.id]["billed"], "to_bill": billing[line.id]["to_bill"],
         } for line in order.lines]
+        result["bills"] = order_bills(db, tenant_id=tenant_id, order_id=order.id)
         receipts = db.query(PurchaseReceipt).options(selectinload(PurchaseReceipt.lines)).filter(PurchaseReceipt.tenant_id == tenant_id,
             PurchaseReceipt.order_id == order.id, PurchaseReceipt.deleted_at.is_(None)).order_by(PurchaseReceipt.id).all()
         result["receipts"] = [{"id": receipt.id, "number": receipt.number, "status": receipt.status, "received_on": receipt.received_on,

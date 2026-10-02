@@ -575,15 +575,15 @@ def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
         "customer_name": order.customer_name or order.customer_email or f"Website order {order.external_reference}",
         "customer_email": order.customer_email,
         "customer_address": None,
-        "status": "issued",
-        "payment_status": "unpaid",
+        # Issued at once, as before E5; its number comes from the tenant's invoice series.
+        "issue": True,
+        "source": "website_order",
         "payment_method": order.source_platform,
         "template_id": "modern",
         "accent_color": "#14b8a6",
         "currency": order.currency,
         "discount_amount": 0,
         "tax_rate": 0,
-        "amount_paid": 0,
         "payment_terms": "Generated from website order.",
         "notes": f"Source order: {order.external_reference}",
         "lines": [

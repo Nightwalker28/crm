@@ -391,6 +391,24 @@ def build_organization_summary(db: Session, organization: SalesOrganization, *, 
             insertion_order_count = _count(query)
             insertion_orders = query.order_by(FinanceIO.updated_at.desc()).limit(8).all()
 
+    receivables: list[dict] = []
+    if access["invoices"]:
+        rows = _related_invoices_query(db, tenant_id=tenant_id, organization_id=organization.org_id).filter(
+            FinancePosInvoice.status == "issued", FinancePosInvoice.balance_due > 0).with_entities(
+            FinancePosInvoice.currency, func.sum(FinancePosInvoice.balance_due), func.count(FinancePosInvoice.id)).group_by(FinancePosInvoice.currency)
+        receivables = [{"currency": currency, "amount": float(amount or 0), "count": int(count)} for currency, amount, count in rows]
+    payables: list[dict] = []
+    if getattr(organization, "is_vendor", 0) and current_user is not None:
+        from app.core.access_control import PermissionPolicy
+        from app.modules.purchasing.models import PurchaseBill
+
+        policy = PermissionPolicy(db, current_user)
+        if policy.can_view_module("purchase_bills") and policy.can_perform_action("purchase_bills", "view"):
+            rows = db.query(PurchaseBill.currency, func.sum(PurchaseBill.balance_due), func.count(PurchaseBill.id)).filter(
+                PurchaseBill.tenant_id == tenant_id, PurchaseBill.vendor_id == organization.org_id, PurchaseBill.deleted_at.is_(None),
+                PurchaseBill.status == "posted", PurchaseBill.balance_due > 0).group_by(PurchaseBill.currency)
+            payables = [{"currency": currency, "amount": float(amount or 0), "count": int(count)} for currency, amount, count in rows]
+
     return {
         "organization": organization,
         "related_access": access,
@@ -407,6 +425,8 @@ def build_organization_summary(db: Session, organization: SalesOrganization, *, 
         "order_count": order_count,
         "invoice_count": invoice_count,
         "insertion_order_count": insertion_order_count,
+        "receivables": receivables,
+        "payables": payables,
     }
 
 

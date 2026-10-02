@@ -37,6 +37,8 @@ class SalesOrganizationBase(BaseModel):
     billing_country: str | None = None
     # Vendors are Accounts we buy from (E4); the same company can also be a customer.
     is_vendor: bool = False
+    # Days to pay, for invoices to this Account and bills from it (E5); none uses the company default.
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
     custom_fields: dict[str, Any] | None = None
 
 
@@ -59,6 +61,7 @@ class SalesOrganizationUpdate(BaseModel):
     billing_postal_code: str | None = None
     billing_country: str | None = None
     is_vendor: bool | None = None
+    payment_terms_days: int | None = Field(default=None, ge=0, le=365)
     assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
 
@@ -610,6 +613,7 @@ class SalesOrderResponse(BaseModel):
     warehouse_id: int | None = None
     warehouse_name: str | None = None
     delivery_status: str = "none"
+    invoice_status: str = "none"
     priority: str = "normal"
     remaining_closed_at: datetime | None = None
     remaining_close_reason: str | None = None
@@ -633,6 +637,7 @@ class SalesOrderListItem(BaseModel):
     opportunity_name: str | None = None
     status: str
     delivery_status: str = "none"
+    invoice_status: str = "none"
     priority: str = "normal"
     currency: str
     grand_total: Decimal
@@ -738,7 +743,8 @@ class RelatedOrderSummary(BaseModel):
 
 class RelatedInvoiceSummary(BaseModel):
     id: int
-    invoice_number: str
+    # Drafts have no number until they are issued (E5).
+    invoice_number: str | None = None
     status: str
     payment_status: str
     currency: str
@@ -790,6 +796,12 @@ class FollowUpActionResponse(BaseModel):
     follow_up_task_id: int | None = None
 
 
+class MoneyTotal(BaseModel):
+    currency: str
+    amount: float
+    count: int
+
+
 class OrganizationSummaryResponse(BaseModel):
     organization: SalesOrganizationResponse
     related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
@@ -807,6 +819,9 @@ class OrganizationSummaryResponse(BaseModel):
     invoice_count: int
     # Counts are totals; the lists above hold the most recent few.
     insertion_order_count: int
+    # E5: what the account owes on issued invoices, and is owed on posted bills, per currency.
+    receivables: list[MoneyTotal] = Field(default_factory=list)
+    payables: list[MoneyTotal] = Field(default_factory=list)
 
 
 class ContactCompactSummary(BaseModel):

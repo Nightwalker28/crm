@@ -24,9 +24,9 @@ from sqlalchemy.orm import Session
 from app.modules.calendar.models import MeetingBooking
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryAdjustment, InventoryDelivery, InventoryReturn
-from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseReceipt
 from app.modules.documents.models import Document
-from app.modules.finance.models import FinanceIO
+from app.modules.finance.models import FinanceCreditNote, FinanceIO, FinancePayment, FinancePosInvoice
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesQuote
 from app.modules.tasks.models import Task
 
@@ -108,6 +108,10 @@ AUTOMATION_RECORD_SOURCES: dict[str, AutomationRecordSource] = {
         AutomationRecordSource("inventory_return", "inventory_returns", InventoryReturn, "id", "/dashboard/inventory/returns/{id}", owner_field="received_by", label_fields=(("number",),)),
         AutomationRecordSource("purchase_order", "purchase_orders", PurchaseOrder, "id", "/dashboard/purchasing/orders/{id}", owner_field="owner_id", label_fields=(("number",),)),
         AutomationRecordSource("purchase_receipt", "purchase_receipts", PurchaseReceipt, "id", "/dashboard/purchasing/receipts/{id}", owner_field="posted_by", label_fields=(("number",),)),
+        AutomationRecordSource("purchase_bill", "purchase_bills", PurchaseBill, "id", "/dashboard/purchasing/bills/{id}", owner_field="owner_id", label_fields=(("number",), ("vendor_invoice_number",))),
+        AutomationRecordSource("finance_pos_invoice", "finance_pos", FinancePosInvoice, "id", "/dashboard/finance/pos/{id}", owner_field="user_id", label_fields=(("invoice_number",), ("customer_name",))),
+        AutomationRecordSource("finance_credit_note", "finance_credit_notes", FinanceCreditNote, "id", "/dashboard/finance/credit-notes/{id}", owner_field="created_by", label_fields=(("number",),)),
+        AutomationRecordSource("finance_payment", "finance_payments", FinancePayment, "id", "/dashboard/finance/payments/{id}", owner_field="created_by", label_fields=(("number",), ("party_name",))),
         AutomationRecordSource("sales_lead", "sales_leads", SalesLead, "lead_id", "/dashboard/sales/leads/{id}", owner_field="assigned_to", extras=_lead_extras, label_fields=(("first_name", "last_name"), ("company",), ("primary_email",))),
         AutomationRecordSource("sales_contact", "sales_contacts", SalesContact, "contact_id", "/dashboard/sales/contacts/{id}", owner_field="assigned_to", label_fields=(("first_name", "last_name"), ("primary_email",))),
         AutomationRecordSource("sales_opportunity", "sales_opportunities", SalesOpportunity, "opportunity_id", "/dashboard/sales/opportunities/{id}", owner_field="assigned_to", extras=_opportunity_extras, label_fields=(("opportunity_name",), ("client",))),

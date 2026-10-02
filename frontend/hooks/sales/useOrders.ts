@@ -44,6 +44,8 @@ export type Order = {
   warehouse_name?: string | null;
   /** none · pending · partial · delivered · closed, from the order's deliveries. */
   delivery_status?: string;
+  /** E5: none · pending · to_invoice · partial · invoiced (12c §3.2). */
+  invoice_status?: string;
   /** urgent · high · normal: arriving stock goes to waiting orders in this order, then oldest first. */
   priority?: string;
   remaining_closed_at?: string | null;

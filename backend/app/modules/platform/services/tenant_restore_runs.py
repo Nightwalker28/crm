@@ -53,6 +53,7 @@ def _read_json(zipf: zipfile.ZipFile, name: str) -> Any:
 OPTIONAL_INVENTORY_FILES = {
     "inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json",
     "purchase_orders.json", "purchase_order_lines.json", "purchase_receipts.json", "purchase_receipt_lines.json",
+    "purchase_bills.json", "purchase_bill_lines.json",
 }
 
 
@@ -290,6 +291,51 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
     return {"created": created, "updated": updated, "skipped": skipped, "soft_deleted": soft_deleted}
 
 
+def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, mode: str, invoice_rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Restore invoices, credit notes and payments by creating what is missing (12c §3.6).
+
+    Issued documents are final, so nothing that exists is overwritten or removed; balances
+    and the orders' invoice status are recomputed from the restored allocations.
+    """
+    from app.modules.finance.models import FinanceCreditNote, FinancePosInvoice
+    from app.modules.finance.services.invoice_balances import refresh_credit_note_balance, refresh_invoice_balance
+    from app.modules.finance.services.invoicing_services import recompute_tenant
+    from app.modules.purchasing.models import PurchaseBill
+    from app.modules.purchasing.services.bill_services import refresh_bill_balance
+
+    if mode in {"update_existing", "replace_module_data"}:
+        raise HTTPException(status_code=409, detail="Invoices, credit notes and payments are final; restore them with create missing")
+    bundles = [("finance_invoices.json", SUPPORTED_MODULE_EXPORTS["finance_pos"][1], invoice_rows)]
+    for filename, model in MODULE_CHILD_EXPORTS["finance_pos"]:
+        rows = _read_json(zipf, f"modules/{filename}") if f"modules/{filename}" in zipf.namelist() else []
+        if not isinstance(rows, list) or any(not isinstance(row, dict) or str(row.get("tenant_id")) != str(tenant_id) for row in rows):
+            raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Finance backup rows are invalid: {filename}")
+        if filename == "finance_payment_allocations.json":
+            # An allocation to a bill this tenant no longer has cannot be restored.
+            bills = {row[0] for row in db.query(PurchaseBill.id).filter(PurchaseBill.tenant_id == tenant_id)}
+            rows = [row for row in rows if not row.get("bill_id") or int(row["bill_id"]) in bills]
+        bundles.append((filename, model, rows))
+    created = skipped = 0
+    for _name, model, rows in bundles:
+        result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="create_missing")
+        created += result["created"]
+        skipped += result["skipped"]
+        db.flush()
+    for invoice in db.query(FinancePosInvoice).filter(FinancePosInvoice.tenant_id == tenant_id).all():
+        refresh_invoice_balance(db, invoice)
+    for credit_note in db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == tenant_id).all():
+        refresh_credit_note_balance(db, credit_note)
+    for bill in db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id).all():
+        refresh_bill_balance(db, bill)
+    recompute_tenant(db, tenant_id=tenant_id)
+    db.flush()
+    if db.get_bind().dialect.name == "postgresql":
+        for _name, model, _rows in bundles:
+            table = model.__tablename__
+            db.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), GREATEST((SELECT COALESCE(MAX(id), 0) FROM {table}), 1))"))
+    return {"created": created, "updated": 0, "skipped": skipped, "soft_deleted": 0}
+
+
 def _inventory_preview_count(zipf: zipfile.ZipFile, *, tenant_id: int, warehouse_rows: list[dict[str, Any]]) -> int:
     total = len(warehouse_rows)
     for filename, _model in MODULE_CHILD_EXPORTS["inventory_stock"]:
@@ -425,7 +471,12 @@ def execute_tenant_module_restore(
             if module_key == "inventory_stock":
                 preview_summary["total_rows"] = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
             with db.begin_nested():
-                result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows) if module_key == "inventory_stock" else _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
+                if module_key == "inventory_stock":
+                    result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows)
+                elif module_key == "finance_pos":
+                    result = _restore_finance_bundle(db, zipf, tenant_id=tenant_id, mode=mode, invoice_rows=rows)
+                else:
+                    result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
                 db.flush()
                 if module_key == "sales_orders":
                     # Restored statuses decide which orders may hold stock.
@@ -586,7 +637,12 @@ def execute_whole_tenant_restore(
                 if module_key == "inventory_stock":
                     preview_summary["total_rows"] = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
                 with db.begin_nested():
-                    result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=WHOLE_TENANT_RESTORE_MODE, warehouse_rows=rows) if module_key == "inventory_stock" else _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
+                    if module_key == "inventory_stock":
+                        result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=WHOLE_TENANT_RESTORE_MODE, warehouse_rows=rows)
+                    elif module_key == "finance_pos":
+                        result = _restore_finance_bundle(db, zipf, tenant_id=tenant_id, mode="create_missing", invoice_rows=rows)
+                    else:
+                        result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
                     db.flush()
                 if module_key == "sales_orders":
                     with db.begin_nested():

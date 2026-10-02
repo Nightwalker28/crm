@@ -23,7 +23,7 @@ router = APIRouter(prefix="/orders", tags=["Sales"])
 
 ORDER_LIST_FIELDS = {
     "order_number", "quote_id", "organization_id", "contact_id", "opportunity_id", "status", "currency", "grand_total",
-    "owner_id", "created_at", "updated_at", "delivery_status", "priority",
+    "owner_id", "created_at", "updated_at", "delivery_status", "priority", "invoice_status",
 }
 
 
@@ -217,6 +217,25 @@ def get_order_fulfilment(
 ):
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
     return jsonable_encoder(_fulfilment(db, current_user, order))
+
+
+@router.get("/{order_id}/invoicing")
+def get_order_invoicing(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_orders")),
+    require_permission=Depends(require_action_access("sales_orders", "view")),
+):
+    """The order's Invoicing tab (12c §3.5): invoiced and to invoice per line, and its invoices."""
+    from app.modules.finance.services.invoicing_services import order_invoicing_summary
+
+    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    data = order_invoicing_summary(db, order=order)
+    policy = PermissionPolicy(db, current_user)
+    if not (policy.can_view_module("finance_pos") and policy.can_perform_action("finance_pos", "view")):
+        data["invoices"] = []
+    return jsonable_encoder(data)
 
 
 @router.post("/{order_id}/reserve")

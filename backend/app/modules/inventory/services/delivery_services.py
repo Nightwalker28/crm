@@ -104,6 +104,10 @@ def refresh_delivery_status(db: Session, *, order: SalesOrder) -> str:
             value = "pending"
     order.delivery_status = value
     db.add(order)
+    # What can be invoiced follows what was delivered (12c §3.2).
+    from app.modules.finance.services.invoicing_services import refresh_invoice_status
+
+    refresh_invoice_status(db, order=order)
     return value
 
 
@@ -235,6 +239,9 @@ def cancel_delivery(db: Session, *, tenant_id: int, actor_user_id: int | None, d
         raise HTTPException(status_code=409, detail="The order is cancelled")
     if has_open_returns(db, tenant_id=tenant_id, delivery_id=doc.id):
         raise HTTPException(status_code=409, detail="This delivery has returns; cancel or remove them first")
+    from app.modules.finance.services.invoicing_services import guard_delivery_cancel
+
+    guard_delivery_cancel(db, order=order, delivery=doc)
     if doc.migrated:
         reverse_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, source_type="sales_order", source_id=order.id, reason=reason)
     else:

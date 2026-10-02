@@ -12,6 +12,10 @@ def scan_due_task_alerts_task() -> dict:
         # Same cadence and the same query shape, so `task.overdue` rides this schedule
         # rather than adding a beat entry.
         result["overdue"] = scan_overdue_tasks(db)
+        # Invoices and bills past due (E5) ride the same hourly schedule.
+        from app.modules.finance.services.overdue_scans import scan_overdue_documents
+
+        result["overdue_documents"] = scan_overdue_documents(db)
         return result
     finally:
         db.close()

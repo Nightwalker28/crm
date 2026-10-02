@@ -112,7 +112,9 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await expect(page.getByText("Invoice details")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Create invoice" }).click();
+  // E5: a new invoice is saved as a draft or issued; it has no status field of its own.
+  await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
+  await page.getByRole("button", { name: "Issue invoice" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
   await expect(page.getByText(/Each line needs a description/)).toBeVisible();
   await expect(page.getByLabel("Customer name")).toBeFocused();
@@ -121,11 +123,11 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await page.getByLabel("name line 1").fill("Implementation");
   await page.getByLabel("quantity line 1").fill("2");
   await page.getByLabel("unit price line 1").fill("100");
-  await page.getByLabel("Discount amount").fill("10");
+  // Exact: each line now has its own discount as well (E5).
+  await page.getByLabel("Discount amount", { exact: true }).fill("10");
   await page.getByLabel("Tax rate (%)").fill("10");
-  // Two now: the ledger draws `Total` as well as `Balance`. It always computed the total
-  // and validated the amount paid against it, and drew only the balance.
-  await expect(page.getByText("$209.00", { exact: true })).toHaveCount(2);
+  // Once: payments are recorded on the issued invoice (E5), so the form draws no balance.
+  await expect(page.getByText("$209.00", { exact: true })).toHaveCount(1);
   await page.getByLabel("name line 1").press("Enter");
   await expect(page.getByLabel("name line 2")).toBeFocused();
 });
@@ -168,8 +170,12 @@ test("Invoice detail and edit use routed record workflows", async ({
     page.getByRole("heading", { name: "Edit INV-BROWSER-1" }),
   ).toBeVisible();
   await expect(page.getByText(/Last modified/)).toBeVisible();
+  // Issued is final (E5): the customer and lines are fixed; terms, notes and dates are not.
   await expect(page.getByLabel("Customer name")).toHaveValue("Acme Operations");
-  await expect(page.getByLabel("name line 1")).toHaveValue("Implementation");
+  await expect(page.getByLabel("Customer name")).toBeDisabled();
+  await expect(page.getByText("Implementation").first()).toBeVisible();
+  await expect(page.getByLabel("name line 1")).toHaveCount(0);
+  await expect(page.getByLabel("Notes")).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Save changes" }),
   ).toBeVisible();

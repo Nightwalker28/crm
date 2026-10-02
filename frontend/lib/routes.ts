@@ -15,6 +15,7 @@ export const DASHBOARD_ROUTES = {
   tasks: "/dashboard/tasks",
   financePos: "/dashboard/finance/pos",
   payments: "/dashboard/finance/payments",
+  creditNotes: "/dashboard/finance/credit-notes",
   insertionOrders: "/dashboard/finance/insertion-orders",
   products: "/dashboard/catalog/products",
   services: "/dashboard/catalog/services",
@@ -27,6 +28,7 @@ export const DASHBOARD_ROUTES = {
   purchaseOrders: "/dashboard/purchasing/orders",
   purchaseReceipts: "/dashboard/purchasing/receipts",
   purchaseReorder: "/dashboard/purchasing/reorder",
+  purchaseBills: "/dashboard/purchasing/bills",
   reports: "/dashboard/reports",
 } as const;
 
@@ -138,8 +140,10 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   sales: "Sales",
   finance: "Finance",
   "insertion-orders": "Insertion orders",
-  pos: "POS",
+  pos: "Invoices",
   payments: "Payments",
+  "credit-notes": "Credit notes",
+  bills: "Bills",
   company: "General",
   general: "General",
   users: "User management",

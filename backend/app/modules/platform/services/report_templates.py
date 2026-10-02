@@ -77,6 +77,41 @@ REPORT_TEMPLATES: list[dict[str, Any]] = [
         "config": _summary([{"field": "vendor"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "subtotal"}],
             date_filter={"field": "ordered_at", "range": "this_month"}),
     },
+    # E5 (12c-erp-invoicing.md §3.6).
+    {
+        "key": "overdue-invoices-by-customer", "category": "Finance", "name": "Overdue invoices by customer",
+        "description": "What each customer owes past its due date.", "module_key": "finance_pos",
+        "config": _summary([{"field": "customer_name"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "balance_due"}],
+            filters={"all_conditions": [{"id": "overdue", "field": "overdue", "operator": "is", "value": True}], "any_conditions": []}),
+    },
+    {
+        "key": "invoiced-this-month", "category": "Finance", "name": "Invoiced this month",
+        "description": "Invoices issued this month, by customer.", "module_key": "finance_pos",
+        "config": _summary([{"field": "customer_name"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "total_amount"}],
+            date_filter={"field": "issue_date", "range": "this_month"},
+            filters={"all_conditions": [{"id": "issued", "field": "status", "operator": "is", "value": "issued"}], "any_conditions": []}),
+    },
+    {
+        "key": "unpaid-invoices-by-due-month", "category": "Finance", "name": "Unpaid invoices by due month",
+        "description": "Open balances grouped by the month they fall due.", "module_key": "finance_pos",
+        "config": _summary([{"field": "due_date", "granularity": "month"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "balance_due"}],
+            filters={"all_conditions": [{"id": "issued", "field": "status", "operator": "is", "value": "issued"},
+                                        {"id": "owing", "field": "balance_due", "operator": "gt", "value": 0}], "any_conditions": []}),
+    },
+    {
+        "key": "bills-due-this-month", "category": "Purchasing", "name": "Bills due this month",
+        "description": "Posted vendor bills falling due this month, by vendor.", "module_key": "purchase_bills",
+        "config": _summary([{"field": "vendor"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "balance_due"}],
+            date_filter={"field": "due_date", "range": "this_month"},
+            filters={"all_conditions": [{"id": "posted", "field": "status", "operator": "is", "value": "posted"}], "any_conditions": []}),
+    },
+    {
+        "key": "billed-spend-by-vendor", "category": "Purchasing", "name": "Billed spend by vendor",
+        "description": "What vendors billed this month.", "module_key": "purchase_bills",
+        "config": _summary([{"field": "vendor"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "total"}],
+            date_filter={"field": "bill_date", "range": "this_month"},
+            filters={"all_conditions": [{"id": "posted", "field": "status", "operator": "is", "value": "posted"}], "any_conditions": []}),
+    },
     {
         "key": "deals-pipeline-by-stage",
         "category": "Pipeline",

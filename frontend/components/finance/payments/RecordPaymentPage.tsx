@@ -21,7 +21,7 @@ import { usePaymentInvoices, type PosInvoice } from "@/hooks/finance/usePosInvoi
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { formatDateOnly } from "@/lib/datetime";
+import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
 
@@ -31,25 +31,28 @@ function money(amount: number, currency: string) {
   return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
+/** Payments are recorded against issued invoices with something still due (12c §3.3). */
 function isEligible(invoice: PosInvoice) {
-  return invoice.balance_due > 0 && invoice.status !== "void" && invoice.payment_status !== "refunded";
+  return invoice.status === "issued" && invoice.balance_due > 0;
 }
 
 export default function RecordPaymentPage() {
   const router = useRouter();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
-  const canRecordPayment = Boolean(modules.find((module) => module.name === "finance_pos")?.actions?.can_edit);
+  const canRecordPayment = Boolean(modules.find((module) => module.name === "finance_payments")?.actions?.can_create);
   const amountRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [invoice, setInvoice] = useState<PosInvoice | null>(null);
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [paidOn, setPaidOn] = useState(() => todayIsoDate());
+  const [reference, setReference] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saveComplete, setSaveComplete] = useState(false);
   const filters = useMemo<SavedViewFilters>(() => ({
     search: deferredSearch,
-    status: "all",
+    status: "issued",
     payment_status: "all",
     logic: "all",
     conditions: [],
@@ -88,6 +91,8 @@ export default function RecordPaymentPage() {
       await payments.recordPayment(invoice.id, {
         amount: parsedAmount,
         payment_method: paymentMethod.trim() || null,
+        paid_on: paidOn || null,
+        reference: reference.trim() || null,
       });
       setSaveComplete(true);
       toast.success("Payment recorded.");
@@ -113,7 +118,7 @@ export default function RecordPaymentPage() {
             <SectionHeading>Selected invoice</SectionHeading>
             {invoice ? (
               <dl className="mt-4 grid gap-3 text-sm">
-                <div><dt className="text-copy-muted">Invoice</dt><dd className="mt-1 font-medium text-copy-primary">{invoice.invoice_number}</dd></div>
+                <div><dt className="text-copy-muted">Invoice</dt><dd className="mt-1 font-medium text-copy-primary">{invoice.invoice_number ?? "Draft invoice"}</dd></div>
                 <div><dt className="text-copy-muted">Customer</dt><dd className="mt-1 text-copy-secondary">{invoice.customer_name}</dd></div>
                 <div className="flex justify-between gap-3"><dt className="text-copy-muted">Already paid</dt><dd className="text-copy-primary">{money(invoice.amount_paid, invoice.currency)}</dd></div>
                 <div className="flex justify-between gap-3 border-t border-line-subtle pt-3"><dt className="text-copy-muted">Outstanding</dt><dd className="font-semibold text-state-warning">{money(invoice.balance_due, invoice.currency)}</dd></div>
@@ -200,6 +205,14 @@ export default function RecordPaymentPage() {
             <Field>
               <FieldLabel htmlFor="record-payment-method">Payment method</FieldLabel>
               <Input id="record-payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={!invoice} maxLength={100} placeholder="Bank transfer, card, cash…" />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="record-payment-date">Paid on</FieldLabel>
+              <Input id="record-payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} disabled={!invoice} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="record-payment-reference">Reference</FieldLabel>
+              <Input id="record-payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} disabled={!invoice} maxLength={200} placeholder="Transfer or cheque number" />
             </Field>
           </FieldGroup>
         </FormSection>
