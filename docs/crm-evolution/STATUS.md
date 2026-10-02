@@ -25,7 +25,25 @@ Last updated 2026-10-02.
 | ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
 | ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
 | ERP E2 | **Done (2026-10-02).** Phase 1 `a7a1dc4`; Phases 2–3 and the review fixes `f7a80d6`. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
-| **Next, owner-set order** | **E3 fulfilment (`12-erp-inventory.md` §2): benchmark first, then plan, per the ERP rule.** Browser tests now run through `scripts/e2e.sh` (`4b47750`). | |
+| ERP E3 | **Plan written (2026-10-02): `12a-erp-fulfilment.md`.** Benchmark (Odoo, Business Central, NetSuite, Zoho Inventory, ERPNext), design, Phases 0–3. **Owner accepted every §5 decision (2026-10-02), extending 2: users can edit and reallocate holds.** See below | `12a-erp-fulfilment.md` |
+| **Next, owner-set order** | **E3 Phase 0 (website-order cancel defect), then Phases 1–3 of `12a-erp-fulfilment.md`.** Browser tests run through `scripts/e2e.sh`. | |
+
+## ERP E3 — plan (2026-10-02)
+
+Benchmark and plan in `12a-erp-fulfilment.md`; no code changed. What reading the code found
+(§1): confirming an order reserves nothing (`inventory_stock_levels.reserved` is always 0);
+fulfilment is all or nothing from the default warehouse with no delivery record; there are no
+returns; website orders take stock at submission against on hand, not available; and a
+**defect: cancelling or rejecting a website order never returns its stock**
+(`update_order_status` does not call `reverse_moves`). Client-portal orders never touch stock.
+
+Proposed: reserve at confirmation (partial allowed, waiting lines filled automatically as
+stock arrives, a short count releases the newest holds), one-step deliveries with carrier and
+tracking, the remainder kept on the order line as *To deliver* with *Close remaining*,
+*Fulfilled* kept as a shortcut that posts a full delivery, cancelling a shipped order refused,
+returns from a delivery with a per-line *Restock* switch. Phases: 0 the website defect,
+1 reservation, 2 deliveries, 3 returns and the platform. The owner accepted all ten §5 decisions (2026-10-02) and extended decision 2: oldest first is the default, and users can edit holds and move them to a more urgent order (a Reservations dialog; manual holds are released last).
+The dev database's order counts were not checked (stack down); Phase 1 starts with that.
 
 ## ERP E2 — Phases 2 and 3, consolidated test pass (2026-10-02, committed `f7a80d6`)
 
