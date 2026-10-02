@@ -29,6 +29,9 @@ DEFAULT_ROLES = [
 DEFAULT_MODULES = [
     {"name": "catalog_products", "base_route": "/dashboard/catalog/products", "description": "Catalog products"},
     {"name": "catalog_services", "base_route": "/dashboard/catalog/services", "description": "Catalog services"},
+    {"name": "inventory_stock", "base_route": "/dashboard/inventory/stock", "description": "Stock and movements"},
+    {"name": "inventory_adjustments", "base_route": "/dashboard/inventory/adjustments", "description": "Stock adjustments"},
+    {"name": "inventory_transfers", "base_route": "/dashboard/inventory/transfers", "description": "Warehouse transfers"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},

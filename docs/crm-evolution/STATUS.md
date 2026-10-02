@@ -23,8 +23,53 @@ Last updated 2026-10-02.
 | Owner fixes (2026-10-01) | Done: automation made to work end to end (stays in Settings); settings' second nav rail removed. See below | `automation_records.py`, derived triggers and templates in `automation_registry.py`; `test_automation_triggers.py` |
 | Reports rebuild | **Phases 1–3 done (2026-10-01)**: engine v2, library, viewer, builder, shared dashboards, scheduled email and XLSX. Phase 4 deferred. See below | `11-reports.md`, `report_engine.py`, `report_dashboards.py`, `report_subscriptions.py`, `test_report_engine.py`, `test_report_subscriptions.py`, `reports-revamp.spec.ts` |
 | ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
-| ERP E1 | **Done (2026-10-02): products and services, first class.** See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
-| **Next, owner-set order** | **E2 Phase 1: the inventory ledger (`12-erp-inventory.md` §4.2, §5.2–§5.7, §6). Starts with E2's own benchmark check against the major players (owner rule)** | |
+| ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
+| ERP E2 | **Phase 1 implemented and verified (2026-10-02), uncommitted.** Ledger, backfill, website and sales-order posting, product stock, warehouse settings and stock lists are implemented. See below | `20260826_inventory_ledger`, `20260827_inventory_append_only`, `inventory/services/stock_ledger.py`, `CatalogItemStockPanel`, `inventory-phase1.spec.ts` |
+| **Next, owner-set order** | **Review and commit E2 Phase 1, then build E2 Phase 2 adjustments, counts and transfers (`12-erp-inventory.md` §6).** | |
+
+## ERP E2 — Phase 1 implementation (2026-10-02)
+
+The five-player inventory benchmark in `12-erp-inventory.md` §4.2 was checked against
+current Odoo, Business Central, NetSuite, Zoho Inventory and ERPNext documentation, with
+direct source links added. Its ledger, warehouse, count and quantity vocabulary decisions
+still fit Lynk.
+
+Code audit for Phase 1: `product_services.py` creates and updates product stock directly;
+`website_integration_services.py::_apply_stock_decrement` locks and decrements the same
+catalog product within a website order transaction. Both paths must move to the ledger in
+the same slice as the schema migration. The website line must be flushed before posting its
+idempotent move, and its before/after snapshots must stay correct. The migration's
+`stock_quantity IS NOT NULL` tracking rule would derive status for any quantified product
+previously marked `preorder` or `untracked`. A read-only dev database check found 12
+quantified `in_stock` products and 2 quantified `preorder` products. The accepted
+derived-status rule changes those two to `in_stock` at a positive balance, so Phase 1 needs
+a populated-data test and migration review for that visible transition. These checks are now
+in `12-erp-inventory.md` §5.7–§6.
+
+Implemented: tenant-scoped warehouses, balance rows and append-only movements; a locked,
+idempotent posting/reversal service; deterministic opening balances; website and fulfilled
+sales-order stock changes; tracked product opening stock and read-only cache fields; quick
+adjustment, product Stock tab, Stock and Movements lists, and warehouse settings. The
+development migration applied through `20260827_inventory_append_only`. Focused backend
+tests passed (34), frontend lint and production build passed, and all 21 source design
+rules passed. The two quantified `preorder` products in the development database changed to
+derived `in_stock` as planned when the opening balance migration ran.
+
+Close-out verification resumed on 2026-10-02: isolated PostgreSQL migration replay passed
+at `20260827_inventory_append_only`; the development database is at that head. The five new
+inventory tables' ORM columns, nullability, indexes, unique and check constraints, and
+foreign keys match PostgreSQL. A rollback-only concurrent post smoke confirmed
+serialization on one product (the second post waited 0.98 seconds)
+and no balance or movement changes after rollback. PostgreSQL rejected both UPDATE and
+DELETE on an existing movement. All 14 tracked development products have matching cached
+quantities, warehouse balances and ledger sums, with the expected derived status. The
+rendered scroll guard passed; the full design guard passed across 113 routes with none
+unreachable. `inventory-phase1.spec.ts` passed in dark
+and light themes, opening the Stock, Movements and Warehouses screens, the warehouse editor,
+and the product Stock tab and adjustment dialog. Frontend lint passed again after adding
+that spec. The repository-wide `alembic check` still reports extensive pre-existing model
+drift across older modules; it is not a clean global check. E2 Phase 1 remains uncommitted;
+Phase 2 remains unstarted.
 
 ## ERP E1 — products and services, first class (2026-10-02)
 

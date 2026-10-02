@@ -43,6 +43,7 @@ type FormState = {
   cost_price: string;
   stock_status: string;
   stock_quantity: string;
+  track_inventory: boolean;
   is_public: boolean;
   is_active: boolean;
 };
@@ -62,6 +63,7 @@ const EMPTY_FORM: FormState = {
   cost_price: "",
   stock_status: "untracked",
   stock_quantity: "",
+  track_inventory: false,
   is_public: false,
   is_active: true,
 };
@@ -81,6 +83,7 @@ function formSeed(record?: CatalogRecord): FormState {
     cost_price: record.cost_price == null ? "" : String(record.cost_price),
     stock_status: record.stock_status ?? "untracked",
     stock_quantity: record.stock_quantity == null ? "" : String(record.stock_quantity),
+    track_inventory: Boolean(record.track_inventory),
     is_public: record.is_public,
     is_active: record.is_active,
   };
@@ -221,8 +224,9 @@ function CatalogRecordFormEditor({
       cost_price: cost ?? null,
       currency: form.currency.trim().toUpperCase(),
       public_unit_price: price,
-      stock_status: isProduct ? form.stock_status : undefined,
-      stock_quantity: isProduct ? stockQuantity ?? null : undefined,
+      stock_status: isProduct && !form.track_inventory ? form.stock_status : undefined,
+      stock_quantity: isProduct && !(mode === "edit" && record?.track_inventory) && form.track_inventory ? stockQuantity ?? null : undefined,
+      track_inventory: isProduct ? form.track_inventory : undefined,
       is_public: form.is_public,
       is_active: form.is_active,
     };
@@ -361,11 +365,18 @@ function CatalogRecordFormEditor({
         </FormSection>
 
         {isProduct ? (
-          <FormSection title="Inventory" description="Track availability or leave quantity blank when inventory is managed elsewhere.">
+          <FormSection title="Inventory" description="Tracked stock changes through audited movements. Untracked availability stays a manual status.">
             <FieldGroup columns={2}>
+              <Field className="md:col-span-2">
+                <label className="flex items-center gap-2 text-sm text-copy-secondary">
+                  <Checkbox checked={form.track_inventory} disabled={Boolean(record?.track_inventory)} onCheckedChange={(value) => setForm((current) => ({ ...current, track_inventory: value === true }))} />
+                  Track inventory
+                </label>
+                <FieldDescription>Tracked products use stock movements and cannot be switched back to manual stock.</FieldDescription>
+              </Field>
               <Field>
                 <FieldLabel>Status</FieldLabel>
-                <Select value={form.stock_status} onValueChange={(stock_status) => setForm((current) => ({ ...current, stock_status }))}>
+                {form.track_inventory ? <p className="text-sm text-copy-secondary">Derived from on hand quantity</p> : <Select value={form.stock_status} onValueChange={(stock_status) => setForm((current) => ({ ...current, stock_status }))}>
                   <SelectTrigger aria-label="Stock status"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="untracked">Untracked</SelectItem>
@@ -373,12 +384,13 @@ function CatalogRecordFormEditor({
                     <SelectItem value="out_of_stock">Out of stock</SelectItem>
                     <SelectItem value="preorder">Preorder</SelectItem>
                   </SelectContent>
-                </Select>
+                </Select>}
               </Field>
               <Field>
-                <FieldLabel htmlFor="catalog-stock-quantity">Stock quantity</FieldLabel>
-                <Input id="catalog-stock-quantity" value={form.stock_quantity} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, stock_quantity: event.target.value })); if (stockError) setStockError(null); }} aria-invalid={Boolean(stockError)} aria-describedby={stockError ? "catalog-stock-error" : undefined} placeholder="Blank for untracked" />
+                <FieldLabel htmlFor="catalog-stock-quantity">{mode === "edit" && record?.track_inventory ? "On hand" : "Opening quantity"}</FieldLabel>
+                <Input id="catalog-stock-quantity" value={form.track_inventory ? form.stock_quantity : ""} disabled={!form.track_inventory || Boolean(record?.track_inventory)} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, stock_quantity: event.target.value })); if (stockError) setStockError(null); }} aria-invalid={Boolean(stockError)} aria-describedby={stockError ? "catalog-stock-error" : undefined} placeholder="0" />
                 {stockError ? <FieldError id="catalog-stock-error">{stockError}</FieldError> : null}
+                {mode === "edit" && record?.track_inventory ? <FieldDescription>Use Adjust stock on the product record to change this balance.</FieldDescription> : null}
               </Field>
             </FieldGroup>
           </FormSection>

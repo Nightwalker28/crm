@@ -91,6 +91,7 @@ class CatalogProduct(Base):
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
     stock_status = Column(String(20), nullable=False, server_default="untracked", index=True)
     stock_quantity = Column(Numeric(12, 4), nullable=True)
+    track_inventory = Column(SmallInteger, nullable=False, server_default="0")
     category_id = Column(BigInteger, ForeignKey("catalog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     cost_price = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(40), nullable=False, server_default="unit")

@@ -21,6 +21,7 @@ class CatalogProductBase(BaseModel):
     public_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     stock_status: CatalogProductStockStatus = CatalogProductStockStatus.untracked
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    track_inventory: bool | None = None
     category_id: int | None = Field(default=None, gt=0)
     cost_price: Decimal | None = Field(default=None, ge=0)
     unit: str = Field(default="unit", min_length=1, max_length=40)
@@ -74,6 +75,7 @@ class CatalogProductUpdateRequest(BaseModel):
     public_unit_price: Decimal | None = Field(default=None, ge=0)
     stock_status: CatalogProductStockStatus | None = None
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    track_inventory: bool | None = None
     category_id: int | None = Field(default=None, gt=0)
     cost_price: Decimal | None = Field(default=None, ge=0)
     unit: str | None = Field(default=None, min_length=1, max_length=40)
@@ -128,6 +130,7 @@ class CatalogProductResponse(BaseModel):
     public_unit_price: Decimal
     stock_status: CatalogProductStockStatus
     stock_quantity: Decimal | None = None
+    track_inventory: bool = False
     category_id: int | None = None
     category_name: str | None = None
     cost_price: Decimal | None = None

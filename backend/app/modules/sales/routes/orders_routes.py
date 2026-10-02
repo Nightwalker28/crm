@@ -148,7 +148,7 @@ def update_order(
     update_payload = payload.model_dump(exclude_unset=True)
     require_catalog_line_link_access(db, user=current_user, lines=update_payload.get("items"), existing_links=catalog_links_of(order.items))
     before_state = _serialize_order(order)
-    updated = update_sales_order(db, order, update_payload)
+    updated = update_sales_order(db, order, update_payload, actor_user_id=current_user.id)
     safe_log_activity(
         db,
         tenant_id=current_user.tenant_id,

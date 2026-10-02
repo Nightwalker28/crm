@@ -21,6 +21,7 @@ from app.modules.catalog.services.common import (
     utc_now,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, ensure_product_levels, post_moves
 
 CATALOG_PRODUCTS_MODULE = "catalog_products"
 PRODUCT_STOCK_STATUSES = {"untracked", "in_stock", "out_of_stock", "preorder"}
@@ -41,7 +42,7 @@ def _coerce_nonnegative_decimal(value, *, field_name: str, required: bool = True
 
 
 def _normalize_stock_status(value) -> str:
-    normalized = str(value or "untracked").strip().lower()
+    normalized = str(getattr(value, "value", value) or "untracked").strip().lower()
     if normalized not in PRODUCT_STOCK_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid stock status")
     return normalized
@@ -75,6 +76,7 @@ def serialize_product(product: CatalogProduct) -> dict:
         "public_unit_price": product.public_unit_price,
         "stock_status": product.stock_status,
         "stock_quantity": product.stock_quantity,
+        "track_inventory": bool(product.track_inventory),
         **catalog_detail_payload(product),
         "barcode": product.barcode,
         "is_public": bool(product.is_public),
@@ -162,6 +164,10 @@ def get_product_or_404(
 def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> CatalogProduct:
     slug = normalize_catalog_slug(payload.get("slug"), fallback=payload["name"])
     _ensure_slug_available(db, tenant_id=tenant_id, slug=slug)
+    opening_quantity = _coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False)
+    tracked = bool(payload.get("track_inventory")) or opening_quantity is not None
+    if payload.get("track_inventory") is False and opening_quantity is not None:
+        raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
     product = CatalogProduct(
         tenant_id=tenant_id,
         name=str(payload["name"]).strip(),
@@ -172,8 +178,9 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
         **normalize_catalog_detail_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
         currency=normalize_catalog_currency(payload.get("currency")),
         public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
-        stock_status=_normalize_stock_status(payload.get("stock_status")),
-        stock_quantity=_coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False),
+        stock_status=("out_of_stock" if tracked else _normalize_stock_status(payload.get("stock_status"))),
+        stock_quantity=(Decimal("0") if tracked else None),
+        track_inventory=int(tracked),
         is_public=coerce_catalog_bool(payload.get("is_public", False), field_name="is_public"),
         is_active=coerce_catalog_bool(payload.get("is_active", True), field_name="is_active"),
         created_by_user_id=actor_user_id,
@@ -181,6 +188,16 @@ def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
     )
     db.add(product)
     try:
+        db.flush()
+        if tracked:
+            ensure_product_levels(db, tenant_id=tenant_id, product_id=product.id)
+        if tracked and opening_quantity and opening_quantity > 0:
+            warehouse = ensure_default_warehouse(db, tenant_id=tenant_id)
+            post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(
+                product_id=product.id, warehouse_id=warehouse.id, quantity=opening_quantity,
+                move_type="opening", source_type="catalog_product", source_id=product.id,
+                source_line_id=product.id, reason="Opening balance",
+            )])
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -208,6 +225,19 @@ def update_product(
     payload: dict,
 ) -> CatalogProduct:
     before_state = _product_state(product)
+    was_tracked = bool(product.track_inventory)
+    requested_tracking = payload.get("track_inventory")
+    if was_tracked and requested_tracking is False:
+        raise HTTPException(status_code=409, detail="Tracked inventory cannot be disabled after movements exist")
+    if was_tracked:
+        if "stock_quantity" in payload and payload["stock_quantity"] is not None and Decimal(str(payload["stock_quantity"])) != Decimal(product.stock_quantity or 0):
+            raise HTTPException(status_code=409, detail="Use Adjust stock to change a tracked product's quantity")
+        if "stock_status" in payload and str(getattr(payload["stock_status"], "value", payload["stock_status"])) != product.stock_status:
+            raise HTTPException(status_code=409, detail="Tracked stock status is derived from inventory")
+    enabling = not was_tracked and (requested_tracking is True or payload.get("stock_quantity") is not None)
+    opening_quantity = _coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False) if enabling else None
+    if enabling and requested_tracking is False:
+        raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
     for field, value in normalize_catalog_detail_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
         setattr(product, field, value)
     required_fields = {"name", "currency", "public_unit_price", "stock_status"}
@@ -219,8 +249,6 @@ def update_product(
         "barcode",
         "currency",
         "public_unit_price",
-        "stock_status",
-        "stock_quantity",
         "is_public",
         "is_active",
     ]:
@@ -247,9 +275,25 @@ def update_product(
         elif field in {"is_public", "is_active"} and value is not None:
             value = coerce_catalog_bool(value, field_name=field)
         setattr(product, field, value)
+    if not was_tracked and "stock_status" in payload and not enabling:
+        product.stock_status = _normalize_stock_status(payload["stock_status"])
+    if enabling:
+        product.track_inventory = 1
+        product.stock_quantity = Decimal("0")
+        product.stock_status = "out_of_stock"
     product.updated_by_user_id = actor_user_id
     db.add(product)
     try:
+        db.flush()
+        if enabling:
+            ensure_product_levels(db, tenant_id=product.tenant_id, product_id=product.id)
+        if enabling and opening_quantity and opening_quantity > 0:
+            warehouse = ensure_default_warehouse(db, tenant_id=product.tenant_id)
+            post_moves(db, tenant_id=product.tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(
+                product_id=product.id, warehouse_id=warehouse.id, quantity=opening_quantity,
+                move_type="opening", source_type="catalog_product", source_id=product.id,
+                source_line_id=product.id, reason="Opening balance",
+            )])
         db.commit()
     except IntegrityError as exc:
         db.rollback()

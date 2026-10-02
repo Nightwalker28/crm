@@ -120,6 +120,15 @@ once. They get their own benchmark and plan as a later pricing module, not a cor
 
 ### 4.2 E2 — inventory
 
+Benchmark rechecked 2026-10-02 against the vendors' current product documentation. The
+comparison below describes their product models; the choices after it are Lynk's design.
+
+- [Odoo inventory adjustments](https://www.odoo.com/documentation/17.0/applications/inventory_and_mrp/inventory/warehouses_storage/inventory_management/count_products.html) apply a counted difference and create a traceable stock move line. [Odoo's location model](https://www.odoo.com/documentation/19.0/applications/inventory_and_mrp/inventory/inventory_valuation/operations_valuation.html) distinguishes internal transfers from stock entering or leaving the business.
+- [Business Central item ledger entries](https://learn.microsoft.com/en-us/dynamics365/business-central/application/base-application/page/microsoft.inventory.ledger.item-ledger-entries) are a read-only history of posted item transactions; its [inventory training](https://learn.microsoft.com/en-us/training/modules/adjust-inventory/) covers journals, counts and location reclassification.
+- [NetSuite location balances](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/section_1504284372.html) distinguish on hand, committed, available, on order and in transit. Its [adjustments](https://docs.oracle.com/en/cloud/saas/netsuite/ns-online-help/article_0902105416.html) carry a location and quantity.
+- [Zoho Inventory adjustments](https://www.zoho.com/us/inventory/help/items/inventory-adjustments.html) capture a reason for a quantity correction; [transfer orders](https://www.zoho.com/us/inventory/help/warehouses/transfer-orders.html) record movement between two warehouses.
+- [ERPNext stock entries](https://docs.frappe.io/erpnext/stock-entry) post receipts, issues and transfers, and a submitted entry is corrected by cancelling and amending it. [Stock reconciliation](https://docs.frappe.io/erpnext/stock-reconciliation) handles opening balances and physical counts.
+
 | | Odoo | Business Central | NetSuite | Zoho Inventory | ERPNext |
 |---|---|---|---|---|---|
 | **Stock record** | Stock moves between locations (double entry), quants per location | Item ledger entries per location | Transaction lines per location | Stock per warehouse, item history | Stock ledger entries; "Bin" holds per-warehouse totals |
@@ -143,7 +152,9 @@ What each does best:
   *committed* (reserved), *available*, *on order*. Zoho's adjustment reasons.
 - **Odoo:** the count workflow. Pick products, record what was counted, see the difference,
   then apply it. Also the product page's smart buttons: *On hand*, *Forecast*, *Moves*.
-- **Zoho:** stays simple for small businesses. One warehouse looks like no warehouse at all.
+- **Zoho:** its transfer flow requires a second warehouse, supporting Lynk's choice to hide
+  warehouse selection while a tenant has only Main. That UI choice is Lynk's inference, not a
+  claim about Zoho's interface.
 
 What Lynk takes:
 
@@ -351,11 +362,17 @@ signed format, never colour alone.
 
 ### 5.7 Migration of existing stock
 
-One migration (revision ID ≤ 32 characters):
+Two migrations (revision IDs ≤ 32 characters): one for the schema and backfill, then one
+for PostgreSQL's append-only movement trigger:
 
 1. Creates a *Main* warehouse (code `MAIN`, default) for every tenant.
 2. Sets `track_inventory = (stock_quantity IS NOT NULL)`. This is exactly the set of products
-   the website already decrements today, so the website's behaviour does not change.
+   the website already decrements today. Recomputing tracked `stock_status` may, however,
+   change a manually assigned `preorder` or `untracked` status on a quantified product; the
+   migration test must cover those existing states explicitly. The 2026-10-02 dev database
+   has 12 quantified `in_stock` products and 2 quantified `preorder` products. Per the
+   accepted derived-status rule, the latter become `in_stock` when their balance is positive;
+   this is a visible status transition and must be called out in the migration review.
 3. For each tracked product with quantity > 0, writes one `opening` move into Main and its
    level row. `stock_status` is recomputed for tracked products only.
 
@@ -387,6 +404,18 @@ Acceptance: a website order and a quick adjustment both appear in Movements with
 why; levels equal the ledger's sums; going below zero is refused with the shortfall named;
 another tenant's product or warehouse is a 404; a tenant with one warehouse never sees a
 warehouse picker.
+
+**Phase 1 integration check (verified 2026-10-02).** The current writers are
+`catalog/services/product_services.py` (`create_product` and `update_product` write
+`stock_quantity`/`stock_status`) and
+`website_integrations/services/website_integration_services.py::_apply_stock_decrement`.
+The website order resolves and locks catalog products, creates its order and lines, then
+commits once. Its ledger move must use the persisted website line ID as the idempotency key
+and remain in that transaction; the line's before/after snapshots must still match the
+ledger. New tracked products need an opening move for any supplied starting quantity.
+The form must stop writing a tracked product's cached stock directly when the migration
+lands. Phase 1 also needs a deliberate rule for existing quantified products marked
+`preorder` or `untracked`, since deriving tracked status changes their displayed state.
 
 ### E2 Phase 2 — documents
 

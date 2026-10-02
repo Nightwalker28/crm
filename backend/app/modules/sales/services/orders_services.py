@@ -11,6 +11,8 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.module_filters import apply_filter_conditions
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.catalog.services.line_links import normalize_catalog_line_links
+from app.modules.catalog.models import CatalogProduct
+from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves, reverse_moves
 from app.modules.sales.models import SalesOrder, SalesOrderItem, SalesQuote
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
@@ -281,6 +283,9 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     order.items = normalized_items
     db.add(order)
     try:
+        db.flush()
+        if order.status == "fulfilled":
+            _post_fulfilment(db, order, actor_user_id=current_user.id if current_user else None)
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -339,7 +344,31 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
     return create_sales_order(db, payload, current_user)
 
 
-def update_sales_order(db: Session, order: SalesOrder, payload: dict) -> SalesOrder:
+def _post_fulfilment(db: Session, order: SalesOrder, *, actor_user_id: int | None) -> None:
+    product_ids = {item.catalog_product_id for item in order.items if item.catalog_product_id is not None}
+    if not product_ids:
+        return
+    tracked = {row.id for row in db.query(CatalogProduct).filter(CatalogProduct.tenant_id == order.tenant_id, CatalogProduct.id.in_(product_ids), CatalogProduct.track_inventory == 1)}
+    if not tracked:
+        return
+    warehouse = ensure_default_warehouse(db, tenant_id=order.tenant_id)
+    post_moves(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, moves=[
+        MoveSpec(product_id=item.catalog_product_id, warehouse_id=warehouse.id, quantity=-Decimal(item.quantity),
+                 move_type="sales_order", source_type="sales_order", source_id=order.id,
+                 source_line_id=item.id, reason="Order fulfilled")
+        for item in order.items if item.catalog_product_id in tracked
+    ])
+
+
+def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_user_id: int | None = None) -> SalesOrder:
+    previous_status = order.status
+    next_status = payload.get("status", previous_status)
+    if previous_status == "cancelled" and next_status != "cancelled":
+        raise HTTPException(status_code=409, detail="A cancelled order cannot be reopened")
+    if previous_status == "fulfilled" and next_status not in {"fulfilled", "cancelled"}:
+        raise HTTPException(status_code=409, detail="A fulfilled order can only be cancelled")
+    if previous_status == "fulfilled" and payload.get("items") is not None:
+        raise HTTPException(status_code=409, detail="Fulfilled order lines cannot be edited")
     items_payload = payload.pop("items", None)
     data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True)
     normalized_items = None
@@ -359,6 +388,11 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict) -> SalesOr
         order.items = normalized_items
     db.add(order)
     try:
+        db.flush()
+        if previous_status != "fulfilled" and order.status == "fulfilled":
+            _post_fulfilment(db, order, actor_user_id=actor_user_id)
+        elif previous_status == "fulfilled" and order.status == "cancelled":
+            reverse_moves(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, source_type="sales_order", source_id=order.id, reason="Order cancelled")
         db.commit()
     except IntegrityError as exc:
         db.rollback()

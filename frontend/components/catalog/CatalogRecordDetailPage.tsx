@@ -6,6 +6,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 
 import { CatalogItemSalesPanel } from "@/components/catalog/CatalogItemSalesPanel";
+import { CatalogItemStockPanel } from "@/components/catalog/CatalogItemStockPanel";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
@@ -96,6 +97,8 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const catalogActions = moduleActions(moduleKey);
   const taskActions = moduleActions("tasks");
   const documentActions = moduleActions("documents");
+  const inventoryActions = moduleActions("inventory_stock");
+  const adjustmentActions = moduleActions("inventory_adjustments");
   const canEdit = Boolean(catalogActions?.can_edit);
   const canDelete = Boolean(catalogActions?.can_delete);
   const canViewTasks = Boolean(taskActions?.can_view);
@@ -191,7 +194,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
                 </RecordSpineField>
                 {isProduct ? (
                   <RecordSpineField label="Stock status">
-                    {canEdit ? (
+                    {canEdit && !record.track_inventory ? (
                       <InlineFieldEdit
                         fieldLabel="Stock status"
                         value={record.stock_status ?? "untracked"}
@@ -242,6 +245,11 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
         />
       ) : undefined}
       extraTabs={record ? [
+        ...(isProduct && inventoryActions?.can_view ? [{
+          id: "stock",
+          label: "Stock",
+          content: <CatalogItemStockPanel productId={record.id} canAdjust={Boolean(adjustmentActions?.can_create && adjustmentActions?.can_edit)} />,
+        }] : []),
         {
           id: "sales",
           label: "Sales",

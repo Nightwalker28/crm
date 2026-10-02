@@ -17,6 +17,7 @@ from app.core.config import settings
 from app.core.uploads import build_media_url
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.finance.services import pos_invoice_services
+from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.website_integrations.repositories import website_integration_repository
 from app.modules.website_integrations.models import (
@@ -576,29 +577,6 @@ def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line:
     return item
 
 
-def _apply_stock_decrement(db: Session, item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
-    if item.product is None:
-        return None, None
-    product = website_integration_repository.get_public_product_for_stock_update(db, product=item.product)
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
-    if product.stock_status == "out_of_stock":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{item.name} is out of stock")
-    before = Decimal(str(product.stock_quantity)) if product.stock_quantity is not None else None
-    if before is None:
-        return None, None
-    if before < quantity:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.name}")
-    after = before - quantity
-    product.stock_quantity = after
-    if after <= 0:
-        product.stock_status = "out_of_stock"
-    elif product.stock_status == "out_of_stock":
-        product.stock_status = "in_stock"
-    db.add(product)
-    return before, after
-
-
 def create_public_order(
     db: Session,
     *,
@@ -646,14 +624,12 @@ def create_public_order(
             order.currency = line_currency
         if line_currency != order.currency:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order lines must use one currency")
-        before, after = _apply_stock_decrement(db, item, quantity)
         unit_price = Decimal(str(item.public_unit_price))
         line_total = unit_price * quantity
         subtotal += line_total
         if item.product is not None:
             db.add(item.product)
-        db.add(
-            WebsiteIntegrationOrderLine(
+        order_line = WebsiteIntegrationOrderLine(
                 tenant_id=tenant_id,
                 order_id=order.id,
                 catalog_product_id=item.product.id if item.product else None,
@@ -666,10 +642,20 @@ def create_public_order(
                 currency=line_currency,
                 unit_price_snapshot=unit_price,
                 line_total=line_total,
-                stock_quantity_before=before,
-                stock_quantity_after=after,
+                stock_quantity_before=None,
+                stock_quantity_after=None,
             )
-        )
+        db.add(order_line)
+        db.flush()
+        if item.product is not None and item.product.track_inventory:
+            warehouse = ensure_default_warehouse(db, tenant_id=tenant_id)
+            move = post_moves(db, tenant_id=tenant_id, actor_user_id=None, moves=[MoveSpec(
+                product_id=item.product.id, warehouse_id=warehouse.id, quantity=-quantity,
+                move_type="website_order", source_type="website_order", source_id=order.id,
+                source_line_id=order_line.id, reason="Website order",
+            )])[0]
+            order_line.stock_quantity_after = move.on_hand_after
+            order_line.stock_quantity_before = Decimal(move.on_hand_after) + quantity
 
     order.subtotal_amount = subtotal
     db.add(order)

@@ -9,6 +9,7 @@ import {
   FileText,
   Fingerprint,
   FolderTree,
+  Warehouse,
   Globe,
   KeyRound,
   LayoutTemplate,
@@ -30,6 +31,7 @@ export type ModuleGroupKey =
   | "workspace"
   | "sales"
   | "catalog"
+  | "inventory"
   | "support"
   | "finance"
   | "reports"
@@ -64,6 +66,8 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "contracts", label: "Contracts", route: DASHBOARD_ROUTES.contracts, group: "sales", status: "tier2", enabled: true, sortOrder: 70, quickAction: { label: "Create contract", description: "Add a contract", href: `${DASHBOARD_ROUTES.contracts}/new` } },
   { key: "catalog_products", label: "Products", route: DASHBOARD_ROUTES.products, group: "catalog", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Create product", description: "Add a catalog product", href: `${DASHBOARD_ROUTES.products}/new` } },
   { key: "catalog_services", label: "Services", route: DASHBOARD_ROUTES.services, group: "catalog", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create service", description: "Add a catalog service", href: `${DASHBOARD_ROUTES.services}/new` } },
+  { key: "inventory_stock", label: "Stock", route: DASHBOARD_ROUTES.inventoryStock, group: "inventory", status: "tier1", enabled: true, sortOrder: 10 },
+  { key: "inventory_movements", label: "Movements", route: DASHBOARD_ROUTES.inventoryMovements, group: "inventory", status: "tier1", enabled: true, sortOrder: 20, requiredModuleKey: "inventory_stock" },
   { key: "documents", label: "Documents", route: DASHBOARD_ROUTES.documents, group: "workspace", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Upload document", description: "Open the document upload workflow", href: `${DASHBOARD_ROUTES.documents}/upload` } },
   { key: "calendar", label: "Calendar", route: DASHBOARD_ROUTES.calendar, group: "workspace", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create event", description: "Schedule a calendar event", href: `${DASHBOARD_ROUTES.calendar}?action=create` } },
   { key: "mail", label: "Mail", route: DASHBOARD_ROUTES.mail, group: "workspace", status: "tier1", enabled: true, sortOrder: 30, quickAction: { label: "Compose email", description: "Write a CRM email", href: `${DASHBOARD_ROUTES.mail}/compose` } },
@@ -128,6 +132,7 @@ export const SETTINGS_NAV_GROUPS = [
       { href: SETTINGS_ROUTES.recordLayouts, label: "Record layouts", description: "Arrange and preview the lead quick create form.", icon: LayoutTemplate, sortOrder: 85 },
       { href: SETTINGS_ROUTES.pipeline, label: "Deal pipeline", description: "Name, order and weight the stages deals move through.", icon: Columns3, sortOrder: 87 },
       { href: SETTINGS_ROUTES.catalogCategories, label: "Catalog categories", description: "Group products and services the way your team browses them.", icon: FolderTree, sortOrder: 88 },
+      { href: SETTINGS_ROUTES.warehouses, label: "Warehouses", description: "Manage inventory locations and the default warehouse.", icon: Warehouse, sortOrder: 89 },
       { href: SETTINGS_ROUTES.templates, label: "Templates", description: "Manage reusable message templates.", icon: FileText, sortOrder: 130 },
       { href: SETTINGS_ROUTES.automation, label: "Automation", description: "Configure event-based workflow rules and review run history.", icon: Repeat2, sortOrder: 90 },
     ],

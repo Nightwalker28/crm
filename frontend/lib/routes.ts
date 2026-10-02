@@ -18,6 +18,8 @@ export const DASHBOARD_ROUTES = {
   insertionOrders: "/dashboard/finance/insertion-orders",
   products: "/dashboard/catalog/products",
   services: "/dashboard/catalog/services",
+  inventoryStock: "/dashboard/inventory/stock",
+  inventoryMovements: "/dashboard/inventory/movements",
   reports: "/dashboard/reports",
 } as const;
 
@@ -38,6 +40,7 @@ export const SETTINGS_ROUTES = {
   recordLayouts: "/dashboard/settings/record-layouts",
   pipeline: "/dashboard/settings/pipeline",
   catalogCategories: "/dashboard/settings/catalog-categories",
+  warehouses: "/dashboard/settings/warehouses",
   automation: "/dashboard/settings/automation",
   calendarBooking: "/dashboard/settings/calendar-booking",
   backups: "/dashboard/settings/backups",
@@ -121,6 +124,10 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   catalog: "Products & services",
   products: "Products",
   services: "Services",
+  inventory: "Inventory",
+  stock: "Stock",
+  movements: "Movements",
+  warehouses: "Warehouses",
   sales: "Sales",
   finance: "Finance",
   "insertion-orders": "Insertion orders",
