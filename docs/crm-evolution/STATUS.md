@@ -24,10 +24,10 @@ Last updated 2026-10-02.
 | Reports rebuild | **Phases 1–3 done (2026-10-01)**: engine v2, library, viewer, builder, shared dashboards, scheduled email and XLSX. Phase 4 deferred. See below | `11-reports.md`, `report_engine.py`, `report_dashboards.py`, `report_subscriptions.py`, `test_report_engine.py`, `test_report_subscriptions.py`, `reports-revamp.spec.ts` |
 | ERP programme | **Plan written (2026-10-01): `12-erp-inventory.md`.** Order E1 products and services → E2 inventory → E3 fulfilment → E4 purchasing → E5 invoicing and bills → E6 costing. Owner accepted every §7 recommendation (2026-10-01). See below | `12-erp-inventory.md` |
 | ERP E1 | **Done (2026-10-02): products and services, first class.** Committed as `4eed89f`. See below | `20260825_catalog_first_class`, `catalog/services/line_links.py`, `category_services.py`, `item_services.py`, `item_routes.py`; `CatalogItemSalesPanel`, `settings/catalog-categories`; `test_catalog_first_class.py`, `catalog-line-items.spec.ts` |
-| ERP E2 | **Phase 1 committed as `a7a1dc4`; Phases 2–3 implemented and through the consolidated test pass (2026-10-02), uncommitted.** Review findings 1–3 are open and block the commit. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
-| **Next, owner-set order** | **Fix E2 review findings 1–3 (owner to confirm scope), one verification pass, then commit E2.** | |
+| ERP E2 | **Done (2026-10-02).** Phase 1 `a7a1dc4`; Phases 2–3 and the review fixes `f7a80d6`. See below | `20260826_inventory_ledger` → `20260829_inventory_reorder`, `stock_ledger.py`, `document_services.py`, `opening_import.py`, `test_inventory_documents.py`, `inventory-phase1/2/3.spec.ts` |
+| **Next, owner-set order** | **E3 fulfilment (`12-erp-inventory.md` §2): benchmark first, then plan, per the ERP rule.** Browser tests now run through `scripts/e2e.sh` (`4b47750`). | |
 
-## ERP E2 — Phases 2 and 3, consolidated test pass (2026-10-02)
+## ERP E2 — Phases 2 and 3, consolidated test pass (2026-10-02, committed `f7a80d6`)
 
 Implemented (Codex): adjustment documents (quantity and count modes) and transfer documents
 with draft → post → cancel-by-reversal, draft removal and restore
