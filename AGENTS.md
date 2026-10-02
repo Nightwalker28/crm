@@ -73,8 +73,15 @@ From repo root:
 - Frontend lint: `docker compose exec -T frontend npm run lint`
 - Frontend build verification: `docker compose exec -T frontend npm run build`
 - Design rules (source-level, runs on the host, included in `codex-check.sh`): `./scripts/check-design.sh`
-- Design rules (rendered, walks every route): `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1`
-- Browser tests when relevant: `docker compose run --rm frontend-e2e npm run test:e2e`
+- Design rules (rendered, walks every route): `./scripts/e2e.sh design-rules.spec.ts scroll-containers.spec.ts`
+- Browser tests when relevant: `./scripts/e2e.sh <spec>…` (see below)
+
+### Browser tests
+
+- Browser tests (Playwright) run through `./scripts/e2e.sh`, **not** `docker compose run … frontend-e2e` against the dev server. It serves the production build (`next start` on :3000, the origin the backend trusts, reusing the build `codex-check.sh` leaves unless source is newer), stops the dev server for the run and restarts it after, enforces one worker, and refuses to start above 65% host load. Several times faster than the dev server, and the full design walk no longer OOMs.
+  - While fixing a slice, scope the route guards to the touched routes: `./scripts/e2e.sh --routes /dashboard/inventory,/dashboard/settings/recycle-bin design-rules.spec.ts scroll-containers.spec.ts` (sets `E2E_ROUTES`; route prefixes, comma-separated; the canary and global checks still run).
+  - Once per module, at its close: the unscoped walk, `./scripts/e2e.sh design-rules.spec.ts scroll-containers.spec.ts`, plus the module's specs.
+  - Exception: `contract-transport`, `record-layout-runtime` and `quick-create-surface` drive the `/e2e/*` harness routes, which `proxy.ts` blocks in production; run those on the dev server: `docker compose run --rm frontend-e2e npm run test:e2e -- <spec> --workers=1`.
 
 ## Where to look next
 

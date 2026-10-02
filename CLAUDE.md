@@ -58,10 +58,12 @@ Frontend:
 ```bash
 docker compose exec -T frontend npm run lint
 docker compose exec -T frontend npm run build
-docker compose run --rm frontend-e2e npm run test:e2e
-docker compose run --rm frontend-e2e npm run test:e2e -- leads-revamp.spec.ts --grep "Lead journey behavior baseline"
-docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1   # rendered design guards
+./scripts/e2e.sh leads-revamp.spec.ts --grep "Lead journey behavior baseline"   # browser tests: production build, one worker
+./scripts/e2e.sh --routes /dashboard/inventory design-rules.spec.ts scroll-containers.spec.ts   # rendered guards, scoped to a slice while fixing
+./scripts/e2e.sh design-rules.spec.ts scroll-containers.spec.ts   # full rendered walk, once at a module's close
 ```
+
+Browser tests go through `scripts/e2e.sh`, never the dev server directly: see "Browser tests" in `AGENTS.md` (the three `/e2e/*` harness specs are the one exception).
 
 Tests are stdlib `unittest` (no pytest installed) and mostly build a SQLite in-memory session against `Base.metadata`. Playwright specs live in `frontend/tests/e2e/`.
 

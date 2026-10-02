@@ -10,6 +10,7 @@
 // See docs/design/design.md 11.1 and 4.5.
 import { expect, test } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
+import { describeRouteScope, inRouteScope, ROUTE_SCOPE } from "./helpers/routeScope";
 
 const ROUTES = [
   "/client",
@@ -100,7 +101,10 @@ test("no page has both a page scroll and a nested content scroll", async ({ page
   await page.setViewportSize({ width: 1280, height: 620 });
 
   const findings: string[] = [];
-  for (const route of ROUTES) {
+  const routes = ROUTES.filter(inRouteScope);
+  console.log(`Scroll guard over ${routes.length} routes, ${describeRouteScope()}.`);
+  if (ROUTE_SCOPE.length) expect(routes.length, `E2E_ROUTES matched no route: ${ROUTE_SCOPE.join(", ")}`).toBeGreaterThan(0);
+  for (const route of routes) {
     try {
       await page.goto(route, { waitUntil: "domcontentloaded", timeout: 45000 });
       await page.waitForTimeout(1600);

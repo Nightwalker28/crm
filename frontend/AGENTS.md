@@ -48,12 +48,12 @@ For frontend changes, consider:
 - `docker compose exec -T frontend npm run lint`
 - `docker compose exec -T frontend npm run build`
 - `./scripts/check-design.sh` for any UI change
-- `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1` for restyles and new screens, plus a both-themes pass
+- `./scripts/e2e.sh --routes <touched route prefixes> design-rules.spec.ts scroll-containers.spec.ts` for restyles and new screens while fixing, and the unscoped walk once at a module's close, plus a both-themes pass (browser-test flow: root `AGENTS.md`, "Browser tests")
 - `./scripts/generate-contracts.sh --check` when a touched API family has generated contracts
 - affected page/dialog/table/detail-page smoke checks
 - console/runtime warnings
 - required-field and validation behavior
-- browser tests through the Compose E2E service when the changed flow is already covered or high-risk
+- browser tests through `./scripts/e2e.sh <spec>` when the changed flow is already covered or high-risk
 
 Authenticated browser tests sign in as `INITIAL_ADMIN_EMAIL`/`INITIAL_ADMIN_PASSWORD` from `.env`. If that
 account has MFA enabled, add `E2E_ADMIN_TOTP_SECRET=<authenticator setup key>` to `.env`; the suite derives

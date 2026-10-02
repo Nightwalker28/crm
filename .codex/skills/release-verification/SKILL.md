@@ -35,8 +35,9 @@ When frontend code changed:
 When UI changed — new screens, restyles, or anything touching colour, type, spacing, radius, or a shared primitive:
 
 - run `./scripts/check-design.sh` (source-level rules from `docs/design/design.md`; also runs inside `./scripts/codex-check.sh`)
-- run the rendered guards, which walk every route in a browser:
-  `docker compose run --rm frontend-e2e npm run test:e2e -- design-rules.spec.ts scroll-containers.spec.ts --workers=1`
+- run the rendered guards through `./scripts/e2e.sh` (production build, one worker; root `AGENTS.md`, "Browser tests"):
+  while fixing, scoped to the touched routes — `./scripts/e2e.sh --routes /dashboard/<area>,… design-rules.spec.ts scroll-containers.spec.ts`;
+  once at the module's close, the full walk — `./scripts/e2e.sh design-rules.spec.ts scroll-containers.spec.ts`
 - seed first so detail routes are reachable:
   `docker compose exec -T backend python -m scripts.seed_demo_crm --tenant-slug default` and
   `docker compose exec -T backend python -m scripts.seed_module_samples --tenant-slug default`

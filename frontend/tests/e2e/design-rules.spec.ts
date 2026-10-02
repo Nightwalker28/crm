@@ -27,6 +27,7 @@
 // See docs/design/design.md and docs/design/rebuild.md 5.10.
 import { expect, test, type Page } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
+import { describeRouteScope, inRouteScope, ROUTE_SCOPE } from "./helpers/routeScope";
 
 const STATIC_ROUTES = [
   "/dashboard",
@@ -699,8 +700,9 @@ test("design rule audit", async ({ page, browser }) => {
   await loginAsAdmin(page);
   await page.setViewportSize(viewport);
 
-  const routes: Array<{ route: string; record: boolean }> = STATIC_ROUTES.map((route) => ({ route, record: false }));
+  const routes: Array<{ route: string; record: boolean }> = STATIC_ROUTES.filter(inRouteScope).map((route) => ({ route, record: false }));
   for (const l of LISTS) {
+    if (!inRouteScope(l.list)) continue;
     const href = await discoverRecord(page, l.list, l.re);
     if (!href) { unreachable.push(l.list); continue; }
     for (const s of l.suffixes) routes.push({ route: href + s, record: Boolean(l.record) && s === "" });
@@ -712,7 +714,9 @@ test("design rule audit", async ({ page, browser }) => {
     const a = Array.from(document.querySelectorAll("a")).find((x) => /^\/dashboard\/custom\/[^/]+$/.test(new URL(x.href).pathname));
     return a ? new URL(a.href).pathname : null;
   });
-  if (customBase) {
+  if (!inRouteScope("/dashboard/custom")) {
+    // Out of this run's scope (E2E_ROUTES).
+  } else if (customBase) {
     routes.push({ route: customBase, record: false }, { route: `${customBase}/new`, record: false });
     const record = await discoverRecord(page, customBase, `^${customBase}/\\d+$`);
     if (record) routes.push({ route: record, record: true }, { route: `${record}/edit`, record: false });
@@ -765,7 +769,7 @@ test("design rule audit", async ({ page, browser }) => {
   const hubHrefs = await page.evaluate(() =>
     Array.from(document.querySelectorAll<HTMLAnchorElement>('[data-slot="settings-hub"] a[href^="/dashboard/settings/"]')).map((x) => new URL(x.href).pathname),
   );
-  const settingsPages = STATIC_ROUTES.filter((r) => /^\/dashboard\/settings\/[^/]+$/.test(r));
+  const settingsPages = STATIC_ROUTES.filter((r) => /^\/dashboard\/settings\/[^/]+$/.test(r) && inRouteScope(r));
   for (const destination of settingsPages) {
     if (!hubHrefs.includes(destination)) findings.settingsNav.push(`${destination}  not reachable from the hub`);
   }
@@ -823,29 +827,35 @@ test("design rule audit", async ({ page, browser }) => {
   // --- 2. Nobody: auth, the booking page, the shared client page, the proposal ------------------
   const anonymous = await browser.newContext({ baseURL, viewport });
   const anonPage = await anonymous.newPage();
-  for (const route of PUBLIC_ROUTES) await audit(anonPage, route, "public");
+  for (const route of PUBLIC_ROUTES.filter(inRouteScope)) await audit(anonPage, route, "public");
   await anonymous.close();
 
   // --- 3. A client-portal user, a separate auth boundary --------------------------------------
+  const clientRoutes = CLIENT_ROUTES.filter(inRouteScope);
+  const clientRecordLists = CLIENT_RECORD_LISTS.filter(inRouteScope);
   const portal = await browser.newContext({ baseURL, viewport });
   const portalPage = await portal.newPage();
-  await portalPage.goto("/client/login?tenant=default", { waitUntil: "networkidle", timeout: 45000 });
-  await portalPage.getByLabel(/email/i).fill(CLIENT_EMAIL);
-  await portalPage.getByLabel(/password/i).fill(CLIENT_PASSWORD);
-  await portalPage.getByRole("button", { name: /sign in|log in/i }).click();
-  await portalPage.waitForURL((u) => !u.pathname.includes("/client/login"), { timeout: 30000 });
-  for (const route of CLIENT_ROUTES) await audit(portalPage, route, "portal");
-  for (const list of CLIENT_RECORD_LISTS) {
-    const href = await discoverRecord(portalPage, list, `^${list.replace(/\//g, "\\/")}\\/(?!new$)[^/]+(\\/[^/]+)?$`);
-    if (href) await audit(portalPage, href, "portal", true);
-    // The seeded client has no bookings, messages or orders, so those lists render their
-    // empty state and there is no record to open. That is data, not a route the audit lost.
-    else if (await portalPage.locator('[data-slot="empty-state"]').count()) emptyLists.push(list);
-    else unreachable.push(`${list}/[id]`);
+  if (clientRoutes.length || clientRecordLists.length) {
+    await portalPage.goto("/client/login?tenant=default", { waitUntil: "networkidle", timeout: 45000 });
+    await portalPage.getByLabel(/email/i).fill(CLIENT_EMAIL);
+    await portalPage.getByLabel(/password/i).fill(CLIENT_PASSWORD);
+    await portalPage.getByRole("button", { name: /sign in|log in/i }).click();
+    await portalPage.waitForURL((u) => !u.pathname.includes("/client/login"), { timeout: 30000 });
+    for (const route of clientRoutes) await audit(portalPage, route, "portal");
+    for (const list of clientRecordLists) {
+      const href = await discoverRecord(portalPage, list, `^${list.replace(/\//g, "\\/")}\\/(?!new$)[^/]+(\\/[^/]+)?$`);
+      if (href) await audit(portalPage, href, "portal", true);
+      // The seeded client has no bookings, messages or orders, so those lists render their
+      // empty state and there is no record to open. That is data, not a route the audit lost.
+      else if (await portalPage.locator('[data-slot="empty-state"]').count()) emptyLists.push(list);
+      else unreachable.push(`${list}/[id]`);
+    }
   }
   await portal.close();
 
-  console.log(`Audited ${audited.length} routes. Unreachable: ${unreachable.join(", ") || "none"}`);
+  console.log(`Audited ${audited.length} routes, ${describeRouteScope()}. Unreachable: ${unreachable.join(", ") || "none"}`);
+  // A scope that matches nothing would pass while checking nothing.
+  if (ROUTE_SCOPE.length) expect(audited.length, `E2E_ROUTES matched no route: ${ROUTE_SCOPE.join(", ")}`).toBeGreaterThan(0);
   console.log(`Empty in this tenant, no record audited: ${emptyLists.join(", ") || "none"}`);
   console.log(`Focus: ${focusSampled} distinct focusable shapes sampled.`);
   console.log(`Listbox: ${listboxEvidence.join("; ") || "not measured"}`);
