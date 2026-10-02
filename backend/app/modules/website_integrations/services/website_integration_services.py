@@ -17,7 +17,7 @@ from app.core.config import settings
 from app.core.uploads import build_media_url
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.finance.services import pos_invoice_services
-from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves
+from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves, reverse_moves
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.website_integrations.repositories import website_integration_repository
 from app.modules.website_integrations.models import (
@@ -32,6 +32,8 @@ INTEGRATION_KEY_PREFIX = "lynk_live_"
 DEFAULT_CATALOG_READ_SCOPE = "catalog:read"
 ORDER_WRITE_SCOPE = "orders:write"
 ORDER_STATUSES = {"submitted", "under_review", "confirmed", "in_progress", "completed", "cancelled", "rejected"}
+# Closing statuses: the order's stock goes back, and the order cannot be reopened.
+CLOSED_ORDER_STATUSES = {"cancelled", "rejected"}
 
 
 @dataclass(frozen=True)
@@ -451,8 +453,19 @@ def update_order_status(db: Session, *, current_user, order_id: int, status_valu
     before_state = _order_state(order)
     if order.status == normalized_status:
         return order
+    if order.status in CLOSED_ORDER_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"A {order.status} order cannot be reopened")
     order.status = normalized_status
     db.add(order)
+    if normalized_status in CLOSED_ORDER_STATUSES:
+        reverse_moves(
+            db,
+            tenant_id=order.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            source_type="website_order",
+            source_id=order.id,
+            reason=f"Website order {normalized_status}",
+        )
     db.commit()
     db.refresh(order)
     log_activity(

@@ -304,7 +304,7 @@ export function IntegrationWebsiteWorkspace() {
     if (nextStatus === "cancelled" || nextStatus === "rejected") {
       const confirmed = await confirm({
         title: `${nextStatus === "cancelled" ? "Cancel" : "Reject"} ${order.external_reference}?`,
-        description: "This changes the status visible to staff reviewing this website order.",
+        description: "Any stock this order took goes back to the warehouse. The order cannot be reopened afterwards.",
         confirmLabel: nextStatus === "cancelled" ? "Cancel order" : "Reject order",
         variant: "destructive",
       });
@@ -316,7 +316,11 @@ export function IntegrationWebsiteWorkspace() {
         method: "PUT",
         body: JSON.stringify({ status: nextStatus }),
       });
-      if (!res.ok) throw new Error("update-order-status-failed");
+      if (!res.ok) {
+        const body = await readJson(res);
+        toast.error(typeof body?.detail === "string" ? body.detail : "The order status could not be updated. Try again.");
+        return;
+      }
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
       toast.success("Order status updated.");
     } catch {
@@ -567,7 +571,7 @@ export function IntegrationWebsiteWorkspace() {
                 </div>
                 <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
                 <div className="mt-2 max-w-[180px]">
-                  <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving}>
+                  <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving || order.status === "cancelled" || order.status === "rejected"}>
                     <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
                       <SelectValue />
                     </SelectTrigger>

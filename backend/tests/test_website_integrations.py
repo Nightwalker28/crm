@@ -369,6 +369,59 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertEqual(activity.before_state["status"], "submitted")
         self.assertEqual(activity.after_state["status"], "under_review")
 
+    def test_cancelling_or_rejecting_an_order_returns_its_stock_and_closes_it(self):
+        from app.modules.catalog.models import CatalogProduct
+        from app.modules.inventory.models import InventoryStockMove
+
+        key, _raw_key = services.create_api_key(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={"name": "Shop", "scopes": ["orders:write"], "allowed_origins": []},
+        )
+        product = product_services.create_product(
+            self.db,
+            tenant_id=10,
+            actor_user_id=None,
+            payload={
+                "slug": "stocked-item",
+                "name": "Stocked Item",
+                "currency": "USD",
+                "public_unit_price": "10.00",
+                "stock_status": "in_stock",
+                "stock_quantity": "5",
+                "is_public": True,
+                "is_active": True,
+            },
+        )
+        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
+        orders = []
+        for reference in ("shop-cancel", "shop-reject"):
+            order, _replayed = services.create_public_order(
+                self.db,
+                tenant_id=10,
+                api_key_id=key.id,
+                payload={"external_reference": reference, "line_items": [{"slug": "stocked-item", "quantity": "2"}]},
+            )
+            orders.append(order)
+        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("1"))
+
+        services.update_order_status(self.db, current_user=current_user, order_id=orders[0].id, status_value="cancelled")
+        services.update_order_status(self.db, current_user=current_user, order_id=orders[1].id, status_value="rejected")
+
+        self.db.expire_all()
+        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("5"))
+        reversals = self.db.query(InventoryStockMove).filter(InventoryStockMove.move_type == "reversal").all()
+        self.assertEqual(sorted(move.source_id for move in reversals), sorted(order.id for order in orders))
+        self.assertTrue(all(move.quantity == Decimal("2") and move.created_by == 7 for move in reversals))
+
+        for order, next_status in ((orders[0], "confirmed"), (orders[1], "cancelled")):
+            with self.assertRaises(Exception) as exc:
+                services.update_order_status(self.db, current_user=current_user, order_id=order.id, status_value=next_status)
+            self.assertEqual(exc.exception.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("5"))
+
     def test_public_order_rejects_duplicate_reference_with_different_payload(self):
         key, _raw_key = services.create_api_key(
             self.db,
