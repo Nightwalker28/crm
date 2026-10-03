@@ -28,8 +28,107 @@ Last updated 2026-10-03.
 | ERP E3 | **Implemented (2026-10-02): reservation, deliveries, returns.** Phase 0 committed as `9ed7e7b`; Phases 1–3 committed together. See below | `20260830_order_reservations` → `20260901_inventory_returns`, `stock_ledger.py` (reservations), `delivery_services.py`, `return_services.py`, `reservation_services.py`; `OrderFulfilmentPanel`, `ReservationsDialog`, `DeliveryDocumentPage`, `ReturnDocumentPage`; `test_inventory_reservations/deliveries/returns.py`, `fulfilment-phase1/2.spec.ts` |
 | ERP E3 follow-ups | **Implemented (2026-10-02): delivery notes, client-portal orders hold stock once confirmed, order priority.** `12a-erp-fulfilment.md` §6a. Verified and committed with E4 | `20260902_e3_followups`, `deliveries/[id]/print`, `_apply_portal_status`, `priority_rank`; `test_e3_followups.py` |
 | ERP E4 | **Implemented (2026-10-02): purchasing, all three phases.** Plan `12b-erp-purchasing.md`; §5 decisions taken as recommended (owner asked for all phases before testing). One test pass, all green; committed | `20260903_purchasing`, `modules/purchasing/`, `/dashboard/purchasing/*`; `test_purchasing.py`, `purchasing.spec.ts` |
-| ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
-| **Next, owner-set order** | **E6 costing and valuation (`12-erp-inventory.md` §2): benchmark first, then plan (started 2026-10-03).** Owner still to review E4 §5 decisions taken on their behalf. | |
+| ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
+| ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; not committed yet. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
+| **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **Next: §7 Step 1** | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+
+## ERP E6 — costing and valuation, implemented (2026-10-03)
+
+Plan `12d-erp-costing.md`; the owner accepted all twelve §5 decisions and the E4 ones.
+
+**Engine** (`inventory/services/costing.py`, called only by `stock_ledger.post_moves` and
+`valuation_services`). Perpetual moving average per product. Every move now stores `value`,
+`unit_cost`, `average_cost_after`, `cost_source` and, for order deliveries, returns and their
+reversals, `sales_order_item_id`. Products cache `stock_value`; a tracked product's
+`cost_price` is its average, written only by the ledger (the form shows it read-only; the API
+refuses a different value with 409). Receipts at PO cost × the PO's exchange rate; returns at
+the cost their delivery left at; reversals at the cost of the move they undo (fixes the E2
+drift); positive adjustments at the average, or an entered unit cost when the product has
+none (409 otherwise). The last unit out takes the rounding, so the value is zero whenever the
+quantity is. A move with no cost never sets an average: the product stays *Cost missing*.
+
+**Currency.** `company_profiles.base_currency` (first operating currency on migration),
+locked once any move carries a value. `purchase_orders.exchange_rate` (required to place a
+foreign-currency PO; settable on a placed one) and `sales_orders.exchange_rate` (optional,
+margin only); both default to the last rate the tenant used. Reorder drafts are in the base
+currency.
+
+**Revaluations** (`inventory_revaluations`, REV-…): manual *Revalue* (kind `migration` when the
+product had no cost), and bill price differences: the share still on hand moves the average,
+the rest is `cogs_change`; voiding the bill writes the reversal. Trigger `inventory.revalued`.
+
+**Surfaces.** Inventory → Valuation (`inventory_valuation` module, granted like
+`inventory_stock`): stock value with *As of*, warehouse, category and *Cost missing* filters,
+summary tiles, CSV export, and a *Revaluations* view. Product Stock tab: average cost, stock
+value, value per warehouse, unit cost and value on movements, *Revalue* dialog with the change
+shown first, unit cost on *Adjust stock* when needed. Adjustment lines ask for a unit cost
+when needed. PO exchange rate field and fact. Order form exchange rate; order *Margin* tab
+(actual for delivered, estimated for the rest and for services). Bill lines say what a price
+difference did to stock value. Settings → Company → *Base currency*. Movements list gains cost
+columns (with access).
+
+**Platform.** Report sources *Stock valuation*, *Cost of goods sold*, *Sales margin*,
+*Revaluations*; value fields on *Stock levels* and *Stock movements* (with access); six
+templates. Report exports now answer to each source's own permission module (E5's
+*Invoice lines* export had none). Valuation and revaluation CSV exports; the movements export
+shows cost only with access. Revaluations join the inventory backup set; restore rebuilds stock
+value. Seed: *Sample costed widget* received at 4 and 6, billed at 6.50.
+
+**Dev database migration** (2026-10-03): 53 moves valued over 41 products; 31 products in
+stock have no cost (fix with *Revalue*); 1 receipt in a currency other than its company's base
+was valued at rate 1. The append-only trigger on moves is disabled for the one-time backfill
+only.
+
+**Verification (one pass).**
+- Focused backend run first (costing, ledger, documents, deliveries, returns, reservations,
+  purchasing, invoicing, E3 follow-ups, catalog): 133 tests, **one real defect**: a move with
+  no cost set the average to zero and hid *Cost missing*. Fixed; rerun green.
+- First boot against the dev database: the migration's backfill was refused by the
+  append-only trigger on moves (20260827); the migration now disables it for the backfill
+  only. Replay report above.
+- `codex-check.sh`: migration replay at `20260905_costing`, OpenAPI 464 paths, contract drift
+  passed; backend **1483 of 1484**: the *Stock value by warehouse* template disappeared for a
+  user who can see the Valuation sources, because the value fields used a different access
+  check than the report catalog. They now use the catalog's own; those modules rerun green.
+  Design rules 21/21, lint clean, build passed first time (one-off container).
+- Browser, production build: `costing` (new), `purchasing`, `invoicing`, `fulfilment-phase1/2`,
+  `inventory-phase1/2/3`, `catalog-revamp`, `catalog-line-items`, `orders-revamp`, with the
+  guards scoped to Inventory, Purchasing, Sales orders, Catalog and Company settings: 40 of 42.
+  **One real defect: the Valuation page scrolled twice** (summary tiles and filters left the
+  pinned table too little room); it is now a document page. The other failure and two more
+  were locators in the new spec. Rerun: all passed.
+- Full rendered walk: `design-rules` audited 137 routes, none unreachable, both themes;
+  `scroll-containers` passed. The Valuation routes are in both guards' lists.
+
+**Not done, by decision or deferral:** bill price differences charged to goods already sold are
+on the *Revaluations* report source, not the *Cost of goods sold* one; webhooks for
+`inventory.revalued` wait for 4A Phase 2; FIFO, per-warehouse averages, landed costs and rate
+feeds are out of scope (12d §6) but additive (§5a).
+
+## ERP E6 — plan (2026-10-03)
+
+Benchmark and plan in `12d-erp-costing.md`; no code changed. What reading the code found
+(§1): nothing computes an average (outbound moves take whatever cost price was last typed;
+receipt costs never reach the product); **reversals and customer returns are costed at
+today's cost price**, not the cost of the move they undo, so stock value drifts on every
+cancel; moves carry no value, so there is no stock value, cost of goods or margin; products,
+POs and orders each have a currency but the company has no base currency. Stock is never
+backdated, so a forward moving average needs no recalculation jobs.
+
+Dev database: 47 of 53 moves and 36 of 43 tracked products have no cost; 32 of the 37 products
+in stock have no cost at all. Tenant 1's company lists USD only but has LKR products.
+
+Proposed: a perpetual moving average per product; every move stores its value and the
+average after it; value-only changes are revaluations (manual *Revalue*, bill price
+differences: the share still on hand moves the average, the rest goes to cost of goods);
+returns and reversals at the cost they left at; one base currency per company with a typed
+exchange rate on foreign-currency POs and orders; tracked products' cost becomes the
+read-only average; an *Inventory → Valuation* page (as of any date, *Cost missing*); a
+*Margin* section on orders; report sources *Stock valuation*, *Cost of goods sold*, *Sales
+margin*, *Revaluations*. The migration replays the ledger and marks missing costs rather than
+inventing them. Phases: 1 cost engine and valuation, 2 bills and margin, 3 the platform.
+The owner accepted all twelve §5 decisions (2026-10-03), and the E4 decisions too.
 
 ## ERP E5 — invoicing and bills, implemented (2026-10-03)
 
