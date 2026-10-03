@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 from fastapi import HTTPException
 from sqlalchemy.orm import Session, selectinload
 
+from app.modules.inventory.services.costing import base_currency, rate_for, unit
 from app.modules.inventory.models import InventoryReservation
 from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves, stage_inventory_event
 from app.modules.platform.services.activity_logs import log_activity
@@ -127,10 +128,14 @@ def post_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, rece
     lines = _validated_lines(db, order=order, lines=[{"order_line_id": line.order_line_id, "quantity": line.quantity} for line in receipt.lines])
     by_order_line = {line.order_line_id: line for line in receipt.lines}
     held_before = _held(db, tenant_id=tenant_id, product_ids={line.product_id for line, _ in lines}, warehouse_id=receipt.warehouse_id)
+    # Stock is costed in the base currency at the PO's rate (12d §3.2).
+    rate = rate_for(db, tenant_id=tenant_id, currency=order.currency, exchange_rate=order.exchange_rate)
+    if rate is None:
+        raise HTTPException(status_code=409, detail=f"Set the purchase order's exchange rate from {order.currency} to {base_currency(db, tenant_id=tenant_id)} before receiving")
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[
         MoveSpec(product_id=line.product_id, warehouse_id=receipt.warehouse_id, quantity=quantity, move_type="receipt",
                  source_type="purchase_receipt", source_id=receipt.id, source_line_id=by_order_line[line.id].id,
-                 reason=f"Receipt {receipt.number} for {order.number}", unit_cost=Decimal(line.unit_cost))
+                 reason=f"Receipt {receipt.number} for {order.number}", unit_cost=unit(Decimal(line.unit_cost) * rate), cost_source="receipt")
         for line, quantity in lines
     ])
     receipt.status, receipt.posted_at, receipt.posted_by = "posted", datetime.now(timezone.utc), actor_user_id

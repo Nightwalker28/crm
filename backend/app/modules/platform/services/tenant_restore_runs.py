@@ -8,13 +8,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException, status
-from sqlalchemy import inspect as sqlalchemy_inspect, text
+from sqlalchemy import func, inspect as sqlalchemy_inspect, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.sqltypes import Date, DateTime, Numeric
 
 from app.modules.platform.models import TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
-from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+from app.modules.inventory.models import InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import rebuild_reservations
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_runs import (
@@ -53,7 +53,7 @@ def _read_json(zipf: zipfile.ZipFile, name: str) -> Any:
 OPTIONAL_INVENTORY_FILES = {
     "inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json",
     "purchase_orders.json", "purchase_order_lines.json", "purchase_receipts.json", "purchase_receipt_lines.json",
-    "purchase_bills.json", "purchase_bill_lines.json",
+    "purchase_bills.json", "purchase_bill_lines.json", "inventory_revaluations.json",
 }
 
 
@@ -251,7 +251,7 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
         (name, model, children[name]) for name, model in MODULE_CHILD_EXPORTS["inventory_stock"] if model is not InventoryStockLevel
     ]
     for _name, model, rows in bundles:
-        row_mode = "create_missing" if model is InventoryStockMove or mode in {"create_missing", "skip_duplicates"} else "replace_module_data"
+        row_mode = "create_missing" if model in (InventoryStockMove, InventoryRevaluation) or mode in {"create_missing", "skip_duplicates"} else "replace_module_data"
         result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=row_mode)
         created += result["created"]
         updated += result["updated"]
@@ -278,10 +278,22 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
             level = InventoryStockLevel(tenant_id=tenant_id, product_id=key[0], warehouse_id=key[1], reserved=Decimal(0))
             db.add(level)
         level.on_hand = balances.get(key, Decimal(0))
+    # Stock value is Σ move values + Σ revaluations (12d §3.1); moves from a backup older than
+    # E6 carry no value and count as cost missing until revalued.
+    values: dict[int, Decimal] = {}
+    for product_id, value in db.query(InventoryStockMove.product_id, func.coalesce(func.sum(InventoryStockMove.value), 0)).filter(
+            InventoryStockMove.tenant_id == tenant_id).group_by(InventoryStockMove.product_id):
+        values[product_id] = Decimal(value or 0)
+    for product_id, change in db.query(InventoryRevaluation.product_id, func.coalesce(func.sum(InventoryRevaluation.stock_change), 0)).filter(
+            InventoryRevaluation.tenant_id == tenant_id).group_by(InventoryRevaluation.product_id):
+        values[product_id] = values.get(product_id, Decimal(0)) + Decimal(change or 0)
     for product_id, product in products.items():
         total = sum((quantity for (pid, _), quantity in balances.items() if pid == product_id), Decimal(0))
         product.stock_quantity = total
         product.stock_status = "in_stock" if total > 0 else "out_of_stock"
+        product.stock_value = values.get(product_id, Decimal(0)) if total > 0 else Decimal(0)
+        if total > 0 and product.stock_value > 0:
+            product.cost_price = (product.stock_value / total).quantize(Decimal("0.0001"))
     db.flush()
     rebuild_reservations(db, tenant_id=tenant_id)
     if db.get_bind().dialect.name == "postgresql":

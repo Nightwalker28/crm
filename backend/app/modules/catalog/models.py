@@ -97,7 +97,11 @@ class CatalogProduct(Base):
     reorder_point = Column(Numeric(12, 4), nullable=False, server_default="0")
     reorder_quantity = Column(Numeric(12, 4), nullable=False, server_default="0")
     category_id = Column(BigInteger, ForeignKey("catalog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
+    # For tracked products, the moving average in the base currency, written only by the
+    # stock ledger (12d §3.1); for untracked products, a manual cost as before.
     cost_price = Column(Numeric(12, 4), nullable=True)
+    # Cached Σ move values + Σ revaluations for tracked products, in the base currency.
+    stock_value = Column(Numeric(18, 4), nullable=False, server_default="0")
     unit = Column(String(40), nullable=False, server_default="unit")
     barcode = Column(String(100), nullable=True)
     # Purchasing (E4): who this is normally bought from, under which code, and how long it takes.

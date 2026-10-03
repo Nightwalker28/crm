@@ -36,6 +36,8 @@ class QuickAdjustmentPayload(BaseModel):
     change: Decimal | None = None
     reason: str = Field(min_length=1, max_length=120)
     note: str | None = None
+    # Needed only when the product has no cost yet (12d §3.2).
+    unit_cost: Decimal | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
     def one_quantity(self):
@@ -63,6 +65,11 @@ def search_tracked_products(query: str = Query(default="", max_length=100), limi
     rows = products.order_by(CatalogProduct.name, CatalogProduct.id).limit(limit).all()
     return {"results": [{"id": row.id, "name": row.name, "sku": row.sku, "cost_price": row.cost_price, "vendor_sku": row.vendor_sku,
         "preferred_vendor_id": row.preferred_vendor_id} for row in rows]}
+
+
+def _can_view_valuation(db: Session, user) -> bool:
+    policy = PermissionPolicy(db, user)
+    return policy.can_view_module("inventory_valuation") and policy.can_perform_action("inventory_valuation", "view")
 
 
 def _warehouse(row: InventoryWarehouse) -> dict:
@@ -167,12 +174,13 @@ def movements(product_id: int | None = Query(default=None, gt=0), warehouse_id: 
     rows = query.order_by(None).order_by(InventoryStockMove.id.desc()).limit(pagination.limit + 1).all()
     actor_ids = {move.created_by for move, _, _ in rows if move.created_by is not None}
     actors = {actor.id: " ".join(part for part in (actor.first_name, actor.last_name) if part).strip() or actor.email for actor in db.query(User).filter(User.tenant_id == user.tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
-    return build_cursor_response([inventory_services.serialize_move(move, product_name=product.name, warehouse_name=warehouse.name, actor_name=actors.get(move.created_by)) for move, product, warehouse in rows], limit=pagination.limit, id_attr="id")
+    with_cost = _can_view_valuation(db, user)
+    return build_cursor_response([inventory_services.serialize_move(move, product_name=product.name, warehouse_name=warehouse.name, actor_name=actors.get(move.created_by), with_cost=with_cost) for move, product, warehouse in rows], limit=pagination.limit, id_attr="id")
 
 
 @router.get("/products/{product_id}/stock")
 def product_stock(product_id: int, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
-    return inventory_services.product_stock(db, tenant_id=user.tenant_id, product_id=product_id)
+    return jsonable_encoder(inventory_services.product_stock(db, tenant_id=user.tenant_id, product_id=product_id, with_cost=_can_view_valuation(db, user)))
 
 
 @router.post("/products/{product_id}/adjust", status_code=201)

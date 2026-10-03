@@ -102,7 +102,7 @@ def restore_warehouse(db: Session, *, tenant_id: int, actor_user_id: int, wareho
     return warehouse
 
 
-def quick_adjust(db: Session, *, tenant_id: int, actor_user_id: int, product_id: int, warehouse_id: int | None, quantity: Decimal | None, change: Decimal | None, reason: str, note: str | None) -> InventoryAdjustment:
+def quick_adjust(db: Session, *, tenant_id: int, actor_user_id: int, product_id: int, warehouse_id: int | None, quantity: Decimal | None, change: Decimal | None, reason: str, note: str | None, unit_cost: Decimal | None = None) -> InventoryAdjustment:
     reason = reason.strip()
     if not reason:
         raise HTTPException(status_code=400, detail="A reason is required")
@@ -121,13 +121,16 @@ def quick_adjust(db: Session, *, tenant_id: int, actor_user_id: int, product_id:
     delta = (Decimal(quantity) - before) if quantity is not None else Decimal(change)
     if delta == 0:
         raise HTTPException(status_code=400, detail="The adjustment does not change stock")
+    from app.modules.inventory.services.costing import adjustment_cost
+
+    cost, cost_source = adjustment_cost(product, quantity=delta, unit_cost=unit_cost)
     adjustment = InventoryAdjustment(tenant_id=tenant_id, number=allocate_business_number(db, tenant_id=tenant_id, scope="inventory_adjustments", prefix="ADJ"), warehouse_id=warehouse.id, mode="quantity", reason=reason, status="posted", posted_at=datetime.now(timezone.utc), posted_by=actor_user_id, notes=note)
     db.add(adjustment)
     db.flush()
-    line = InventoryAdjustmentLine(tenant_id=tenant_id, adjustment_id=adjustment.id, product_id=product_id, expected=before, counted=quantity, delta=delta)
+    line = InventoryAdjustmentLine(tenant_id=tenant_id, adjustment_id=adjustment.id, product_id=product_id, expected=before, counted=quantity, delta=delta, unit_cost=cost)
     db.add(line)
     db.flush()
-    post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(product_id=product_id, warehouse_id=warehouse.id, quantity=delta, move_type="adjustment", source_type="inventory_adjustment", source_id=adjustment.id, source_line_id=line.id, reason=reason, note=note)])
+    post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(product_id=product_id, warehouse_id=warehouse.id, quantity=delta, move_type="adjustment", source_type="inventory_adjustment", source_id=adjustment.id, source_line_id=line.id, reason=reason, note=note, unit_cost=cost, cost_source=cost_source)])
     stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
         event_type="inventory.adjustment_posted", entity_type="inventory_adjustment", entity_id=adjustment.id,
         payload={"number": adjustment.number, "mode": "quantity", "warehouse_id": warehouse.id,
@@ -138,7 +141,7 @@ def quick_adjust(db: Session, *, tenant_id: int, actor_user_id: int, product_id:
     return adjustment
 
 
-def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
+def product_stock(db: Session, *, tenant_id: int, product_id: int, with_cost: bool = False) -> dict:
     product = db.query(CatalogProduct).filter(CatalogProduct.id == product_id, CatalogProduct.tenant_id == tenant_id, CatalogProduct.deleted_at.is_(None)).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -152,8 +155,18 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
     waiting = sum((_waiting(db, tenant_id=tenant_id, product=product, warehouse=warehouse) for _level, warehouse in levels), Decimal(0)) if product.track_inventory else Decimal(0)
     actor_ids = {move.created_by for move in moves if move.created_by is not None}
     actors = {user.id: " ".join(part for part in (user.first_name, user.last_name) if part).strip() or user.email for user in db.query(User).filter(User.tenant_id == tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
+    valuation = None
+    if with_cost and product.track_inventory:
+        from app.modules.inventory.services.valuation_services import product_valuation
+
+        valuation = product_valuation(db, product=product)
+    warehouse_values = valuation["warehouse_values"] if valuation else {}
     return {
         "product_id": product.id, "track_inventory": bool(product.track_inventory),
+        # Adding stock to a product with no cost needs one entered (12d §3.2); not a figure, so not gated.
+        "needs_cost": bool(product.track_inventory) and product.cost_price is None and Decimal(product.stock_value or 0) <= 0,
+        # E6 (12d §3.5): present only with access to valuation.
+        "valuation": {key: value for key, value in valuation.items() if key != "warehouse_values"} if valuation else None,
         "on_hand": product.stock_quantity if product.track_inventory else None,
         "reserved": sum((Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
         "available": sum((Decimal(level.on_hand) - Decimal(level.reserved) for level, _ in levels), Decimal(0)) if product.track_inventory else None,
@@ -163,11 +176,13 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int) -> dict:
         "backordered": waiting if product.track_inventory else None,
         "projected": (sum((Decimal(level.on_hand) - Decimal(level.reserved) for level, _ in levels), Decimal(0)) - waiting + sum(on_order.values(), Decimal(0))) if product.track_inventory else None,
         "warehouses": [{"id": warehouse.id, "name": warehouse.name, "code": warehouse.code, "on_hand": level.on_hand, "reserved": level.reserved,
-            "available": Decimal(level.on_hand) - Decimal(level.reserved), "incoming": on_order.get((product.id, warehouse.id), Decimal(0))} for level, warehouse in levels],
-        "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by)) for move in moves],
+            "available": Decimal(level.on_hand) - Decimal(level.reserved), "incoming": on_order.get((product.id, warehouse.id), Decimal(0)),
+            "stock_value": warehouse_values.get(warehouse.id) if valuation else None} for level, warehouse in levels],
+        "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by), with_cost=with_cost) for move in moves],
     }
 
 
-def serialize_move(move: InventoryStockMove, *, product_name: str, warehouse_name: str, actor_name: str | None = None) -> dict:
+def serialize_move(move: InventoryStockMove, *, product_name: str, warehouse_name: str, actor_name: str | None = None, with_cost: bool = False) -> dict:
     actor_label = actor_name or ("Website integration" if move.source_type == "website_order" else "System")
-    return {"id": move.id, "product_id": move.product_id, "product_name": product_name, "warehouse_id": move.warehouse_id, "warehouse_name": warehouse_name, "quantity": move.quantity, "on_hand_after": move.on_hand_after, "move_type": move.move_type, "source_type": move.source_type, "source_id": move.source_id, "reason": move.reason, "note": move.note, "created_by": move.created_by, "actor_label": actor_label, "occurred_at": move.occurred_at}
+    cost = {"unit_cost": move.unit_cost, "value": move.value, "average_cost_after": move.average_cost_after, "cost_source": move.cost_source} if with_cost else {}
+    return {**cost,"id": move.id, "product_id": move.product_id, "product_name": product_name, "warehouse_id": move.warehouse_id, "warehouse_name": warehouse_name, "quantity": move.quantity, "on_hand_after": move.on_hand_after, "move_type": move.move_type, "source_type": move.source_type, "source_id": move.source_id, "reason": move.reason, "note": move.note, "created_by": move.created_by, "actor_label": actor_label, "occurred_at": move.occurred_at}

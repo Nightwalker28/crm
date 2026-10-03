@@ -28,6 +28,7 @@ import type { CatalogKind, CatalogRecord, CatalogRecordPayload } from "@/hooks/c
 import { useCatalogCategories } from "@/hooks/catalog/useCatalogCategories";
 import { useCatalogRecord, useCatalogRecordActions } from "@/hooks/catalog/useCatalogRecords";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { formatDateTime } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
 
@@ -189,6 +190,9 @@ function CatalogRecordFormEditor({
   );
   const [submitError, setSubmitError] = useState(false);
   const isProduct = kind === "products";
+  // A tracked product's cost is its moving average, changed by Revalue (12d §5 decision 3).
+  const costIsAverage = isProduct && mode === "edit" && Boolean(record?.track_inventory);
+  const baseCurrency = useBaseCurrency();
   const noun = isProduct ? "product" : "service";
   const titleNoun = isProduct ? "Product" : "Service";
   const listHref = `/dashboard/catalog/${kind}`;
@@ -244,7 +248,7 @@ function CatalogRecordFormEditor({
       barcode: isProduct ? form.barcode.trim() || null : undefined,
       category_id: form.category_id === NO_CATEGORY ? null : Number(form.category_id),
       unit: form.unit.trim(),
-      cost_price: cost ?? null,
+      cost_price: costIsAverage ? undefined : cost ?? null,
       currency: form.currency.trim().toUpperCase(),
       public_unit_price: price,
       stock_status: isProduct && !form.track_inventory ? form.stock_status : undefined,
@@ -384,11 +388,19 @@ function CatalogRecordFormEditor({
               <Input id="catalog-price" value={form.public_unit_price} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, public_unit_price: event.target.value })); if (priceError) setPriceError(null); }} aria-invalid={Boolean(priceError)} aria-describedby={priceError ? "catalog-price-error" : undefined} />
               {priceError ? <FieldError id="catalog-price-error">{priceError}</FieldError> : null}
             </Field>
-            <Field>
-              <FieldLabel htmlFor="catalog-cost">Cost</FieldLabel>
-              <Input id="catalog-cost" value={form.cost_price} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, cost_price: event.target.value })); if (costError) setCostError(null); }} aria-invalid={Boolean(costError)} aria-describedby={costError ? "catalog-cost-error" : "catalog-cost-description"} />
-              {costError ? <FieldError id="catalog-cost-error">{costError}</FieldError> : <FieldDescription id="catalog-cost-description">What one {form.unit.trim() || "unit"} costs you, in {form.currency || "the same currency"}. Internal only: never shown to customers.</FieldDescription>}
-            </Field>
+            {costIsAverage ? (
+              <Field>
+                <FieldLabel htmlFor="catalog-cost">Average cost</FieldLabel>
+                <Input id="catalog-cost" value={form.cost_price} readOnly aria-describedby="catalog-cost-description" />
+                <FieldDescription id="catalog-cost-description">The average cost of the stock on hand, in {baseCurrency.data ?? "the base currency"}. Change it with Revalue on the Stock tab.</FieldDescription>
+              </Field>
+            ) : (
+              <Field>
+                <FieldLabel htmlFor="catalog-cost">Cost</FieldLabel>
+                <Input id="catalog-cost" value={form.cost_price} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, cost_price: event.target.value })); if (costError) setCostError(null); }} aria-invalid={Boolean(costError)} aria-describedby={costError ? "catalog-cost-error" : "catalog-cost-description"} />
+                {costError ? <FieldError id="catalog-cost-error">{costError}</FieldError> : <FieldDescription id="catalog-cost-description">What one {form.unit.trim() || "unit"} costs you, in {baseCurrency.data ?? "the base currency"}{isProduct && form.track_inventory ? "; the starting average cost once stock arrives" : ""}. Internal only: never shown to customers.</FieldDescription>}
+              </Field>
+            )}
           </FieldGroup>
         </FormSection>
 

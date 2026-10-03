@@ -80,6 +80,8 @@ AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("inventory.delivery_posted", "inventory_deliveries", "Delivery posted", "A delivery for a sales order is posted."),
     AutomationTrigger("inventory.return_received", "inventory_returns", "Return received", "A customer return is received."),
     AutomationTrigger("purchase.receipt_posted", "purchase_receipts", "Receipt posted", "Stock is received against a purchase order."),
+    # E6 (12d-erp-costing.md §3.7).
+    AutomationTrigger("inventory.revalued", "inventory_valuation", "Stock revalued", "A product's average cost is revalued, by hand or by a bill's price difference."),
     # E5 (12c-erp-invoicing.md §3.6). `invoice.overdue` below is the insertion-order trigger.
     AutomationTrigger("finance.invoice_issued", "finance_pos", "Invoice issued", "An invoice is issued to a customer."),
     AutomationTrigger("finance.invoice_overdue", "finance_pos", "Invoice past due", "An issued invoice passes its due date with a balance."),
@@ -284,7 +286,7 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
-RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills")
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills", "inventory_valuation")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
 # note on a task or a document had nowhere to render.
 NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "finance_io")

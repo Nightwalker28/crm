@@ -196,7 +196,7 @@ def _post(db: Session, *, tenant_id: int, actor_user_id: int | None, doc: Invent
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[
         MoveSpec(product_id=line.catalog_product_id, warehouse_id=doc.warehouse_id, quantity=-quantity, move_type="delivery",
                  source_type="inventory_delivery", source_id=doc.id, source_line_id=by_line[line.id].id,
-                 reason=f"Delivery {doc.number} for {order.order_number}")
+                 reason=f"Delivery {doc.number} for {order.order_number}", sales_order_item_id=line.id)
         for line, quantity in lines
     ])
     doc.status, doc.posted_at, doc.posted_by = "posted", datetime.now(timezone.utc), actor_user_id

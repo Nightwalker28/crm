@@ -13,6 +13,7 @@ from fastapi import HTTPException
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+from app.modules.inventory.services.costing import base_currency, clean_rate, default_exchange_rate, rate_for
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import ensure_default_warehouse
@@ -149,6 +150,10 @@ def save_order(db: Session, *, tenant_id: int, actor_user_id: int | None, payloa
             owner_id=actor_user_id)
     order.vendor_id, order.warehouse_id = vendor.org_id, warehouse.id
     order.currency = (payload.get("currency") or order.currency or "USD").strip().upper()[:10]
+    if "exchange_rate" in payload:
+        order.exchange_rate = clean_rate(payload.get("exchange_rate"))
+    if order.currency == base_currency(db, tenant_id=tenant_id):
+        order.exchange_rate = None
     order.expected_date = payload.get("expected_date")
     order.vendor_reference = (payload.get("vendor_reference") or "").strip() or None
     order.notes = (payload.get("notes") or "").strip() or None
@@ -168,9 +173,29 @@ def mark_ordered(db: Session, *, tenant_id: int, actor_user_id: int | None, orde
     if not order.lines:
         raise HTTPException(status_code=400, detail="Add at least one product")
     get_vendor(db, tenant_id=tenant_id, vendor_id=order.vendor_id)
+    if rate_for(db, tenant_id=tenant_id, currency=order.currency, exchange_rate=order.exchange_rate) is None:
+        raise HTTPException(status_code=409, detail=f"Enter the exchange rate from {order.currency} to {base_currency(db, tenant_id=tenant_id)} before placing this order")
     order.status, order.ordered_at, order.ordered_by = "ordered", datetime.now(timezone.utc), actor_user_id
     db.add(order)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, order=order, action="order", description=f"Placed purchase order {order.number}")
+    return order
+
+
+def set_exchange_rate(db: Session, *, tenant_id: int, actor_user_id: int | None, order_id: int, exchange_rate) -> PurchaseOrder:
+    """Change the rate on a draft or placed order. Receipts already posted keep the cost they
+    were received at; a bill's price difference uses the rate at posting."""
+    order = order_or_404(db, tenant_id=tenant_id, order_id=order_id, lock=True)
+    if order.status not in {"draft", "ordered"}:
+        raise HTTPException(status_code=409, detail="Only a draft or placed purchase order's exchange rate can change")
+    if order.currency == base_currency(db, tenant_id=tenant_id):
+        raise HTTPException(status_code=409, detail="This order is in the base currency")
+    rate = clean_rate(exchange_rate)
+    if rate is None:
+        raise HTTPException(status_code=400, detail="Enter an exchange rate")
+    order.exchange_rate = rate
+    db.add(order)
+    _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, order=order, action="update",
+        description=f"Set the exchange rate on {order.number} to {rate} {base_currency(db, tenant_id=tenant_id)} per {order.currency}")
     return order
 
 
@@ -263,7 +288,9 @@ def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, includ
         "vendor_address": "\n".join(part for part in ((order.vendor.billing_address, order.vendor.billing_city, order.vendor.billing_state,
             order.vendor.billing_postal_code, order.vendor.billing_country) if order.vendor else ()) if part) or None,
         "warehouse_id": order.warehouse_id, "warehouse_name": order.warehouse.name if order.warehouse else None,
-        "currency": order.currency, "expected_date": order.expected_date, "vendor_reference": order.vendor_reference, "notes": order.notes,
+        "currency": order.currency, "exchange_rate": order.exchange_rate, "base_currency": base_currency(db, tenant_id=tenant_id),
+        "suggested_exchange_rate": default_exchange_rate(db, tenant_id=tenant_id, currency=order.currency) if order.exchange_rate is None else None,
+        "expected_date": order.expected_date, "vendor_reference": order.vendor_reference, "notes": order.notes,
         "subtotal": order.subtotal, "ordered_at": order.ordered_at, "ordered_by": order.ordered_by, "closed_at": order.closed_at,
         "close_reason": order.close_reason, "cancel_reason": order.cancel_reason, "owner_id": order.owner_id,
         "created_at": order.created_at, "updated_at": order.updated_at, "is_deleted": order.deleted_at is not None,

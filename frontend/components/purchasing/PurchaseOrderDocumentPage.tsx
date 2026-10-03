@@ -11,7 +11,7 @@ import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Fact, FactList } from "@/components/ui/Fact";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { Money } from "@/components/ui/Money";
 import { PageShell } from "@/components/ui/PageShell";
@@ -24,7 +24,7 @@ import { TextLink } from "@/components/ui/TextLink";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { usePurchaseOrder, usePurchasingActions, type PurchaseOrder, type PurchaseOrderLine } from "@/hooks/purchasing/usePurchasing";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
-import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
@@ -61,6 +61,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
   const warehouses = useWarehouses(false, canViewStock);
   const currencies = useCompanyCurrencies().data;
+  const baseCurrencyQuery = useBaseCurrency();
   const query = usePurchaseOrder(orderId);
   const order = query.data;
   const mutations = usePurchasingActions();
@@ -70,6 +71,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const [vendorName, setVendorName] = useState("");
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [currency, setCurrency] = useState("");
+  const [exchangeRate, setExchangeRate] = useState("");
   const [expectedDate, setExpectedDate] = useState("");
   const [vendorReference, setVendorReference] = useState("");
   const [notes, setNotes] = useState("");
@@ -91,6 +93,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
     setVendorName(order?.vendor_name ?? "");
     setWarehouseId(order?.warehouse_id ?? null);
     setCurrency(order?.currency ?? "");
+    setExchangeRate(order?.exchange_rate ?? order?.suggested_exchange_rate ?? "");
     setExpectedDate(order?.expected_date ?? "");
     setVendorReference(order?.vendor_reference ?? "");
     setNotes(order?.notes ?? "");
@@ -102,15 +105,19 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
 
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
   const currencyCode = currency || order?.currency || defaultCurrency;
+  // Stock is costed in the base currency, so an order in another one carries a rate (12d §3.5).
+  const baseCurrency = order?.base_currency ?? baseCurrencyQuery.data ?? defaultCurrency;
+  const foreign = currencyCode !== baseCurrency;
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
 
   async function save() {
     if (!vendorId) { setError("Choose a vendor."); return; }
+    if (foreign && exchangeRate.trim() && !(Number(exchangeRate) > 0)) { setError("The exchange rate must be greater than zero."); return; }
     if (!lines.length || lines.some((line) => !line.productId || !(Number(line.quantity) > 0) || !(Number(line.unitCost) >= 0))) {
       setError("Choose a product and enter a quantity above zero and a unit cost on every line."); return;
     }
     const payload = {
-      vendor_id: vendorId, warehouse_id: warehouseId, currency: currencyCode, expected_date: expectedDate || null,
+      vendor_id: vendorId, warehouse_id: warehouseId, currency: currencyCode, exchange_rate: foreign && exchangeRate.trim() ? exchangeRate.trim() : null, expected_date: expectedDate || null,
       vendor_reference: vendorReference.trim() || null, notes: notes.trim() || null,
       lines: lines.map((line) => ({ product_id: line.productId!, description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost })),
     };
@@ -201,6 +208,13 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
               <SelectContent>{Array.from(new Set([currencyCode, ...(currencies ?? [])])).map((code) => <SelectItem key={code} value={code}>{code}</SelectItem>)}</SelectContent>
             </Select>
           </Field>
+          {foreign ? (
+            <Field>
+              <FieldLabel htmlFor="po-rate">Exchange rate</FieldLabel>
+              <Input id="po-rate" type="number" min="0" step="0.00000001" inputMode="decimal" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} aria-describedby="po-rate-description" />
+              <FieldDescription id="po-rate-description">{baseCurrency} for one {currencyCode}. Needed to place the order: stock is valued in {baseCurrency}.</FieldDescription>
+            </Field>
+          ) : null}
           {activeWarehouses.length > 1 ? (
             <Field>
               <FieldLabel htmlFor="po-warehouse">Deliver to</FieldLabel>
@@ -220,10 +234,25 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           {activeWarehouses.length > 1 ? <Fact label="Deliver to">{order.warehouse_name ?? "—"}</Fact> : null}
           {order.vendor_reference ? <Fact label="Vendor reference">{order.vendor_reference}</Fact> : null}
           <Fact label="Total"><Money amount={order.subtotal} currency={order.currency} /></Fact>
+          {order.base_currency && order.currency !== order.base_currency ? <Fact label="Exchange rate">{order.exchange_rate
+            ? <span className="tabular-nums">1 {order.currency} = {Number(order.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 8 })} {order.base_currency}</span>
+            : <span className="text-copy-muted">Not set</span>}</Fact> : null}
           {order.bill_status && order.bill_status !== "none" ? <Fact label="Billing"><StatusValue status={getPurchaseOrderBillStatus(order.bill_status)} /></Fact> : null}
           {order.close_reason ? <Fact label="Rest closed because">{order.close_reason}</Fact> : null}
           {order.cancel_reason ? <Fact label="Cancelled because">{order.cancel_reason}</Fact> : null}
         </FactList>
+      ) : null}
+      {order && order.status === "ordered" && foreign && !order.exchange_rate && actions?.can_edit ? (
+        <div className="flex flex-wrap items-end gap-3">
+          <Field className="w-56">
+            <FieldLabel htmlFor="po-rate-placed">Exchange rate</FieldLabel>
+            <Input id="po-rate-placed" type="number" min="0" step="0.00000001" inputMode="decimal" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} aria-describedby="po-rate-placed-description" />
+            <FieldDescription id="po-rate-placed-description">{baseCurrency} for one {order.currency}. Needed before receiving.</FieldDescription>
+          </Field>
+          <Button type="button" variant="outline" disabled={mutations.isSaving || !(Number(exchangeRate) > 0)} onClick={() => void mutations.setExchangeRate({ id: order.id, rate: exchangeRate })
+            .then(() => toast.success("Exchange rate saved."))
+            .catch((failure) => toast.error(failure instanceof Error ? failure.message : "The exchange rate could not be saved."))}>Save rate</Button>
+        </div>
       ) : null}
 
       <section className="flex flex-col gap-3">

@@ -122,7 +122,14 @@ def get_company_profile(
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
 ):
-    return get_or_create_company_profile(db, current_user)
+    return _with_lock(db, get_or_create_company_profile(db, current_user))
+
+
+def _with_lock(db: Session, profile):
+    from app.modules.inventory.services.costing import valuation_started
+
+    profile.base_currency_locked = valuation_started(db, tenant_id=profile.tenant_id)
+    return profile
 
 
 @router.put("/company", response_model=CompanyProfileResponse)
@@ -131,7 +138,7 @@ def save_company_profile(
     db: Session = Depends(get_db),
     current_user = Depends(require_admin),
 ):
-    return update_company_profile(db, current_user, payload.model_dump(exclude_unset=True))
+    return _with_lock(db, update_company_profile(db, current_user, payload.model_dump(exclude_unset=True)))
 
 
 @router.post("/company/logo", response_model=CompanyLogoUploadResponse)

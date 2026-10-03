@@ -22,6 +22,7 @@ CRM_EVENT_TYPES = {
     "inventory.delivery_posted",
     "inventory.return_received",
     "purchase.receipt_posted",
+    "inventory.revalued",
     "purchase.bill_posted",
     "purchase.bill_overdue",
     "finance.invoice_issued",

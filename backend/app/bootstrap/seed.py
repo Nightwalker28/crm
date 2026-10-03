@@ -30,6 +30,7 @@ DEFAULT_MODULES = [
     {"name": "catalog_products", "base_route": "/dashboard/catalog/products", "description": "Catalog products"},
     {"name": "catalog_services", "base_route": "/dashboard/catalog/services", "description": "Catalog services"},
     {"name": "inventory_stock", "base_route": "/dashboard/inventory/stock", "description": "Stock and movements"},
+    {"name": "inventory_valuation", "base_route": "/dashboard/inventory/valuation", "description": "Stock value, revaluations and margin"},
     {"name": "inventory_adjustments", "base_route": "/dashboard/inventory/adjustments", "description": "Stock adjustments"},
     {"name": "inventory_transfers", "base_route": "/dashboard/inventory/transfers", "description": "Warehouse transfers"},
     {"name": "inventory_deliveries", "base_route": "/dashboard/inventory/deliveries", "description": "Deliveries for sales orders"},

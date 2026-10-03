@@ -12,7 +12,12 @@ import { downloadBlob } from "@/lib/browser";
 
 type Job = { id: number; operation: "import" | "export" };
 
-export function InventoryDataTransferActions({ kind, canExport, canImport = false }: { kind: "levels" | "movements"; canExport: boolean; canImport?: boolean }) {
+export function InventoryDataTransferActions({ kind, canExport, canImport = false, exportPath, exportLabel }: {
+  kind: "levels" | "movements" | "valuation" | "revaluations"; canExport: boolean; canImport?: boolean;
+  /** Valuation exports go through `/inventory/valuation/export-job` with their filters. */
+  exportPath?: string;
+  exportLabel?: string;
+}) {
   const input = useRef<HTMLInputElement>(null);
   const completedJob = useRef<number | null>(null);
   const [job, setJob] = useState<Job | null>(null);
@@ -35,7 +40,7 @@ export function InventoryDataTransferActions({ kind, canExport, canImport = fals
   async function startExport() {
     setBusy(true);
     try {
-      const response = await apiFetch(`/inventory/stock/export-job?kind=${kind}`, { method: "POST" });
+      const response = await apiFetch(exportPath ?? `/inventory/stock/export-job?kind=${kind}`, { method: "POST" });
       if (!response.ok) throw new Error("Could not start export");
       const body = await response.json() as { job_id: number };
       completedJob.current = null;
@@ -66,7 +71,7 @@ export function InventoryDataTransferActions({ kind, canExport, canImport = fals
 
   return <div className="space-y-3">
     <div className="flex flex-wrap gap-2">
-      {canExport ? <Button variant="outline" disabled={busy} onClick={() => void startExport()}>Export {kind}</Button> : null}
+      {canExport ? <Button variant="outline" disabled={busy} onClick={() => void startExport()}>{exportLabel ?? `Export ${kind}`}</Button> : null}
       {canImport ? <><input ref={input} type="file" accept=".csv,text/csv" className="sr-only" aria-label="Opening stock CSV" onChange={(event) => { const file = event.target.files?.[0]; if (file) void startImport(file); }} /><Button variant="outline" disabled={busy} onClick={() => input.current?.click()}>Import opening stock</Button></> : null}
     </div>
     {job ? <DataTransferJobProgress operation={job.operation} jobId={job.id} status={poller.status} progress={poller.progress} message={poller.message} hasError={Boolean(poller.error)} completedDescription={job.operation === "import" ? "Opening stock was posted." : "Your CSV is ready."} failureMessage={poller.error || "The job failed."} /> : null}

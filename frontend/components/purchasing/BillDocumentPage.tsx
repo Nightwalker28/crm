@@ -25,7 +25,7 @@ import { useFinanceDocumentActions } from "@/hooks/finance/useFinanceDocuments";
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
 import { usePurchaseBill, usePurchaseOrder, usePurchaseReceipt, usePurchasingActions, type PurchaseBillLine } from "@/hooks/purchasing/usePurchasing";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
-import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
@@ -57,6 +57,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const actions = modules.find((module) => module.name === "purchase_bills")?.actions;
   const canPay = Boolean(modules.find((module) => module.name === "finance_payments")?.actions?.can_create);
   const currencies = useCompanyCurrencies().data;
+  const baseCurrency = useBaseCurrency();
   const query = usePurchaseBill(billId);
   const bill = query.data;
   const receipt = usePurchaseReceipt(billId === null ? receiptId : null);
@@ -300,6 +301,14 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
             rows={bill?.lines ?? []}
             rowKey={(line) => line.id}
             emptyState={{ title: "No lines" }}
+            // E6 (12d §3.5): what a price difference did to stock value, in the base currency.
+            rowDetail={(line) => line.variance_stock_change != null ? (
+              <p className="text-p-sm text-copy-secondary">
+                The price difference added {formatMoney(line.variance_stock_change, baseCurrency.data)} to stock value
+                {Number(line.variance_cogs_change) ? ` and ${formatMoney(line.variance_cogs_change, baseCurrency.data)} to cost of goods already sold` : ""}
+                {bill?.status === "void" ? "; voiding the bill undid it." : "."}
+              </p>
+            ) : null}
             columns={[
               { key: "description", label: "Description", size: "lg", render: (line) => line.description },
               { key: "quantity", label: "Quantity", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.quantity)}</span> },

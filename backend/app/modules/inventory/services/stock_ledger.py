@@ -12,6 +12,7 @@ from sqlalchemy import and_, case, event, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct
+from app.modules.inventory.services.costing import apply as apply_cost, cost_key, cost_move, load_state
 from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
@@ -68,7 +69,11 @@ class MoveSpec:
     reverses_move_id: int | None = None
     reason: str | None = None
     note: str | None = None
+    # Inbound only: what one unit cost in the base currency, and where that came from
+    # (12d §3.2). Outbound moves and transfers take the product's average.
     unit_cost: Decimal | None = None
+    cost_source: str | None = None
+    sales_order_item_id: int | None = None
 
 
 def _quantity(value: Decimal) -> Decimal:
@@ -161,6 +166,7 @@ def post_moves(
     for product_id, warehouse_id in sorted({(spec.product_id, spec.warehouse_id) for spec, _ in normalized}):
         levels[(product_id, warehouse_id)] = _level_for_update(db, tenant_id=tenant_id, product_id=product_id, warehouse_id=warehouse_id)
     available_before = {key: Decimal(level.on_hand) - Decimal(level.reserved) for key, level in levels.items()}
+    costs = {cost_key(product_id): load_state(db, product) for product_id, product in products.items()}
 
     posted = []
     touched = set()
@@ -192,11 +198,20 @@ def post_moves(
             shortage = Decimal(level.reserved) - after
             raise HTTPException(status_code=409, detail=f"Insufficient available stock for {products[spec.product_id].name} in {warehouses[spec.warehouse_id].name}: short by {shortage}; the rest is reserved for confirmed orders")
         level.on_hand = after
+        reversed_move = None
+        if spec.reverses_move_id is not None:
+            reversed_move = db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id, InventoryStockMove.id == spec.reverses_move_id).first()
+        state = costs[cost_key(spec.product_id, spec.warehouse_id)]
+        unit_cost, value, cost_source = cost_move(state, quantity=quantity, move_type=spec.move_type, unit_cost=spec.unit_cost,
+                                                  cost_source=spec.cost_source, reversed_move=reversed_move)
+        average_after = apply_cost(state, quantity=quantity, value=value, cost_source=cost_source)
         move = InventoryStockMove(
             tenant_id=tenant_id, product_id=spec.product_id, warehouse_id=spec.warehouse_id,
             quantity=quantity, move_type=spec.move_type, source_type=spec.source_type,
             source_id=spec.source_id, source_line_id=spec.source_line_id,
-            reverses_move_id=spec.reverses_move_id, unit_cost=spec.unit_cost if spec.unit_cost is not None else products[spec.product_id].cost_price,
+            reverses_move_id=spec.reverses_move_id, unit_cost=unit_cost, value=value, average_cost_after=average_after,
+            cost_source=cost_source,
+            sales_order_item_id=spec.sales_order_item_id if spec.sales_order_item_id is not None else (reversed_move.sales_order_item_id if reversed_move is not None else None),
             on_hand_after=after, reason=spec.reason, note=spec.note, created_by=actor_user_id,
         )
         db.add(level)
@@ -218,6 +233,10 @@ def post_moves(
         total = sum((Decimal(row.on_hand) for row in db.query(InventoryStockLevel).filter(InventoryStockLevel.tenant_id == tenant_id, InventoryStockLevel.product_id == product_id)), Decimal("0"))
         product.stock_quantity = total
         product.stock_status = "in_stock" if total > 0 else "out_of_stock"
+        state = costs[cost_key(product_id)]
+        product.stock_value = state.value
+        if state.last_cost is not None:
+            product.cost_price = state.last_cost
         db.add(product)
     for (product_id, warehouse_id), level in levels.items():
         if product_id not in touched:

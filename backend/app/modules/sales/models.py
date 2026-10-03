@@ -549,6 +549,9 @@ class SalesOrder(Base):
     delivery_date = Column(Date, nullable=True)
     delivery_address = Column(Text, nullable=True)
     payment_terms = Column(Text, nullable=True)
+    # Base-currency units per one unit of `currency`, for margin only (12d §3.3); NULL when
+    # the order is in the base currency or no rate was given.
+    exchange_rate = Column(Numeric(18, 8), nullable=True)
     # Where the order's stock is held and shipped from; NULL means the default warehouse.
     warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=True, index=True)
     # Cached from deliveries for lists and saved views: none (nothing stocked), pending,

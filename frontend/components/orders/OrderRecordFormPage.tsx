@@ -47,7 +47,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -67,6 +67,8 @@ type OrderForm = {
   owner_name: string;
   status: string;
   currency: string;
+  /** E6: base units per one order-currency unit, for margin (12d §3.3). */
+  exchange_rate: string;
   delivery_date: string;
   delivery_address: string;
   payment_terms: string;
@@ -86,6 +88,7 @@ const EMPTY_FORM: OrderForm = {
   owner_name: "",
   status: "draft",
   currency: "USD",
+  exchange_rate: "",
   delivery_date: "",
   delivery_address: "",
   payment_terms: "",
@@ -125,6 +128,7 @@ function orderSeed(order?: Order): OrderSeed {
       owner_name: order.owner_name ?? "",
       status: order.status,
       currency: order.currency,
+      exchange_rate: order.exchange_rate ?? order.suggested_exchange_rate ?? "",
       delivery_date: order.delivery_date ?? "",
       delivery_address: order.delivery_address ?? "",
       payment_terms: order.payment_terms ?? "",
@@ -201,6 +205,7 @@ function OrderRecordFormEditor({
   const backHref = useRecordTabHref(mode === "edit" && orderId ? `${listHref}/${orderId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
+  const baseCurrency = useBaseCurrency().data ?? currencies.data?.[0] ?? "USD";
   const [form, setForm] = useState<OrderForm>(seed.form);
   const { modules } = useAccessibleModules();
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
@@ -257,6 +262,7 @@ function OrderRecordFormEditor({
             owner_id: form.owner_id,
             status: form.status,
             currency: form.currency,
+            exchange_rate: form.currency !== baseCurrency && Number(form.exchange_rate) > 0 ? form.exchange_rate : null,
             delivery_date: form.delivery_date || null,
             delivery_address: form.delivery_address.trim() || null,
             payment_terms: form.payment_terms.trim() || null,
@@ -326,6 +332,7 @@ function OrderRecordFormEditor({
             onChange={setForm}
             totals={totals}
             currencies={currencies.data ?? ["USD"]}
+            baseCurrency={baseCurrency}
             mode={mode}
           />
         }
@@ -601,12 +608,14 @@ function OrderSidebar({
   onChange,
   totals,
   currencies,
+  baseCurrency,
   mode,
 }: {
   form: OrderForm;
   onChange: (form: OrderForm) => void;
   totals: ReturnType<typeof calculateTransactionTotals>;
   currencies: string[];
+  baseCurrency: string;
   mode: "create" | "edit";
 }) {
   return (
@@ -655,6 +664,24 @@ function OrderSidebar({
               </SelectContent>
             </Select>
           </Field>
+          {form.currency !== baseCurrency ? (
+            <Field>
+              <FieldLabel htmlFor="order-exchange-rate">Exchange rate</FieldLabel>
+              <Input
+                id="order-exchange-rate"
+                type="number"
+                min="0"
+                step="0.00000001"
+                inputMode="decimal"
+                value={form.exchange_rate}
+                onChange={(event) => onChange({ ...form, exchange_rate: event.target.value })}
+                aria-describedby="order-exchange-rate-description"
+              />
+              <FieldDescription id="order-exchange-rate-description">
+                {baseCurrency} for one {form.currency}. Optional: used to show this order&apos;s margin in {baseCurrency}.
+              </FieldDescription>
+            </Field>
+          ) : null}
           <Field>
             <FieldLabel htmlFor="order-status">Status</FieldLabel>
             <Select

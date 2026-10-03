@@ -20,6 +20,7 @@ class AdjustmentLinePayload(BaseModel):
     product_id: int = Field(gt=0)
     counted: Decimal | None = None
     delta: Decimal | None = None
+    unit_cost: Decimal | None = Field(default=None, ge=0)
 
 
 class AdjustmentPayload(BaseModel):

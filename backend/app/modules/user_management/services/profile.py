@@ -192,8 +192,9 @@ def get_or_create_company_profile(db: Session, current_user: User) -> CompanyPro
         .first()
     )
     if profile:
-        if not getattr(profile, "operating_currencies", None):
-            profile.operating_currencies = ["USD"]
+        if not getattr(profile, "operating_currencies", None) or not profile.base_currency:
+            profile.operating_currencies = profile.operating_currencies or ["USD"]
+            profile.base_currency = profile.base_currency or str(profile.operating_currencies[0]).strip().upper()[:3] or "USD"
             db.add(profile)
             db.commit()
             db.refresh(profile)
@@ -203,6 +204,7 @@ def get_or_create_company_profile(db: Session, current_user: User) -> CompanyPro
         tenant_id=current_user.tenant_id,
         name="Your Company",
         operating_currencies=["USD"],
+        base_currency="USD",
     )
     db.add(profile)
     db.commit()
@@ -225,6 +227,17 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
         policy_changed = True
     if "default_payment_terms_days" in payload:
         profile.default_payment_terms_days = payload["default_payment_terms_days"]
+    if payload.get("base_currency"):
+        requested = str(payload["base_currency"]).strip().upper()
+        if not requested.isalpha() or len(requested) != 3:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Base currency must be a three-letter code")
+        if requested != (profile.base_currency or "").upper():
+            from app.modules.inventory.services.costing import valuation_started
+
+            # Changing it would need every stock value restated at a rate nobody has (12d §5 decision 10).
+            if valuation_started(db, tenant_id=current_user.tenant_id):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The base currency cannot change once stock has been valued")
+            profile.base_currency = requested
 
     profile.updated_by = current_user.id if current_user else None
     db.add(profile)

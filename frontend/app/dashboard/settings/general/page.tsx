@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { RotateCcw, Save } from "lucide-react";
 import { toast } from "sonner";
 
@@ -31,6 +32,8 @@ type CompanyResponse = {
   logo_url?: string | null;
   invoicing_policy?: "delivered" | "ordered";
   default_payment_terms_days?: number | null;
+  base_currency?: string | null;
+  base_currency_locked?: boolean;
 };
 
 type CompanyForm = {
@@ -44,6 +47,8 @@ type CompanyForm = {
   billing_address: string;
   invoicing_policy: "delivered" | "ordered";
   default_payment_terms_days: string;
+  base_currency: string;
+  base_currency_locked: boolean;
 };
 
 const emptyForm: CompanyForm = {
@@ -57,6 +62,8 @@ const emptyForm: CompanyForm = {
   billing_address: "",
   invoicing_policy: "delivered",
   default_payment_terms_days: "",
+  base_currency: "USD",
+  base_currency_locked: false,
 };
 
 function companyToForm(data: CompanyResponse): CompanyForm {
@@ -74,6 +81,8 @@ function companyToForm(data: CompanyResponse): CompanyForm {
     billing_address: data.billing_address ?? "",
     invoicing_policy: data.invoicing_policy === "ordered" ? "ordered" : "delivered",
     default_payment_terms_days: data.default_payment_terms_days != null ? String(data.default_payment_terms_days) : "",
+    base_currency: (data.base_currency || data.operating_currencies?.[0] || "USD").toUpperCase(),
+    base_currency_locked: Boolean(data.base_currency_locked),
   };
 }
 
@@ -98,6 +107,8 @@ function companyPayload(form: CompanyForm) {
     default_payment_terms_days: form.default_payment_terms_days.trim() === ""
       ? null
       : Math.max(0, Math.min(365, Math.round(Number(form.default_payment_terms_days)) || 0)),
+    // The base currency locks once stock has been valued (12d §5 decision 10).
+    ...(form.base_currency_locked ? {} : { base_currency: form.base_currency.trim().toUpperCase().slice(0, 3) }),
   };
 }
 
@@ -107,6 +118,7 @@ async function readJson(response: Response) {
 
 export default function CompanyPage() {
   const { confirm } = useConfirm();
+  const queryClient = useQueryClient();
   const [form, setForm] = useState<CompanyForm>(emptyForm);
   const [initialForm, setInitialForm] = useState<CompanyForm>(emptyForm);
   const [logoUrl, setLogoUrl] = useState("");
@@ -156,14 +168,20 @@ export default function CompanyPage() {
         body: JSON.stringify(companyPayload(form)),
       });
       const body = await readJson(response);
-      if (!response.ok) throw new Error("Company profile could not be saved.");
+      if (!response.ok) {
+        const detail = (body as { detail?: unknown } | null)?.detail;
+        // A locked base currency explains itself; anything else stays generic.
+        throw new Error(response.status === 409 && typeof detail === "string" ? detail : "Company profile could not be saved.");
+      }
 
       const savedForm = companyToForm(body as CompanyResponse);
       setForm(savedForm);
       setInitialForm(savedForm);
+      void queryClient.invalidateQueries({ queryKey: ["company-base-currency"] });
       toast.success("Company profile updated.");
-    } catch {
-      setActionError("Company profile could not be saved. Review the fields and try again.");
+    } catch (error) {
+      setActionError(error instanceof Error && error.message !== "Company profile could not be saved."
+        ? error.message : "Company profile could not be saved. Review the fields and try again.");
     } finally {
       setSaving(false);
     }
@@ -325,6 +343,20 @@ export default function CompanyPage() {
               <Input id="company-payment-terms" type="number" min={0} max={365} step={1} inputMode="numeric" value={form.default_payment_terms_days}
                 onChange={(event) => setForm((current) => ({ ...current, default_payment_terms_days: event.target.value }))} placeholder="30" />
               <FieldDescription>Sets an invoice&apos;s or bill&apos;s due date when its account has no terms of its own. Blank leaves the due date open.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        </FormSection>
+
+        {/* E6 (12d-erp-costing.md §3.5). */}
+        <FormSection title="Stock valuation" description="The currency costs, stock value and margin are kept in.">
+          <FieldGroup className="grid gap-4 md:grid-cols-2">
+            <Field>
+              <FieldLabel htmlFor="company-base-currency">Base currency</FieldLabel>
+              <Input id="company-base-currency" value={form.base_currency} maxLength={3} disabled={form.base_currency_locked}
+                onChange={(event) => setForm((current) => ({ ...current, base_currency: event.target.value.toUpperCase() }))} aria-describedby="company-base-currency-description" />
+              <FieldDescription id="company-base-currency-description">{form.base_currency_locked
+                ? "Stock has been valued in this currency, so it can no longer change: every value would need restating at a rate nobody has."
+                : "Purchase and sales orders in another currency carry an exchange rate to it. It locks once stock is valued."}</FieldDescription>
             </Field>
           </FieldGroup>
         </FormSection>

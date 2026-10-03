@@ -12,6 +12,7 @@ from decimal import Decimal
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.modules.inventory.services.costing import base_currency
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryReservation, InventoryStockLevel, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import line_outstanding, open_order_lines_query
@@ -47,6 +48,7 @@ def suggestions(db: Session, *, tenant_id: int, warehouse_id: int | None = None,
         query = query.filter(CatalogProduct.preferred_vendor_id == vendor_id)
     rows = query.order_by(CatalogProduct.name, CatalogProduct.id, InventoryWarehouse.name).all()
     on_order = incoming(db, tenant_id=tenant_id, product_ids=[product.id for _, product, _ in rows])
+    base = base_currency(db, tenant_id=tenant_id)
     result = []
     for level, product, warehouse in rows:
         reorder_point = Decimal(product.reorder_point or 0)
@@ -64,7 +66,8 @@ def suggestions(db: Session, *, tenant_id: int, warehouse_id: int | None = None,
             "suggested": suggested_quantity(projected=projected, reorder_point=reorder_point, reorder_quantity=Decimal(product.reorder_quantity or 0)),
             "preferred_vendor_id": product.preferred_vendor_id,
             "preferred_vendor_name": product.preferred_vendor.org_name if product.preferred_vendor else None,
-            "unit_cost": product.cost_price, "currency": product.currency, "lead_time_days": product.lead_time_days,
+            # Cost prices are in the base currency from E6 (12d §5 decision 3).
+            "unit_cost": product.cost_price, "currency": base, "lead_time_days": product.lead_time_days,
         })
     return result
 
@@ -84,7 +87,7 @@ def create_draft_orders(db: Session, *, tenant_id: int, actor_user_id: int | Non
     groups: dict[tuple[int, int, str], list[dict]] = {}
     for row in rows:
         product = products[int(row["product_id"])]
-        key = (product.preferred_vendor_id, int(row["warehouse_id"]), product.currency)
+        key = (product.preferred_vendor_id, int(row["warehouse_id"]), base_currency(db, tenant_id=tenant_id))
         groups.setdefault(key, []).append({"product_id": product.id, "quantity": row["quantity"], "unit_cost": product.cost_price or 0,
             "description": product.vendor_sku and f"Vendor code {product.vendor_sku}"})
     orders = []

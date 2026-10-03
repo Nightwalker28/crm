@@ -38,6 +38,7 @@ class OrderPayload(BaseModel):
     vendor_id: int = Field(gt=0)
     warehouse_id: int | None = Field(default=None, gt=0)
     currency: str | None = Field(default=None, max_length=10)
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
     expected_date: date | None = None
     vendor_reference: str | None = Field(default=None, max_length=120)
     notes: str | None = None
@@ -164,6 +165,18 @@ def update_order(order_id: int, payload: OrderPayload, db: Session = Depends(get
 def place_order(order_id: int, db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(ORDERS)), _edit=Depends(require_action_access(ORDERS, "edit"))):
     orders.mark_ordered(db, tenant_id=user.tenant_id, actor_user_id=user.id, order_id=order_id)
+    db.commit()
+    return _order(db, user.tenant_id, order_id)
+
+
+class ExchangeRatePayload(BaseModel):
+    exchange_rate: Decimal = Field(gt=0)
+
+
+@router.put("/orders/{order_id}/exchange-rate")
+def set_order_exchange_rate(order_id: int, payload: ExchangeRatePayload, db: Session = Depends(get_db), user=Depends(require_user),
+                            _module=Depends(require_module_access(ORDERS)), _edit=Depends(require_action_access(ORDERS, "edit"))):
+    orders.set_exchange_rate(db, tenant_id=user.tenant_id, actor_user_id=user.id, order_id=order_id, exchange_rate=payload.exchange_rate)
     db.commit()
     return _order(db, user.tenant_id, order_id)
 

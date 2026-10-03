@@ -1,6 +1,8 @@
 "use client";
 
-import { apiFetch } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
+
+import { ApiError, apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
@@ -33,6 +35,9 @@ export type Order = {
   opportunity_name?: string | null;
   status: string;
   currency: string;
+  exchange_rate?: string | null;
+  base_currency?: string | null;
+  suggested_exchange_rate?: string | null;
   subtotal?: string | number | null;
   tax_total?: string | number | null;
   discount_total?: string | number | null;
@@ -124,4 +129,33 @@ export function useOrders(
     onPageSizeChange: paged.onPageSizeChange,
     refresh: paged.refresh,
   };
+}
+
+// --- Margin (ERP E6, 12d-erp-costing.md §3.3) ----------------------------------------------
+
+export type OrderMarginLine = {
+  order_line_id: number; name: string; quantity: string; tracked: boolean; delivered: string; estimated_quantity: string;
+  revenue: string | null; cost: string; margin: string | null; margin_percent: string | null;
+  actual_revenue: string | null; actual_cost: string; estimated: boolean; cost_missing: boolean;
+};
+export type OrderMargin = {
+  order_id: number; currency: string; base_currency: string; exchange_rate: string | null; rate_missing: boolean;
+  estimated: boolean; cost_missing: boolean; revenue: string | null; cost: string; margin: string | null; margin_percent: string | null;
+  actual_revenue: string | null; actual_cost: string; actual_margin: string | null; lines: OrderMarginLine[];
+};
+
+export function useOrderMargin(orderId: number | null, enabled = true) {
+  return useQuery({
+    // Under the fulfilment key, so a delivery, return or receipt refreshes it too.
+    queryKey: ["sales-order-fulfilment", "margin", orderId],
+    queryFn: async () => {
+      const response = await apiFetch(`/sales/orders/${orderId}/margin`);
+      if (!response.ok) {
+        const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
+        throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : "Margin could not be loaded.");
+      }
+      return response.json() as Promise<OrderMargin>;
+    },
+    enabled: orderId !== null && enabled,
+  });
 }

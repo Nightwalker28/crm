@@ -51,6 +51,7 @@ class InventoryStockMove(Base):
         Index("ix_inventory_moves_tenant_warehouse_id", "tenant_id", "warehouse_id", "id"),
         Index("uq_inventory_move_source_line", "tenant_id", "source_type", "source_line_id", "move_type", unique=True, postgresql_where=text("source_line_id IS NOT NULL"), sqlite_where=text("source_line_id IS NOT NULL")),
         Index("uq_inventory_move_reversal", "reverses_move_id", unique=True, postgresql_where=text("reverses_move_id IS NOT NULL"), sqlite_where=text("reverses_move_id IS NOT NULL")),
+        Index("ix_inventory_moves_tenant_order_item", "tenant_id", "sales_order_item_id"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
@@ -64,7 +65,15 @@ class InventoryStockMove(Base):
     source_id = Column(BigInteger, nullable=False)
     source_line_id = Column(BigInteger)
     reverses_move_id = Column(BigInteger, ForeignKey("inventory_stock_moves.id", ondelete="RESTRICT"))
+    # E6 (12d §3.1-3.2): what one unit cost in the base currency, the signed value of the
+    # move, the product's average once it posted, and where the cost came from.
     unit_cost = Column(Numeric(12, 4))
+    value = Column(Numeric(18, 4))
+    average_cost_after = Column(Numeric(12, 4))
+    cost_source = Column(String(20))
+    # The sales order line a delivery, legacy order move, return or their reversal served,
+    # so cost of goods per line is a sum.
+    sales_order_item_id = Column(Integer, ForeignKey("sales_order_items.id", ondelete="SET NULL"))
     on_hand_after = Column(Numeric(12, 4), nullable=False)
     reason = Column(String(120))
     note = Column(Text)
@@ -112,6 +121,8 @@ class InventoryAdjustmentLine(Base):
     expected = Column(Numeric(12, 4), nullable=False)
     counted = Column(Numeric(12, 4))
     delta = Column(Numeric(12, 4))
+    # Required only for a product with no average yet (12d §3.2); otherwise unused.
+    unit_cost = Column(Numeric(12, 4))
 
     adjustment = relationship("InventoryAdjustment", back_populates="lines")
 
@@ -293,3 +304,36 @@ class InventoryReturnLine(Base):
 
 # Reservations point at sales order lines; load those tables wherever inventory's are.
 import app.modules.sales.models  # noqa: E402, F401
+
+
+class InventoryRevaluation(Base):
+    """A value-only change to a tracked product's stock (12d §3.1): a manual *Revalue*, or a
+    bill whose price differs from the receipt. Final: corrected by another revaluation."""
+
+    __tablename__ = "inventory_revaluations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "number", name="uq_inventory_revaluation_number"),
+        CheckConstraint("kind IN ('manual', 'bill_variance', 'migration')", name="ck_inventory_revaluation_kind"),
+        Index("ix_inventory_revaluations_tenant_product_id", "tenant_id", "product_id", "id"),
+        Index("uq_inventory_revaluation_reversal", "reverses_id", unique=True, postgresql_where=text("reverses_id IS NOT NULL"), sqlite_where=text("reverses_id IS NOT NULL")),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    number = Column(String(50), nullable=False)
+    product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="RESTRICT"), nullable=False)
+    kind = Column(String(20), nullable=False)
+    # A posted bill line; no foreign key, because purchasing's models import these.
+    bill_line_id = Column(BigInteger)
+    on_hand = Column(Numeric(12, 4), nullable=False)
+    average_before = Column(Numeric(12, 4))
+    average_after = Column(Numeric(12, 4))
+    # Value moved into (+) or out of (-) stock, and the part charged to goods already sold.
+    stock_change = Column(Numeric(18, 4), nullable=False, server_default="0")
+    cogs_change = Column(Numeric(18, 4), nullable=False, server_default="0")
+    reason = Column(String(500), nullable=False)
+    reverses_id = Column(BigInteger, ForeignKey("inventory_revaluations.id", ondelete="RESTRICT"))
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    product = relationship("CatalogProduct")

@@ -514,6 +514,8 @@ class CompanyProfile(Base):
     # E5 (12c §3.5): tracked products invoice what was delivered, or what was ordered.
     invoicing_policy = Column(String(20), nullable=False, server_default="delivered")
     default_payment_terms_days = Column(Integer, nullable=True)
+    # E6 (12d §3.1): the currency stock is valued in. Locked once any move carries a value.
+    base_currency = Column(String(3), nullable=True)
     updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(

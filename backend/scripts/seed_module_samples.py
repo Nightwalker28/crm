@@ -27,6 +27,7 @@ from app.core.database import SessionLocal
 # shared metadata before any mapper is configured, even though nothing here uses it.
 from app.modules.documents import models as _documents_models  # noqa: F401
 from app.modules.catalog.models import CatalogProduct
+from app.modules.inventory.services.costing import base_currency
 from app.modules.contracts.models import Contract
 from app.modules.inventory.models import (
     InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel,
@@ -166,6 +167,7 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
     seed_fulfilment_samples(db, tenant, owner, bump)
     seed_purchasing_samples(db, tenant, owner, bump)
     seed_invoicing_samples(db, tenant, owner, bump)
+    seed_costing_samples(db, tenant, owner, bump)
     return created
 
 
@@ -317,7 +319,7 @@ def seed_purchasing_samples(db: Session, tenant: Tenant, owner: User, bump) -> N
         if order is not None:
             return order, False
         order = purchase_order_services.save_order(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
-            "vendor_id": vendor.org_id, "currency": product.currency, "vendor_reference": "SAMPLE",
+            "vendor_id": vendor.org_id, "currency": base_currency(db, tenant_id=tenant.id), "vendor_reference": "SAMPLE",
             "lines": [{"product_id": product.id, "quantity": "5", "unit_cost": product.cost_price or 1}]})
         order.number = number
         db.flush()
@@ -379,6 +381,45 @@ def seed_invoicing_samples(db: Session, tenant: Tenant, owner: User, bump) -> No
             "direction": "made", "method": "Bank transfer", "allocations": [{"bill_id": bill.id, "amount": "1"}]})
         bump("purchase_bills", True)
         bump("finance_payments", True)
+    db.flush()
+
+
+def seed_costing_samples(db: Session, tenant: Tenant, owner: User, bump) -> None:
+    """A costed product received twice at different costs (4, then 6: average 5), and a bill for
+    the second receipt at 6.50, so the valuation page, a bill price difference and a
+    revaluation all have something to show (E6)."""
+    from app.modules.purchasing.models import PurchaseBill, PurchaseOrder
+    from app.modules.purchasing.services import bill_services, purchase_order_services, receipt_services
+    from app.modules.sales.models import SalesOrganization
+
+    vendor = db.query(SalesOrganization).filter_by(tenant_id=tenant.id, org_name="Sample Supplier Ltd").one_or_none()
+    if vendor is None:
+        return
+    product, made = get_or_create(db, CatalogProduct, tenant_id=tenant.id, sku="SAMPLE-COSTED", defaults={
+        "name": "Sample costed widget", "currency": base_currency(db, tenant_id=tenant.id), "public_unit_price": 12,
+        "track_inventory": 1, "stock_quantity": 0, "stock_status": "out_of_stock", "preferred_vendor_id": vendor.org_id})
+    bump("catalog_products", made)
+    db.flush()
+    for number, cost in (("SAMPLE-PO-E6-1", 4), ("SAMPLE-PO-E6-2", 6)):
+        if db.query(PurchaseOrder).filter_by(tenant_id=tenant.id, number=number).one_or_none() is not None:
+            continue
+        order = purchase_order_services.save_order(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "vendor_id": vendor.org_id, "currency": base_currency(db, tenant_id=tenant.id), "vendor_reference": "SAMPLE-E6",
+            "lines": [{"product_id": product.id, "quantity": "10", "unit_cost": cost}]})
+        order.number = number
+        db.flush()
+        purchase_order_services.mark_ordered(db, tenant_id=tenant.id, actor_user_id=owner.id, order_id=order.id)
+        receipt = receipt_services.save_receipt(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={"order_id": order.id})
+        receipt_services.post_receipt(db, tenant_id=tenant.id, actor_user_id=owner.id, receipt_id=receipt.id)
+        bump("purchase_orders", True)
+        bump("purchase_receipts", True)
+    second = db.query(PurchaseOrder).filter_by(tenant_id=tenant.id, number="SAMPLE-PO-E6-2").one_or_none()
+    if second is not None and db.query(PurchaseBill).filter_by(tenant_id=tenant.id, vendor_invoice_number="SAMPLE-BILL-E6").one_or_none() is None:
+        bill = bill_services.save_bill(db, tenant_id=tenant.id, actor_user_id=owner.id, payload={
+            "order_id": second.id, "vendor_invoice_number": "SAMPLE-BILL-E6",
+            "lines": [{"order_line_id": second.lines[0].id, "description": "Sample costed widget", "quantity": "10", "unit_cost": "6.50"}]})
+        bill_services.post_bill(db, tenant_id=tenant.id, actor_user_id=owner.id, bill_id=bill.id)
+        bump("purchase_bills", True)
     db.flush()
 
 

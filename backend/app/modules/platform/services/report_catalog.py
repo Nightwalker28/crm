@@ -24,7 +24,7 @@ from app.modules.finance.models import FinanceCreditNote, FinanceIO, FinancePaym
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryReturn, InventoryReturnLine,
-    InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
+    InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
 from app.modules.finance.repositories import io_repository
 from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
@@ -378,6 +378,9 @@ def _inventory_level_fields(db: Session, user) -> list[ReportField]:
         ReportField("reorder_point", "Reorder point", "number", reorder_point),
         ReportField("low_stock", "Low stock", "boolean", and_(reorder_point > 0, available <= reorder_point)),
         ReportField("stock_health", "Stock health", "select", health, labels="humanize"),
+        *([ReportField("stock_value", "Stock value", "money", InventoryStockLevel.on_hand * func.coalesce(select(CatalogProduct.cost_price).where(
+            CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery(), 0))]
+          if _can_view_valuation(db, user) else []),
     ]
 
 
@@ -391,6 +394,136 @@ def _inventory_move_fields(db: Session, user) -> list[ReportField]:
         ReportField("quantity", "Change", "number", InventoryStockMove.quantity),
         ReportField("on_hand_after", "On hand after", "number", InventoryStockMove.on_hand_after),
         ReportField("occurred_at", "Date", "datetime", InventoryStockMove.occurred_at),
+        *([ReportField("unit_cost", "Unit cost", "money", InventoryStockMove.unit_cost),
+           ReportField("value", "Value", "money", InventoryStockMove.value),
+           ReportField("cost_source", "Cost from", "select", InventoryStockMove.cost_source, labels="humanize")]
+          if _can_view_valuation(db, user) else []),
+    ]
+
+
+def _can_view_valuation(db: Session, user) -> bool:
+    """The same check the catalog makes for a source, so a value field and the Valuation
+    sources appear to exactly the same people."""
+    return can_view_module(db, user, "inventory_valuation")
+
+
+# --- E6 costing (12d-erp-costing.md §3.7) --------------------------------------------------
+
+_COGS_SOURCES = ("inventory_delivery", "sales_order", "website_order", "inventory_return")
+
+
+def _product_column(column, product_id):
+    return select(column).where(CatalogProduct.id == product_id).scalar_subquery()
+
+
+def _category_name(product_id):
+    from app.modules.catalog.models import CatalogCategory
+
+    return select(CatalogCategory.name).join(CatalogProduct, CatalogProduct.category_id == CatalogCategory.id).where(CatalogProduct.id == product_id).scalar_subquery()
+
+
+def _valuation_query(db: Session, user, search: str | None):
+    query = db.query(CatalogProduct).filter(CatalogProduct.tenant_id == user.tenant_id, CatalogProduct.track_inventory == 1,
+        CatalogProduct.deleted_at.is_(None), CatalogProduct.stock_quantity > 0)
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"))) if search else query
+
+
+def _valuation_fields(db: Session, user) -> list[ReportField]:
+    return [
+        ReportField("product", "Product", "text", CatalogProduct.name, groupable=False),
+        ReportField("sku", "SKU", "text", CatalogProduct.sku, groupable=False),
+        ReportField("category", "Category", "text", _category_name(CatalogProduct.id)),
+        ReportField("on_hand", "On hand", "number", CatalogProduct.stock_quantity),
+        ReportField("average_cost", "Average cost", "money", CatalogProduct.cost_price),
+        ReportField("stock_value", "Stock value", "money", CatalogProduct.stock_value),
+        ReportField("cost_missing", "Cost missing", "boolean", CatalogProduct.stock_value <= 0),
+    ]
+
+
+def _cogs_query(db: Session, user, search: str | None):
+    query = db.query(InventoryStockMove).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).filter(
+        InventoryStockMove.tenant_id == user.tenant_id, CatalogProduct.tenant_id == user.tenant_id,
+        InventoryStockMove.source_type.in_(_COGS_SOURCES))
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"))) if search else query
+
+
+def _cogs_fields(db: Session, user) -> list[ReportField]:
+    order_number = select(SalesOrder.order_number).join(SalesOrderItem, SalesOrderItem.order_id == SalesOrder.id).where(
+        SalesOrderItem.id == InventoryStockMove.sales_order_item_id).scalar_subquery()
+    customer = select(SalesOrganization.org_name).join(SalesOrder, SalesOrder.organization_id == SalesOrganization.org_id).join(
+        SalesOrderItem, SalesOrderItem.order_id == SalesOrder.id).where(SalesOrderItem.id == InventoryStockMove.sales_order_item_id).scalar_subquery()
+    return [
+        ReportField("product", "Product", "text", _product_column(CatalogProduct.name, InventoryStockMove.product_id)),
+        ReportField("sku", "SKU", "text", _product_column(CatalogProduct.sku, InventoryStockMove.product_id)),
+        ReportField("category", "Category", "text", _category_name(InventoryStockMove.product_id)),
+        ReportField("customer", "Customer", "text", customer),
+        ReportField("order", "Order", "text", order_number),
+        ReportField("move_type", "Type", "select", InventoryStockMove.move_type, labels="humanize"),
+        ReportField("occurred_at", "Date", "datetime", InventoryStockMove.occurred_at),
+        ReportField("units", "Units sold", "number", -InventoryStockMove.quantity),
+        ReportField("cost_of_goods", "Cost of goods", "money", -func.coalesce(InventoryStockMove.value, 0)),
+    ]
+
+
+def _margin_query(db: Session, user, search: str | None):
+    query = db.query(SalesOrderItem).join(SalesOrder, and_(SalesOrder.id == SalesOrderItem.order_id, SalesOrder.tenant_id == SalesOrderItem.tenant_id)).join(
+        CatalogProduct, and_(CatalogProduct.id == SalesOrderItem.catalog_product_id, CatalogProduct.tenant_id == SalesOrderItem.tenant_id)).filter(
+        SalesOrderItem.tenant_id == user.tenant_id, SalesOrder.status != "cancelled", CatalogProduct.track_inventory == 1)
+    return query.filter(or_(CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"), SalesOrder.order_number.ilike(f"%{search}%"))) if search else query
+
+
+def _margin_fields(db: Session, user) -> list[ReportField]:
+    """Delivered quantities at their actual cost, revenue converted at the order's rate; an
+    order in another currency with no rate has no revenue (12d §3.3)."""
+    from app.modules.inventory.services.costing import base_currency
+
+    base = base_currency(db, tenant_id=user.tenant_id)
+    delivered = select(func.coalesce(func.sum(InventoryDeliveryLine.quantity), 0)).join(InventoryDelivery, InventoryDelivery.id == InventoryDeliveryLine.delivery_id).where(
+        InventoryDeliveryLine.order_line_id == SalesOrderItem.id, InventoryDelivery.status == "posted").scalar_subquery()
+    returned = select(func.coalesce(func.sum(InventoryReturnLine.quantity), 0)).join(InventoryReturn, InventoryReturn.id == InventoryReturnLine.return_id).where(
+        InventoryReturnLine.order_line_id == SalesOrderItem.id, InventoryReturn.status == "received").scalar_subquery()
+    cost = -select(func.coalesce(func.sum(InventoryStockMove.value), 0)).where(InventoryStockMove.sales_order_item_id == SalesOrderItem.id).scalar_subquery()
+    currency = select(SalesOrder.currency).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    rate = case((func.upper(currency) == base, 1), else_=select(SalesOrder.exchange_rate).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery())
+    net = SalesOrderItem.line_total - SalesOrderItem.tax_amount
+    sold = delivered - returned
+    revenue = case((SalesOrderItem.quantity > 0, net * sold / SalesOrderItem.quantity * rate), else_=0)
+    order_number = select(SalesOrder.order_number).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    order_date = select(SalesOrder.created_at).where(SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    customer = select(SalesOrganization.org_name).join(SalesOrder, SalesOrder.organization_id == SalesOrganization.org_id).where(
+        SalesOrder.id == SalesOrderItem.order_id).scalar_subquery()
+    return [
+        ReportField("product", "Product", "text", _product_column(CatalogProduct.name, SalesOrderItem.catalog_product_id)),
+        ReportField("sku", "SKU", "text", _product_column(CatalogProduct.sku, SalesOrderItem.catalog_product_id)),
+        ReportField("category", "Category", "text", _category_name(SalesOrderItem.catalog_product_id)),
+        ReportField("customer", "Customer", "text", customer),
+        ReportField("order", "Order", "text", order_number),
+        ReportField("order_date", "Order date", "datetime", order_date),
+        ReportField("sold", "Units sold", "number", sold),
+        ReportField("revenue", "Revenue", "money", revenue),
+        ReportField("cost_of_goods", "Cost of goods", "money", cost),
+        ReportField("margin", "Margin", "money", revenue - cost),
+    ]
+
+
+def _revaluations_query(db: Session, user, search: str | None):
+    query = db.query(InventoryRevaluation).join(CatalogProduct, CatalogProduct.id == InventoryRevaluation.product_id).filter(
+        InventoryRevaluation.tenant_id == user.tenant_id, CatalogProduct.tenant_id == user.tenant_id)
+    return query.filter(or_(InventoryRevaluation.number.ilike(f"%{search}%"), CatalogProduct.name.ilike(f"%{search}%"))) if search else query
+
+
+def _revaluation_fields(db: Session, user) -> list[ReportField]:
+    return [
+        ReportField("number", "Number", "text", InventoryRevaluation.number, groupable=False),
+        ReportField("product", "Product", "text", _product_column(CatalogProduct.name, InventoryRevaluation.product_id)),
+        ReportField("kind", "Kind", "select", InventoryRevaluation.kind, labels="humanize"),
+        ReportField("created_at", "Date", "datetime", InventoryRevaluation.created_at),
+        ReportField("average_before", "Average before", "money", InventoryRevaluation.average_before),
+        ReportField("average_after", "Average after", "money", InventoryRevaluation.average_after),
+        ReportField("stock_change", "Change to stock value", "money", InventoryRevaluation.stock_change),
+        ReportField("cogs_change", "Change to cost of goods", "money", InventoryRevaluation.cogs_change),
+        ReportField("reason", "Reason", "text", InventoryRevaluation.reason, groupable=False),
+        ReportField("created_by", "By", "user", InventoryRevaluation.created_by, labels="user"),
     ]
 
 
@@ -704,6 +837,24 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         "inventory_stock", "Stock levels", InventoryStockLevel, InventoryStockLevel.id,
         lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockLevel.product_id, CatalogProduct.tenant_id == InventoryStockLevel.tenant_id).scalar_subquery(), _inventory_levels_query, _inventory_level_fields,
         None, ("sku", "warehouse", "on_hand", "available", "reorder_point", "stock_health"), label_field="product"),
+    "inventory_valuation": ReportSource(
+        "inventory_valuation", "Stock valuation", CatalogProduct, CatalogProduct.id, lambda db: CatalogProduct.name,
+        _valuation_query, _valuation_fields, "/dashboard/catalog/products/{id}?tab=stock",
+        ("sku", "category", "on_hand", "average_cost", "stock_value"), label_field="product"),
+    "inventory_cogs": ReportSource(
+        "inventory_cogs", "Cost of goods sold", InventoryStockMove, InventoryStockMove.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockMove.product_id).scalar_subquery(),
+        _cogs_query, _cogs_fields, None, ("customer", "order", "occurred_at", "units", "cost_of_goods"),
+        default_date_field="occurred_at", label_field="product", permission_module_key="inventory_valuation"),
+    "inventory_sales_margin": ReportSource(
+        "inventory_sales_margin", "Sales margin", SalesOrderItem, SalesOrderItem.id,
+        lambda db: select(CatalogProduct.name).where(CatalogProduct.id == SalesOrderItem.catalog_product_id).scalar_subquery(),
+        _margin_query, _margin_fields, None, ("order", "customer", "sold", "revenue", "cost_of_goods", "margin"),
+        default_date_field="order_date", label_field="product", permission_module_key="inventory_valuation"),
+    "inventory_revaluations": ReportSource(
+        "inventory_revaluations", "Revaluations", InventoryRevaluation, InventoryRevaluation.id, lambda db: InventoryRevaluation.number,
+        _revaluations_query, _revaluation_fields, None, ("product", "kind", "created_at", "stock_change", "cogs_change"),
+        default_date_field="created_at", label_field="number", permission_module_key="inventory_valuation"),
     "inventory_movements": ReportSource(
         "inventory_movements", "Stock movements", InventoryStockMove, InventoryStockMove.id,
         lambda db: select(CatalogProduct.name).where(CatalogProduct.id == InventoryStockMove.product_id, CatalogProduct.tenant_id == InventoryStockMove.tenant_id).scalar_subquery(), _inventory_moves_query, _inventory_move_fields,

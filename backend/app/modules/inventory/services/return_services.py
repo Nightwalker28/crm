@@ -165,6 +165,26 @@ def save_return(db: Session, *, tenant_id: int, actor_user_id: int | None, paylo
     return doc
 
 
+def delivered_costs(db: Session, *, tenant_id: int, delivery) -> dict[int, Decimal]:
+    """Unit cost per delivery line: its delivery move, or for a delivery migrated from E2, the
+    order's legacy `sales_order` move for that line."""
+    from app.modules.inventory.models import InventoryDeliveryLine, InventoryStockMove
+
+    lines = db.query(InventoryDeliveryLine).filter(InventoryDeliveryLine.tenant_id == tenant_id, InventoryDeliveryLine.delivery_id == delivery.id).all()
+    moves = {move.source_line_id: move for move in db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id,
+        InventoryStockMove.source_type == "inventory_delivery", InventoryStockMove.source_id == delivery.id,
+        InventoryStockMove.move_type == "delivery")}
+    legacy = {move.source_line_id: move for move in db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id,
+        InventoryStockMove.source_type == "sales_order", InventoryStockMove.source_id == delivery.order_id,
+        InventoryStockMove.move_type == "sales_order")} if delivery.migrated else {}
+    result = {}
+    for line in lines:
+        move = moves.get(line.id) or legacy.get(line.order_line_id)
+        if move is not None and move.unit_cost is not None:
+            result[line.id] = Decimal(move.unit_cost)
+    return result
+
+
 def receive_return(db: Session, *, tenant_id: int, actor_user_id: int | None, return_id: int) -> InventoryReturn:
     doc = _return_or_404(db, tenant_id=tenant_id, return_id=return_id, lock=True)
     if doc.status != "draft":
@@ -174,8 +194,12 @@ def receive_return(db: Session, *, tenant_id: int, actor_user_id: int | None, re
         raise HTTPException(status_code=409, detail="The delivery is no longer posted")
     _validated_lines(db, tenant_id=tenant_id, delivery=delivery,
         lines=[{"delivery_line_id": line.delivery_line_id, "quantity": line.quantity, "restock": line.restock} for line in doc.lines])
+    # Returned goods come back at the cost they left at (12d §5 decision 4).
+    costs = delivered_costs(db, tenant_id=tenant_id, delivery=delivery)
     moves = [MoveSpec(product_id=line.product_id, warehouse_id=doc.warehouse_id, quantity=Decimal(line.quantity), move_type="return",
-                      source_type="inventory_return", source_id=doc.id, source_line_id=line.id, reason=doc.reason, note=doc.notes)
+                      source_type="inventory_return", source_id=doc.id, source_line_id=line.id, reason=doc.reason, note=doc.notes,
+                      unit_cost=costs.get(line.delivery_line_id), cost_source="return" if costs.get(line.delivery_line_id) is not None else None,
+                      sales_order_item_id=line.order_line_id)
              for line in doc.lines if line.restock]
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=moves)
     doc.status, doc.received_at, doc.received_by = "received", datetime.now(timezone.utc), actor_user_id

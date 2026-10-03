@@ -484,6 +484,9 @@ class CompanyProfileResponse(BaseModel):
     logo_url: Optional[str] = None
     invoicing_policy: str = "delivered"
     default_payment_terms_days: Optional[int] = None
+    # E6 (12d §3.1): stock is valued in this currency; it locks once valuation has started.
+    base_currency: Optional[str] = None
+    base_currency_locked: bool = False
     updated_by: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -503,6 +506,7 @@ class CompanyProfileUpdateRequest(BaseModel):
     # E5: tracked products invoice what was delivered, or what was ordered (12c §3.5).
     invoicing_policy: Optional[Literal["delivered", "ordered"]] = None
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
+    base_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
 
     model_config = ConfigDict(extra="forbid")
 

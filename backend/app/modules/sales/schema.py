@@ -556,6 +556,7 @@ class SalesOrderCreateRequest(BaseModel):
     opportunity_id: int | None = None
     status: str = "confirmed"
     currency: str = "USD"
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
     subtotal: Decimal = Decimal("0")
     tax_total: Decimal = Decimal("0")
     discount_total: Decimal = Decimal("0")
@@ -577,6 +578,7 @@ class SalesOrderUpdateRequest(BaseModel):
     opportunity_id: int | None = None
     status: str | None = None
     currency: str | None = None
+    exchange_rate: Decimal | None = Field(default=None, gt=0)
     owner_id: int | None = None
     delivery_date: date | None = None
     delivery_address: str | None = None
@@ -600,6 +602,10 @@ class SalesOrderResponse(BaseModel):
     opportunity_name: str | None = None
     status: str
     currency: str
+    # E6: base-currency units per order currency unit, for margin (12d §3.3).
+    exchange_rate: Decimal | None = None
+    base_currency: str | None = None
+    suggested_exchange_rate: Decimal | None = None
     subtotal: Decimal
     tax_total: Decimal
     discount_total: Decimal

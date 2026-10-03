@@ -48,6 +48,17 @@ def _serialize_order(order) -> dict:
     return SalesOrderResponse.model_validate(order).model_dump(mode="json")
 
 
+def _with_currency(db: Session, order):
+    """The base currency and a suggested rate ride on the response, so the form knows whether
+    to ask for an exchange rate (12d §3.5). Not persisted."""
+    from app.modules.inventory.services.costing import base_currency, default_exchange_rate
+
+    order.base_currency = base_currency(db, tenant_id=order.tenant_id)
+    order.suggested_exchange_rate = (default_exchange_rate(db, tenant_id=order.tenant_id, currency=order.currency)
+                                     if order.exchange_rate is None else None)
+    return order
+
+
 @router.get("", response_model=SalesOrderListResponse)
 def list_orders(
     sort_by: str | None = Query(default=None),
@@ -137,7 +148,7 @@ def create_order(
         entity_id=created.id,
         payload={"order_number": created.order_number, "status": created.status, "quote_id": created.quote_id},
     )
-    return created
+    return _with_currency(db, created)
 
 
 @router.get("/{order_id}", response_model=SalesOrderResponse)
@@ -148,7 +159,7 @@ def get_order(
     require_module=Depends(require_module_access("sales_orders")),
     require_permission=Depends(require_action_access("sales_orders", "view")),
 ):
-    return get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    return _with_currency(db, get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id))
 
 
 @router.patch("/{order_id}", response_model=SalesOrderResponse)
@@ -194,7 +205,7 @@ def update_order(
                 "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
             },
         )
-    return updated
+    return _with_currency(db, updated)
 
 
 def _fulfilment(db: Session, current_user, order) -> dict:
@@ -217,6 +228,23 @@ def get_order_fulfilment(
 ):
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
     return jsonable_encoder(_fulfilment(db, current_user, order))
+
+
+@router.get("/{order_id}/margin")
+def get_order_margin(
+    order_id: int,
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_orders")),
+    require_permission=Depends(require_action_access("sales_orders", "view")),
+    require_valuation=Depends(require_module_access("inventory_valuation")),
+    require_valuation_view=Depends(require_action_access("inventory_valuation", "view")),
+):
+    """Revenue, cost of goods and margin per line in the base currency (12d §3.3)."""
+    from app.modules.inventory.services.valuation_services import order_margin
+
+    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
+    return jsonable_encoder(order_margin(db, tenant_id=current_user.tenant_id, order=order))
 
 
 @router.get("/{order_id}/invoicing")

@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { OrderFulfilmentPanel } from "@/components/inventory/OrderFulfilmentPanel";
 import { OrderInvoicingPanel } from "@/components/finance/OrderInvoicingPanel";
+import { OrderMarginPanel } from "@/components/inventory/OrderMarginPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
@@ -355,6 +356,12 @@ export default function OrderDetailPage() {
               canViewInvoices={Boolean(moduleActions("finance_pos")?.can_view)}
             />
           ),
+        }] : []),
+        // E6 (12d-erp-costing.md §3.5): revenue, cost of goods and margin, with access to valuation.
+        ...(moduleActions("inventory_valuation")?.can_view && order.items?.length ? [{
+          id: "margin",
+          label: "Margin",
+          content: <OrderMarginPanel orderId={order.id} />,
         }] : []),
       ] : undefined}
       files={order && canViewDocuments ? (

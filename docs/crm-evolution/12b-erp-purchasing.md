@@ -186,7 +186,7 @@ creating POs groups lines by preferred vendor.
 Verification: one pass after all three phases (owner, 2026-10-02): backend tests, the
 PostgreSQL migration replay, `codex-check.sh`, a browser spec, the rendered guards.
 
-## 5. Decisions (taken as recommended; the owner may override)
+## 5. Decisions (taken as recommended; owner reviewed and accepted all, 2026-10-03)
 
 | # | Decision | Taken | Why |
 |---|---|---|---|

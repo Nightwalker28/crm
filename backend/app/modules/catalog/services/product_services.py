@@ -268,6 +268,13 @@ def update_product(
             raise HTTPException(status_code=409, detail="Use Adjust stock to change a tracked product's quantity")
         if "stock_status" in payload and str(getattr(payload["stock_status"], "value", payload["stock_status"])) != product.stock_status:
             raise HTTPException(status_code=409, detail="Tracked stock status is derived from inventory")
+        # A tracked product's cost is its moving average (12d §5 decision 3): Revalue changes it.
+        if "cost_price" in payload:
+            requested = payload.get("cost_price")
+            current = Decimal(product.cost_price) if product.cost_price is not None else None
+            if (None if requested in (None, "") else Decimal(str(requested))) != current:
+                raise HTTPException(status_code=409, detail="A tracked product's cost is its average cost; use Revalue to change it")
+            payload = {key: value for key, value in payload.items() if key != "cost_price"}
     enabling = not was_tracked and (requested_tracking is True or payload.get("stock_quantity") is not None)
     opening_quantity = _coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False) if enabling else None
     if enabling and requested_tracking is False:

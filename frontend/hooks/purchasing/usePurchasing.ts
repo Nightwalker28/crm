@@ -18,6 +18,8 @@ export type PurchaseOrder = {
   bill_status?: "none" | "to_bill" | "partial" | "billed";
   vendor_id: number; vendor_name: string | null; vendor_email?: string | null; vendor_address?: string | null;
   warehouse_id: number; warehouse_name: string | null; currency: string;
+  /** E6: base-currency units per one unit of `currency`; null in the base currency (12d §3.1). */
+  exchange_rate?: string | null; base_currency?: string; suggested_exchange_rate?: string | null;
   expected_date: string | null; vendor_reference: string | null; notes: string | null; subtotal: string;
   ordered_at: string | null; closed_at: string | null; close_reason: string | null; cancel_reason: string | null;
   created_at: string; updated_at: string; is_deleted: boolean; line_count: number; total_quantity: string;
@@ -31,6 +33,8 @@ export type PurchaseBillLine = {
   id: number; order_line_id: number | null; receipt_line_id: number | null; catalog_product_id: number | null; catalog_service_id: number | null;
   description: string; quantity: string; unit_cost: string; po_unit_cost: string | null; tax_amount: string; line_total: string;
   price_variance: boolean; received: string | null; billable: string | null;
+  /** E6: what a price difference did to stock value and cost of goods (12d §3.2). */
+  variance_stock_change?: string | null; variance_cogs_change?: string | null;
 };
 
 export type PurchaseBill = {
@@ -51,7 +55,7 @@ export type PurchaseBillDraft = {
 };
 
 export type PurchaseOrderDraft = {
-  vendor_id: number; warehouse_id?: number | null; currency?: string | null; expected_date: string | null; vendor_reference: string | null; notes: string | null;
+  vendor_id: number; warehouse_id?: number | null; currency?: string | null; exchange_rate?: string | null; expected_date: string | null; vendor_reference: string | null; notes: string | null;
   lines: Array<{ product_id: number; description: string | null; quantity: string; unit_cost: string }>;
 };
 
@@ -144,6 +148,7 @@ export function usePurchasingActions() {
   };
   const createOrder = useMutation({ mutationFn: (payload: PurchaseOrderDraft) => request<PurchaseOrder>("/orders", json("POST", payload)), onSuccess: invalidate });
   const updateOrder = useMutation({ mutationFn: ({ id, payload }: { id: number; payload: PurchaseOrderDraft }) => request<PurchaseOrder>(`/orders/${id}`, json("PATCH", payload)), onSuccess: invalidate });
+  const setExchangeRate = useMutation({ mutationFn: ({ id, rate }: { id: number; rate: string }) => request<PurchaseOrder>(`/orders/${id}/exchange-rate`, json("PUT", { exchange_rate: rate })), onSuccess: invalidate });
   const placeOrder = useMutation({ mutationFn: (id: number) => request<PurchaseOrder>(`/orders/${id}/order`, { method: "POST" }), onSuccess: invalidate });
   const closeOrder = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => request<PurchaseOrder>(`/orders/${id}/close`, json("POST", { reason })), onSuccess: invalidate });
   const cancelOrder = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => request<PurchaseOrder>(`/orders/${id}/cancel`, json("POST", { reason })), onSuccess: invalidate });
@@ -162,14 +167,14 @@ export function usePurchasingActions() {
   const postBill = useMutation({ mutationFn: (id: number) => request<PurchaseBill>(`/bills/${id}/post`, { method: "POST" }), onSuccess: invalidate });
   const voidBill = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => request<PurchaseBill>(`/bills/${id}/void`, json("POST", { reason })), onSuccess: invalidate });
   const removeBill = useMutation({ mutationFn: (id: number) => request<void>(`/bills/${id}`, { method: "DELETE" }), onSuccess: invalidate });
-  const all = [createBill, updateBill, postBill, voidBill, removeBill, createOrder, updateOrder, placeOrder, closeOrder, cancelOrder, removeOrder, createReceipt, updateReceipt, postReceipt, cancelReceipt, removeReceipt, draftFromReorder];
+  const all = [setExchangeRate, createBill, updateBill, postBill, voidBill, removeBill, createOrder, updateOrder, placeOrder, closeOrder, cancelOrder, removeOrder, createReceipt, updateReceipt, postReceipt, cancelReceipt, removeReceipt, draftFromReorder];
   return {
     createOrder: createOrder.mutateAsync, updateOrder: updateOrder.mutateAsync, placeOrder: placeOrder.mutateAsync,
     closeOrder: closeOrder.mutateAsync, cancelOrder: cancelOrder.mutateAsync, removeOrder: removeOrder.mutateAsync,
     createReceipt: createReceipt.mutateAsync, updateReceipt: updateReceipt.mutateAsync, postReceipt: postReceipt.mutateAsync,
     cancelReceipt: cancelReceipt.mutateAsync, removeReceipt: removeReceipt.mutateAsync, draftFromReorder: draftFromReorder.mutateAsync,
     createBill: createBill.mutateAsync, updateBill: updateBill.mutateAsync, postBill: postBill.mutateAsync, voidBill: voidBill.mutateAsync,
-    removeBill: removeBill.mutateAsync,
+    removeBill: removeBill.mutateAsync, setExchangeRate: setExchangeRate.mutateAsync,
     isSaving: all.some((item) => item.isPending),
   };
 }

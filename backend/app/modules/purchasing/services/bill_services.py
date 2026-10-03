@@ -257,6 +257,9 @@ def post_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, bill_id
         "unit_cost": line.unit_cost, "tax_amount": line.tax_amount} for line in bill.lines], posting=True)
     bill.status, bill.posted_at, bill.posted_by = "posted", datetime.now(timezone.utc), actor_user_id
     db.flush()
+    from app.modules.inventory.services.valuation_services import apply_bill_variance
+
+    apply_bill_variance(db, bill=bill, actor_user_id=actor_user_id)
     refresh_bill_balance(db, bill)
     if order is not None:
         refresh_bill_status(db, order=order)
@@ -286,6 +289,9 @@ def void_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, bill_id
     order = _order(db, tenant_id=tenant_id, order_id=bill.order_id, lock=True) if bill.order_id else None
     bill.status, bill.voided_at, bill.void_reason = "void", datetime.now(timezone.utc), reason[:500]
     db.flush()
+    from app.modules.inventory.services.valuation_services import reverse_bill_variance
+
+    reverse_bill_variance(db, bill=bill, actor_user_id=actor_user_id, reason=reason)
     refresh_bill_balance(db, bill)
     if order is not None:
         refresh_bill_status(db, order=order)
@@ -327,14 +333,25 @@ def serialize_bill(db: Session, *, tenant_id: int, bill: PurchaseBill, include_l
     if include_lines:
         from app.modules.finance.services.payment_services import payments_for
 
+        from app.modules.inventory.models import InventoryRevaluation
+
         order = bill.order
         rows = billing_lines(db, order=order, exclude_bill_id=bill.id) if order else {}
+        # What each price difference did to stock value and cost of goods (12d §3.5), net of a void.
+        variance: dict[int, list[Decimal]] = {}
+        line_ids = [line.id for line in bill.lines]
+        for revaluation in (db.query(InventoryRevaluation).filter(InventoryRevaluation.tenant_id == tenant_id,
+                InventoryRevaluation.bill_line_id.in_(line_ids)).all() if line_ids else []):
+            if revaluation.reverses_id is None:
+                variance[revaluation.bill_line_id] = [Decimal(revaluation.stock_change), Decimal(revaluation.cogs_change)]
         result["lines"] = [{
             "id": line.id, "order_line_id": line.order_line_id, "receipt_line_id": line.receipt_line_id,
             "catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id,
             "description": line.description, "quantity": line.quantity, "unit_cost": line.unit_cost, "po_unit_cost": line.po_unit_cost,
             "tax_amount": line.tax_amount, "line_total": line.line_total,
             "price_variance": line.po_unit_cost is not None and Decimal(line.unit_cost) != Decimal(line.po_unit_cost),
+            "variance_stock_change": variance[line.id][0] if line.id in variance else None,
+            "variance_cogs_change": variance[line.id][1] if line.id in variance else None,
             "received": rows.get(line.order_line_id, {}).get("received") if line.order_line_id else None,
             "billable": rows.get(line.order_line_id, {}).get("to_bill") if line.order_line_id else None,
         } for line in bill.lines]

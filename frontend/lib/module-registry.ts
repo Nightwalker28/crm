@@ -74,6 +74,8 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   // Deliveries and returns start from their order and delivery, so neither has a quick action.
   { key: "inventory_deliveries", label: "Deliveries", route: DASHBOARD_ROUTES.inventoryDeliveries, group: "inventory", status: "tier1", enabled: true, sortOrder: 50 },
   { key: "inventory_returns", label: "Returns", route: DASHBOARD_ROUTES.inventoryReturns, group: "inventory", status: "tier1", enabled: true, sortOrder: 60 },
+  // E6 (12d §3.4): what stock is worth, revaluations, and margin on orders.
+  { key: "inventory_valuation", label: "Valuation", route: DASHBOARD_ROUTES.inventoryValuation, group: "inventory", status: "tier1", enabled: true, sortOrder: 70 },
   { key: "purchase_orders", label: "Purchase orders", route: DASHBOARD_ROUTES.purchaseOrders, group: "purchasing", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "New purchase order", description: "Order stock from a vendor", href: `${DASHBOARD_ROUTES.purchaseOrders}/new` } },
   // Receipts start from their purchase order, so there is no quick action.
   { key: "purchase_receipts", label: "Receipts", route: DASHBOARD_ROUTES.purchaseReceipts, group: "purchasing", status: "tier1", enabled: true, sortOrder: 20 },

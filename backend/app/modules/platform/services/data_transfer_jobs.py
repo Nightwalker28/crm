@@ -37,6 +37,7 @@ MODULE_DISPLAY_NAMES = {
     "finance_io": "Insertion Orders",
     "reports": "Reports",
     "inventory_stock": "Inventory stock",
+    "inventory_valuation": "Stock valuation",
     "inventory_deliveries": "Deliveries",
     "inventory_returns": "Returns",
     "purchase_orders": "Purchase orders",
@@ -61,6 +62,7 @@ MODULE_LINKS = {
     "finance_io": "/dashboard/finance/insertion-orders",
     "reports": "/dashboard/reports",
     "inventory_stock": "/dashboard/inventory/stock",
+    "inventory_valuation": "/dashboard/inventory/valuation",
     "inventory_deliveries": "/dashboard/inventory/deliveries",
     "inventory_returns": "/dashboard/inventory/returns",
     "purchase_orders": "/dashboard/purchasing/orders",
@@ -111,7 +113,10 @@ def require_data_transfer_job_access(
         if not isinstance(source_key, str):
             raise HTTPException(status_code=404, detail="Report export source is unavailable")
         # Report sources that are not modules of their own answer to the module they read.
-        permission_key = {"inventory_movements": "inventory_stock", "inventory_backorders": "sales_orders", "purchase_lines": "purchase_orders"}.get(source_key, source_key)
+        from app.modules.platform.services.report_catalog import BUILT_IN_SOURCES
+
+        source = BUILT_IN_SOURCES.get(source_key)
+        permission_key = (source.permission_module_key if source is not None else None) or source_key
         require_data_transfer_module_access(db, current_user=current_user, module_key=permission_key, action="view")
 
 
@@ -816,13 +821,50 @@ def process_export_job(*, job_id: int) -> None:
                     "reorder_point": product.reorder_point} for level, product, warehouse in rows))
             elif export_kind == "movements":
                 rows = db.query(InventoryStockMove, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(InventoryStockMove.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockMove.id).all()
-                headers = ("id", "occurred_at", "sku", "product", "warehouse_code", "move_type", "quantity", "on_hand_after", "source_type", "source_id", "unit_cost")
+                # Cost and value need access to valuation (12d §3.4).
+                from app.core.access_control import PermissionPolicy
+
+                policy = PermissionPolicy(db, current_user)
+                with_cost = policy.can_view_module("inventory_valuation") and policy.can_perform_action("inventory_valuation", "view")
+                headers = ("id", "occurred_at", "sku", "product", "warehouse_code", "move_type", "quantity", "on_hand_after", "source_type", "source_id") \
+                    + (("unit_cost", "value", "average_cost_after", "cost_source") if with_cost else ())
                 content = dict_rows_to_csv_bytes(headers=headers, rows=({"id": move.id, "occurred_at": move.occurred_at,
                     "sku": product.sku, "product": product.name, "warehouse_code": warehouse.code,
                     "move_type": move.move_type, "quantity": move.quantity, "on_hand_after": move.on_hand_after,
-                    "source_type": move.source_type, "source_id": move.source_id, "unit_cost": move.unit_cost} for move, product, warehouse in rows))
+                    "source_type": move.source_type, "source_id": move.source_id, "unit_cost": move.unit_cost, "value": move.value,
+                    "average_cost_after": move.average_cost_after, "cost_source": move.cost_source} for move, product, warehouse in rows))
             else:
                 raise ValueError("Inventory export kind must be levels or movements")
+            exported_rows = len(rows)
+            file_name = f"inventory_{export_kind}.csv"
+            media_type = "text/csv"
+        elif module_key == "inventory_valuation":
+            from datetime import date as _date
+
+            from app.core.module_export import dict_rows_to_csv_bytes
+            from app.modules.inventory.services import valuation_services
+
+            if current_user is None:
+                raise ValueError("Valuation export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_valuation", action="export")
+            export_kind = payload.get("kind") or "valuation"
+            if export_kind == "valuation":
+                as_of = _date.fromisoformat(payload["as_of"]) if payload.get("as_of") else None
+                rows = valuation_services.valuation_rows(db, tenant_id=job.tenant_id, as_of=as_of, warehouse_id=payload.get("warehouse_id"),
+                    category_id=payload.get("category_id"), cost_missing=payload.get("cost_missing"))
+                headers = ("sku", "product", "category", "on_hand", "unit", "average_cost", "stock_value", "cost_missing")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"sku": row["sku"], "product": row["product_name"], "category": row["category_name"],
+                    "on_hand": row["on_hand"], "unit": row["unit"], "average_cost": row["average_cost"], "stock_value": row["stock_value"],
+                    "cost_missing": "yes" if row["cost_missing"] else "no"} for row in rows))
+            elif export_kind == "revaluations":
+                rows, _total = valuation_services.list_revaluations(db, tenant_id=job.tenant_id, product_id=None, offset=0, limit=100_000)
+                headers = ("number", "created_at", "sku", "product", "kind", "on_hand", "average_before", "average_after", "stock_change", "cogs_change", "reason", "by")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"number": row["number"], "created_at": row["created_at"], "sku": row["sku"],
+                    "product": row["product_name"], "kind": row["kind"], "on_hand": row["on_hand"], "average_before": row["average_before"],
+                    "average_after": row["average_after"], "stock_change": row["stock_change"], "cogs_change": row["cogs_change"],
+                    "reason": row["reason"], "by": row["actor_name"]} for row in rows))
+            else:
+                raise ValueError("Valuation export kind must be valuation or revaluations")
             exported_rows = len(rows)
             file_name = f"inventory_{export_kind}.csv"
             media_type = "text/csv"

@@ -248,7 +248,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
         ...(isProduct && inventoryActions?.can_view ? [{
           id: "stock",
           label: "Stock",
-          content: <CatalogItemStockPanel productId={record.id} canAdjust={Boolean(adjustmentActions?.can_create && adjustmentActions?.can_edit)} canManageReservations={Boolean(inventoryActions?.can_view && moduleActions("sales_orders")?.can_edit)} />,
+          content: <CatalogItemStockPanel productId={record.id} canAdjust={Boolean(adjustmentActions?.can_create && adjustmentActions?.can_edit)} canManageReservations={Boolean(inventoryActions?.can_view && moduleActions("sales_orders")?.can_edit)} canRevalue={Boolean(moduleActions("inventory_valuation")?.can_edit)} />,
         }] : []),
         {
           id: "sales",

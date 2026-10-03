@@ -87,7 +87,7 @@ def import_opening_stock(db: Session, *, tenant_id: int, actor_user_id: int, fil
             db.flush()
             moves.append(MoveSpec(product_id=product.id, warehouse_id=warehouse_id, quantity=quantity,
                 move_type="opening", source_type="inventory_adjustment", source_id=doc.id, source_line_id=line.id,
-                reason="Opening stock import", unit_cost=unit_cost))
+                reason="Opening stock import", unit_cost=unit_cost, cost_source="opening"))
         post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=moves)
         stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
             event_type="inventory.adjustment_posted", entity_type="inventory_adjustment", entity_id=doc.id,

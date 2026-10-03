@@ -18,7 +18,7 @@ from app.core.uploads import UPLOADS_DIR
 from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
-    InventoryReturn, InventoryReturnLine, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
+    InventoryReturn, InventoryReturnLine, InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
 from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.finance.models import (FinanceCreditAllocation, FinanceCreditNote, FinanceCreditNoteLine, FinancePayment,
     FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine)
@@ -97,6 +97,8 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("purchase_bills.json", PurchaseBill),
         ("purchase_bill_lines.json", PurchaseBillLine),
         ("inventory_stock_moves.json", InventoryStockMove),
+        # E6: value-only changes; stock value and average are rebuilt from moves and these.
+        ("inventory_revaluations.json", InventoryRevaluation),
         ("inventory_stock_levels.json", InventoryStockLevel),
     ],
     "sales_opportunities": [

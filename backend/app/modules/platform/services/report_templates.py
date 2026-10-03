@@ -77,6 +77,41 @@ REPORT_TEMPLATES: list[dict[str, Any]] = [
         "config": _summary([{"field": "vendor"}], [{"aggregate": "count"}, {"aggregate": "sum", "field": "subtotal"}],
             date_filter={"field": "ordered_at", "range": "this_month"}),
     },
+    # E6 (12d-erp-costing.md §3.7).
+    {
+        "key": "stock-value-by-category", "category": "Inventory", "name": "Stock value by category",
+        "description": "What the stock on hand is worth, by product category.", "module_key": "inventory_valuation",
+        "config": _summary([{"field": "category"}], [{"aggregate": "sum", "field": "stock_value"}, {"aggregate": "sum", "field": "on_hand"}]),
+    },
+    {
+        "key": "stock-value-by-warehouse", "category": "Inventory", "name": "Stock value by warehouse",
+        "description": "What the stock in each warehouse is worth at average cost.", "module_key": "inventory_stock",
+        "config": _summary([{"field": "warehouse"}], [{"aggregate": "sum", "field": "stock_value"}, {"aggregate": "sum", "field": "on_hand"}]),
+    },
+    {
+        "key": "cost-of-goods-by-month", "category": "Inventory", "name": "Cost of goods sold by month",
+        "description": "The cost of what was delivered, less returns, month by month.", "module_key": "inventory_cogs",
+        "config": _summary([{"field": "occurred_at", "granularity": "month"}], [{"aggregate": "sum", "field": "cost_of_goods"}], chart="line"),
+    },
+    {
+        "key": "margin-by-product-this-month", "category": "Inventory", "name": "Margin by product this month",
+        "description": "Revenue, cost of goods and margin on delivered order lines, for orders placed this month.", "module_key": "inventory_sales_margin",
+        "config": _summary([{"field": "product"}], [{"aggregate": "sum", "field": "margin"}, {"aggregate": "sum", "field": "revenue"},
+            {"aggregate": "sum", "field": "cost_of_goods"}], date_filter={"field": "order_date", "range": "this_month"}),
+    },
+    {
+        "key": "margin-by-customer", "category": "Inventory", "name": "Margin by customer",
+        "description": "Revenue, cost of goods and margin on delivered order lines, by customer.", "module_key": "inventory_sales_margin",
+        "config": _summary([{"field": "customer"}], [{"aggregate": "sum", "field": "margin"}, {"aggregate": "sum", "field": "revenue"},
+            {"aggregate": "sum", "field": "cost_of_goods"}]),
+    },
+    {
+        "key": "products-with-missing-cost", "category": "Inventory", "name": "Products with missing cost",
+        "description": "Products in stock with no cost, so their stock is valued at zero. Revalue them.", "module_key": "inventory_valuation",
+        "config": {"version": 2, "format": "tabular", "groupings": [], "measures": [], "scope": "all", "date_filter": None,
+            "filters": {"all_conditions": [{"id": "missing", "field": "cost_missing", "operator": "is", "value": True}], "any_conditions": []},
+            "columns": ["sku", "category", "on_hand", "average_cost", "stock_value"]},
+    },
     # E5 (12c-erp-invoicing.md §3.6).
     {
         "key": "overdue-invoices-by-customer", "category": "Finance", "name": "Overdue invoices by customer",

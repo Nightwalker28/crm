@@ -12,6 +12,7 @@ from app.modules.inventory.models import (
     InventoryTransfer, InventoryTransferLine, InventoryWarehouse,
 )
 from app.modules.inventory.repositories import document_repository as repo
+from app.modules.inventory.services.costing import adjustment_cost
 from app.modules.inventory.services.inventory_services import get_warehouse_or_404
 from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves
 from app.modules.platform.services.activity_logs import log_activity
@@ -99,7 +100,12 @@ def save_adjustment(db: Session, *, tenant_id: int, actor_user_id: int, payload:
             delta = _decimal(line.get("delta"))
             if delta == 0:
                 raise HTTPException(status_code=400, detail="A quantity adjustment cannot be zero")
-        doc.lines.append(InventoryAdjustmentLine(tenant_id=tenant_id, product_id=product_id, expected=expected, counted=counted, delta=delta))
+        unit_cost = line.get("unit_cost")
+        if unit_cost not in (None, ""):
+            unit_cost = _decimal(unit_cost, nonnegative=True)
+        else:
+            unit_cost = None
+        doc.lines.append(InventoryAdjustmentLine(tenant_id=tenant_id, product_id=product_id, expected=expected, counted=counted, delta=delta, unit_cost=unit_cost))
     db.flush()
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, kind="adjustments", doc=doc, action="update" if document_id else "create")
     db.commit(); db.refresh(doc)
@@ -118,8 +124,8 @@ def post_adjustment(db: Session, *, tenant_id: int, actor_user_id: int, document
     if not product_ids:
         raise HTTPException(status_code=400, detail="Add at least one product")
     # The same product lock order as post_moves keeps count validation and posting atomic.
-    for product_id in product_ids:
-        db.query(CatalogProduct).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.id == product_id).with_for_update().one()
+    locked = {product_id: db.query(CatalogProduct).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.id == product_id).with_for_update().one()
+              for product_id in product_ids}
     if doc.mode == "count":
         levels = {row.product_id: Decimal(row.on_hand) for row in db.query(InventoryStockLevel).filter(
             InventoryStockLevel.tenant_id == tenant_id, InventoryStockLevel.warehouse_id == warehouse.id,
@@ -128,10 +134,15 @@ def post_adjustment(db: Session, *, tenant_id: int, actor_user_id: int, document
         for line in doc.lines:
             if levels.get(line.product_id, Decimal(0)) != Decimal(line.expected):
                 raise HTTPException(status_code=409, detail="Stock changed since this count was saved; save the draft again to refresh expected quantities, then recount any that changed")
-    moves = [MoveSpec(product_id=line.product_id, warehouse_id=warehouse.id, quantity=Decimal(line.delta),
-                      move_type="count" if doc.mode == "count" else "adjustment",
-                      source_type="inventory_adjustment", source_id=doc.id, source_line_id=line.id,
-                      reason=doc.reason, note=doc.notes) for line in doc.lines if Decimal(line.delta) != 0]
+    moves = []
+    for line in doc.lines:
+        if Decimal(line.delta) == 0:
+            continue
+        unit_cost, cost_source = adjustment_cost(locked[line.product_id], quantity=Decimal(line.delta), unit_cost=line.unit_cost)
+        moves.append(MoveSpec(product_id=line.product_id, warehouse_id=warehouse.id, quantity=Decimal(line.delta),
+                              move_type="count" if doc.mode == "count" else "adjustment",
+                              source_type="inventory_adjustment", source_id=doc.id, source_line_id=line.id,
+                              reason=doc.reason, note=doc.notes, unit_cost=unit_cost, cost_source=cost_source))
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=moves)
     from app.modules.inventory.services.stock_ledger import stage_inventory_event
     stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
@@ -253,14 +264,18 @@ def serialize_document(db: Session, *, tenant_id: int, kind: str, doc, include_l
                       to_warehouse_name=warehouses.get(doc.to_warehouse_id, "Warehouse"))
     if include_lines:
         product_ids = {line.product_id for line in doc.lines}
-        products = {row.id: (row.name, row.sku) for row in db.query(CatalogProduct).filter(
+        rows = {row.id: row for row in db.query(CatalogProduct).filter(
             CatalogProduct.tenant_id == tenant_id, CatalogProduct.id.in_(product_ids),
         )} if product_ids else {}
+        products = {product_id: (row.name, row.sku) for product_id, row in rows.items()}
+        # A product with no cost yet needs one entered for stock added to it (12d §3.2).
+        needs_cost = {product_id for product_id, row in rows.items() if row.cost_price is None and Decimal(row.stock_value or 0) <= 0}
         result["lines"] = [
             {"id": line.id, "product_id": line.product_id,
              "product_name": products.get(line.product_id, ("Product", None))[0],
              "sku": products.get(line.product_id, ("Product", None))[1],
-             **({"expected": line.expected, "counted": line.counted, "delta": line.delta}
+             **({"expected": line.expected, "counted": line.counted, "delta": line.delta, "unit_cost": line.unit_cost,
+                 "needs_cost": line.product_id in needs_cost}
                 if kind == "adjustments" else {"quantity": line.quantity})}
             for line in sorted(doc.lines, key=lambda item: item.id)
         ]

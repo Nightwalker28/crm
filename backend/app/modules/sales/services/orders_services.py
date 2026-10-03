@@ -139,6 +139,10 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
         data["currency"] = (_coerce_optional(data["currency"]) or "USD").upper()[:10]
     elif not partial:
         data["currency"] = "USD"
+    if "exchange_rate" in data:
+        from app.modules.inventory.services.costing import clean_rate
+
+        data["exchange_rate"] = clean_rate(data["exchange_rate"])
     for field in {"subtotal", "tax_total", "discount_total", "grand_total"}:
         if field in data:
             data[field] = _coerce_decimal(data[field])

@@ -27,6 +27,8 @@ class PurchaseOrder(Base):
     vendor_id = Column(BigInteger, ForeignKey("sales_organizations.org_id", ondelete="RESTRICT"), nullable=False)
     warehouse_id = Column(BigInteger, ForeignKey("inventory_warehouses.id", ondelete="RESTRICT"), nullable=False)
     currency = Column(String(10), nullable=False, server_default="USD")
+    # Base-currency units per one unit of `currency`; NULL when they are the same (12d §3.1).
+    exchange_rate = Column(Numeric(18, 8))
     status = Column(String(20), nullable=False, server_default="draft")
     receipt_status = Column(String(20), nullable=False, server_default="none")
     # Cached by `bill_services.refresh_bill_status` (12c §3.2): none · to_bill · partial · billed.

@@ -10,7 +10,7 @@ import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
-import { Field, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -22,9 +22,9 @@ import { useInventoryDocument, useInventoryDocumentActions, useProductStock, use
 import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
-type DraftLine = { key: number; productId: number | null; name: string; value: string; expected: string | null };
+type DraftLine = { key: number; productId: number | null; name: string; value: string; expected: string | null; unitCost: string };
 let nextKey = 1;
-const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", value: "", expected: null });
+const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", value: "", expected: null, unitCost: "" });
 
 function LineEditor({ line, kind, mode, warehouseId, onChange, onRemove }: {
   line: DraftLine; kind: InventoryKind; mode: "quantity" | "count"; warehouseId: number | null;
@@ -34,6 +34,9 @@ function LineEditor({ line, kind, mode, warehouseId, onChange, onRemove }: {
   const current = stock.data?.warehouses.find((row) => row.id === warehouseId)?.on_hand ?? "0";
   const expected = line.expected ?? current;
   const difference = kind === "adjustments" && mode === "count" && line.value !== "" ? Number(line.value) - Number(expected) : null;
+  // Stock added to a product with no cost yet needs a unit cost (12d §3.2).
+  const adding = mode === "count" ? (difference ?? 0) > 0 : Number(line.value) > 0;
+  const askCost = kind === "adjustments" && Boolean(stock.data?.needs_cost) && adding;
   return <div className="grid gap-3 border-b border-line-subtle py-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
     <Field><FieldLabel htmlFor={`inventory-product-${line.key}`}>Product</FieldLabel><LinkedRecordPicker inputId={`inventory-product-${line.key}`} recordType="inventory_product"
       valueId={line.productId} displayValue={line.name} onDisplayValueChange={(value) => onChange({ ...line, name: value, productId: null, expected: null })}
@@ -42,6 +45,7 @@ function LineEditor({ line, kind, mode, warehouseId, onChange, onRemove }: {
     {kind === "adjustments" && mode === "count" ? <div className="text-sm text-copy-secondary"><span className="block text-copy-label">Expected</span><span className="tabular-nums">{Number(expected).toLocaleString()}</span></div> : <div className="hidden md:block" />}
     <Field><FieldLabel htmlFor={`inventory-quantity-${line.key}`}>{kind === "transfers" ? "Quantity" : mode === "count" ? "Counted" : "Change"}</FieldLabel><Input id={`inventory-quantity-${line.key}`} type="number" step="0.0001" value={line.value} onChange={(event) => onChange({ ...line, value: event.target.value })} /></Field>
     <div className="flex items-center gap-2">{difference !== null ? <span className="text-sm tabular-nums text-copy-secondary" aria-label="Difference">{difference > 0 ? "+" : ""}{difference}</span> : null}<Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name || "line"}`} onClick={onRemove}><Trash2 /></Button></div>
+    {askCost ? <Field className="md:col-span-2"><FieldLabel htmlFor={`inventory-cost-${line.key}`}>Unit cost</FieldLabel><Input id={`inventory-cost-${line.key}`} type="number" min="0" step="0.0001" value={line.unitCost} onChange={(event) => onChange({ ...line, unitCost: event.target.value })} /><FieldDescription>{line.name || "This product"} has no cost yet. What one unit cost you, used to value the stock added.</FieldDescription></Field> : null}
   </div>;
 }
 
@@ -78,7 +82,7 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
     setReason(doc.reason ?? ""); setNotes(doc.notes ?? "");
     setLines(doc.lines?.map((line) => ({ key: nextKey++, productId: line.product_id, name: line.product_name,
       value: kind === "transfers" ? line.quantity ?? "" : doc.mode === "count" ? line.counted ?? "" : line.delta ?? "",
-      expected: line.expected ?? null })) ?? [blankLine()]);
+      expected: line.expected ?? null, unitCost: line.unit_cost ?? "" })) ?? [blankLine()]);
   }, [doc, kind, loadedId]);
 
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => line.key === updated.key ? updated : line));
@@ -96,7 +100,8 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
     if (new Set(ids).size !== ids.length) { setError("A product can appear only once."); return; }
     const payload = kind === "adjustments"
       ? { warehouse_id: from, mode, reason: reason.trim(), notes: notes.trim() || null,
-          lines: lines.map((line) => ({ product_id: line.productId!, ...(mode === "count" ? { counted: Number(line.value) } : { delta: Number(line.value) }) })) }
+          lines: lines.map((line) => ({ product_id: line.productId!, ...(mode === "count" ? { counted: Number(line.value) } : { delta: Number(line.value) }),
+            ...(line.unitCost.trim() && Number.isFinite(Number(line.unitCost)) && Number(line.unitCost) >= 0 ? { unit_cost: Number(line.unitCost) } : {}) })) }
       : { from_warehouse_id: from, to_warehouse_id: toWarehouseId!, notes: notes.trim() || null,
           lines: lines.map((line) => ({ product_id: line.productId!, quantity: Number(line.value) })) };
     try {
@@ -142,7 +147,7 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
     </div>
     <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-copy-primary">Products</h2>{editable ? <Button type="button" variant="outline" size="sm" onClick={() => setLines((current) => [...current, blankLine()])}><Plus />Add product</Button> : null}</div>
       {editable ? <div>{lines.map((line) => <LineEditor key={line.key} line={line} kind={kind} mode={mode} warehouseId={warehouseId ?? activeWarehouses.find((row) => row.is_default)?.id ?? null} onChange={updateLine} onRemove={() => setLines((current) => current.filter((item) => item.key !== line.key))} />)}</div>
-        : <RecordTable variant="readOnly" label="Document products" rows={doc?.lines ?? []} rowKey={(line) => line.id} emptyState={{ title: "No products" }} columns={[{ key: "product", label: "Product", render: (line) => line.product_name }, { key: "expected", label: kind === "transfers" ? "Quantity" : mode === "count" ? "Expected" : "Change", align: "right", render: (line) => <span className="tabular-nums">{kind === "transfers" ? line.quantity : mode === "count" ? line.expected : line.delta}</span> }, ...(kind === "adjustments" && mode === "count" ? [{ key: "counted", label: "Counted", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.counted}</span> }, { key: "delta", label: "Difference", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.delta}</span> }] : [])]} />}
+        : <RecordTable variant="readOnly" label="Document products" rows={doc?.lines ?? []} rowKey={(line) => line.id} emptyState={{ title: "No products" }} columns={[{ key: "product", label: "Product", render: (line) => line.product_name }, { key: "expected", label: kind === "transfers" ? "Quantity" : mode === "count" ? "Expected" : "Change", align: "right", render: (line) => <span className="tabular-nums">{kind === "transfers" ? line.quantity : mode === "count" ? line.expected : line.delta}</span> }, ...(kind === "adjustments" && mode === "count" ? [{ key: "counted", label: "Counted", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.counted}</span> }, { key: "delta", label: "Difference", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.delta}</span> }] : []), ...(kind === "adjustments" && doc?.lines?.some((line) => line.unit_cost != null) ? [{ key: "unit_cost", label: "Unit cost", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.unit_cost ?? "—"}</span> }] : [])]} />}
     </section>
     {editable ? <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : doc ? "Changes are saved as a draft until posted." : "Posting is available after saving the draft."}><Button type="button" variant="outline" asChild><Link href={base}>Back</Link></Button><Button type="button" onClick={() => void save()} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save draft"}</Button></FormFooter> : error ? <p role="alert" className="text-sm text-state-danger">{error}</p> : null}
     <EditorPanel open={cancelOpen} onOpenChange={setCancelOpen} title={`Cancel ${doc?.number ?? title}`} description="A reversal will return stock to its previous warehouses if enough remains." closeLabel="Close cancellation" onSubmit={() => void cancel()} status={error ? <span role="alert">{error}</span> : null} footer={<><Button variant="outline" onClick={() => setCancelOpen(false)}>Back</Button><Button type="submit" disabled={mutations.isSaving}>Reverse and cancel</Button></>}><Field><FieldLabel htmlFor="inventory-cancel-reason">Reason</FieldLabel><Input id="inventory-cancel-reason" maxLength={120} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} /></Field></EditorPanel>
