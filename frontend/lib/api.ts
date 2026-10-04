@@ -1,3 +1,4 @@
+import { currentPathForReturn, loginPathFor } from "./authRedirect";
 import { apiUrl } from "./runtime-config";
 
 const REFRESH_PATH = "/auth/refresh";
@@ -8,6 +9,8 @@ const AUTH_PUBLIC_PATHS = new Set([
   "/auth/sso/start",
   "/auth/password-policy",
   "/auth/setup-password",
+  "/auth/password/forgot",
+  "/auth/password/reset",
 ]);
 const MAX_TRANSIENT_RETRIES = 2;
 const RETRY_BACKOFF_MS = 300;
@@ -126,7 +129,8 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   }
 
   if (res.status === 401 && managesSession && typeof window !== "undefined") {
-    window.location.href = "/auth/login";
+    // Come back to this page after signing in (13a I2).
+    window.location.href = loginPathFor(currentPathForReturn());
     throw new Error("Session expired");
   }
 

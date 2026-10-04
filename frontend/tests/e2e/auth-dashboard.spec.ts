@@ -4,7 +4,8 @@ import { loginAsAdmin } from "./helpers/auth";
 
 test("guest dashboard access redirects to login", async ({ page }) => {
   await page.goto("/dashboard/settings/users");
-  await page.waitForURL("**/auth/login");
+  // The deep link rides along, so signing in comes back here (13a I2).
+  await page.waitForURL("**/auth/login?next=%2Fdashboard%2Fsettings%2Fusers");
   await expect(page.getByRole("button", { name: "Sign in with email" })).toBeVisible();
 });
 
@@ -45,8 +46,8 @@ test("admin manual login and dashboard navigation works", async ({ page }) => {
   await loginAsAdmin(page);
 
   await page.getByRole("link", { name: "Settings", exact: true }).click();
-  // The hub and the settings rail (A8) both link every page; go through the rail.
-  await page.getByRole("navigation", { name: "Settings", exact: true }).getByRole("link", { name: /^Teams/ }).click();
+  // The settings rail is gone (2026-10-01): the hub links every settings page.
+  await page.getByRole("main").getByRole("link", { name: /^Teams/ }).first().click();
   await page.waitForURL("**/dashboard/settings/teams");
   await expect(page.getByRole("heading", { name: "Teams", exact: true })).toBeVisible();
 

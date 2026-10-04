@@ -1092,6 +1092,10 @@ class IntegrationConnectionResponse(BaseModel):
     help_text: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Per-user providers (mail, calendar): the signed-in user's own connection. None for
+    # tenant-wide providers.
+    viewer_status: str | None = None
+    viewer_account_label: str | None = None
 
 
 class IntegrationConnectionListResponse(BaseModel):

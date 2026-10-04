@@ -45,6 +45,7 @@ export type User = {
   auth_mode?: "manual_only" | "manual_or_google";
   mfa_enabled?: boolean;
   mfa_required?: boolean;
+  password_set?: boolean;
   is_active: UserStatus;
 };
 
@@ -119,7 +120,8 @@ const fetchUsers = async ({
   const params = new URLSearchParams();
   params.append("page", page.toString());
   params.append("page_size", pageSize.toString());
-  if (visibleColumns.length) params.append("fields", visibleColumns.join(","));
+  // password_set is not a column: the edit dialog needs it for Resend invite.
+  if (visibleColumns.length) params.append("fields", [...visibleColumns, "password_set"].join(","));
   appendSavedViewFilterParams(params, filters);
 
   const teamIds = Array.isArray(filters.team_ids)

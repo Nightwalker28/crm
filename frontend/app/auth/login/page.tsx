@@ -2,8 +2,8 @@
 
 import { TextLink } from "@/components/ui/TextLink";
 import type { FormEvent } from "react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import { AnimatedShinyText } from "@/components/ui/AnimatedShinyText";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { apiFetch } from "@/lib/api";
 import { publishAuthSessionChange } from "@/lib/authSessionEvents";
+import { parkNextPath, safeNextPath } from "@/lib/authRedirect";
 
 type SignInForm = {
   email: string;
@@ -39,8 +40,11 @@ function GoogleMark() {
   );
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const router = useRouter();
+  // Where an expired session or a deep link was headed (13a I2); the dashboard home otherwise.
+  const searchParams = useSearchParams();
+  const nextPath = safeNextPath(searchParams.get("next"));
   const [googleLoading, setGoogleLoading] = useState(false);
   const [microsoftLoading, setMicrosoftLoading] = useState(false);
   const [ssoLoading, setSsoLoading] = useState(false);
@@ -65,6 +69,7 @@ export default function LoginPage() {
       if (!res.ok) throw new Error("Google sign-in could not be started. Try again.");
 
       const data = await res.json();
+      parkNextPath(nextPath);
       window.location.href = data.auth_url;
     } catch {
       setError(getErrorMessage("Google sign-in could not be started. Try again."));
@@ -79,6 +84,7 @@ export default function LoginPage() {
       const res = await apiFetch("/auth/microsoft");
       if (!res.ok) throw new Error("Microsoft sign-in could not be started. Try again.");
       const data = await res.json();
+      parkNextPath(nextPath);
       window.location.href = data.auth_url;
     } catch {
       setError(getErrorMessage("Microsoft sign-in could not be started. Try again."));
@@ -100,6 +106,7 @@ export default function LoginPage() {
       if (!res.ok) {
         throw new Error("SSO sign-in could not be started. Check your email or contact an administrator.");
       }
+      parkNextPath(nextPath);
       window.location.href = data.auth_url;
     } catch {
       setError(getErrorMessage("SSO sign-in could not be started. Check the email address and try again."));
@@ -147,7 +154,7 @@ export default function LoginPage() {
       }
 
       publishAuthSessionChange();
-      router.replace("/dashboard");
+      router.replace(nextPath);
       router.refresh();
     } catch {
       setError(getErrorMessage("Sign-in failed. Check your email and password and try again."));
@@ -196,7 +203,7 @@ export default function LoginPage() {
       await res.json().catch(() => null);
       if (!res.ok) throw new Error("The authenticator or recovery code was not accepted.");
       publishAuthSessionChange();
-      router.replace("/dashboard");
+      router.replace(nextPath);
       router.refresh();
     } catch {
       setError(getErrorMessage("That code was not accepted. Enter the current code from your authenticator."));
@@ -256,6 +263,12 @@ export default function LoginPage() {
             onChange={(event) => setSignIn((current) => ({ ...current, password: event.target.value }))}
             required
           />
+          <TextLink
+            href={signIn.email.trim() ? `/auth/forgot-password?email=${encodeURIComponent(signIn.email.trim())}` : "/auth/forgot-password"}
+            className="text-xs"
+          >
+            Forgot password?
+          </TextLink>
         </div>
 
         <Button
@@ -315,7 +328,7 @@ export default function LoginPage() {
                 type="button"
                 onClick={() => {
                   publishAuthSessionChange();
-                  router.replace("/dashboard");
+                  router.replace(nextPath);
                   router.refresh();
                 }}
                 className="w-full"
@@ -423,5 +436,13 @@ export default function LoginPage() {
 
       {error && <p className="mt-3 text-xs text-state-danger">{error}</p>}
     </>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginPageContent />
+    </Suspense>
   );
 }

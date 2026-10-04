@@ -20,6 +20,7 @@ import {
 import { usePathname } from "next/navigation";
 
 import { useAccessibleModules, type AccessibleModule } from "@/hooks/useAccessibleModules";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getDependentModuleDefinitions, getModuleDefinition, getModuleRoute, isModuleVisibleInNavigation } from "@/lib/module-registry";
@@ -154,7 +155,7 @@ function activeGroupKey(pathname: string, groups: SidebarGroupConfig[]) {
 export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
   const { isAdmin, logout } = useSidebarUser();
-  const { modules } = useAccessibleModules();
+  const { modules, isLoading: isModulesLoading } = useAccessibleModules();
   const storedCollapsed = useSyncExternalStore(
     subscribeToSidebarCollapse,
     getSidebarCollapsedSnapshot,
@@ -206,6 +207,13 @@ export default function Sidebar({ mobile = false, onNavigate }: { mobile?: boole
         <SidebarNav>
           <SidebarGroup>
             <SidebarMenu>
+              {/* While the session refreshes the modules are not known yet: an empty rail
+                  read as "you have access to nothing" (13a I2). */}
+              {isModulesLoading && groups.length === 0 ? (
+                <div role="status" aria-busy="true" aria-label="Loading navigation" className="space-y-2 px-2 py-1">
+                  {[0, 1, 2, 3, 4].map((row) => <Skeleton key={row} className="h-7 w-full" />)}
+                </div>
+              ) : null}
               {groups.map((group) => group.items.length === 1 ? (
                 // A11 (design.md §7.16): a group of one is a link. Reports was a button that
                 // opened a list containing Reports — and so was any group a tenant had

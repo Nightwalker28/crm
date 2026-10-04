@@ -33,6 +33,9 @@ export type IntegrationRegistryHealth = {
     last_successful_sync_at: string | null;
     source: string;
     connection_count: number;
+    /** Mail and calendar connect per user: the signed-in user's own state (13a I10). */
+    viewer_status?: string | null;
+    viewer_account_label?: string | null;
     credential_state: string;
     health_status: string;
     scopes: string[];
@@ -76,10 +79,11 @@ function ProviderAction({
     );
   }
   if (!connection.reconnect_url && !provider.metadata_json.config_href) return null;
+  const connectedForViewer = (connection.viewer_status ?? connection.status) === "connected";
   return (
     <Button variant="outline" size="sm" className="mt-4" asChild>
       <Link href={connection.reconnect_url || provider.metadata_json.config_href || "#"}>
-        {connection.status === "connected" ? "Configure" : connection.reconnect_action || "Reconnect"}
+        {connectedForViewer ? "Configure" : connection.reconnect_action || "Reconnect"}
       </Link>
     </Button>
   );
@@ -123,7 +127,11 @@ export function IntegrationProviderRegistry({
         ) : items.length ? (
           items.map((item) => {
             const { provider, connection } = item;
-            const tone = statusTone(connection.status);
+            // A per-user provider shows the viewer's own connection first: a colleague's
+            // mailbox does not let this admin send (13a I10).
+            const perUser = connection.viewer_status != null;
+            const shownStatus = perUser ? connection.viewer_status ?? "disconnected" : connection.status;
+            const tone = statusTone(shownStatus);
             return (
               <Card key={provider.key} className="p-6">
                 <div className="flex items-start justify-between gap-3">
@@ -136,11 +144,18 @@ export function IntegrationProviderRegistry({
                       <h3 className="mt-1 text-sm font-semibold text-copy-primary">{provider.name}</h3>
                     </div>
                   </div>
-                  <StatusValue status={{ tone, label: formatStatus(connection.status) }} context="record" />
+                  <StatusValue status={{ tone, label: perUser ? `${formatStatus(shownStatus)} for you` : formatStatus(shownStatus) }} context="record" />
                 </div>
                 <p className="mt-3 text-p-sm text-copy-muted">{provider.description}</p>
                 <div className="mt-4 grid gap-2 text-xs text-copy-muted">
-                  <div><span>Account: </span><span className="text-copy-secondary">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span></div>
+                  {perUser ? (
+                    <>
+                      <div><span>Your account: </span><span className="text-copy-secondary">{connection.viewer_account_label || "Not connected"}</span></div>
+                      <div><span>Workspace: </span><span className="text-copy-secondary">{connection.connection_count === 1 ? "1 user connected" : `${connection.connection_count} users connected`}</span></div>
+                    </>
+                  ) : (
+                    <div><span>Account: </span><span className="text-copy-secondary">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span></div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <Metric label="Connections" value={connection.connection_count} />
                     <Metric label="Queued" value={connection.queued_jobs} />

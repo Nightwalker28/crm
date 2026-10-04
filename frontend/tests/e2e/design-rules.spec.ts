@@ -149,6 +149,8 @@ const LISTS: Array<{ list: string; re: string; suffixes: string[]; record?: bool
 const PUBLIC_ROUTES = [
   "/auth/login",
   "/auth/setup-password",
+  "/auth/forgot-password",
+  "/auth/reset-password?token=e2e-placeholder-token",
   "/client/login",
   "/book/maad-mustafa/quickmeetings",
   "/client/pages/public-page-1-23",
@@ -192,6 +194,8 @@ const PROPER_NOUNS = [
   "August", "September", "October", "November", "December", "Jan", "Feb", "Mar", "Apr", "Jun",
   "Jul", "Aug", "Sep", "Sept", "Oct", "Nov", "Dec", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
   "Sun", "I", "OK",
+  // Microsoft's product, named alone on its own reconnect button.
+  "OneDrive",
 ];
 
 // Product names of more than one word keep their capitals as a unit.

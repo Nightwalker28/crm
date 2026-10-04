@@ -279,6 +279,9 @@ class User(Base):
     encrypted_totp_secret = Column(Text, nullable=True)
     mfa_secret_key_version = Column(String(32), nullable=True)
     mfa_verified_at = Column(DateTime(timezone=True), nullable=True)
+    # Access tokens issued before this are refused: a password change or reset signs the
+    # user out everywhere else, not only once each access token runs out.
+    sessions_revoked_at = Column(DateTime(timezone=True), nullable=True)
 
     is_active = Column(
         Enum(UserStatus, name="user_status"),
@@ -484,9 +487,12 @@ class UserSetupToken(Base):
         Index("ix_user_setup_tokens_user_consumed", "user_id", "consumed_at"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     token_hash = Column(String(64), nullable=False, unique=True, index=True)
+    # "setup" (an invite: first password) or "reset" (forgot password). A link only works
+    # for its own purpose.
+    purpose = Column(String(16), nullable=False, server_default="setup", default="setup")
     expires_at = Column(DateTime(timezone=True), nullable=False)
     consumed_at = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

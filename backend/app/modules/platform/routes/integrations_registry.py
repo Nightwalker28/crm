@@ -45,7 +45,7 @@ def get_health(db: Session = Depends(get_db), admin=Depends(require_admin)):
                 provider=IntegrationProviderResponse.model_validate(item["provider"]),
                 connection=IntegrationConnectionResponse.model_validate(item["connection"]),
             )
-            for item in list_integration_health(db, tenant_id=admin.tenant_id)
+            for item in list_integration_health(db, tenant_id=admin.tenant_id, viewer_user_id=admin.id)
         ]
     }
 

@@ -8,6 +8,7 @@ from app.core.security import require_admin
 from app.core.tenancy import get_frontend_origin_for_request
 from app.core.pagination import Pagination, get_pagination
 from app.modules.user_management.schema import (
+    AdminUserInviteResponse,
     AdminCreateUserRequest,
     AdminCreateUserResponse,
     BulkUpdateUsersRequest,
@@ -66,6 +67,7 @@ USER_LIST_FIELDS = {
     "auth_mode",
     "mfa_enabled",
     "mfa_required",
+    "password_set",
     "is_active",
 }
 
@@ -354,6 +356,24 @@ def create_user(
         db,
         payload,
         tenant_id=admin.tenant_id,
+        frontend_origin=get_frontend_origin_for_request(request),
+        inviter=admin,
+    )
+
+
+@router.post("/{user_id}/invite", response_model=AdminUserInviteResponse)
+def resend_user_invite(
+    user_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    admin = Depends(require_admin),
+):
+    """A new setup link (the old one stops working), emailed to the user and returned."""
+    return admin_users.resend_user_invite(
+        db,
+        tenant_id=admin.tenant_id,
+        user_id=user_id,
+        inviter=admin,
         frontend_origin=get_frontend_origin_for_request(request),
     )
 

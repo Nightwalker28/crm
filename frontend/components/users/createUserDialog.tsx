@@ -1,8 +1,6 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
-import { Copy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +16,8 @@ import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { InviteLinkResult } from "@/components/users/InviteLinkResult";
+import type { InviteEmailResult } from "@/hooks/admin/useUserManagement";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 type RoleOption = { id: number; name: string };
@@ -40,7 +40,7 @@ type Props = {
   roles: RoleOption[];
   teams: TeamOption[];
   onClose: () => void;
-  onCreate: (payload: CreatePayload) => Promise<{ setup_link?: string | null }>;
+  onCreate: (payload: CreatePayload) => Promise<{ setup_link?: string | null; invite_email?: InviteEmailResult | null }>;
 };
 
 const emptyForm = {
@@ -62,6 +62,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [hasError, setHasError] = useState(false);
   const [setupLink, setSetupLink] = useState<string | null>(null);
+  const [inviteEmail, setInviteEmail] = useState<InviteEmailResult | null>(null);
   const email = form.email.trim();
   const emailIsInvalid = Boolean(email) && !isValidEmail(email);
 
@@ -75,6 +76,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
     setForm(emptyForm);
     setHasError(false);
     setSetupLink(null);
+    setInviteEmail(null);
     onClose();
   }
 
@@ -95,6 +97,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
       });
 
       setSetupLink(result.setup_link ?? null);
+      setInviteEmail(result.invite_email ?? null);
       if (!result.setup_link) {
         handleClose();
       }
@@ -102,16 +105,6 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
       setHasError(true);
     } finally {
       setIsSubmitting(false);
-    }
-  }
-
-  async function copySetupLink() {
-    if (!setupLink) return;
-    try {
-      await navigator.clipboard.writeText(setupLink);
-      toast.success("Setup link copied.");
-    } catch {
-      toast.error("The setup link could not be copied. Copy it manually instead.");
     }
   }
 
@@ -128,7 +121,7 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
               <DialogTitle>{setupLink ? "User created" : "Create user"}</DialogTitle>
               <DialogDescription className="mt-1 text-copy-muted">
                 {setupLink
-                  ? "Share this one-time setup link through a trusted channel."
+                  ? "They set their own password from the one-time setup link."
                   : "Provision a CRM user and assign their initial access."}
               </DialogDescription>
             </div>
@@ -136,21 +129,8 @@ export default function CreateUserDialog({ open, roles, teams, onClose, onCreate
           </DialogHeader>
 
           {setupLink ? (
-            <div className="mt-4 space-y-4">
-              <div role="status" className="rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-primary">
-                Manual sign-in is enabled for this user. Share the setup link below so they can create their password.
-              </div>
-
-              <Field>
-                <FieldLabel htmlFor="create-user-setup-link">Setup link</FieldLabel>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Input id="create-user-setup-link" value={setupLink} readOnly />
-                  <Button type="button" variant="outline" onClick={() => void copySetupLink()}>
-                    <Copy />
-                    Copy
-                  </Button>
-                </div>
-              </Field>
+            <div className="mt-4">
+              <InviteLinkResult id="create-user-setup-link" email={email} setupLink={setupLink} inviteEmail={inviteEmail} />
             </div>
           ) : (
             <div className="mt-4 space-y-4">

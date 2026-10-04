@@ -1,8 +1,10 @@
 from celery import Celery
 from celery.schedules import crontab
-from celery.signals import worker_init
+from celery.signals import before_task_publish, beat_init, task_postrun, task_prerun, worker_init
 
+from app.core.background_health import BEAT_HEARTBEAT_KEY, HEARTBEAT_TASK_NAME, stamp_heartbeat
 from app.core.config import settings, validate_startup_settings
+from app.core.observability import configure_logging, init_error_tracking, task_id_var
 
 
 celery_app = Celery(
@@ -17,6 +19,7 @@ celery_app = Celery(
         "app.tasks.recycle_purge_tasks",
         "app.tasks.report_subscription_tasks",
         "app.tasks.tenant_backup_tasks",
+        "app.tasks.platform_tasks",
     ],
 )
 
@@ -31,7 +34,14 @@ celery_app.conf.update(
     task_track_started=True,
     timezone="UTC",
     enable_utc=True,
+    # Celery would otherwise replace the root logger's handlers with its own plain-text ones.
+    worker_hijack_root_logger=False,
     beat_schedule={
+        "platform-heartbeat": {
+            "task": HEARTBEAT_TASK_NAME,
+            "schedule": settings.BACKGROUND_HEARTBEAT_INTERVAL_SECONDS,
+            "options": {"expires": settings.BACKGROUND_HEARTBEAT_INTERVAL_SECONDS},
+        },
         "cleanup-expired-data-transfer-results": {
             "task": "app.tasks.data_transfer.cleanup_expired_results",
             "schedule": crontab(minute=15, hour=2),
@@ -67,3 +77,29 @@ celery_app.conf.update(
 @worker_init.connect
 def validate_celery_startup_config(**_: object) -> None:
     validate_startup_settings()
+    configure_logging()
+    init_error_tracking("worker")
+
+
+@beat_init.connect
+def init_beat_observability(**_: object) -> None:
+    configure_logging()
+    init_error_tracking("beat")
+
+
+@before_task_publish.connect
+def stamp_beat_heartbeat(sender: str | None = None, **_: object) -> None:
+    # Only beat publishes the heartbeat task, so this runs in the beat process.
+    if sender == HEARTBEAT_TASK_NAME:
+        stamp_heartbeat(BEAT_HEARTBEAT_KEY)
+
+
+@task_prerun.connect
+def bind_task_log_context(task_id: str | None = None, **_: object) -> None:
+    task_id_var.set(task_id)
+
+
+@task_postrun.connect
+def clear_task_log_context(**_: object) -> None:
+    task_id_var.set(None)
+

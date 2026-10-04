@@ -216,6 +216,7 @@ export function DashboardCrmWidget({
   type,
   summary,
   hasReportAccess,
+  isAccessLoading = false,
   isLoading,
   isError,
   onRetry,
@@ -223,12 +224,15 @@ export function DashboardCrmWidget({
   type: CrmSummaryWidgetType;
   summary: CrmDashboardSummary | undefined;
   hasReportAccess: boolean;
+  /** The user's modules are still loading (or the session refreshing): not a denial (13a I2). */
+  isAccessLoading?: boolean;
   isLoading: boolean;
   isError: boolean;
   onRetry: () => void;
 }) {
   // A flush widget has no body padding, so its states supply the padding the shell would have.
   const padState = (state: ReactNode) => (isFlushCrmWidget(type) ? <div className="p-4">{state}</div> : state);
+  if (isAccessLoading) return padState(<PanelLoading label="Loading CRM summary…" />);
   if (!hasReportAccess) {
     return padState(<PanelEmpty icon={Lock} title="Reports access is required" description="Ask an administrator for access to reports to see this summary." />);
   }

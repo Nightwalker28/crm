@@ -13,7 +13,7 @@ RUN apt-get update \
 
 COPY requirements.txt .
 RUN python -m venv /opt/venv \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir --require-hashes -r requirements.txt
 
 
 FROM python:3.11-slim AS runtime
@@ -30,6 +30,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     IO_SEARCH_UPLOAD_DIR=/app/uploads/io-search
 
 WORKDIR /app
+
+# pg_dump and pg_restore for scripts/platform-backup.sh and platform-restore.sh, which run
+# them inside this container. Debian's client (17) reads older servers.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
 
 RUN addgroup --system app \
     && adduser --system --ingroup app app

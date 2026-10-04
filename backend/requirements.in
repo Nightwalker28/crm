@@ -1,0 +1,24 @@
+# Direct dependencies. `requirements.txt` is the lock compiled from this file; never edit it
+# by hand. To change a dependency, edit this file, then from the repo root:
+#   docker compose run --rm --no-deps -T backend sh -c \
+#     'pip install -q pip-tools && pip-compile --generate-hashes --strip-extras --allow-unsafe -o requirements.txt requirements.in'
+# and rebuild the image. Bounds keep a compile on today's majors.
+fastapi>=0.141,<1
+starlette>=1.6,<2
+httpx>=0.28,<1
+uvicorn[standard]>=0.52,<1
+sqlalchemy>=2.0.52,<2.1
+psycopg2-binary>=2.9,<3
+python-dotenv>=1.2,<2
+python-multipart>=0.0.32,<1
+pyjwt[crypto]>=2.10,<3
+requests>=2.34,<3
+pydantic>=2.13,<3
+email-validator>=2.3,<3
+python-docx>=1.2,<2
+pdfplumber>=0.11,<1
+alembic>=1.19,<2
+python-dateutil>=2.9,<3
+redis>=6.4,<7
+celery[redis]>=5.6,<6
+sentry-sdk[fastapi,celery,sqlalchemy]>=2,<3

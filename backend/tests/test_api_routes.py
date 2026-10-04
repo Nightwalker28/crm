@@ -11,7 +11,7 @@ from unittest.mock import ANY, AsyncMock, patch
 import requests
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
-from jose import jwt as jose_jwt
+import jwt as pyjwt
 
 from app.core.database import get_db
 from app.core.pagination import Pagination
@@ -529,7 +529,7 @@ class APIRouteTests(unittest.TestCase):
         self.assertIs(threadpool_mock.await_args.args[0], signin_routes._oidc_callback_response)
 
     def test_google_callback_resolves_user_by_email_in_auth_tenant_mode(self):
-        id_token = jose_jwt.encode(
+        id_token = pyjwt.encode(
             {
                 "email": "user@example.com",
                 "picture": "https://lh3.googleusercontent.com/photo.png",
@@ -578,7 +578,7 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(user.last_login_provider, "google")
 
     def test_google_id_token_profile_claims_are_used_for_login_profile(self):
-        id_token = jose_jwt.encode(
+        id_token = pyjwt.encode(
             {
                 "email": "user@example.com",
                 "picture": "https://lh3.googleusercontent.com/photo.png",

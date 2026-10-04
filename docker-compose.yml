@@ -76,6 +76,9 @@ services:
     # Port 3000, the origin the backend's CORS and cookies already trust; the dev server
     # that normally holds it is stopped for the run.
     command: npm run start -- -p 3000
+    environment:
+      # scripts/e2e.sh points it at backend-e2e (the disposable database); otherwise the .env API.
+      NEXT_PUBLIC_API_BASE_URL: ${LYNK_E2E_API_BASE_URL:-${NEXT_PUBLIC_API_BASE_URL:-}}
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
@@ -83,6 +86,46 @@ services:
       - "3000:3000"
     depends_on:
       - backend
+
+  # The backend and worker for browser tests, on a disposable database that scripts/e2e.sh
+  # creates (LYNK_E2E_DATABASE) and drops after the run, never the shared dev one (13a H29).
+  # Redis DB 1 keeps their queue and cache apart from the dev worker's. Uploads go to a volume
+  # the script removes. The dev backend and worker are stopped meanwhile (CPU caps).
+  backend-e2e:
+    profiles: ["e2e"]
+    image: crm-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    env_file:
+      - .env
+    environment: &e2e-backend-env
+      # Unset outside scripts/e2e.sh: a name that never exists, so they can never reach dev data.
+      LYNK_DATABASE_NAME: ${LYNK_E2E_DATABASE:-lynk_e2e_not_provisioned}
+      REDIS_URL: redis://redis:6379/1
+      CELERY_BROKER_URL: redis://redis:6379/1
+      BACKGROUND_WATCHDOG_ENABLED: "false"
+    volumes:
+      - ./backend:/app
+      - e2e_uploads:/app/uploads
+    ports:
+      - "${LYNK_E2E_BACKEND_PORT:-8043}:8000"
+    depends_on:
+      - redis
+
+  worker-e2e:
+    profiles: ["e2e"]
+    image: crm-backend
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info --concurrency=1
+    env_file:
+      - .env
+    environment: *e2e-backend-env
+    volumes:
+      - ./backend:/app
+      - e2e_uploads:/app/uploads
+    depends_on:
+      - redis
 
   frontend-e2e:
     image: mcr.microsoft.com/playwright:v1.59.1-jammy
@@ -104,3 +147,4 @@ services:
 
 volumes:
   frontend_node_modules:
+  e2e_uploads:

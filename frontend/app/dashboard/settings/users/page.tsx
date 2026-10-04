@@ -108,7 +108,7 @@ function UsersWorkspace({ createRequested }: { createRequested: boolean }) {
         })}
       />
       <CreateUserDialog open={admin.isCreateOpen || createRequested} roles={admin.roles} teams={admin.teams} onClose={closeCreate} onCreate={admin.createUser} />
-      {admin.editUserData ? <EditUserDialog open={admin.isEditOpen} user={admin.editUserData} roles={admin.roles} teams={admin.teams} currentUserId={admin.currentUserId} onClose={admin.closeEditModal} onSave={async (id, form) => { await admin.updateUser(id, form); admin.closeEditModal(); }} onResetMfa={async (id) => { await admin.resetUserMfa(id); admin.closeEditModal(); }} isResettingMfa={admin.isResettingUserMfa} /> : null}
+      {admin.editUserData ? <EditUserDialog open={admin.isEditOpen} user={admin.editUserData} roles={admin.roles} teams={admin.teams} currentUserId={admin.currentUserId} onClose={admin.closeEditModal} onSave={async (id, form) => { await admin.updateUser(id, form); admin.closeEditModal(); }} onResetMfa={async (id) => { await admin.resetUserMfa(id); admin.closeEditModal(); }} isResettingMfa={admin.isResettingUserMfa} onResendInvite={admin.resendInvite} /> : null}
     </PageShell>
   );
 }

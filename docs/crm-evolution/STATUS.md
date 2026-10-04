@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-04.
+Last updated 2026-10-04 (Step 2).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -31,7 +31,97 @@ Last updated 2026-10-04.
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
 | ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 implemented and verified (2026-10-04), not committed yet. Next: §7 Step 2** (make it safe to run: H3, H4, B2, B3/B4, observability, F0.5, H29). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 implemented and verified (2026-10-04): H3, H4, B2, B3/B4, F1–F6, I2, I6, I10, E13, E14, F0.5, H29. Next: §7 Step 3** (errors users can see: H2, H23, H12, H11, the F0.9 polish list). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+
+## Final fixes §7 Step 2 — safe to run, implemented and verified (2026-10-04)
+
+Every Step 2 item of `13-final-fixes.md` §7, built first and tested once. Owner decisions taken
+at the start: Sentry SDK gated by a DSN; the platform sender stands in for invites and resets
+in cloud mode only (a single-client install uses the tenant's own sender or none); a strict
+nonce CSP; stopped-worker alerts as a failing readiness check, an error-tracker event and an
+email to the operator.
+
+- **H3:** the stream route authenticates with a session it closes before streaming (no
+  `Depends(get_db)` held for the stream's life). Commits that write a notification or a job
+  publish a wake-up on Redis (`after_flush`/`after_commit` hooks; `mark_realtime_target` for the
+  bulk mark-all-read); one subscriber per process (`_RealtimeHub`) wakes the matching streams,
+  which read in a worker thread with a short-lived session. Fallback check every 30 s; without
+  Redis a 5 s poll, still off the loop. `scripts/load_realtime.py` opens N streams and checks
+  `/health`, `/users/me` and sessions idle in transaction.
+- **H4:** `backend/requirements.in` (direct deps with major bounds) compiled to a hash-pinned
+  `requirements.txt` (pip-compile; minor/patch bumps only); both Dockerfiles install with
+  `--require-hashes`. python-jose → PyJWT everywhere; OIDC id tokens now take their algorithm
+  from the JWK and only asymmetric ones (an HMAC `alg` is refused).
+- **B2:** API: nosniff, Referrer-Policy, X-Frame-Options, Permissions-Policy, a CSP
+  (`default-src 'none'` on JSON), HSTS when cookies are secure (`http_errors.SecurityHeadersMiddleware`).
+  Frontend: a per-request nonce CSP in `proxy.ts` (`'strict-dynamic'`, `frame-ancestors 'none'`,
+  connect/img/form to the API origin), the nonce passed to `runtime-config.js` and next-themes;
+  static headers in `next.config.ts`. Every page now renders per request.
+- **B3:** `POST /auth/password/forgot` (same answer whatever the address, sent after the
+  response, rate limited per email and IP), `/auth/password/reset` (single-use, 60 min,
+  `user_setup_tokens.purpose`), `/auth/password/change` (current password checked and rate
+  limited). Reset and change revoke every refresh token and set `users.sessions_revoked_at`,
+  so older access tokens are refused too; the changing browser gets a fresh session. Pages
+  `/auth/forgot-password`, `/auth/reset-password`, a *Forgot password?* link, a *Password*
+  section on Profile. Migration `20261005_password_reset`.
+- **B4:** creating a password user emails the invite (`account_emails.send_user_invite_email`);
+  the dialog says whether it went and keeps the link. *Resend invite* on the edit dialog for a
+  user with no password (`POST /admin/users/{id}/invite`). `password_set` on user profiles.
+- **F1:** Sentry for the API, worker and beat (`observability.init_error_tracking`) and the
+  frontend (`instrumentation*.ts`, error boundaries report), all off without a DSN.
+- **F2:** JSON logs (text when `DEBUG`), a request id per request (`X-Request-ID`, kept when the
+  caller's is well formed) on every log line and error body, task ids in the worker.
+- **F3, F6, I6:** `/health/ready` checks PostgreSQL, Redis, the broker, beat and the worker
+  (beat stamps a heartbeat when it publishes the heartbeat task, the worker when it runs it)
+  and answers 503 naming the part. A watchdog in each web process logs an error and mails
+  `OPS_ALERT_EMAIL` once per incident and once on recovery. `/health` stays the container check.
+- **F4:** one error shape, `{"detail", "request_id"}`; an unhandled error is a generic 500 that
+  now passes through CORS (middleware reordered: request context → CORS → headers → cookies →
+  tenant → error boundary).
+- **F5:** root `app/global-error.tsx`. **E13:** image hosts from the API origin. **E14:** a
+  lifespan handler replaces `on_event`.
+- **I2:** dashboard widgets and the sidebar show loading while the user's modules load, not
+  "Reports access is required" / an empty rail. `?next=` keeps the deep link through the proxy
+  redirect, an expired session (`apiFetch`) and sign-in by password or provider (parked in
+  sessionStorage for `/auth/callback`). Only `/dashboard…` paths are followed.
+- **I10:** Integrations shows the viewer's own mail and calendar connection ("Connected for
+  you", *Your account*) beside the workspace count.
+- **F0.5:** `platform-backup.sh` and `platform-restore.sh` take the stack from
+  `LYNK_COMPOSE_FILES` (production by default), archive and restore uploads through the
+  backend container (so the `crm_uploads` volume is covered), verify checksums before a
+  restore; `scheduled` picks monthly/weekly/daily; systemd units in `deploy/systemd/`. The
+  production image had no `pg_dump`: `postgresql-client` added. Documented in
+  `prod-docker-deployment.md`.
+- **H29:** `scripts.provision_database` creates, migrates, seeds (bootstrap, optionally demo +
+  module samples) and drops `lynk_e2e_*` / `lynk_uat*` databases; `LYNK_DATABASE_NAME` points a
+  process at one. `scripts/e2e.sh` now runs every browser test on its own disposable database
+  through `backend-e2e` and `worker-e2e` (Redis DB 1, own uploads volume), stopping the dev
+  backend and worker meanwhile (caps unchanged), and drops it after (`--keep-db`, `--shared-db`).
+
+**Found on the way:** Next.js inlines `process.env.NEXT_PUBLIC_*` into the build even in server
+code, so a production image kept the API URL it was built with and the documented "restart to
+change it" never held; `lib/serverEnv.ts` now reads it per request (runtime config and CSP).
+The demo seed wrote an invoice status E5 removed (`paid`), so it failed on any fresh database.
+The realtime commit hooks first registered lazily and broke a commit ("deque mutated during
+iteration"); they now register with `core/database.py` (`core/realtime_hooks.py`). The
+production image had no `pg_dump`. Three e2e assertions still expected the settings rail removed
+on 2026-10-01, and *Products & Services* was Title Case: fixed.
+
+**Verification (one pass, fixes, then the touched set again):** compileall clean; full backend
+suite 1524 tests OK (2 route tests needed the serializer to accept a `UserProfile` stand-in;
+rerun green after the hook move); `verify_migrations` passes at head `20261005_password_reset`;
+`verify_openapi` 469 paths. Frontend lint clean, production build passes (every route renders
+per request, for the nonce), `check-design.sh` 21/21. Browser, through the new `e2e.sh` on
+disposable databases (created, seeded, served, dropped each run): auth-dashboard, profile,
+users, integrations, leads and the design and scroll guards scoped to profile/users/integrations
+plus every public route: 38/44 first, then the 6 fixed (stale specs, the copy, the guard's
+missing "OneDrive" noun) and 33/33 rerun with the 90 s budget. A CSP probe over 15 dashboard and
+public pages found no violations. Realtime load test: 100 open streams, `/health` p95 250 ms,
+`/users/me` 52 ms, no sessions idle in transaction. `/health/ready` answered on the dev stack.
+`platform-backup.sh create` on the local stack: dump and uploads through the container,
+checksums OK. Not run: a `platform-restore.sh` run (F0.6 asks for one in a scratch environment
+before go-live), a real SMTP send (no sender configured), Sentry with a real DSN, the full
+rendered walk (due at F4). The dev database is now at `20261005_password_reset`.
 
 ## Final fixes §7 Step 1 — data loss and wrong data, implemented (2026-10-04)
 

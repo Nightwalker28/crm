@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
+from app.core.realtime_hooks import mark_realtime_target
 from app.modules.platform.models import UserNotification
 
 
@@ -149,5 +150,6 @@ def mark_all_notifications_read(db: Session, *, tenant_id: int, user_id: int) ->
             synchronize_session=False,
         )
     )
+    mark_realtime_target(db, tenant_id=tenant_id, user_id=user_id)
     db.commit()
     return updated

@@ -804,9 +804,10 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
         total = subtotal - discount + tax_amount
         paid = total if idx % 4 in (0, 1) else (total / Decimal("2") if idx % 4 == 2 else Decimal("0"))
 
+        # Since E5 an invoice's lifecycle is draft → issued → void; "paid" is a payment status.
         if paid == total:
             payment_status = "paid"
-            status = "paid"
+            status = "issued"
         elif paid > 0:
             payment_status = "partial"
             status = "issued"

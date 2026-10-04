@@ -35,3 +35,8 @@ def get_db():
         raise
     finally:
         db.close()
+
+
+# Session-wide commit hooks that wake realtime streams. Registered here, on import, so they
+# exist before any session commits (see app/core/realtime_hooks.py).
+import app.core.realtime_hooks  # noqa: E402,F401

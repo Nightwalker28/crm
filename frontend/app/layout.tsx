@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Script from "next/script";
 import { Inter } from "next/font/google";
 import "./globals.css";
@@ -23,21 +24,24 @@ export const metadata: Metadata = {
   description: "for Acumen Intelligence",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // The per-request CSP nonce from proxy.ts. Reading it makes every page render per request,
+  // which a nonce needs anyway: static HTML cannot carry one.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
   return (
     // No theme class here: next-themes stamps it before paint. :root already
     // carries the dark set, so a class-less server render still paints dark.
     <html lang="en" className={inter.variable} suppressHydrationWarning={true}>
       <head>
-        <Script src="/runtime-config.js" strategy="beforeInteractive" />
+        <Script src="/runtime-config.js" strategy="beforeInteractive" nonce={nonce} />
       </head>
       <body className="font-sans antialiased">
         {/* Wrap everything inside the body with Providers */}
-        <Providers>
+        <Providers nonce={nonce}>
           <ClientLayout>
             <Toaster />
             {children}

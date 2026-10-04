@@ -8,7 +8,7 @@ import { useEffect, useState } from "react";
 import { ConfirmProvider } from "@/hooks/useConfirm";
 import { subscribeToAuthSessionChanges } from "@/lib/authSessionEvents";
 
-export default function Providers({ children }: { children: React.ReactNode }) {
+export default function Providers({ children, nonce }: { children: React.ReactNode; nonce?: string }) {
   // Ensure QueryClient is created only once per client lifecycle
   const [queryClient] = useState(
     () =>
@@ -41,6 +41,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     // value maps "light" to the .light class; dark needs no class because :root
     // already is the dark set.
     <ThemeProvider
+      nonce={nonce}
       attribute="class"
       defaultTheme="dark"
       enableSystem={false}

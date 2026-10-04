@@ -55,11 +55,26 @@ def _frontend_cors_origins(frontend_origin: str, extra_origins: list[str]) -> li
     return origins
 
 
+def _database_url() -> str | None:
+    """DATABASE_URL, pointed at LYNK_DATABASE_NAME when that is set.
+
+    A disposable e2e database or the UAT database (scripts/provision_database.py) runs on the
+    same server with the same credentials; naming it here keeps the credentials out of the
+    scripts that start those stacks.
+    """
+    url = os.getenv("DATABASE_URL")
+    database_name = os.getenv("LYNK_DATABASE_NAME", "").strip()
+    if not url or not database_name:
+        return url
+    parsed = urlparse(url)
+    return urlunparse(parsed._replace(path=f"/{database_name}"))
+
+
 class Settings:
     # -------------------------
     # Database
     # -------------------------
-    DATABASE_URL: str = os.getenv("DATABASE_URL")
+    DATABASE_URL: str = _database_url()
     DB_POOL_SIZE: int = int(os.getenv("DB_POOL_SIZE", "10"))
     DB_MAX_OVERFLOW: int = int(os.getenv("DB_MAX_OVERFLOW", "20"))
     DB_POOL_RECYCLE_SECONDS: int = int(os.getenv("DB_POOL_RECYCLE_SECONDS", "1800"))
@@ -283,6 +298,37 @@ class Settings:
     WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS: int = int(
         os.getenv("WEBSITE_INTEGRATION_RATE_LIMIT_WINDOW_SECONDS", "60")
     )
+
+    # Password reset (13 F0.7 B3). The link is single use; requesting a new one voids the last.
+    PASSWORD_RESET_TOKEN_EXPIRE_MINUTES: int = int(os.getenv("PASSWORD_RESET_TOKEN_EXPIRE_MINUTES", "60"))
+    PASSWORD_RESET_REQUEST_LIMIT: int = int(os.getenv("PASSWORD_RESET_REQUEST_LIMIT", "5"))
+    PASSWORD_RESET_REQUEST_WINDOW_SECONDS: int = int(os.getenv("PASSWORD_RESET_REQUEST_WINDOW_SECONDS", "3600"))
+
+    # The platform's own sender. Cloud mode uses it for a tenant with no workspace sender
+    # (invites, password resets); every mode uses it for operator alerts.
+    PLATFORM_SMTP_HOST: str = os.getenv("PLATFORM_SMTP_HOST", "").strip()
+    PLATFORM_SMTP_PORT: int = int(os.getenv("PLATFORM_SMTP_PORT", "587"))
+    PLATFORM_SMTP_SECURITY: str = os.getenv("PLATFORM_SMTP_SECURITY", "starttls").strip().lower()
+    PLATFORM_SMTP_USERNAME: str = os.getenv("PLATFORM_SMTP_USERNAME", "").strip()
+    PLATFORM_SMTP_PASSWORD: str = os.getenv("PLATFORM_SMTP_PASSWORD", "")
+    PLATFORM_SMTP_SENDER_EMAIL: str = os.getenv("PLATFORM_SMTP_SENDER_EMAIL", "").strip()
+
+    # Observability (13 F0.8). Error tracking is off unless SENTRY_DSN is set; any
+    # Sentry-compatible service works (Sentry, self-hosted Sentry, GlitchTip).
+    APP_ENVIRONMENT: str = os.getenv("APP_ENVIRONMENT", os.getenv("ENVIRONMENT", "development")).strip()
+    APP_VERSION: str = os.getenv("APP_VERSION", "").strip()
+    SENTRY_DSN: str = os.getenv("SENTRY_DSN", "").strip()
+    SENTRY_TRACES_SAMPLE_RATE: float = float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0"))
+    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").strip().upper()
+    # json for log collectors, text for a terminal. Defaults to text when DEBUG is on.
+    LOG_FORMAT: str = os.getenv("LOG_FORMAT", "").strip().lower()
+
+    # Background-job monitoring (13 F0.8 F6). Beat schedules a heartbeat the worker runs;
+    # a heartbeat older than the stale limit means the worker or beat has stopped.
+    BACKGROUND_HEARTBEAT_INTERVAL_SECONDS: int = int(os.getenv("BACKGROUND_HEARTBEAT_INTERVAL_SECONDS", "60"))
+    BACKGROUND_HEARTBEAT_STALE_SECONDS: int = int(os.getenv("BACKGROUND_HEARTBEAT_STALE_SECONDS", "300"))
+    BACKGROUND_WATCHDOG_ENABLED: bool = _env_bool("BACKGROUND_WATCHDOG_ENABLED", True)
+    OPS_ALERT_EMAIL: str = os.getenv("OPS_ALERT_EMAIL", "").strip()
 
 
 settings = Settings()

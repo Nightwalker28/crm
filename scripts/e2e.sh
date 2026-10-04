@@ -9,25 +9,37 @@
 #   scripts/e2e.sh --routes /dashboard/inventory,/dashboard/settings/recycle-bin \
 #       design-rules.spec.ts scroll-containers.spec.ts            # guards, scoped to a slice
 #   scripts/e2e.sh --rebuild ...                                   # force a fresh build
+#   scripts/e2e.sh --keep-db ...                                   # keep the test database
+#   scripts/e2e.sh --shared-db ...                                 # old way: the dev database
 #   scripts/e2e.sh                                                 # every spec (release)
 #
 # --routes sets E2E_ROUTES: the route guards then walk only routes equal to or under those
 # prefixes (canary and global checks still run). Without it they walk every route.
 #
-# The CPU ceiling holds: the dev server is stopped while `frontend-serve` runs in its place
-# with the same cap, and is started again afterwards. Playwright always runs one worker.
+# Each run gets its own database (13a H29): `lynk_e2e_<time>` is created on the DATABASE_URL
+# server, migrated, given the bootstrap tenant and admin plus the demo data, and served by
+# `backend-e2e` and `worker-e2e` (Redis DB 1, own uploads volume). It is dropped afterwards
+# unless --keep-db. Nothing a spec creates reaches the dev database.
+#
+# The CPU ceiling holds: the dev server, backend and worker are stopped while the e2e
+# services run in their place with the same caps, and are started again afterwards.
+# Playwright always runs one worker.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
 ROUTES=""
 REBUILD=0
+SHARED_DB=0
+KEEP_DB=0
 ARGS=()
 while (($#)); do
   case "$1" in
     --routes) ROUTES="${2:?--routes needs a comma-separated list}"; shift 2 ;;
     --routes=*) ROUTES="${1#--routes=}"; shift ;;
     --rebuild) REBUILD=1; shift ;;
-    -h|--help) sed -n '2,19p' "$0"; exit 0 ;;
+    --shared-db) SHARED_DB=1; shift ;;
+    --keep-db) KEEP_DB=1; shift ;;
+    -h|--help) sed -n '2,29p' "$0"; exit 0 ;;
     *) ARGS+=("$1"); shift ;;
   esac
 done
@@ -74,14 +86,39 @@ if awk -v l="$load" -v c="$cores" 'BEGIN { exit !(l > c * 0.65) }'; then
   exit 3
 fi
 
+is_running() { [[ -n "$(docker compose ps --status running -q "$1" 2>/dev/null)" ]]; }
+
 dev_was_running=0
-[[ -n "$(docker compose ps --status running -q frontend 2>/dev/null)" ]] && dev_was_running=1
+is_running frontend && dev_was_running=1
+# The dev backend and worker the e2e pair replaces (disposable-database runs only).
+stopped_services=()
+
+export LYNK_E2E_DATABASE=""
+E2E_BACKEND_PORT="${LYNK_E2E_BACKEND_PORT:-8043}"
+export LYNK_E2E_BACKEND_PORT="$E2E_BACKEND_PORT"
 
 RUN_NAME="crm-e2e-sh-$$"
 cleanup() {
   docker rm -f "$RUN_NAME" >/dev/null 2>&1 || true
   docker compose --profile e2e stop frontend-serve >/dev/null 2>&1 || true
   docker compose --profile e2e rm -f frontend-serve >/dev/null 2>&1 || true
+  if [[ -n "$LYNK_E2E_DATABASE" ]]; then
+    docker compose --profile e2e stop backend-e2e worker-e2e >/dev/null 2>&1 || true
+    docker compose --profile e2e rm -f backend-e2e worker-e2e >/dev/null 2>&1 || true
+    docker volume rm -f "$(basename "$PWD")_e2e_uploads" >/dev/null 2>&1 || true
+    docker compose exec -T redis redis-cli -n 1 FLUSHDB >/dev/null 2>&1 || true
+    if ((KEEP_DB)); then
+      echo "== Kept $LYNK_E2E_DATABASE (drop it: docker compose run --rm --no-deps -T backend python -m scripts.provision_database drop $LYNK_E2E_DATABASE) =="
+    else
+      echo "== Dropping $LYNK_E2E_DATABASE =="
+      docker compose run --rm --no-deps -T backend python -m scripts.provision_database drop "$LYNK_E2E_DATABASE" >/dev/null 2>&1 \
+        || echo "Could not drop $LYNK_E2E_DATABASE; drop it with scripts.provision_database." >&2
+    fi
+  fi
+  for service in "${stopped_services[@]+"${stopped_services[@]}"}"; do
+    echo "== Restarting $service =="
+    docker compose start "$service" >/dev/null || true
+  done
   if ((dev_was_running)); then
     echo "== Restarting the dev server =="
     docker compose start frontend >/dev/null
@@ -112,6 +149,34 @@ fi
 if ((REBUILD)) || [[ -n "$stale" ]]; then
   echo "== Building (${stale:-forced}) =="
   docker compose --profile e2e run --rm --no-deps frontend-serve npm run build
+fi
+
+if ((SHARED_DB)); then
+  echo "== Shared dev database (--shared-db): specs write into it =="
+else
+  LYNK_E2E_DATABASE="lynk_e2e_$(date -u +%Y%m%d%H%M%S)_$$"
+  if ss -ltn 2>/dev/null | grep -q ":$E2E_BACKEND_PORT "; then
+    echo "Port $E2E_BACKEND_PORT is taken; set LYNK_E2E_BACKEND_PORT to a free one." >&2
+    LYNK_E2E_DATABASE=""
+    exit 4
+  fi
+  for service in backend celery-worker; do
+    if is_running "$service"; then
+      docker compose stop "$service" >/dev/null
+      stopped_services+=("$service")
+    fi
+  done
+  is_running redis || docker compose up -d --no-deps redis >/dev/null
+  echo "== Creating the test database $LYNK_E2E_DATABASE (migrate, bootstrap, demo data) =="
+  docker compose run --rm --no-deps -T backend python -m scripts.provision_database create "$LYNK_E2E_DATABASE" --seed demo
+  docker compose --profile e2e up -d --no-deps backend-e2e worker-e2e >/dev/null
+  for _ in $(seq 1 60); do
+    code="$(curl -s -o /dev/null -m 5 -w '%{http_code}' "http://localhost:$E2E_BACKEND_PORT/health" || true)"
+    [[ "$code" == 200 ]] && break
+    sleep 2
+  done
+  [[ "$code" == 200 ]] || { echo "backend-e2e did not answer on :$E2E_BACKEND_PORT." >&2; docker compose --profile e2e logs --tail 40 backend-e2e >&2; exit 4; }
+  export LYNK_E2E_API_BASE_URL="http://localhost:$E2E_BACKEND_PORT/api/v1"
 fi
 
 if ss -ltn 2>/dev/null | grep -q ':3000 '; then

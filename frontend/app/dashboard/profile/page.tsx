@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Fact, FactList } from "@/components/ui/Fact";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { ChangePasswordSection } from "@/components/profile/ChangePasswordSection";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { EmptyValue } from "@/components/ui/EmptyValue";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
@@ -38,6 +39,7 @@ type ProfileResponse = {
   role_name?: string | null;
   mfa_enabled?: boolean;
   mfa_required?: boolean;
+  password_set?: boolean;
 };
 
 type ProfileForm = {
@@ -68,6 +70,7 @@ export default function ProfilePage() {
   const [photoUrl, setPhotoUrl] = useState("");
   const [mfaEnabled, setMfaEnabled] = useState(false);
   const [mfaRequired, setMfaRequired] = useState(false);
+  const [passwordSet, setPasswordSet] = useState(false);
   const [mfaSecret, setMfaSecret] = useState("");
   const [mfaOtpAuthUri, setMfaOtpAuthUri] = useState("");
   const [mfaCode, setMfaCode] = useState("");
@@ -118,6 +121,7 @@ export default function ProfilePage() {
         setRoleName(data.role_name ?? null);
         setMfaEnabled(Boolean(data.mfa_enabled));
         setMfaRequired(Boolean(data.mfa_required));
+        setPasswordSet(Boolean(data.password_set));
       } catch {
         if (!cancelled) {
           setLoadFailed(true);
@@ -396,6 +400,8 @@ export default function ProfilePage() {
             </Button>
           </FormFooter>
       </FormSection>
+
+      <ChangePasswordSection passwordSet={passwordSet} onChanged={() => setPasswordSet(true)} />
 
       <FormSection
         title="Account security"

@@ -73,7 +73,7 @@ ones any sub-phase touches for design reasons.
 | `globals.css` | — | 5.1 | rebuild | Tokens: rail widths, the retired 5-step, `text-base` | |
 | `runtime-config.js/route.ts` | — | — | unchanged | Not a surface | |
 
-### 1.2 `app/auth/**` (5)
+### 1.2 `app/auth/**` (7, plus the root `global-error.tsx`)
 
 | Path | Lines | Owner | Verdict | Note | Status |
 |---|---|---|---|---|---|
@@ -82,6 +82,9 @@ ones any sub-phase touches for design reasons.
 | `auth/setup-password/page.tsx` | 161 | 5.8 | rebuild | | batch 2 — the wordmark stopped doing a page heading's job (§3.1) |
 | `auth/callback/page.tsx` | 10 | 5.8 | unchanged | Shim | close-out — unchanged |
 | `auth/callback/AuthCallbackClient.tsx` | 58 | 5.8 | adopt | | batch 2 — a theme-blind `invert`ed raster replaced by a toned icon |
+| `auth/forgot-password/page.tsx` | — | 5.8 | new | Same door as `setup-password` (13 F0.7 B3) | added 2026-10-04; on the design walk's public routes |
+| `auth/reset-password/page.tsx` | — | 5.8 | new | Same door; fields from `components/auth/NewPasswordForm` (13 F0.7 B3) | added 2026-10-04; on the design walk's public routes |
+| `global-error.tsx` (root) | — | 5.1 | new | The last route boundary: brings its own html/body; `RouteErrorState` (13 F0.8 F5) | added 2026-10-04 |
 
 ### 1.3 `app/client/**` — the portal (17)
 
@@ -404,6 +407,9 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `users/userManagementTable.tsx` | **873** | 5.6 | rebuild | Largest raw-`Table` consumer | **done, batch 4b** — needed `groupBy` and `isRowSelectable` on `RecordTable`; both additive |
 | `users/createUserDialog.tsx` | 285 | 5.6 | rebuild | | **done, batch 7d** — its success banner painted `text-state-success` inside an already-tinted box (R5) |
 | `users/editUserDialog.tsx` | 331 | 5.6 | **unchanged** | | **done, batch 7d** — audited clean |
+| `users/InviteLinkResult.tsx` | — | 5.6 | new | Invite emailed or not, plus the setup link; shared by the create and edit dialogs (13 F0.7 B4) | added 2026-10-04 |
+| `profile/ChangePasswordSection.tsx` | — | 5.6 | new | A `FormSection` on Profile; field errors on the fields (13 F0.7 B3) | added 2026-10-04 |
+| `auth/NewPasswordForm.tsx` | — | 5.8 | new | New password + confirm + policy hint, for the setup and reset doors | added 2026-10-04 |
 | `users/userFilters.tsx` | 200 | 5.6 | rebuild | | **done, batch 7d** — three `text-sm font-semibold text-copy-primary` group headings → `SectionHeading` (R7) |
 | `automation/AutomationRulesTable.tsx` | 105 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batch 4a** — and the row gained an open gesture; the name had been a 200px `<button>` |
 | `automation/AutomationRunsTable.tsx` | 51 | 5.6 | adopt | Raw `Table` → `RecordTable` | **done, batches 4a + 7d** — and in 7d it took the `isLoading` / `hasError` / `onRetry` its page had been drawing beside it |

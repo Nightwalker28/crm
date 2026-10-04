@@ -10,7 +10,8 @@ from urllib.parse import quote
 
 from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 

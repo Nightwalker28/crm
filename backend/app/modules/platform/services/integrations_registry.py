@@ -548,13 +548,40 @@ def _merge_connection(provider_key: str, registry: IntegrationConnection | None,
     return base
 
 
-def list_integration_health(db: Session, *, tenant_id: int) -> list[dict[str, Any]]:
+# Mail and calendar connect per user: one user's mailbox does not let anyone else send (13a I10).
+_PER_USER_PROVIDERS = {
+    "google_mail": ("mail", "google"),
+    "microsoft_mail": ("mail", "microsoft"),
+    "imap_smtp_mail": ("mail", "imap_smtp"),
+    "google_calendar": ("calendar", "google"),
+    "microsoft_calendar": ("calendar", "microsoft"),
+}
+
+
+def _viewer_connections(db: Session, *, tenant_id: int, user_id: int) -> dict[str, dict[str, Any]]:
+    rows_by_kind = {
+        "mail": db.query(UserMailConnection).filter(UserMailConnection.tenant_id == tenant_id, UserMailConnection.user_id == user_id).all(),
+        "calendar": db.query(UserCalendarConnection).filter(UserCalendarConnection.tenant_id == tenant_id, UserCalendarConnection.user_id == user_id).all(),
+    }
+    viewer: dict[str, dict[str, Any]] = {}
+    for provider_key, (kind, source_key) in _PER_USER_PROVIDERS.items():
+        rows = [row for row in rows_by_kind[kind] if row.provider == source_key]
+        viewer[provider_key] = {
+            "viewer_status": _aggregate_status(rows) if rows else "disconnected",
+            "viewer_account_label": _account_label_for_rows(rows) if rows else None,
+        }
+    return viewer
+
+
+def list_integration_health(db: Session, *, tenant_id: int, viewer_user_id: int | None = None) -> list[dict[str, Any]]:
     providers = seed_provider_registry(db)
     registry = {connection.provider_key: connection for connection in list_registry_connections(db, tenant_id=tenant_id)}
     derived = _derived_connections(db, tenant_id=tenant_id)
+    viewer = _viewer_connections(db, tenant_id=tenant_id, user_id=viewer_user_id) if viewer_user_id else {}
     results = []
     for provider in providers:
         connection = _merge_connection(provider.key, registry.get(provider.key), derived.get(provider.key))
+        connection.update(viewer.get(provider.key, {}))
         sync_counts = _sync_run_counts(db, tenant_id=tenant_id, provider_key=provider.key)
         data_transfer_counts = _data_transfer_job_counts(
             db,

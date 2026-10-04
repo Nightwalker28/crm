@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/field";
 import { resolveMediaUrl } from "@/lib/media";
 import { useConfirm } from "@/hooks/useConfirm";
+import { InviteLinkResult } from "@/components/users/InviteLinkResult";
+import type { InviteEmailResult } from "@/hooks/admin/useUserManagement";
 
 type User = {
   id: number;
@@ -43,6 +45,7 @@ type User = {
   auth_mode?: "manual_only" | "manual_or_google";
   mfa_enabled?: boolean;
   mfa_required?: boolean;
+  password_set?: boolean;
   is_active: "active" | "inactive";
 };
 
@@ -60,6 +63,7 @@ type Props = {
   onSave: (id: number, form: { role_id: number; team_id: number; auth_mode: "manual_only" | "manual_or_google"; is_active: "active" | "inactive" }) => Promise<void>;
   onResetMfa?: (id: number) => Promise<void>;
   isResettingMfa?: boolean;
+  onResendInvite?: (id: number) => Promise<{ setup_link: string; invite_email: InviteEmailResult }>;
 };
 
 export default function EditUserDialog({
@@ -72,8 +76,25 @@ export default function EditUserDialog({
   onSave,
   onResetMfa,
   isResettingMfa = false,
+  onResendInvite,
 }: Props) {
   const { confirm } = useConfirm();
+  const [invite, setInvite] = useState<{ setup_link: string; invite_email: InviteEmailResult } | null>(null);
+  const [inviteError, setInviteError] = useState<string | null>(null);
+  const [isInviting, setIsInviting] = useState(false);
+
+  async function handleResendInvite() {
+    if (!onResendInvite) return;
+    setInviteError(null);
+    setIsInviting(true);
+    try {
+      setInvite(await onResendInvite(user.id));
+    } catch (error) {
+      setInviteError(error instanceof Error ? error.message : "The invite could not be sent. Try again.");
+    } finally {
+      setIsInviting(false);
+    }
+  }
   const [role, setRole] = useState<number>(user.role_id);
   const [team, setTeam] = useState<number>(user.team_id);
   const [authMode, setAuthMode] = useState<"manual_only" | "manual_or_google">(user.auth_mode ?? "manual_or_google");
@@ -308,6 +329,30 @@ export default function EditUserDialog({
                   </Button>
                 </div>
               </Field>
+
+              {user.password_set === false && onResendInvite ? (
+                <Field>
+                  <FieldLabel>Sign-in</FieldLabel>
+                  <div className="flex items-center justify-between gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
+                    <div className="min-w-0 text-sm text-copy-secondary">
+                      No password set yet. A new invite replaces the old link.
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={isInviting || isSaving || status === "inactive"}
+                      onClick={() => void handleResendInvite()}
+                    >
+                      {isInviting ? "Sending…" : "Resend invite"}
+                    </Button>
+                  </div>
+                  {inviteError ? <p role="alert" className="text-xs text-state-danger">{inviteError}</p> : null}
+                  {invite ? (
+                    <InviteLinkResult id="edit-user-setup-link" email={user.email} setupLink={invite.setup_link} inviteEmail={invite.invite_email} />
+                  ) : null}
+                </Field>
+              ) : null}
             </FieldGroup>
           </div>
 

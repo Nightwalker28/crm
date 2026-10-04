@@ -33,7 +33,7 @@ SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
     {"key": "workspace", "label": "Workspace", "sort_order": 5},
     {"key": "sales", "label": "Sales", "sort_order": 10},
     {"key": "finance", "label": "Finance", "sort_order": 20},
-    {"key": "catalog", "label": "Products & Services", "sort_order": 30},
+    {"key": "catalog", "label": "Products & services", "sort_order": 30},
     {"key": "support", "label": "Support", "sort_order": 40},
     {"key": "reports", "label": "Reports", "sort_order": 80},
     {"key": "settings", "label": "Settings", "sort_order": 90},

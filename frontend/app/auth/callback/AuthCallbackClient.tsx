@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { takeParkedNextPath } from "@/lib/authRedirect";
 import { publishAuthSessionChange } from "@/lib/authSessionEvents";
 
 export default function AuthCallbackClient() {
@@ -20,8 +21,10 @@ export default function AuthCallbackClient() {
   useEffect(() => {
     if (status === "active" && !redirectedRef.current) {
       redirectedRef.current = true;
+      // Read before publishing: the session change clears sessionStorage.
+      const nextPath = takeParkedNextPath();
       publishAuthSessionChange();
-      router.replace("/dashboard");
+      router.replace(nextPath);
     }
   }, [router, status]);
 

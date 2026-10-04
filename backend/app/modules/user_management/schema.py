@@ -35,6 +35,8 @@ class UserProfile(BaseModel):
     last_login_provider: Optional[str] = None
     mfa_enabled: bool = False
     mfa_required: bool = False
+    # False until the user sets a password from their invite (or for SSO-only users).
+    password_set: bool = False
     is_active: UserStatus
 
     model_config = ConfigDict(from_attributes=True)
@@ -54,6 +56,7 @@ class UserListItem(BaseModel):
     auth_mode: Optional[UserAuthMode] = None
     mfa_enabled: bool = False
     mfa_required: bool = False
+    password_set: bool = False
     is_active: Optional[UserStatus] = None
 
 class UserListResponse(BaseModel):
@@ -440,6 +443,27 @@ class SetupPasswordRequest(BaseModel):
     password: str
 
 
+class PasswordForgotRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    # Optional only for an account that has never had a password (SSO-only until now).
+    current_password: Optional[str] = None
+    new_password: str
+
+
+class InviteEmailResult(BaseModel):
+    sent: bool
+    # Why it was not sent, in words an admin can act on. None when sent.
+    error: Optional[str] = None
+
+
 class AdminCreateUserRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -453,6 +477,13 @@ class AdminCreateUserRequest(BaseModel):
 class AdminCreateUserResponse(BaseModel):
     user: UserProfile
     setup_link: Optional[str] = None
+    # None when the user signs in with SSO only and gets no setup link.
+    invite_email: Optional[InviteEmailResult] = None
+
+
+class AdminUserInviteResponse(BaseModel):
+    setup_link: str
+    invite_email: InviteEmailResult
 
 
 class UserProfileUpdateRequest(BaseModel):

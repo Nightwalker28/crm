@@ -114,6 +114,20 @@ Optional integrations:
 - `GOOGLE_GMAIL_RESTRICTED_SYNC_ENABLED`
 - `MAIL_CREDENTIAL_SECRET`
 
+Email (invites, password resets, operator alerts):
+
+- Each tenant's own sender is set in Settings → Integrations (workspace email sender).
+- `PLATFORM_SMTP_HOST`, `PLATFORM_SMTP_PORT` (`587`), `PLATFORM_SMTP_SECURITY` (`starttls`, `ssl` or `none`), `PLATFORM_SMTP_USERNAME`, `PLATFORM_SMTP_PASSWORD`, `PLATFORM_SMTP_SENDER_EMAIL`: the platform's sender. In cloud mode it carries invites and resets for a tenant with no sender of its own; a single-client install never uses it for them. It also sends operator alerts.
+- `OPS_ALERT_EMAIL`: who is told when Celery beat or the worker stops, and when they recover. Sent through the platform sender, or on a single-client install through the tenant's sender.
+
+Observability:
+
+- `SENTRY_DSN` (backend, worker, beat) and `NEXT_PUBLIC_SENTRY_DSN` (frontend, read at build time): error tracking. Off when unset. Any Sentry-compatible service works (Sentry, self-hosted Sentry, GlitchTip).
+- `APP_ENVIRONMENT` (for example `production` or `uat`), `APP_VERSION`: tagged on every error.
+- `SENTRY_TRACES_SAMPLE_RATE`: performance tracing share, `0` by default.
+- `LOG_FORMAT`: `json` (default when `DEBUG=false`) or `text`. `LOG_LEVEL`: `INFO` by default. Every log line and error body carries the request's `X-Request-ID`.
+- `BACKGROUND_HEARTBEAT_STALE_SECONDS`: how old the beat or worker heartbeat may be before it counts as stopped. Default `300`.
+
 Runtime sizing:
 
 - `WEB_CONCURRENCY`: number of Uvicorn worker processes inside the backend container. The prod script defaults to `2`.
@@ -245,6 +259,28 @@ docker compose --env-file .env.production -f docker-compose.prod.yml logs celery
 ```
 
 If the backend fails to start, check DB reachability and migration permissions first. If jobs are not running, check `CELERY_BROKER_URL` and Redis reachability.
+
+## Monitoring
+
+- `GET /health` is liveness: the process answers. The container healthcheck uses it.
+- `GET /health/ready` checks PostgreSQL, Redis, the Celery broker, beat and the worker, and answers `503` with the failing part named. Point an uptime monitor at it. It is not the container healthcheck: a stopped worker must not keep the backend from starting.
+- Beat publishes a heartbeat task every minute and the worker runs it. When either stops for `BACKGROUND_HEARTBEAT_STALE_SECONDS`, the backend logs an error (an error-tracker event when `SENTRY_DSN` is set) and mails `OPS_ALERT_EMAIL`, once per incident and once on recovery.
+
+## Backups
+
+`scripts/platform-backup.sh` dumps the database and archives the uploads volume, both read through the backend container. It works on the stack named by `LYNK_COMPOSE_FILES` (default `docker-compose.prod.yml`). `scripts/platform-restore.sh` takes a safety backup first, then restores the database and the uploads.
+
+Schedule it with the units in `deploy/systemd/`: copy both to `/etc/systemd/system/`, set the checkout path and backup directory in the service, then `systemctl enable --now lynk-platform-backup.timer`. It runs nightly and keeps 7 daily, 4 weekly and 3 monthly backups. Run one restore into a scratch environment before go-live, so the procedure has been tested at least once.
+
+## UAT and test databases
+
+UAT gets its own database, never the dev one. On the same server:
+
+```bash
+docker compose run --rm --no-deps -T backend python -m scripts.provision_database create lynk_uat
+```
+
+That migrates it and creates the tenant and the `INITIAL_ADMIN_*` admin, with no demo data. Point the UAT stack at it with `LYNK_DATABASE_NAME=lynk_uat`, or give it its own `DATABASE_URL`. Browser tests (`scripts/e2e.sh`) create a disposable `lynk_e2e_*` database per run and drop it afterwards.
 
 ## GitHub Container Registry
 

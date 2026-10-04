@@ -22,10 +22,12 @@ usage() {
   cat <<'USAGE'
 Usage:
   scripts/platform-backup.sh create [manual|daily|weekly|monthly]
+  scripts/platform-backup.sh scheduled      # monthly on the 1st, weekly on Sundays, else daily
   scripts/platform-backup.sh list
   scripts/platform-backup.sh delete <backup_id> --confirm <backup_id>
 
 Environment:
+  LYNK_COMPOSE_FILES=docker-compose.prod.yml   (colon-separated; the stack to back up)
   PLATFORM_BACKUP_DIR=/var/backups/maad-crm
   PLATFORM_BACKUP_INCLUDE_UPLOADS=true
   PLATFORM_BACKUP_RETENTION_DAILY=7
@@ -63,8 +65,23 @@ ensure_platform_dirs() {
   touch "$HISTORY_FILE"
 }
 
+# The compose files are named, never inferred: a shell with the dev COMPOSE_FILE (or none) must
+# not back up or restore the wrong stack. Production is the default; for the local stack use
+#   LYNK_COMPOSE_FILES=docker-compose.yml:docker-compose.limits.yml
+COMPOSE_FILES="${LYNK_COMPOSE_FILES:-docker-compose.prod.yml}"
+
+compose() {
+  local files=() args=() file
+  IFS=: read -ra files <<< "$COMPOSE_FILES"
+  for file in "${files[@]}"; do
+    [[ -f "$ROOT_DIR/$file" ]] || die "compose file not found: $file (set LYNK_COMPOSE_FILES)"
+    args+=(-f "$ROOT_DIR/$file")
+  done
+  docker compose --project-directory "$ROOT_DIR" "${args[@]}" "$@"
+}
+
 compose_exec_backend() {
-  docker compose exec -T backend "$@"
+  compose exec -T backend "$@"
 }
 
 compose_backend_sh() {
@@ -259,10 +276,22 @@ PY
     die "$error_message"
   fi
 
-  if env_truthy "$INCLUDE_UPLOADS" && [[ -d "$ROOT_DIR/backend/uploads" ]]; then
-    tar -czf "$backup_path/uploads.tar.gz" -C "$ROOT_DIR/backend" uploads
+  # Uploads are read through the backend container, so the production volume (crm_uploads)
+  # and the local bind mount are both covered.
+  if env_truthy "$INCLUDE_UPLOADS"; then
+    set +e
+    compose exec -T backend tar -czf - -C /app uploads > "$backup_path/uploads.tar.gz"
+    local uploads_status=$?
+    set -e
+    if (( uploads_status != 0 )); then
+      error_message="uploads archive failed with exit code $uploads_status"
+      trap_active=0
+      metadata_json="$(write_metadata "$backup_path" "failed" "$category" "$backup_id" "$created_at" "$(utc_now)" "$(dir_size_bytes "$backup_path")" "$error_message" "$included_components" "$included_paths" "")"
+      append_history "$metadata_json"
+      die "$error_message"
+    fi
     included_components="postgresql,uploads"
-    included_paths="backend/uploads"
+    included_paths="backend:/app/uploads"
   fi
 
   (
@@ -383,6 +412,11 @@ PY
 
 case "$COMMAND" in
   create) create_backup "${1:-manual}" ;;
+  scheduled)
+    if [[ "$(date -u +%d)" == "01" ]]; then create_backup monthly
+    elif [[ "$(date -u +%u)" == "7" ]]; then create_backup weekly
+    else create_backup daily
+    fi ;;
   list) list_backups ;;
   delete) delete_backup "$@" ;;
   help|-h|--help) usage ;;

@@ -331,6 +331,7 @@ export default function DashboardHomePage() {
           type={widget.type}
           summary={summary}
           hasReportAccess={hasReportAccess}
+          isAccessLoading={isModulesLoading}
           isLoading={crmSummaryQuery.isLoading}
           isError={crmSummaryQuery.isError}
           onRetry={() => void crmSummaryQuery.refetch()}
@@ -350,7 +351,7 @@ export default function DashboardHomePage() {
       );
     }
     if (widget.type === "report_chart") {
-      return <DashboardReportChartWidget config={widget.config} savedReports={savedReports} hasReportAccess={hasReportAccess} />;
+      return <DashboardReportChartWidget config={widget.config} savedReports={savedReports} hasReportAccess={hasReportAccess} isAccessLoading={isModulesLoading} />;
     }
     if (widget.type === "module_entry_points") {
       return <DashboardModuleEntryPoints modules={modules} isLoading={isModulesLoading} />;

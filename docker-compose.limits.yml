@@ -20,6 +20,11 @@ services:
     cpus: 2.0
     mem_limit: 6g
     memswap_limit: 6656m
+  # Replace backend and celery-worker while scripts/e2e.sh runs (it stops those two).
+  backend-e2e:
+    cpus: 1.0
+  worker-e2e:
+    cpus: 0.5
   frontend-e2e:
     cpus: 1.0
   redis:

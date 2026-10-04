@@ -32,10 +32,13 @@ export function DashboardReportChartWidget({
   config,
   savedReports,
   hasReportAccess,
+  isAccessLoading = false,
 }: {
   config: Record<string, unknown> | undefined;
   savedReports: DashboardSavedReport[];
   hasReportAccess: boolean;
+  /** The user's modules are still loading (or the session refreshing): not a denial (13a I2). */
+  isAccessLoading?: boolean;
 }) {
   const configuredId = config?.saved_report_id;
   const savedReportId = typeof configuredId === "number" ? configuredId : Number(configuredId || 0);
@@ -51,6 +54,7 @@ export function DashboardReportChartWidget({
     staleTime: 60000,
   });
 
+  if (isAccessLoading) return <PanelLoading label="Loading chart…" />;
   if (!hasReportAccess) {
     return <PanelEmpty icon={Lock} title="Reports access is required" description="Ask an administrator for access to reports to see this chart." />;
   }

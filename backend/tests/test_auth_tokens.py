@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException
-from jose import jwt
+import jwt
 
 from app.core.config import settings
 from app.modules.user_management.models import Role, User

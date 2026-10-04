@@ -17,7 +17,12 @@ Usage:
 
 The restore script is operator-only. It creates a fresh safety platform backup
 before replacing the database, stops app containers, restores with pg_restore,
-checks Alembic state, starts the app containers, and runs a health check.
+replaces the uploads with the backup's uploads.tar.gz when there is one, checks
+Alembic state, starts the app containers, and runs a health check.
+
+Environment:
+  LYNK_COMPOSE_FILES=docker-compose.prod.yml   (colon-separated; the stack to restore)
+  PLATFORM_RESTORE_UPLOADS=true                (false keeps the current uploads)
 USAGE
 }
 
@@ -34,8 +39,23 @@ timestamp_id() {
   date -u +"%Y%m%d%H%M%S"
 }
 
+# The compose files are named, never inferred: a shell with the dev COMPOSE_FILE (or none) must
+# not back up or restore the wrong stack. Production is the default; for the local stack use
+#   LYNK_COMPOSE_FILES=docker-compose.yml:docker-compose.limits.yml
+COMPOSE_FILES="${LYNK_COMPOSE_FILES:-docker-compose.prod.yml}"
+
+compose() {
+  local files=() args=() file
+  IFS=: read -ra files <<< "$COMPOSE_FILES"
+  for file in "${files[@]}"; do
+    [[ -f "$ROOT_DIR/$file" ]] || die "compose file not found: $file (set LYNK_COMPOSE_FILES)"
+    args+=(-f "$ROOT_DIR/$file")
+  done
+  docker compose --project-directory "$ROOT_DIR" "${args[@]}" "$@"
+}
+
 compose_exec_backend() {
-  docker compose exec -T backend "$@"
+  compose exec -T backend "$@"
 }
 
 compose_backend_sh() {
@@ -161,6 +181,12 @@ if [[ "$EXPECTED_CONFIRM" == "unknown" ]]; then
 fi
 [[ "$CONFIRM_FLAG" == "--confirm-restore" && "$CONFIRM_VALUE" == "$EXPECTED_CONFIRM" ]] || die "restore requires --confirm-restore $EXPECTED_CONFIRM"
 
+# A damaged archive is caught here, before the safety backup and before anything is stopped.
+CHECKSUMS_PATH="$(dirname "$DUMP_PATH")/checksums.txt"
+if [[ -f "$CHECKSUMS_PATH" ]]; then
+  (cd "$(dirname "$DUMP_PATH")" && sha256sum --check --quiet checksums.txt) || die "checksum mismatch in $(dirname "$DUMP_PATH")"
+fi
+
 RESTORE_ID="platform-restore-$(timestamp_id)"
 STARTED_AT="$(utc_now)"
 SAFETY_BACKUP_ID=""
@@ -184,10 +210,10 @@ SAFETY_BACKUP_ID="$(printf '%s\n' "$SAFETY_OUTPUT" | grep -E '^Created platform 
 [[ -n "$SAFETY_BACKUP_ID" ]] || die "safety backup did not return a backup id"
 
 echo "Stopping app containers before restore"
-docker compose stop backend celery-worker celery-beat frontend
+compose stop backend celery-worker celery-beat frontend
 
 set +e
-cat "$DUMP_PATH" | docker compose run --rm -T --no-deps backend sh -lc '
+cat "$DUMP_PATH" | compose run --rm -T --no-deps backend sh -lc '
 set -eu
 python3 - <<'"'"'PY'"'"' > /tmp/restore_db.env
 import os
@@ -220,12 +246,29 @@ if (( RESTORE_STATUS != 0 )); then
   RESTORE_TRAP_ACTIVE=0
   write_restore_metadata "$RESTORE_ID" "$SOURCE_ID" "$DUMP_PATH" "$STARTED_AT" "$(utc_now)" "failed" "$SAFETY_BACKUP_ID" "pg_restore failed with exit code $RESTORE_STATUS" >/dev/null
   echo "Restore failed. Starting app containers so the operator can inspect/recover." >&2
-  docker compose start backend celery-worker celery-beat frontend >/dev/null || true
+  compose start backend celery-worker celery-beat frontend >/dev/null || true
   exit "$RESTORE_STATUS"
 fi
 
+UPLOADS_PATH="$(dirname "$DUMP_PATH")/uploads.tar.gz"
+case "${PLATFORM_RESTORE_UPLOADS:-true}" in
+  1|true|TRUE|yes|YES|on|ON) restore_uploads=1 ;;
+  *) restore_uploads=0 ;;
+esac
+if (( restore_uploads )) && [[ -f "$UPLOADS_PATH" ]]; then
+  echo "Restoring uploads from $UPLOADS_PATH"
+  # Through the backend container, so the production volume is the one replaced.
+  cat "$UPLOADS_PATH" | compose run --rm -T --no-deps backend sh -lc '
+set -eu
+find /app/uploads -mindepth 1 -delete
+tar -xzf - -C /app
+'
+elif (( restore_uploads )); then
+  echo "No uploads.tar.gz beside the dump; uploads left as they are"
+fi
+
 echo "Starting app containers after restore"
-docker compose start backend celery-worker celery-beat frontend
+compose start backend celery-worker celery-beat frontend
 
 echo "Checking Alembic migration state"
 compose_backend_sh 'alembic current'

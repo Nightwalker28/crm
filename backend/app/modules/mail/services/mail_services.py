@@ -17,7 +17,8 @@ import urllib.parse
 
 import requests
 from fastapi import HTTPException, Request, status
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session

@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 from fastapi import HTTPException, Request, UploadFile, status
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload

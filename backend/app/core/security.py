@@ -100,6 +100,23 @@ def _attach_access_token_claims(user: User, payload: dict) -> User:
     return user
 
 
+def access_token_revoked(user: User, payload: dict) -> bool:
+    """True for an access token issued before the user's sessions were revoked.
+
+    `iat` has whole seconds, so the revocation time is floored too: a token issued in the same
+    second as the revocation, which is the new session's own, stays valid.
+    """
+    revoked_at = getattr(user, "sessions_revoked_at", None)
+    if revoked_at is None:
+        return False
+    if revoked_at.tzinfo is None:
+        revoked_at = revoked_at.replace(tzinfo=timezone.utc)
+    issued_at = payload.get("iat")
+    if not isinstance(issued_at, (int, float)):
+        return True
+    return int(issued_at) < int(revoked_at.timestamp())
+
+
 def _load_user_with_team(db: Session, user_id: int) -> User | None:
     return (
         db.query(User)
@@ -165,6 +182,11 @@ def get_current_user(
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Inactive or missing user",
+                )
+            if access_token_revoked(user, payload):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session revoked",
                 )
             request_tenant = getattr(request.state, "tenant", None)
             if request_tenant and user.tenant_id != request_tenant.id:
