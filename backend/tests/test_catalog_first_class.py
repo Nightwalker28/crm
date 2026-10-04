@@ -141,6 +141,7 @@ class CatalogFirstClassTests(unittest.TestCase):
 
     def test_order_update_revalidates_links(self):
         order = create_sales_order(self.db, {"status": "confirmed", "items": [{"name": "Camera kit", "unit_price": "250", "catalog_product_id": 1}]}, self.user)
+        self.db.commit()  # the service flushes; the caller commits (13a E5)
         with self.assertRaises(HTTPException):
             update_sales_order(self.db, order, {"items": [{"name": "Camera", "unit_price": "1", "catalog_product_id": 9}]})
         self.db.rollback()

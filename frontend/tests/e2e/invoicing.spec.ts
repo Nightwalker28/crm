@@ -31,9 +31,9 @@ test("an invoice is drafted, issued, part-paid and credited", async ({ page }) =
   await page.goto("/dashboard/finance/pos/new");
   await expect(page.getByRole("heading", { name: "Create invoice" }).first()).toBeVisible();
   await page.getByLabel(/^Customer name/).fill(`E5 Customer ${stamp}`);
-  await page.locator("[data-transaction-field='name']").first().fill("Consulting day");
-  await page.locator("[data-transaction-field='quantity']").first().fill("2");
-  await page.locator("[data-transaction-field='unit_price']").first().fill("50");
+  await page.getByLabel("name line 1").fill("Consulting day");
+  await page.getByLabel("quantity line 1").fill("2");
+  await page.getByLabel("unit price line 1").fill("50");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL(/\/dashboard\/finance\/pos\/\d+$/, { timeout: 30_000 });
   const invoiceUrl = page.url();

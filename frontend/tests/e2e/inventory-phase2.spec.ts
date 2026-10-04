@@ -21,7 +21,7 @@ test("adjustment and transfer documents render their draft workflows in both the
     await expect(page.getByRole("heading", { name: "New adjustment" })).toBeVisible();
     await page.getByRole("combobox", { name: "Adjustment type" }).click();
     await page.getByRole("option", { name: "Physical count" }).click();
-    await expect(page.getByLabel("Counted")).toBeVisible();
+    await expect(page.getByLabel("Counted, line 1")).toBeVisible();
     await expect(page.getByText("Expected", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Add product" }).click();
     await expect(page.getByPlaceholder("Search tracked products")).toHaveCount(2);
@@ -34,7 +34,7 @@ test("adjustment and transfer documents render their draft workflows in both the
     await expect(page.getByRole("heading", { name: "New transfer" })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "From warehouse" })).toBeVisible();
     await expect(page.getByRole("combobox", { name: "To warehouse" })).toBeVisible();
-    await expect(page.getByLabel("Quantity")).toBeVisible();
+    await expect(page.getByLabel("Quantity, line 1")).toBeVisible();
     await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
   }
   expect(errors).toEqual([]);
@@ -53,7 +53,7 @@ test("an adjustment draft saves and remains recoverable after removal", async ({
   await page.getByLabel("Reason").fill("E2 browser draft check");
   await page.getByPlaceholder("Search tracked products").fill(name);
   await page.getByRole("option").first().click();
-  await page.getByLabel("Change", { exact: true }).fill("1");
+  await page.getByLabel("Change, line 1").fill("1");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL(/\/dashboard\/inventory\/adjustments\/\d+$/, { timeout: 30_000 });
   await expect(page.getByRole("button", { name: "Post", exact: true })).toBeVisible();
@@ -99,7 +99,7 @@ test("a transfer draft links two warehouses and saves its product line", async (
   await page.getByRole("option", { name: warehouseName }).click();
   await page.getByPlaceholder("Search tracked products").fill(name);
   await page.getByRole("option").first().click();
-  await page.getByLabel("Quantity").fill("1");
+  await page.getByLabel("Quantity, line 1").fill("1");
   await page.getByRole("button", { name: "Save draft" }).click();
   await expect(page).toHaveURL(/\/dashboard\/inventory\/transfers\/\d+$/, { timeout: 30_000 });
   await expect(page.getByText(warehouseName)).toBeVisible();

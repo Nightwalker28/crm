@@ -11,17 +11,33 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.inventory.services.costing import base_currency, rate_for, unit
 from app.modules.inventory.models import InventoryReservation
-from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves, stage_inventory_event
+from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves
+from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.purchasing.services.purchase_order_services import (
     _units, order_or_404, received_by_line, refresh_receipt_status, to_receive,
 )
+
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, order_id: int | None = None, search: str | None = None):
+    """The receipt list's rows. The list and its export both start here (13a A5)."""
+    query = db.query(PurchaseReceipt).options(selectinload(PurchaseReceipt.lines)).filter(PurchaseReceipt.tenant_id == tenant_id, PurchaseReceipt.deleted_at.is_(None))
+    if status:
+        query = query.filter(PurchaseReceipt.status == status)
+    if order_id:
+        query = query.filter(PurchaseReceipt.order_id == order_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.join(PurchaseOrder, PurchaseOrder.id == PurchaseReceipt.order_id).filter(PurchaseOrder.tenant_id == tenant_id, or_(
+            PurchaseReceipt.number.ilike(pattern), PurchaseReceipt.vendor_delivery_ref.ilike(pattern), PurchaseOrder.number.ilike(pattern)))
+    return query
 
 
 def _quantity(value) -> Decimal:
@@ -148,7 +164,7 @@ def post_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, rece
 
     refresh_bill_status(db, order=order)
     filled = _held(db, tenant_id=tenant_id, product_ids={line.product_id for line, _ in lines}, warehouse_id=receipt.warehouse_id) - held_before
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="purchase.receipt_posted",
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="purchase.receipt_posted",
         entity_type="purchase_receipt", entity_id=receipt.id,
         payload={"number": receipt.number, "purchase_order_id": order.id, "purchase_order_number": order.number,
                  "vendor_id": order.vendor_id, "vendor_name": order.vendor.org_name if order.vendor else None,

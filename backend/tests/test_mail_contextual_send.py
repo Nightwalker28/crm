@@ -19,6 +19,7 @@ from unittest import mock
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.access_control import PermissionPolicy
 from app.core.database import Base
 from app.modules.documents.models import Document
 from app.modules.mail.models import MailMessage, MailRecordAssociation, UserMailConnection
@@ -44,6 +45,9 @@ class _AllowAllPolicy:
 
     def __init__(self, db, user):
         self.user = user
+
+    # The real combinator over the two answers this fake gives.
+    can = PermissionPolicy.can
 
     def can_view_module(self, module_key: str) -> bool:
         return True

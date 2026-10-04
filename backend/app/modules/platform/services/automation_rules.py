@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.unit_of_work import deferred_commits, savepoint
 from app.core.config import settings
 from app.core.pagination import Pagination
 from app.modules.platform.models import (
@@ -999,20 +1000,24 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
         return _existing_run_for_rule_event(db, rule_id=rule_id, event_id=event_id)
     action_results = []
     try:
-        for index, action in enumerate(rule.actions_json or []):
-            try:
-                result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
-            except Exception as action_exc:
-                action_results.append(
-                    {
-                        "index": index,
-                        "type": action.get("type"),
-                        "status": "failed",
-                        "error": str(action_exc)[:1000],
-                    }
-                )
-                raise
-            action_results.append({"index": index, "type": action.get("type"), "status": "success", "result": result})
+        # A rule's actions land together or not at all (13a E5): a failing third action must
+        # not leave the first two committed beside a run that says it failed. Services the
+        # actions call may still commit; inside here that is a flush.
+        with deferred_commits(db), savepoint(db):
+            for index, action in enumerate(rule.actions_json or []):
+                try:
+                    result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
+                except Exception as action_exc:
+                    action_results.append(
+                        {
+                            "index": index,
+                            "type": action.get("type"),
+                            "status": "failed",
+                            "error": str(action_exc)[:1000],
+                        }
+                    )
+                    raise
+                action_results.append({"index": index, "type": action.get("type"), "status": "success", "result": result})
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)[:1000]

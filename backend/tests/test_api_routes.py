@@ -76,6 +76,10 @@ class RouteTestQuery:
 
 
 class RouteTestSession:
+    def __init__(self):
+        # Session.info: the unit of work keeps its state there (app/core/unit_of_work.py).
+        self.info = {}
+
     def query(self, *entities):
         return RouteTestQuery(*entities)
 

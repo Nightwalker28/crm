@@ -61,6 +61,11 @@ class PermissionPolicy:
             return False
         return True
 
+    def can(self, module_key: str, *actions: str) -> bool:
+        """All three layers for `module_key`: enabled, available to the team, and every action
+        in `actions` (default `view`) granted to the role."""
+        return self.can_view_module(module_key) and all(self.can_perform_action(module_key, action) for action in actions or ("view",))
+
     def require_module(self, module_key: str) -> None:
         require_department_module_access(self.db, user=self.user, module_key=module_key)
 

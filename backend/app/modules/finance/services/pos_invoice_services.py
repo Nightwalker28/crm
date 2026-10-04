@@ -572,10 +572,10 @@ def _issue(db: Session, current_user, invoice: FinancePosInvoice) -> None:
             description=f"Issued invoice {invoice.invoice_number}")
     _add_invoice_activity(db, current_user=current_user, invoice=invoice, action="issue",
         description=f"Issued invoice {invoice.invoice_number} for {invoice.customer_name}")
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
 
     # Staged with the transaction and dispatched to automation after commit.
-    stage_inventory_event(db, tenant_id=invoice.tenant_id, actor_user_id=invoice.issued_by, event_type="finance.invoice_issued",
+    stage_standard_crm_event(db, tenant_id=invoice.tenant_id, actor_user_id=invoice.issued_by, event_type="finance.invoice_issued",
         entity_type="finance_pos_invoice", entity_id=invoice.id, payload={"invoice_number": invoice.invoice_number,
         "customer_name": invoice.customer_name, "total_amount": str(invoice.total_amount), "currency": invoice.currency,
         "sales_order_id": invoice.sales_order_id})

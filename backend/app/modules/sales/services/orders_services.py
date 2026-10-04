@@ -369,7 +369,8 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
             deliver_remaining(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, order=order)
         reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
         refresh_delivery_status(db, order=order)
-        db.commit()
+        # The caller commits (13a E5): the route's unit of work, quote conversion, the portal.
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order could not be created") from exc
@@ -499,7 +500,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         # Confirmed: hold what each line needs. Draft, fulfilled or cancelled: release everything.
         reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
         refresh_delivery_status(db, order=order)
-        db.commit()
+        db.flush()
     except IntegrityError as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order could not be updated") from exc

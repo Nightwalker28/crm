@@ -2,15 +2,15 @@
 
 Products and services are separate modules with separate permissions, so these routes ask
 which of the two the caller can use rather than mounting under one of them. Each still runs
-all three access layers per module through `PermissionPolicy`.
+all three access layers per module through `can_access` (`app/core/permissions.py`).
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.security import require_user
+from app.core.permissions import can_access, require_any_access
 from app.modules.catalog.schema import (
     CatalogCategoryListResponse,
     CatalogCategoryRequest,
@@ -27,14 +27,10 @@ router = APIRouter(prefix="/catalog", tags=["Catalog"])
 CATALOG_MODULES = (CATALOG_PRODUCTS_MODULE, CATALOG_SERVICES_MODULE)
 
 
-def _allowed(db: Session, user, module_key: str, action: str) -> bool:
-    policy = PermissionPolicy(db, user)
-    return policy.can_view_module(module_key) and policy.can_perform_action(module_key, action)
 
 
 def _require_any_catalog(db: Session, user, action: str) -> None:
-    if not any(_allowed(db, user, module_key, action) for module_key in CATALOG_MODULES):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to the catalog.")
+    require_any_access(db, user, ((module_key, action) for module_key in CATALOG_MODULES), detail="You do not have access to the catalog.")
 
 
 def require_catalog_view(db: Session = Depends(get_db), current_user=Depends(require_user)):
@@ -94,8 +90,8 @@ def search_items(
             tenant_id=current_user.tenant_id,
             query=query,
             currency=currency.upper() if currency else None,
-            include_products=_allowed(db, current_user, CATALOG_PRODUCTS_MODULE, "view"),
-            include_services=_allowed(db, current_user, CATALOG_SERVICES_MODULE, "view"),
+            include_products=can_access(db, current_user, CATALOG_PRODUCTS_MODULE, "view"),
+            include_services=can_access(db, current_user, CATALOG_SERVICES_MODULE, "view"),
             limit=limit,
         )
     }
@@ -107,14 +103,14 @@ def _item_sales(db: Session, current_user, *, kind: str, item_id: int) -> dict:
         tenant_id=current_user.tenant_id,
         kind=kind,
         item_id=item_id,
-        include_quotes=_allowed(db, current_user, "sales_quotes", "view"),
-        include_orders=_allowed(db, current_user, "sales_orders", "view"),
+        include_quotes=can_access(db, current_user, "sales_quotes", "view"),
+        include_orders=can_access(db, current_user, "sales_orders", "view"),
     )
 
 
 @router.get("/products/{product_id}/sales", response_model=CatalogItemSalesResponse)
 def get_product_sales(product_id: int, db: Session = Depends(get_db), current_user=Depends(require_user)):
-    if not _allowed(db, current_user, CATALOG_PRODUCTS_MODULE, "view"):
+    if not can_access(db, current_user, CATALOG_PRODUCTS_MODULE, "view"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to products.")
     get_product_or_404(db, tenant_id=current_user.tenant_id, product_id=product_id)
     return _item_sales(db, current_user, kind="product", item_id=product_id)
@@ -122,7 +118,7 @@ def get_product_sales(product_id: int, db: Session = Depends(get_db), current_us
 
 @router.get("/services/{service_id}/sales", response_model=CatalogItemSalesResponse)
 def get_service_sales(service_id: int, db: Session = Depends(get_db), current_user=Depends(require_user)):
-    if not _allowed(db, current_user, CATALOG_SERVICES_MODULE, "view"):
+    if not can_access(db, current_user, CATALOG_SERVICES_MODULE, "view"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You do not have access to services.")
     get_service_or_404(db, tenant_id=current_user.tenant_id, service_id=service_id)
     return _item_sales(db, current_user, kind="service", item_id=service_id)

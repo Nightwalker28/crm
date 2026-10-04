@@ -144,8 +144,8 @@ def post_adjustment(db: Session, *, tenant_id: int, actor_user_id: int, document
                               source_type="inventory_adjustment", source_id=doc.id, source_line_id=line.id,
                               reason=doc.reason, note=doc.notes, unit_cost=unit_cost, cost_source=cost_source))
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=moves)
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
         event_type="inventory.adjustment_posted", entity_type="inventory_adjustment", entity_id=doc.id,
         payload={"number": doc.number, "mode": doc.mode, "warehouse_id": warehouse.id,
             "record_label": doc.number, "record_url": f"/dashboard/inventory/adjustments/{doc.id}"})

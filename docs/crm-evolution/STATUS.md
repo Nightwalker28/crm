@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-04 (Step 3).
+Last updated 2026-10-04 (Step 4).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -31,7 +31,92 @@ Last updated 2026-10-04 (Step 3).
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
 | ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 implemented and verified (2026-10-04): H2, H23, H12, H11, H17, H20, H21, H22, H26, H27, I3, I4. Next: §7 Step 4** (FQ code foundations). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 done and committed (`2e3bd7f`). §7 Step 4 (FQ code foundations) implemented and verified (2026-10-04): E5, E1/A5/G3, E2, E8/H15, B6, H9, H10. Next: §7 Step 5** (F1 names, retirement, one order model; B7 joins it). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+
+## Final fixes §7 Step 4 — FQ code foundations (2026-10-04)
+
+Every Step 4 item of `13-final-fixes.md` §7, built first and tested once. Behaviour is unchanged
+except where a foundation fixed a bug it exposed (noted). Where each foundation lives is now
+written down in `backend/AGENTS.md` ("Foundations every module uses", E10).
+
+- **E5, one unit of work:** `app/core/unit_of_work.py`. `unit_of_work(db)` turns a nested
+  `db.commit()` into a flush and commits once at the end (or rolls everything back);
+  `on_commit(db, fn)` runs after the real commit and is dropped on rollback; `savepoint(db)`
+  drops the callbacks made inside it. The stock ledger's private after-commit dispatch became
+  this. Events: `stage_crm_event` / `stage_standard_crm_event` write the row with the caller's
+  transaction and queue Celery only after commit (`emit_crm_event` = stage + commit);
+  `safe_emit_crm_event` and `safe_log_activity` use a savepoint inside a unit of work so their
+  failure never undoes the action. Applied to the composite flows: lead conversion, quote →
+  order, order create/update (services now flush; the routes wrap `unit_of_work`). The ERP
+  document routes already committed once. **Bug fixed on the way:** an automation rule whose
+  second action failed committed the first action's records beside a run marked failed; the
+  actions now run in a savepoint (`test_automation_rules`).
+- **E1/A5/G3, one list query:** each ERP document list (deliveries, returns, POs, receipts,
+  bills, credit notes, payments) has one `list_query` in its service, used by the list route
+  and by the export; `platform/services/document_exports.py` is the registry the export job
+  reads, and every export-job route now takes the list's own filters (`payload["filters"]`), so
+  F9's buttons only have to pass them. Invoices export through `build_invoice_query`. **Bug
+  fixed:** the account export used a private copy of the list query with no owner or
+  updated-at filters (filtering to one owner exported everyone's accounts); it now uses the
+  repository's. Dead search helpers removed from the contacts and deals services.
+  `test_list_export_parity.py` checks every document list and its export share one query and
+  filters, and on real rows (POs, accounts) that they return the same records.
+- **E2, one catalog item:** `catalog_item_repository`, `catalog_item_services` (a `CatalogKind`
+  with product-only hooks: stock tracking and opening balance, reorder levels, barcode,
+  preferred vendor) and `catalog_item_routes.build_catalog_item_router`. `product_services` /
+  `service_services` keep their public functions as thin kind-bound wrappers. 2,321 → 1,722
+  lines. Each catalog action now commits once with its activity row. The OpenAPI path
+  parameter is `{item_id}` for both (no client used the name).
+- **B6, one permission helper:** `can_access` / `require_access` (+ `_any`) in
+  `core/permissions.py` and `PermissionPolicy.can(module, *actions)`. The `_allowed`, `_can`,
+  `_require`, `_require_order_view`, `_can_view_valuation` copies and the inline
+  "view module and action" checks are gone (catalog, purchasing, bills, invoices, credit notes,
+  payments, deliveries, returns, orders, inventory, summaries, stock ledger, exports, call logs,
+  participants, record timeline). `test_permission_helpers` fails on a new private idiom.
+  **B7 (website-integration routes on module permissions) moves to Step 5:** it needs a module
+  key, seed and role matrix, and Step 5 turns website orders into sales orders anyway.
+- **E8/H15, one line editor:** `components/transactions/LineItemsEditor.tsx` (Enter walks down
+  a column and adds a line at the end, add/remove, one error slot, `LineNumberInput` /
+  `LineTextInput`). Quotes/orders/invoices (`TransactionLineItemsEditor`), purchase orders,
+  bills, adjustments and transfers all use it; adjustments/transfers were a bespoke per-line
+  form before. `RecordTable variant="lineItems"` is now `table-fixed`: columns take a `share`
+  of the width (item largest), the line's description sits under its item, the remove header
+  is screen-reader only. design.md §4.7 and §7.10 updated. The fixed-row quantity grids
+  (receipt, delivery, return, credit note) stay on `RecordTable lineItems` and inherit the
+  layout. Accessible names kept where specs use them; adjustments/transfers now name their
+  cells "Change, line 1" etc. (`inventory-phase2.spec.ts` updated).
+- **H9:** `RecordTable` columns take `rendersLink` ("the cell is the link"); the two pages that
+  nested an `<a>` (order invoicing panel, invoice credit notes) use it. `design-rules.spec.ts`
+  has a `nestedLink` check on every route, with a canary.
+- **H10:** `Input` and `Textarea` draw `null` as empty, so a record's empty field never makes an
+  uncontrolled input turn controlled.
+
+**Verification (one pass, then fixes, then the touched set again):** full backend suite 1558
+tests: 24 failures, 25 errors. 4 were the known Redis rate-limit tests; the rest were test
+scaffolding the foundations changed (fake `PermissionPolicy` classes without `can` — they now
+borrow `PermissionPolicy.can`; two fake sessions without `Session.info`; order helpers that
+relied on the service committing — they now commit as the caller; one test that only passed
+when an earlier test had cached the tenant's currencies — it seeds them), my new tests' filter
+operator, and three real defects: an undefined `policy` in the invoice detail route (every
+invoice page would have failed), a missed multi-line idiom in `record_activity`, and on-commit
+callbacks surviving a unit of work that failed before any SQL (now dropped explicitly; the hook
+is `after_soft_rollback`). Rerun of the 28 failing/touched modules with Redis up: 609 tests OK.
+`verify_migrations` passes at `20261006_sidebar_regroup` (no migration in this step);
+`verify_openapi` 469 paths. `check-design.sh` 21/21, lint clean, production build passes.
+Browser, through `e2e.sh`: chunk 1 on a disposable database (the new
+`final-fixes-step4.spec.ts`, quotes, orders, invoices, invoicing, insertion orders, and the
+design and scroll guards scoped to sales, finance, purchasing, inventory and catalog: 55 and 35
+routes) 28/29, the one failure my spec's locator (the deals page opens on the board; it now
+finds a deal through the API). Chunk 2 (step 4 spec again, catalog line items, catalog,
+purchasing, inventory phase 2, deals, leads) 40/43: the step 4 spec green; `inventory-phase2`'s
+two draft tests need a tracked product, and the demo seed makes none ("No tracked stock" on a
+fresh database, the same gap Step 3 noted for ERP documents); one leads test over the 30 s budget
+on one CPU. Rerun on the dev database (`--shared-db --timeout 90000`, as the owner allowed):
+19/19. The nested-link guard saw its canary and found no nested link on the scoped routes.
+The dev database now holds the inventory spec's restored draft adjustment and its
+"E2 browser …" warehouse. **Not run:** generated-contract drift (no record-layout API change);
+the full rendered walk (due at F4). **Worth doing before F4's walk:** a tracked product in the
+demo seed, so the inventory specs and record pages run on a fresh database.
 
 ## Final fixes §7 Step 3 — errors users can see and act on (2026-10-04)
 

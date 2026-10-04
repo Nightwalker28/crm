@@ -86,8 +86,7 @@ def _require_log_access(db: Session, *, current_user, module_key: str) -> None:
     yet; it arrives with the provider configuration it would guard (07 Phase 2).
     """
 
-    policy = PermissionPolicy(db, current_user)
-    if not policy.can_view_module(module_key) or not policy.can_perform_action(module_key, "edit"):
+    if not PermissionPolicy(db, current_user).can(module_key, "edit"):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="You cannot log calls on this record.")
 
 

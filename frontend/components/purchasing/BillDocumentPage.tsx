@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -279,32 +279,34 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <SectionHeading description={editable ? `Total ${formatMoney(total, currencyCode, { maximumFractionDigits: 2 }) ?? total}` : undefined}>Lines</SectionHeading>
-          {editable && !fromOrder ? <Button type="button" variant="outline" size="sm" onClick={() => setLines((current) => [...current, blankLine()])}><Plus />Add line</Button> : null}
         </div>
         {editable ? (
-          <RecordTable<DraftLine>
-            variant="lineItems"
+          <LineItemsEditor<DraftLine>
+            id="bill-lines"
             label="Bill lines"
-            rows={lines}
-            rowKey={(line) => line.key}
+            lines={lines}
+            lineKey={(line) => line.key}
+            onChange={setLines}
+            // Lines billed against an order or receipt are that order's; only a standalone bill adds its own.
+            createLine={fromOrder ? undefined : blankLine}
+            addLabel="Add line"
+            lineLabel={(line) => line.name || "line"}
             columns={[
-              { key: "description", label: "Description", size: "lg", interactive: true, render: (line) => (line.orderLineId
-                ? <span>{line.name}</span>
-                : <Input aria-label={`Description, line ${lines.indexOf(line) + 1}`} value={line.description} onChange={(event) => updateLine({ ...line, description: event.target.value, name: event.target.value })} />) },
-              ...(fromOrder ? [{ key: "billable", label: "To bill", size: "sm" as const, align: "right" as const, render: (line: DraftLine) => <span className="tabular-nums">{quantity(line.billable)}</span> }] : []),
-              { key: "quantity", label: "Quantity", size: "sm", align: "right", interactive: true, render: (line) => (
-                <Input aria-label={`Quantity for ${line.name || "line"}`} type="number" min={0} step="0.0001" inputMode="decimal" value={line.quantity} onChange={(event) => updateLine({ ...line, quantity: event.target.value })} />
+              { key: "description", label: "Description", size: "lg", share: 4, render: (line, { index, cellProps }) => (line.orderLineId
+                ? <span className="block truncate">{line.name}</span>
+                : <LineTextInput cellProps={cellProps("description")} ariaLabel={`Description, line ${index + 1}`} value={line.description}
+                    onChange={(value) => updateLine({ ...line, description: value, name: value })} />) },
+              ...(fromOrder ? [{ key: "billable", label: "To bill", size: "sm" as const, align: "right" as const, share: 1, render: (line: DraftLine) => <span className="tabular-nums">{quantity(line.billable)}</span> }] : []),
+              { key: "quantity", label: "Quantity", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("quantity")} ariaLabel={`Quantity for ${line.name || "line"}`} step="0.0001" value={line.quantity} onChange={(value) => updateLine({ ...line, quantity: value })} />
               ) },
-              { key: "cost", label: "Unit cost", size: "sm", align: "right", interactive: true, render: (line) => (
-                <Input aria-label={`Unit cost for ${line.name || "line"}`} type="number" min={0} step="0.0001" inputMode="decimal" value={line.unitCost} onChange={(event) => updateLine({ ...line, unitCost: event.target.value })} />
+              { key: "cost", label: "Unit cost", size: "sm", align: "right", share: 1.5, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("cost")} ariaLabel={`Unit cost for ${line.name || "line"}`} step="0.0001" value={line.unitCost} onChange={(value) => updateLine({ ...line, unitCost: value })} />
               ) },
-              { key: "tax", label: "Tax", size: "sm", align: "right", interactive: true, render: (line) => (
-                <Input aria-label={`Tax for ${line.name || "line"}`} type="number" min={0} step="0.01" inputMode="decimal" value={line.tax} onChange={(event) => updateLine({ ...line, tax: event.target.value })} />
+              { key: "tax", label: "Tax", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("tax")} ariaLabel={`Tax for ${line.name || "line"}`} value={line.tax} onChange={(value) => updateLine({ ...line, tax: value })} />
               ) },
-              { key: "total", label: "Total", size: "sm", align: "right", render: (line) => <Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0)} currency={currencyCode} /> },
-              ...(!fromOrder ? [{ key: "remove", label: <span className="sr-only">Remove</span>, size: "sm" as const, interactive: true, render: (line: DraftLine) => (
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name || "line"}`} disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 /></Button>
-              ) }] : []),
+              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0)} currency={currencyCode} /></span> },
             ]}
           />
         ) : (

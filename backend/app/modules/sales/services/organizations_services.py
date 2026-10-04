@@ -6,13 +6,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
-from app.core.module_filters import apply_filter_conditions
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 
 from app.core.module_export import batched_csv_zip_file, dict_rows_to_csv_bytes
-from app.core.module_search import apply_ranked_search
 from app.modules.platform.services.custom_fields import (
-    build_custom_field_filter_map,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -153,56 +150,6 @@ def create_organization(
         record=organization,
         record_id=organization.org_id,
     )
-
-def _build_organization_query(
-    db: Session,
-    *,
-    tenant_id: int,
-    search: str | None = None,
-    all_filter_conditions: list[dict] | None = None,
-    any_filter_conditions: list[dict] | None = None,
-):
-    base_query = db.query(SalesOrganization).filter(
-        SalesOrganization.tenant_id == tenant_id,
-        SalesOrganization.deleted_at.is_(None),
-    )
-    base_query = apply_ranked_search(
-        base_query,
-        search=search,
-        document=SalesOrganization.search_doc,
-        default_order_column=SalesOrganization.created_time,
-    )
-
-    field_map = {
-        "org_name": {"expression": SalesOrganization.org_name, "type": "text"},
-        "primary_email": {"expression": SalesOrganization.primary_email, "type": "text"},
-        "website": {"expression": SalesOrganization.website, "type": "text"},
-        "industry": {"expression": SalesOrganization.industry, "type": "text"},
-        "annual_revenue": {"expression": SalesOrganization.annual_revenue, "type": "text"},
-        "primary_phone": {"expression": SalesOrganization.primary_phone, "type": "text"},
-        "billing_country": {"expression": SalesOrganization.billing_country, "type": "text"},
-        "is_vendor": {"expression": SalesOrganization.is_vendor == 1, "type": "boolean"},
-        "created_time": {"expression": SalesOrganization.created_time, "type": "date"},
-        **build_custom_field_filter_map(
-            db,
-            tenant_id=tenant_id,
-            module_key="sales_organizations",
-            record_id_expression=SalesOrganization.org_id,
-        ),
-    }
-    base_query = apply_filter_conditions(
-        base_query,
-        conditions=all_filter_conditions,
-        logic="all",
-        field_map=field_map,
-    )
-    base_query = apply_filter_conditions(
-        base_query,
-        conditions=any_filter_conditions,
-        logic="any",
-        field_map=field_map,
-    )
-    return base_query
 
 def list_organizations_paginated(
     db: Session,
@@ -701,7 +648,7 @@ def export_organizations_for_view(
     field_keys: list[str] | None = None,
 ) -> tuple[Path, dict]:
     query = (
-        _build_organization_query(
+        organizations_repository.build_organization_query(
             db,
             tenant_id=tenant_id,
             search=search,

@@ -215,7 +215,7 @@ class CatalogProductServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "app.modules.catalog.services.product_services.persist_media_file",
+            "app.modules.catalog.services.catalog_item_services.persist_media_file",
             return_value="media/catalog-products/tenant-10/product-1/camera.png",
         ) as persist_mock:
             updated = await services.upload_product_media(
@@ -263,10 +263,10 @@ class CatalogProductServiceTests(unittest.IsolatedAsyncioTestCase):
         )
 
         with patch(
-            "app.modules.catalog.services.product_services.persist_media_file",
+            "app.modules.catalog.services.catalog_item_services.persist_media_file",
             return_value="media/catalog-products/tenant-10/product-1/new.png",
         ), patch.object(self.db, "commit", side_effect=RuntimeError("commit failed")), patch(
-            "app.modules.catalog.services.product_services.delete_local_media_file"
+            "app.modules.catalog.services.catalog_item_services.delete_local_media_file"
         ) as delete_mock:
             with self.assertRaisesRegex(RuntimeError, "commit failed"):
                 await services.upload_product_media(

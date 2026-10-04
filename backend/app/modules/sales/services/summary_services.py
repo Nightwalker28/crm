@@ -46,11 +46,7 @@ def related_access(db: Session, current_user, sections) -> dict[str, bool]:
     if current_user is None:
         return {section: False for section in sections}
     policy = PermissionPolicy(db, current_user)
-    access = {}
-    for section in sections:
-        module_key = RELATED_SECTION_MODULES[section]
-        access[section] = policy.can_view_module(module_key) and policy.can_perform_action(module_key, "view")
-    return access
+    return {section: policy.can(RELATED_SECTION_MODULES[section]) for section in sections}
 
 
 def _count(query) -> int:
@@ -399,11 +395,9 @@ def build_organization_summary(db: Session, organization: SalesOrganization, *, 
         receivables = [{"currency": currency, "amount": float(amount or 0), "count": int(count)} for currency, amount, count in rows]
     payables: list[dict] = []
     if getattr(organization, "is_vendor", 0) and current_user is not None:
-        from app.core.access_control import PermissionPolicy
         from app.modules.purchasing.models import PurchaseBill
 
-        policy = PermissionPolicy(db, current_user)
-        if policy.can_view_module("purchase_bills") and policy.can_perform_action("purchase_bills", "view"):
+        if PermissionPolicy(db, current_user).can("purchase_bills"):
             rows = db.query(PurchaseBill.currency, func.sum(PurchaseBill.balance_due), func.count(PurchaseBill.id)).filter(
                 PurchaseBill.tenant_id == tenant_id, PurchaseBill.vendor_id == organization.org_id, PurchaseBill.deleted_at.is_(None),
                 PurchaseBill.status == "posted", PurchaseBill.balance_due > 0).group_by(PurchaseBill.currency)

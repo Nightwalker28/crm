@@ -41,6 +41,7 @@ class FakeDB:
         self.mapping = {"user": user, "role": role, "team": team}
         self.query_builder = FakeQuery(self.mapping)
         self.committed = False
+        self.info = {}
 
     def query(self, *models):
         return self.query_builder(*models)

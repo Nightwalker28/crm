@@ -1,12 +1,8 @@
 "use client";
 
-import { Plus, Trash2 } from "lucide-react";
-
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { FormSection } from "@/components/forms/RecordFormLayout";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
+import { LineItemsEditor, LineNumberInput, LineTextInput, type LineItemsColumn } from "@/components/transactions/LineItemsEditor";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { formatMoney } from "@/lib/currency";
@@ -52,15 +48,10 @@ function catalogDescriptionLine(value: unknown) {
 export function formatTransactionMoney(value: number, currency: string) { return formatMoney(value, currency, { maximumFractionDigits: 2 }) ?? EMPTY_CELL_VALUE; }
 
 /**
- * The editable grid inside a line-item document (design.md §7.10, `variant="lineItems"`).
- *
- * It is the one editable table in the app, and the reason the variant exists rather than a
- * second table: the difference from a module list is *shape* — an input per cell, an
- * add/remove row, Enter walking down a column — not a different set of rules about
- * padding, scroll region or states. It used to hand-assemble a raw `Table` with two
- * hardcoded `min-w-[Npx]` values chosen by eye; the min-width is derived from the columns
- * actually drawn now, so hiding Description or the adjustments narrows the grid instead of
- * leaving a scrollbar behind.
+ * Quote, order and invoice lines (design.md §7.10, `lineItems`): the shared `LineItemsEditor`
+ * with the transaction columns. The description sits under the item, as Odoo and Zoho draw it,
+ * so the item keeps the widest column and Tax, Total and remove stay in view in a 1280px form
+ * (13a H15).
  */
 export function TransactionLineItemsEditor({
   items,
@@ -104,53 +95,41 @@ export function TransactionLineItemsEditor({
         catalog_service_id: isService ? option.id : null,
       };
     }));
-    requestAnimationFrame(() => focusCell(index, "quantity"));
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLInputElement>(`[data-line-editor="${idPrefix}"][data-line-row="${index}"][data-line-field="quantity"]`)?.focus();
+    });
   }
 
   function unlinkCatalogItem(index: number) {
     onChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, catalog_product_id: null, catalog_service_id: null } : item)));
   }
 
-  function focusCell(index: number, field: ItemField) {
-    document.querySelector<HTMLInputElement>(`[data-${idPrefix}-row="${index}"][data-transaction-field="${field}"]`)?.focus();
-  }
+  const amount = (field: ItemField, label: string, share: number): LineItemsColumn<TransactionLineItem> => ({
+    key: field,
+    label,
+    size: "sm",
+    share,
+    render: (item, { index, cellProps }) => (
+      <LineNumberInput
+        cellProps={cellProps(field)}
+        value={item[field]}
+        onChange={(value) => updateItem(index, field, value)}
+        ariaLabel={`${field.replaceAll("_", " ")} line ${index + 1}`}
+      />
+    ),
+  });
 
-  function addItem(focusField: ItemField = "name") {
-    const nextIndex = items.length;
-    onChange([...items, createTransactionLineItem(idPrefix)]);
-    requestAnimationFrame(() => focusCell(nextIndex, focusField));
-  }
-
-  function handleKeyDown(event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) {
-    if (event.key !== "Enter") return;
-    event.preventDefault();
-    if (index === items.length - 1) addItem(field);
-    else focusCell(index + 1, field);
-  }
-
-  const columns: RecordTableColumn<TransactionLineItem>[] = [
+  const columns: LineItemsColumn<TransactionLineItem>[] = [
     {
       key: "name",
       label: itemLabel,
       size: "lg",
-      render: (item: TransactionLineItem) => {
-        const index = items.indexOf(item);
-        if (!canPickCatalog) {
-          return (
-            <ItemInput
-              idPrefix={idPrefix}
-              index={index}
-              field="name"
-              value={item.name}
-              onChange={updateItem}
-              onKeyDown={handleKeyDown}
-              placeholder="Service or product"
-            />
-          );
-        }
-        // Typing searches the catalog; choosing fills the line, and anything typed without
-        // choosing is a custom line. Renaming a picked line keeps its link (HubSpot).
-        return (
+      share: 4,
+      render: (item, { index, cellProps }) => {
+        const nameCell = cellProps("name");
+        const name = canPickCatalog ? (
+          // Typing searches the catalog; choosing fills the line, and anything typed without
+          // choosing is a custom line. Renaming a picked line keeps its link (HubSpot).
           <LinkedRecordPicker
             recordType="catalog_item"
             ariaLabel={`name line ${index + 1}`}
@@ -164,107 +143,44 @@ export function TransactionLineItemsEditor({
             noResultsText={`No active ${currency} products or services match. Keep typing to add a custom line.`}
             filters={{ currency }}
             queryKeyPrefix="transaction-catalog-item"
-            onInputKeyDown={(event) => handleKeyDown(event, index, "name")}
-            inputDataAttributes={{ [`data-${idPrefix}-row`]: index, "data-transaction-field": "name" }}
+            onInputKeyDown={nameCell.onKeyDown}
+            inputDataAttributes={{ "data-line-editor": nameCell["data-line-editor"], "data-line-row": index, "data-line-field": "name" }}
           />
+        ) : (
+          <LineTextInput
+            cellProps={nameCell}
+            value={item.name}
+            onChange={(value) => updateItem(index, "name", value)}
+            ariaLabel={`name line ${index + 1}`}
+            placeholder="Service or product"
+          />
+        );
+        if (!showDescription) return name;
+        return (
+          <div className="flex min-w-0 flex-col gap-1.5">
+            {name}
+            <LineTextInput
+              cellProps={cellProps("description")}
+              value={item.description}
+              onChange={(value) => updateItem(index, "description", value)}
+              ariaLabel={`description line ${index + 1}`}
+              placeholder="Description (optional)"
+            />
+          </div>
         );
       },
     },
-    ...(showDescription
-      ? [
-        {
-          key: "description",
-          label: "Description",
-          size: "lg" as const,
-          render: (item: TransactionLineItem) => (
-            <ItemInput
-              idPrefix={idPrefix}
-              index={items.indexOf(item)}
-              field="description"
-              value={item.description}
-              onChange={updateItem}
-              onKeyDown={handleKeyDown}
-              placeholder="Optional details"
-            />
-          ),
-        },
-        ]
-      : []),
-    {
-      key: "quantity",
-      label: "Qty",
-      size: "sm",
-      render: (item: TransactionLineItem) => (
-        <ItemInput
-          idPrefix={idPrefix}
-          index={items.indexOf(item)}
-          field="quantity"
-          value={item.quantity}
-          onChange={updateItem}
-          onKeyDown={handleKeyDown}
-          type="number"
-        />
-      ),
-    },
-    {
-      key: "unit_price",
-      label: "Unit price",
-      size: "sm",
-      render: (item: TransactionLineItem) => (
-        <ItemInput
-          idPrefix={idPrefix}
-          index={items.indexOf(item)}
-          field="unit_price"
-          value={item.unit_price}
-          onChange={updateItem}
-          onKeyDown={handleKeyDown}
-          type="number"
-        />
-      ),
-    },
-    ...(showAdjustments
-      ? [
-        {
-          key: "discount_amount",
-          label: "Discount",
-          size: "sm" as const,
-          render: (item: TransactionLineItem) => (
-            <ItemInput
-              idPrefix={idPrefix}
-              index={items.indexOf(item)}
-              field="discount_amount"
-              value={item.discount_amount}
-              onChange={updateItem}
-              onKeyDown={handleKeyDown}
-              type="number"
-            />
-          ),
-        },
-        {
-          key: "tax_amount",
-          label: "Tax",
-          size: "sm" as const,
-          render: (item: TransactionLineItem) => (
-            <ItemInput
-              idPrefix={idPrefix}
-              index={items.indexOf(item)}
-              field="tax_amount"
-              value={item.tax_amount}
-              onChange={updateItem}
-              onKeyDown={handleKeyDown}
-              type="number"
-            />
-          ),
-        },
-        ]
-      : []),
+    amount("quantity", "Qty", 1),
+    amount("unit_price", "Unit price", 1.5),
+    ...(showAdjustments ? [amount("discount_amount", "Discount", 1.25), amount("tax_amount", "Tax", 1.25)] : []),
     {
       key: "line_total",
       label: "Total",
       align: "right",
       size: "sm",
-      render: (item: TransactionLineItem) => (
-        <span className="text-sm font-medium tabular-nums text-copy-primary">
+      share: 1.5,
+      render: (item) => (
+        <span className="block truncate text-sm font-medium tabular-nums text-copy-primary">
           {formatTransactionMoney(transactionLineTotal(item), currency)}
         </span>
       ),
@@ -276,65 +192,18 @@ export function TransactionLineItemsEditor({
       title="Line items"
       description="Press Enter in a cell to move to the same field on the next row; Enter on the last row adds another item."
     >
-      <RecordTable
-        variant="lineItems"
-        shellVariant="nested"
+      <LineItemsEditor
+        id={idPrefix}
         label="Line items"
+        lines={items}
+        lineKey={(item) => item.key}
         columns={columns}
-        rows={items}
-        rowKey={(item) => item.key}
-        rowActions={(item) => (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Remove ${item.name || `line ${items.indexOf(item) + 1}`}`}
-            disabled={items.length === 1}
-            onClick={() => onChange(items.filter((candidate) => candidate.key !== item.key))}
-          >
-            <Trash2 />
-          </Button>
-        )}
+        onChange={onChange}
+        createLine={() => createTransactionLineItem(idPrefix)}
+        addLabel="Add line item"
+        lineLabel={(item, index) => item.name || `line ${index + 1}`}
+        error={error}
       />
-      {error ? <p role="alert" className="mt-3 text-sm text-state-danger">{error}</p> : null}
-      <Button type="button" variant="outline" className="mt-4" onClick={() => addItem()}>
-        <Plus />Add line item
-      </Button>
     </FormSection>
-  );
-}
-
-function ItemInput({
-  idPrefix,
-  index,
-  field,
-  value,
-  onChange,
-  onKeyDown,
-  type = "text",
-  placeholder,
-}: {
-  idPrefix: string;
-  index: number;
-  field: ItemField;
-  value: string;
-  onChange: (index: number, field: ItemField, value: string) => void;
-  onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>, index: number, field: ItemField) => void;
-  type?: string;
-  placeholder?: string;
-}) {
-  return (
-    <Input
-      {...{ [`data-${idPrefix}-row`]: index }}
-      data-transaction-field={field}
-      type={type}
-      min={type === "number" ? "0" : undefined}
-      step={type === "number" ? "0.01" : undefined}
-      value={value}
-      placeholder={placeholder}
-      onChange={(event) => onChange(index, field, event.target.value)}
-      onKeyDown={(event) => onKeyDown(event, index, field)}
-      aria-label={`${field.replaceAll("_", " ")} line ${index + 1}`}
-    />
   );
 }

@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.inventory.services.costing import base_currency, clean_rate, default_exchange_rate, rate_for
@@ -21,6 +21,22 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.sales.models import SalesOrganization
+
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, vendor_id: int | None = None, search: str | None = None):
+    """The purchase order list's rows. The list and its export both start here (13a A5)."""
+    query = db.query(PurchaseOrder).options(selectinload(PurchaseOrder.lines)).filter(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.deleted_at.is_(None))
+    if status == "open":
+        query = query.filter(PurchaseOrder.status.in_(["draft", "ordered"]))
+    elif status:
+        query = query.filter(PurchaseOrder.status == status)
+    if vendor_id:
+        query = query.filter(PurchaseOrder.vendor_id == vendor_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.join(SalesOrganization, SalesOrganization.org_id == PurchaseOrder.vendor_id).filter(or_(
+            PurchaseOrder.number.ilike(pattern), PurchaseOrder.vendor_reference.ilike(pattern), SalesOrganization.org_name.ilike(pattern)))
+    return query
 
 
 def _decimal(value, *, field: str, positive: bool = False) -> Decimal:

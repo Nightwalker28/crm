@@ -3,18 +3,17 @@
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.pagination import Pagination, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
-from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job
 from app.modules.purchasing.services import bill_services as bills
+from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/purchasing", tags=["Purchasing bills"])
 
@@ -56,10 +55,6 @@ def _bill(db: Session, tenant_id: int, bill_id: int) -> dict:
     return jsonable_encoder(bills.serialize_bill(db, tenant_id=tenant_id, bill=bills.bill_or_404(db, tenant_id=tenant_id, bill_id=bill_id)))
 
 
-def _require(db: Session, user, module: str, action: str, message: str) -> None:
-    policy = PermissionPolicy(db, user)
-    if not (policy.can_view_module(module) and policy.can_perform_action(module, action)):
-        raise HTTPException(status_code=403, detail=message)
 
 
 @router.get("/bills")
@@ -77,7 +72,7 @@ def list_bills(status: str | None = Query(default=None, pattern="^(draft|posted|
 def create_bill(payload: BillCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(BILLS)), _create=Depends(require_action_access(BILLS, "create"))):
     if payload.order_id:
-        _require(db, user, "purchase_orders", "view", "Billing a purchase order needs access to purchase orders")
+        require_access(db, user, "purchase_orders", "view", detail="Billing a purchase order needs access to purchase orders")
     data = payload.model_dump()
     if data.get("lines") is None:
         data.pop("lines", None)
@@ -89,11 +84,12 @@ def create_bill(payload: BillCreatePayload, db: Session = Depends(get_db), user=
 
 
 @router.post("/bills/export-job", status_code=202)
-def export_bills(db: Session = Depends(get_db), user=Depends(require_user),
-                 _module=Depends(require_module_access(BILLS)), _export=Depends(require_action_access(BILLS, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=BILLS, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_bills(status: str | None = Query(default=None, pattern="^(draft|posted|void|unpaid|overdue|variance)$"),
+        vendor_id: int | None = Query(default=None, gt=0), order_id: int | None = Query(default=None, gt=0),
+        search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(BILLS)), _export=Depends(require_action_access(BILLS, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=BILLS, filters={"status": status, "vendor_id": vendor_id, "order_id": order_id, "search": search})
 
 
 @router.get("/bills/{bill_id}")

@@ -2,7 +2,21 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Input({ className, type, ...props }: React.ComponentProps<"input">) {
+type InputProps = Omit<React.ComponentProps<"input">, "value"> & {
+  /**
+   * `null` is accepted and drawn as empty. Records carry `null` for every empty optional
+   * field, and an input handed `null` is uncontrolled until the operator types, which React
+   * reports as a switch from uncontrolled to controlled (13a H10). Normalising it here means
+   * no form has to remember to.
+   */
+  value?: React.ComponentProps<"input">["value"] | null
+}
+
+function Input(allProps: InputProps) {
+  const { className, type, value, ...props } = allProps
+  // A `value` key means a controlled input, even when the record had nothing in it. An input
+  // given no `value` key at all stays uncontrolled, and a file input never takes one.
+  const controlled = "value" in allProps && type !== "file" ? { value: value ?? "" } : {}
   return (
     <input
       type={type}
@@ -18,6 +32,7 @@ function Input({ className, type, ...props }: React.ComponentProps<"input">) {
         className
       )}
       {...props}
+      {...controlled}
     />
   )
 }

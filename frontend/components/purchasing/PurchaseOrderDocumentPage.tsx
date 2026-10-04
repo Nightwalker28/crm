@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackagePlus, Plus, Printer, Trash2 } from "lucide-react";
+import { PackagePlus, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -255,37 +256,43 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <SectionHeading description={editable ? `Total ${formatMoney(total, currencyCode, { maximumFractionDigits: 2 }) ?? total}` : undefined}>Lines</SectionHeading>
-          {editable ? <Button type="button" variant="outline" size="sm" onClick={() => setLines((current) => [...current, blankLine()])}><Plus />Add product</Button> : null}
         </div>
         {editable ? (
-          <RecordTable<DraftLine>
-            variant="lineItems"
+          <LineItemsEditor<DraftLine>
+            id="po-lines"
             label="Purchase order lines"
-            rows={lines}
-            rowKey={(line) => line.key}
+            lines={lines}
+            lineKey={(line) => line.key}
+            onChange={setLines}
+            createLine={blankLine}
+            addLabel="Add product"
+            lineLabel={(line) => line.name || "line"}
             columns={[
-              { key: "product", label: "Product", size: "lg", interactive: true, render: (line) => (
-                <LinkedRecordPicker inputId={`po-product-${line.key}`} ariaLabel={`Product, line ${lines.indexOf(line) + 1}`} recordType="inventory_product" valueId={line.productId} displayValue={line.name}
-                  onDisplayValueChange={(value) => updateLine({ ...line, name: value, productId: null })}
-                  onSelect={(option) => {
-                    const raw = option.raw as { cost_price?: string | number | null } | undefined;
-                    updateLine({ ...line, productId: option.id, name: option.label, unitCost: raw?.cost_price != null ? String(Number(raw.cost_price)) : line.unitCost });
-                  }}
-                  onClear={() => updateLine({ ...line, productId: null, name: "" })} placeholder="Search tracked products" />
+              { key: "product", label: "Product", size: "lg", share: 4, render: (line, { index, cellProps }) => {
+                const productCell = cellProps("product");
+                return (
+                  <div className="flex min-w-0 flex-col gap-1.5">
+                    <LinkedRecordPicker inputId={`po-product-${line.key}`} ariaLabel={`Product, line ${index + 1}`} recordType="inventory_product" valueId={line.productId} displayValue={line.name}
+                      onDisplayValueChange={(value) => updateLine({ ...line, name: value, productId: null })}
+                      onSelect={(option) => {
+                        const raw = option.raw as { cost_price?: string | number | null } | undefined;
+                        updateLine({ ...line, productId: option.id, name: option.label, unitCost: raw?.cost_price != null ? String(Number(raw.cost_price)) : line.unitCost });
+                      }}
+                      onClear={() => updateLine({ ...line, productId: null, name: "" })} placeholder="Search tracked products"
+                      onInputKeyDown={productCell.onKeyDown}
+                      inputDataAttributes={{ "data-line-editor": productCell["data-line-editor"], "data-line-row": index, "data-line-field": "product" }} />
+                    <LineTextInput cellProps={cellProps("description")} ariaLabel={`Description for ${line.name || "line"}`} placeholder="Description (optional)"
+                      value={line.description} onChange={(value) => updateLine({ ...line, description: value })} />
+                  </div>
+                );
+              } },
+              { key: "quantity", label: "Quantity", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("quantity")} ariaLabel={`Quantity for ${line.name || "line"}`} step="0.0001" value={line.quantity} onChange={(value) => updateLine({ ...line, quantity: value })} />
               ) },
-              { key: "description", label: "Description", size: "lg", interactive: true, render: (line) => (
-                <Input aria-label={`Description for ${line.name || "line"}`} value={line.description} onChange={(event) => updateLine({ ...line, description: event.target.value })} />
+              { key: "cost", label: "Unit cost", size: "sm", align: "right", share: 1.5, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("cost")} ariaLabel={`Unit cost for ${line.name || "line"}`} step="0.0001" value={line.unitCost} onChange={(value) => updateLine({ ...line, unitCost: value })} />
               ) },
-              { key: "quantity", label: "Quantity", size: "sm", align: "right", interactive: true, render: (line) => (
-                <Input aria-label={`Quantity for ${line.name || "line"}`} type="number" min={0} step="0.0001" inputMode="decimal" value={line.quantity} onChange={(event) => updateLine({ ...line, quantity: event.target.value })} />
-              ) },
-              { key: "cost", label: "Unit cost", size: "sm", align: "right", interactive: true, render: (line) => (
-                <Input aria-label={`Unit cost for ${line.name || "line"}`} type="number" min={0} step="0.0001" inputMode="decimal" value={line.unitCost} onChange={(event) => updateLine({ ...line, unitCost: event.target.value })} />
-              ) },
-              { key: "total", label: "Total", size: "sm", align: "right", render: (line) => <span className="tabular-nums"><Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0)} currency={currencyCode} /></span> },
-              { key: "remove", label: <span className="sr-only">Remove</span>, size: "sm", interactive: true, render: (line) => (
-                <Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name || "line"}`} disabled={lines.length === 1} onClick={() => setLines((current) => current.filter((item) => item.key !== line.key))}><Trash2 /></Button>
-              ) },
+              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0)} currency={currencyCode} /></span> },
             ]}
           />
         ) : (

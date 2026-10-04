@@ -39,7 +39,7 @@ def _lock_product(db: Session, *, tenant_id: int, product_id: int) -> CatalogPro
 def _record(db: Session, *, product: CatalogProduct, kind: str, on_hand: Decimal, average_before, average_after,
             stock_change: Decimal, cogs_change: Decimal, reason: str, actor_user_id: int | None,
             bill_line_id: int | None = None, reverses_id: int | None = None) -> InventoryRevaluation:
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
 
     row = InventoryRevaluation(tenant_id=product.tenant_id, product_id=product.id, kind=kind,
         number=allocate_business_number(db, tenant_id=product.tenant_id, scope="inventory_revaluations", prefix="REV"),
@@ -51,7 +51,7 @@ def _record(db: Session, *, product: CatalogProduct, kind: str, on_hand: Decimal
         entity_id=product.id, action="revalue", commit=False,
         description=f"{row.number}: average cost {average_before if average_before is not None else 'none'} → {average_after}"
                     f" ({'+' if stock_change >= 0 else ''}{stock_change} to stock{f', {cogs_change} to cost of goods' if cogs_change else ''}). {reason}")
-    stage_inventory_event(db, tenant_id=product.tenant_id, actor_user_id=actor_user_id, event_type="inventory.revalued",
+    stage_standard_crm_event(db, tenant_id=product.tenant_id, actor_user_id=actor_user_id, event_type="inventory.revalued",
         entity_type="inventory_revaluation", entity_id=row.id,
         payload={"number": row.number, "kind": kind, "product_id": product.id, "product_name": product.name,
                  "average_before": str(average_before) if average_before is not None else None, "average_after": str(average_after),

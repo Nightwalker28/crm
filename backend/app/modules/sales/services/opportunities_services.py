@@ -10,8 +10,6 @@ from app.core.duplicates import DuplicateMode, detect_duplicates, resolve_duplic
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.pagination import Pagination
 from app.core.module_export import dict_rows_to_csv_bytes
-from app.core.module_search import apply_ranked_search
-from app.core.postgres_search import searchable_text
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     hydrate_custom_field_records,
@@ -98,24 +96,6 @@ def _get_contact_or_404(db: Session, contact_id: int, *, tenant_id: int) -> Sale
 def _ensure_organization(db: Session, organization_id: int, *, tenant_id: int):
     if not opportunities_repository.organization_exists(db, organization_id=organization_id, tenant_id=tenant_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
-
-
-def _apply_search_filter(query, search: str | None):
-    document = searchable_text(
-        SalesOpportunity.opportunity_name,
-        SalesOpportunity.client,
-        SalesOpportunity.sales_stage,
-        SalesOpportunity.campaign_type,
-        SalesOpportunity.target_geography,
-        SalesOpportunity.target_audience,
-        SalesOpportunity.tactics,
-    )
-    return apply_ranked_search(
-        query,
-        search=search,
-        document=document,
-        default_order_column=SalesOpportunity.created_time,
-    )
 
 
 def list_all_opportunities(

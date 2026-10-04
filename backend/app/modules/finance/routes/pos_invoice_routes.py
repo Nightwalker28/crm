@@ -6,10 +6,9 @@ from app.core.cursor_pagination import CursorPagination, build_cursor_response, 
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import can_access, require_access, require_action_access, require_module_access
 from app.core.security import get_current_user
 from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
-from app.core.access_control import PermissionPolicy
 from app.modules.finance.schema import (
     InvoiceFromSourcesRequest,
     PosInvoiceCreateRequest,
@@ -20,25 +19,20 @@ from app.modules.finance.schema import (
     ReasonRequest,
 )
 from app.modules.finance.services import credit_note_services, invoicing_services, payment_services, pos_invoice_services
+from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(tags=["Finance POS"])
 
 INVOICES = "finance_pos"
 
 
-def _require(db: Session, user, module: str, action: str, message: str) -> None:
-    """A second module's permission, checked in the route (all three layers via the policy)."""
-    policy = PermissionPolicy(db, user)
-    if not (policy.can_view_module(module) and policy.can_perform_action(module, action)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 
 
 def _detail(db: Session, current_user, invoice) -> dict:
     data = pos_invoice_services.serialize_invoice(invoice, current_user=current_user)
-    policy = PermissionPolicy(db, current_user)
-    if policy.can_view_module("finance_payments") and policy.can_perform_action("finance_payments", "view"):
+    if can_access(db, current_user, "finance_payments"):
         data["payments"] = jsonable_encoder(payment_services.payments_for(db, tenant_id=current_user.tenant_id, invoice_id=invoice.id))
-    if policy.can_view_module("finance_credit_notes") and policy.can_perform_action("finance_credit_notes", "view"):
+    if can_access(db, current_user, "finance_credit_notes"):
         data["credit_notes"] = jsonable_encoder(credit_note_services.invoice_credit_notes(db, tenant_id=current_user.tenant_id, invoice_id=invoice.id))
         if invoice.status == "issued":
             left = credit_note_services.creditable(db, invoice=invoice)
@@ -138,9 +132,9 @@ def create_pos_invoice(
     invoice_payload = payload.model_dump()
     require_catalog_line_link_access(db, user=current_user, lines=invoice_payload.get("lines"))
     if invoice_payload.get("issue") or invoice_payload.get("paid_now"):
-        _require(db, current_user, INVOICES, "edit", "Issuing an invoice needs edit access to invoices")
+        require_access(db, current_user, INVOICES, "edit", detail="Issuing an invoice needs edit access to invoices")
     if invoice_payload.get("paid_now"):
-        _require(db, current_user, "finance_payments", "create", "Recording a payment needs access to payments")
+        require_access(db, current_user, "finance_payments", "create", detail="Recording a payment needs access to payments")
     invoice = pos_invoice_services.create_invoice(db, current_user, invoice_payload)
     return _detail(db, current_user, invoice)
 
@@ -154,25 +148,37 @@ def create_invoice_from_order(
     require_permission=Depends(require_action_access(INVOICES, "create")),
 ):
     """A draft with what is left to invoice on an order, or on one of its deliveries."""
-    _require(db, current_user, "sales_orders", "view", "Invoicing an order needs access to orders")
+    require_access(db, current_user, "sales_orders", "view", detail="Invoicing an order needs access to orders")
     if any(source.delivery_id for source in payload.sources):
-        _require(db, current_user, "inventory_deliveries", "view", "Invoicing a delivery needs access to deliveries")
+        require_access(db, current_user, "inventory_deliveries", "view", detail="Invoicing a delivery needs access to deliveries")
     invoice = invoicing_services.draft_from_sources(db, current_user, sources=[source.model_dump() for source in payload.sources])
     return _detail(db, current_user, invoice)
 
 
 @router.post("/pos-invoices/export-job", status_code=status.HTTP_202_ACCEPTED)
 def export_pos_invoices(
+    search: str | None = Query(default=None, max_length=100),
+    status_filter: str | None = Query(default=None, alias="status"),
+    payment_status_filter: str | None = Query(default=None, alias="payment_status"),
+    filter_logic: str = Query(default="all"),
+    filters: str | None = Query(default=None),
+    filters_all: str | None = Query(default=None),
+    filters_any: str | None = Query(default=None),
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user),
     require_module=Depends(require_module_access(INVOICES)),
     require_permission=Depends(require_action_access(INVOICES, "export")),
 ):
-    from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job
-
-    job = create_data_transfer_job(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=INVOICES, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+    """Exports what the list shows under the same filters (13a A5)."""
+    try:
+        all_conditions = parse_filter_conditions(filters_all or (filters if normalize_filter_logic(filter_logic) != "any" else None))
+        any_conditions = parse_filter_conditions(filters_any or (filters if normalize_filter_logic(filter_logic) == "any" else None))
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return start_document_export(db, current_user, module_key=INVOICES, filters={
+        "search": search, "status": status_filter, "payment_status": payment_status_filter,
+        "filters_all": all_conditions, "filters_any": any_conditions,
+    })
 
 
 @router.get("/pos-invoices/{invoice_id}", response_model=PosInvoiceResponse)
@@ -239,7 +245,7 @@ def void_and_copy_pos_invoice(
     require_permission=Depends(require_action_access(INVOICES, "edit")),
 ):
     """Void, then open a draft copy to correct (returns the copy)."""
-    _require(db, current_user, INVOICES, "create", "Opening a corrected copy needs create access to invoices")
+    require_access(db, current_user, INVOICES, "create", detail="Opening a corrected copy needs create access to invoices")
     copy = pos_invoice_services.void_and_copy(db, current_user, invoice_id, reason=payload.reason)
     return _detail(db, current_user, copy)
 
@@ -254,7 +260,7 @@ def record_pos_invoice_payment(
     require_permission=Depends(require_action_access(INVOICES, "view")),
 ):
     """Kept from before E5: records one payment against this invoice."""
-    _require(db, current_user, "finance_payments", "create", "Recording a payment needs access to payments")
+    require_access(db, current_user, "finance_payments", "create", detail="Recording a payment needs access to payments")
     invoice = pos_invoice_services.record_invoice_payment(
         db,
         current_user,

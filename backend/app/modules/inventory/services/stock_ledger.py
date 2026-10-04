@@ -8,7 +8,7 @@ import hashlib
 import logging
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, event, func, or_, text
+from sqlalchemy import and_, case, func, or_, text
 from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct
@@ -17,8 +17,8 @@ from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.sales.models import SalesOrder, SalesOrderItem
-from app.modules.platform.models import CrmEvent
 from app.modules.user_management.models import User, UserStatus
 from app.core.access_control import PermissionPolicy
 from app.modules.platform.services.notifications import create_notification
@@ -30,31 +30,6 @@ logger = logging.getLogger(__name__)
 # records physical reality instead, and releases holds that no longer fit (§3.2 of
 # 12a-erp-fulfilment.md).
 RESERVATION_RESPECTING_MOVES = {"website_order", "sales_order", "transfer_out", "delivery"}
-
-
-@event.listens_for(Session, "after_commit")
-def _dispatch_inventory_events(session: Session) -> None:
-    from app.modules.platform.services.crm_events import enqueue_crm_event_automation
-
-    for event_id in session.info.pop("inventory_automation_event_ids", []):
-        try:
-            enqueue_crm_event_automation(event_id)
-        except Exception:
-            logger.exception("Could not dispatch inventory automation", extra={"event_id": event_id})
-
-
-@event.listens_for(Session, "after_rollback")
-def _discard_inventory_events(session: Session) -> None:
-    session.info.pop("inventory_automation_event_ids", None)
-
-
-def stage_inventory_event(db: Session, *, tenant_id: int, actor_user_id: int | None, event_type: str, entity_type: str, entity_id: int, payload: dict) -> None:
-    """Persist automation input with the stock transaction; dispatch only after commit."""
-    record = CrmEvent(tenant_id=tenant_id, actor_user_id=actor_user_id, event_type=event_type,
-        entity_type=entity_type, entity_id=str(entity_id), payload={"entity_type": entity_type, "entity_id": str(entity_id), **payload})
-    db.add(record)
-    db.flush()
-    db.info.setdefault("inventory_automation_event_ids", []).append(record.id)
 
 
 @dataclass(frozen=True)
@@ -248,13 +223,12 @@ def post_moves(
             continue
         warehouse = warehouses[warehouse_id]
         for user in db.query(User).filter(User.tenant_id == tenant_id, User.is_active == UserStatus.active).all():
-            policy = PermissionPolicy(db, user)
-            if policy.can_view_module("inventory_stock") and policy.can_perform_action("inventory_stock", "view"):
+            if PermissionPolicy(db, user).can("inventory_stock"):
                 create_notification(db, tenant_id=tenant_id, user_id=user.id, category="inventory_stock_low",
                     title=f"Low stock: {product.name}", message=f"{product.name} has {available_now} available in {warehouse.name}; reorder point {threshold}.",
                     link_url=f"/dashboard/catalog/products/{product.id}?tab=stock",
                     metadata={"product_id": product_id, "warehouse_id": warehouse_id, "available": str(available_now)}, commit=False)
-        stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
+        stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
             event_type="inventory.stock_low", entity_type="catalog_product", entity_id=product_id,
             payload={"product_id": product_id, "warehouse_id": warehouse_id, "product_name": product.name,
                 "warehouse_name": warehouse.name, "available": str(available_now), "reorder_point": str(threshold),

@@ -5,6 +5,7 @@ from typing import Any
 from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session
 
+from app.core.unit_of_work import in_unit_of_work, savepoint
 from app.core.pagination import Pagination
 from app.modules.platform.models import ActivityLog
 
@@ -190,6 +191,18 @@ def _merge_into(
 
 
 def safe_log_activity(db: Session, **kwargs: Any) -> ActivityLog | None:
+    """An audit row that must never fail the action it records.
+
+    Inside a unit of work a failure drops the row alone (a savepoint); a rollback there would
+    drop the whole business action.
+    """
+    if in_unit_of_work(db):
+        try:
+            with savepoint(db):
+                return log_activity(db, **kwargs)
+        except Exception:
+            logger.exception("Activity log write failed for %s %s", kwargs.get("entity_type"), kwargs.get("entity_id"))
+            return None
     try:
         return log_activity(db, **kwargs)
     except Exception:

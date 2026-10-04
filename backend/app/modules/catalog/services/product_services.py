@@ -1,44 +1,27 @@
+"""Catalog products: the shared catalog item implementation, plus stock and purchasing (13a E2).
+
+Everything a service also has lives in `catalog_item_services`. This module defines what only
+a product has (stock tracking and its opening balance, reorder levels, barcode, a preferred
+vendor) as `PRODUCT` hooks, and keeps the module's public functions.
+"""
+
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
+from decimal import Decimal
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.uploads import delete_local_media_file, persist_media_file, read_image_upload
 from app.modules.catalog.models import CatalogProduct
-from app.modules.catalog.repositories import product_repository
+from app.modules.catalog.repositories.catalog_item_repository import PRODUCT_QUERY
 from app.modules.catalog.schema import CatalogProductResponse
-from app.modules.catalog.services.common import (
-    catalog_detail_payload,
-    catalog_media_payload,
-    normalize_catalog_code,
-    normalize_catalog_detail_fields,
-    coerce_catalog_bool,
-    normalize_catalog_currency,
-    normalize_catalog_slug,
-    utc_now,
-)
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.catalog.services import catalog_item_services as items
+from app.modules.catalog.services.catalog_item_services import CatalogKind, coerce_nonnegative_decimal
+from app.modules.catalog.services.common import normalize_catalog_code
 from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, ensure_product_levels, post_moves
 
 CATALOG_PRODUCTS_MODULE = "catalog_products"
 PRODUCT_STOCK_STATUSES = {"untracked", "in_stock", "out_of_stock", "preorder"}
-
-
-def _coerce_nonnegative_decimal(value, *, field_name: str, required: bool = True) -> Decimal | None:
-    if value is None:
-        if required:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} cannot be null")
-        return None
-    try:
-        decimal_value = Decimal(str(value))
-    except (InvalidOperation, ValueError) as exc:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"Invalid {field_name}") from exc
-    if not decimal_value.is_finite() or decimal_value < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field_name} must be non-negative")
-    return decimal_value
 
 
 def _normalize_stock_status(value) -> str:
@@ -46,19 +29,6 @@ def _normalize_stock_status(value) -> str:
     if normalized not in PRODUCT_STOCK_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid stock status")
     return normalized
-
-
-def _ensure_slug_available(
-    db: Session,
-    *,
-    tenant_id: int,
-    slug: str | None,
-    product_id: int | None = None,
-) -> None:
-    if not slug:
-        return
-    if product_repository.slug_exists(db, tenant_id=tenant_id, slug=slug, product_id=product_id):
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Catalog slug already exists.")
 
 
 def _purchasing_fields(db: Session, *, tenant_id: int, payload: dict, partial: bool) -> dict:
@@ -86,179 +56,43 @@ def _purchasing_fields(db: Session, *, tenant_id: int, payload: dict, partial: b
     return fields
 
 
-def _product_state(product: CatalogProduct) -> dict:
-    return CatalogProductResponse.model_validate(serialize_product(product)).model_dump(mode="json")
+def _post_opening_balance(db: Session, product: CatalogProduct, *, quantity: Decimal | None, actor_user_id: int | None) -> None:
+    ensure_product_levels(db, tenant_id=product.tenant_id, product_id=product.id)
+    if quantity and quantity > 0:
+        warehouse = ensure_default_warehouse(db, tenant_id=product.tenant_id)
+        post_moves(db, tenant_id=product.tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(
+            product_id=product.id, warehouse_id=warehouse.id, quantity=quantity,
+            move_type="opening", source_type="catalog_product", source_id=product.id,
+            source_line_id=product.id, reason="Opening balance",
+        )])
 
 
-def serialize_product(product: CatalogProduct) -> dict:
-    return {
-        "id": product.id,
-        "name": product.name,
-        "slug": product.slug,
-        "description": product.description,
-        "sku": product.sku,
-        "currency": product.currency,
-        "public_unit_price": product.public_unit_price,
-        "stock_status": product.stock_status,
-        "stock_quantity": product.stock_quantity,
-        "track_inventory": bool(product.track_inventory),
-        "reorder_point": product.reorder_point,
-        "reorder_quantity": product.reorder_quantity,
-        **catalog_detail_payload(product),
-        "barcode": product.barcode,
-        "preferred_vendor_id": product.preferred_vendor_id,
-        "preferred_vendor_name": product.preferred_vendor.org_name if product.preferred_vendor else None,
-        "vendor_sku": product.vendor_sku,
-        "lead_time_days": product.lead_time_days,
-        "is_public": bool(product.is_public),
-        "is_active": bool(product.is_active),
-        **catalog_media_payload(product),
-        "created_at": product.created_at,
-        "updated_at": product.updated_at,
-    }
+def _opening_quantity(payload: dict) -> Decimal | None:
+    return coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False)
 
 
-def list_products(
-    db: Session,
-    *,
-    tenant_id: int,
-    search: str | None = None,
-    include_inactive: bool = True,
-    offset: int = 0,
-    limit: int = 50,
-    sort_by: str | None = None,
-    sort_direction: str | None = None,
-    all_filter_conditions: list[dict] | None = None,
-    any_filter_conditions: list[dict] | None = None,
-) -> tuple[list[CatalogProduct], int]:
-    return product_repository.list_products(
-        db,
-        tenant_id=tenant_id,
-        search=search,
-        include_inactive=include_inactive,
-        offset=offset,
-        limit=limit,
-        sort_by=sort_by,
-        sort_direction=sort_direction,
-        all_filter_conditions=all_filter_conditions,
-        any_filter_conditions=any_filter_conditions,
-    )
-
-
-def list_products_cursor(
-    db: Session,
-    *,
-    tenant_id: int,
-    search: str | None = None,
-    include_inactive: bool = True,
-    limit: int = 50,
-    cursor: int | None = None,
-) -> list[CatalogProduct]:
-    return product_repository.list_products_cursor(
-        db,
-        tenant_id=tenant_id,
-        search=search,
-        include_inactive=include_inactive,
-        limit=limit,
-        cursor=cursor,
-    )
-
-
-def list_deleted_products(
-    db: Session,
-    *,
-    tenant_id: int,
-    offset: int = 0,
-    limit: int = 50,
-) -> tuple[list[CatalogProduct], int]:
-    return product_repository.list_deleted_products(db, tenant_id=tenant_id, offset=offset, limit=limit)
-
-
-def get_product_or_404(
-    db: Session,
-    *,
-    tenant_id: int,
-    product_id: int,
-    include_deleted: bool = False,
-) -> CatalogProduct:
-    product = product_repository.get_product(
-        db,
-        tenant_id=tenant_id,
-        product_id=product_id,
-        include_deleted=include_deleted,
-    )
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found.")
-    return product
-
-
-def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> CatalogProduct:
-    slug = normalize_catalog_slug(payload.get("slug"), fallback=payload["name"])
-    _ensure_slug_available(db, tenant_id=tenant_id, slug=slug)
-    opening_quantity = _coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False)
+def _create_fields(db: Session, tenant_id: int, payload: dict) -> dict:
+    opening_quantity = _opening_quantity(payload)
     tracked = bool(payload.get("track_inventory")) or opening_quantity is not None
     if payload.get("track_inventory") is False and opening_quantity is not None:
         raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
-    product = CatalogProduct(
-        tenant_id=tenant_id,
-        name=str(payload["name"]).strip(),
-        slug=slug,
-        description=(payload.get("description") or "").strip() or None,
-        sku=normalize_catalog_code(payload.get("sku")),
-        barcode=normalize_catalog_code(payload.get("barcode")),
-        **normalize_catalog_detail_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
+    return {
+        "barcode": normalize_catalog_code(payload.get("barcode")),
         **_purchasing_fields(db, tenant_id=tenant_id, payload=payload, partial=False),
-        currency=normalize_catalog_currency(payload.get("currency")),
-        public_unit_price=_coerce_nonnegative_decimal(payload.get("public_unit_price", 0), field_name="public_unit_price"),
-        stock_status=("out_of_stock" if tracked else _normalize_stock_status(payload.get("stock_status"))),
-        stock_quantity=(Decimal("0") if tracked else None),
-        track_inventory=int(tracked),
-        reorder_point=_coerce_nonnegative_decimal(payload.get("reorder_point", 0), field_name="reorder_point", required=True),
-        reorder_quantity=_coerce_nonnegative_decimal(payload.get("reorder_quantity", 0), field_name="reorder_quantity", required=True),
-        is_public=coerce_catalog_bool(payload.get("is_public", False), field_name="is_public"),
-        is_active=coerce_catalog_bool(payload.get("is_active", True), field_name="is_active"),
-        created_by_user_id=actor_user_id,
-        updated_by_user_id=actor_user_id,
-    )
-    db.add(product)
-    try:
-        db.flush()
-        if tracked:
-            ensure_product_levels(db, tenant_id=tenant_id, product_id=product.id)
-        if tracked and opening_quantity and opening_quantity > 0:
-            warehouse = ensure_default_warehouse(db, tenant_id=tenant_id)
-            post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(
-                product_id=product.id, warehouse_id=warehouse.id, quantity=opening_quantity,
-                move_type="opening", source_type="catalog_product", source_id=product.id,
-                source_line_id=product.id, reason="Opening balance",
-            )])
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug, SKU or barcode already exists.") from exc
-    db.refresh(product)
-    log_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=actor_user_id,
-        module_key=CATALOG_PRODUCTS_MODULE,
-        entity_type="catalog_product",
-        entity_id=product.id,
-        action="create",
-        description=f"Created product {product.name}",
-        after_state=_product_state(product),
-    )
-    return product
+        "stock_status": "out_of_stock" if tracked else _normalize_stock_status(payload.get("stock_status")),
+        "stock_quantity": Decimal("0") if tracked else None,
+        "track_inventory": int(tracked),
+        "reorder_point": coerce_nonnegative_decimal(payload.get("reorder_point", 0), field_name="reorder_point", required=True),
+        "reorder_quantity": coerce_nonnegative_decimal(payload.get("reorder_quantity", 0), field_name="reorder_quantity", required=True),
+    }
 
 
-def update_product(
-    db: Session,
-    *,
-    product: CatalogProduct,
-    actor_user_id: int | None,
-    payload: dict,
-) -> CatalogProduct:
-    before_state = _product_state(product)
+def _after_create(db: Session, product: CatalogProduct, payload: dict, actor_user_id: int | None) -> None:
+    if product.track_inventory:
+        _post_opening_balance(db, product, quantity=_opening_quantity(payload), actor_user_id=actor_user_id)
+
+
+def _prepare_update(db: Session, product: CatalogProduct, payload: dict):
     was_tracked = bool(product.track_inventory)
     requested_tracking = payload.get("track_inventory")
     if was_tracked and requested_tracking is False:
@@ -276,183 +110,100 @@ def update_product(
                 raise HTTPException(status_code=409, detail="A tracked product's cost is its average cost; use Revalue to change it")
             payload = {key: value for key, value in payload.items() if key != "cost_price"}
     enabling = not was_tracked and (requested_tracking is True or payload.get("stock_quantity") is not None)
-    opening_quantity = _coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False) if enabling else None
+    opening_quantity = _opening_quantity(payload) if enabling else None
     if enabling and requested_tracking is False:
         raise HTTPException(status_code=400, detail="A product with a quantity must track inventory")
-    for field, value in normalize_catalog_detail_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
-        setattr(product, field, value)
-    for field, value in _purchasing_fields(db, tenant_id=product.tenant_id, payload=payload, partial=True).items():
-        setattr(product, field, value)
-    required_fields = {"name", "currency", "public_unit_price", "stock_status", "reorder_point", "reorder_quantity"}
-    for field in [
-        "name",
-        "slug",
-        "description",
-        "sku",
-        "barcode",
-        "currency",
-        "public_unit_price",
-        "reorder_point",
-        "reorder_quantity",
-        "is_public",
-        "is_active",
-    ]:
-        if field not in payload:
-            continue
-        value = payload[field]
-        if value is None and field in required_fields:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field} cannot be null")
-        if field == "slug":
-            value = normalize_catalog_slug(value, fallback=product.name)
-            _ensure_slug_available(db, tenant_id=product.tenant_id, slug=value, product_id=product.id)
-        elif field == "description":
-            value = (value or "").strip() or None
-        elif field in {"sku", "barcode"}:
-            value = normalize_catalog_code(value)
-        elif field == "name" and value is not None:
-            value = str(value).strip()
-        elif field == "currency" and value is not None:
-            value = normalize_catalog_currency(value)
-        elif field in {"public_unit_price", "stock_quantity", "reorder_point", "reorder_quantity"} and value is not None:
-            value = _coerce_nonnegative_decimal(value, field_name=field, required=field in required_fields)
-        elif field == "stock_status" and value is not None:
-            value = _normalize_stock_status(value)
-        elif field in {"is_public", "is_active"} and value is not None:
-            value = coerce_catalog_bool(value, field_name=field)
-        setattr(product, field, value)
     if not was_tracked and "stock_status" in payload and not enabling:
         product.stock_status = _normalize_stock_status(payload["stock_status"])
     if enabling:
         product.track_inventory = 1
         product.stock_quantity = Decimal("0")
         product.stock_status = "out_of_stock"
-    product.updated_by_user_id = actor_user_id
-    db.add(product)
-    try:
-        db.flush()
+
+    def after_flush(session: Session) -> None:
         if enabling:
-            ensure_product_levels(db, tenant_id=product.tenant_id, product_id=product.id)
-        if enabling and opening_quantity and opening_quantity > 0:
-            warehouse = ensure_default_warehouse(db, tenant_id=product.tenant_id)
-            post_moves(db, tenant_id=product.tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(
-                product_id=product.id, warehouse_id=warehouse.id, quantity=opening_quantity,
-                move_type="opening", source_type="catalog_product", source_id=product.id,
-                source_line_id=product.id, reason="Opening balance",
-            )])
-        db.commit()
-    except IntegrityError as exc:
-        db.rollback()
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Product slug, SKU or barcode already exists.") from exc
-    db.refresh(product)
-    log_activity(
-        db,
-        tenant_id=product.tenant_id,
-        actor_user_id=actor_user_id,
-        module_key=CATALOG_PRODUCTS_MODULE,
-        entity_type="catalog_product",
-        entity_id=product.id,
-        action="update",
-        description=f"Updated product {product.name}",
-        before_state=before_state,
-        after_state=_product_state(product),
-    )
-    return product
+            _post_opening_balance(session, product, quantity=opening_quantity, actor_user_id=product.updated_by_user_id)
+
+    return payload, after_flush
 
 
-async def upload_product_media(
-    db: Session,
-    *,
-    product: CatalogProduct,
-    actor_user_id: int | None,
-    file: UploadFile,
-) -> CatalogProduct:
-    before_state = _product_state(product)
-    content, extension = await read_image_upload(file)
-    previous_media_path = product.media_path
-    new_media_path = persist_media_file(
-        category="catalog-products",
-        owner_key=f"tenant-{product.tenant_id}/product-{product.id}",
-        extension=extension,
-        content=content,
-    )
-    product.media_path = new_media_path
-    product.media_content_type = file.content_type
-    product.media_original_filename = (file.filename or "product-image")[:255]
-    product.updated_by_user_id = actor_user_id
-    db.add(product)
-    try:
-        db.commit()
-    except Exception:
-        db.rollback()
-        delete_local_media_file(new_media_path)
-        raise
-    db.refresh(product)
-    delete_local_media_file(previous_media_path)
-    log_activity(
-        db,
-        tenant_id=product.tenant_id,
-        actor_user_id=actor_user_id,
-        module_key=CATALOG_PRODUCTS_MODULE,
-        entity_type="catalog_product",
-        entity_id=product.id,
-        action="media.update",
-        description=f"Updated product media for {product.name}",
-        before_state=before_state,
-        after_state=_product_state(product),
-    )
-    return product
+def _required_decimal(field_name: str):
+    return lambda value: coerce_nonnegative_decimal(value, field_name=field_name, required=True)
 
 
-def soft_delete_product(
-    db: Session,
-    *,
-    product: CatalogProduct,
-    actor_user_id: int | None,
-) -> CatalogProduct:
-    if product.deleted_at is None:
-        before_state = _product_state(product)
-        product.deleted_at = utc_now()
-        product.updated_by_user_id = actor_user_id
-        db.add(product)
-        db.commit()
-        db.refresh(product)
-        log_activity(
-            db,
-            tenant_id=product.tenant_id,
-            actor_user_id=actor_user_id,
-            module_key=CATALOG_PRODUCTS_MODULE,
-            entity_type="catalog_product",
-            entity_id=product.id,
-            action="soft_delete",
-            description=f"Deleted product {product.name}",
-            before_state=before_state,
-            after_state=_product_state(product),
-        )
-    return product
+def _serialize_extra(product: CatalogProduct) -> dict:
+    return {
+        "stock_status": product.stock_status,
+        "stock_quantity": product.stock_quantity,
+        "track_inventory": bool(product.track_inventory),
+        "reorder_point": product.reorder_point,
+        "reorder_quantity": product.reorder_quantity,
+        "barcode": product.barcode,
+        "preferred_vendor_id": product.preferred_vendor_id,
+        "preferred_vendor_name": product.preferred_vendor.org_name if product.preferred_vendor else None,
+        "vendor_sku": product.vendor_sku,
+        "lead_time_days": product.lead_time_days,
+    }
 
 
-def restore_product(
-    db: Session,
-    *,
-    product: CatalogProduct,
-    actor_user_id: int | None,
-) -> CatalogProduct:
-    if product.deleted_at is not None:
-        _ensure_slug_available(db, tenant_id=product.tenant_id, slug=product.slug, product_id=product.id)
-        product.deleted_at = None
-        product.updated_by_user_id = actor_user_id
-        db.add(product)
-        db.commit()
-        db.refresh(product)
-        log_activity(
-            db,
-            tenant_id=product.tenant_id,
-            actor_user_id=actor_user_id,
-            module_key=CATALOG_PRODUCTS_MODULE,
-            entity_type="catalog_product",
-            entity_id=product.id,
-            action="restore",
-            description=f"Restored product {product.name}",
-            after_state=_product_state(product),
-        )
-    return product
+PRODUCT = CatalogKind(
+    key="product",
+    label="Product",
+    module_key=CATALOG_PRODUCTS_MODULE,
+    entity_type="catalog_product",
+    query=PRODUCT_QUERY,
+    response_model=CatalogProductResponse,
+    conflict_detail="Product slug, SKU or barcode already exists.",
+    create_fields=_create_fields,
+    after_create=_after_create,
+    prepare_update=_prepare_update,
+    update_fields=("barcode", "reorder_point", "reorder_quantity"),
+    update_field_groups=(lambda db, tenant_id, payload: _purchasing_fields(db, tenant_id=tenant_id, payload=payload, partial=True),),
+    required_fields=frozenset({"stock_status", "reorder_point", "reorder_quantity"}),
+    normalizers={
+        "barcode": normalize_catalog_code,
+        "reorder_point": _required_decimal("reorder_point"),
+        "reorder_quantity": _required_decimal("reorder_quantity"),
+    },
+    serialize_extra=_serialize_extra,
+)
+
+
+def serialize_product(product: CatalogProduct) -> dict:
+    return items.serialize(PRODUCT, product)
+
+
+def list_products(db: Session, **kwargs) -> tuple[list[CatalogProduct], int]:
+    return items.list_items(db, PRODUCT, **kwargs)
+
+
+def list_products_cursor(db: Session, **kwargs) -> list[CatalogProduct]:
+    return items.list_items_cursor(db, PRODUCT, **kwargs)
+
+
+def list_deleted_products(db: Session, *, tenant_id: int, offset: int = 0, limit: int = 50) -> tuple[list[CatalogProduct], int]:
+    return items.list_deleted_items(db, PRODUCT, tenant_id=tenant_id, offset=offset, limit=limit)
+
+
+def get_product_or_404(db: Session, *, tenant_id: int, product_id: int, include_deleted: bool = False) -> CatalogProduct:
+    return items.get_item_or_404(db, PRODUCT, tenant_id=tenant_id, item_id=product_id, include_deleted=include_deleted)
+
+
+def create_product(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict) -> CatalogProduct:
+    return items.create_item(db, PRODUCT, tenant_id=tenant_id, actor_user_id=actor_user_id, payload=payload)
+
+
+def update_product(db: Session, *, product: CatalogProduct, actor_user_id: int | None, payload: dict) -> CatalogProduct:
+    return items.update_item(db, PRODUCT, record=product, actor_user_id=actor_user_id, payload=payload)
+
+
+async def upload_product_media(db: Session, *, product: CatalogProduct, actor_user_id: int | None, file: UploadFile) -> CatalogProduct:
+    return await items.upload_item_media(db, PRODUCT, record=product, actor_user_id=actor_user_id, file=file)
+
+
+def soft_delete_product(db: Session, *, product: CatalogProduct, actor_user_id: int | None) -> CatalogProduct:
+    return items.soft_delete_item(db, PRODUCT, record=product, actor_user_id=actor_user_id)
+
+
+def restore_product(db: Session, *, product: CatalogProduct, actor_user_id: int | None) -> CatalogProduct:
+    return items.restore_item(db, PRODUCT, record=product, actor_user_id=actor_user_id)

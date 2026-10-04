@@ -8,6 +8,7 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.permissions import require_action_access, require_module_access
+from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
@@ -308,10 +309,12 @@ def convert_quote_to_order_route(
     require_order_permission=Depends(require_action_access("sales_orders", "create")),
 ):
     quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
-    order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
-    safe_publish_crm_event(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, event_type="order.created", entity_type="sales_order", entity_id=order.id, payload={"order_number": order.order_number, "status": order.status, "quote_id": quote.quote_id})
+    # The order, both timeline rows and the event commit together (13a E5).
+    with unit_of_work(db):
+        order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
+        log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
+        log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
+        safe_publish_crm_event(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, event_type="order.created", entity_type="sales_order", entity_id=order.id, payload={"order_number": order.order_number, "status": order.status, "quote_id": quote.quote_id})
     return order
 
 

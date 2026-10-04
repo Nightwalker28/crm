@@ -63,6 +63,15 @@ export type RecordTableSort = { column: string; direction: "asc" | "desc" };
 const COLUMN_WIDTH = { sm: 96, md: 132, lg: 220 } as const;
 const SELECTION_COLUMN_WIDTH = 48;
 const ACTIONS_COLUMN_WIDTH = 112;
+/**
+ * The editable grid's floor, per column. A form column is about 640px at a 1280px viewport
+ * (§4.5), and the list widths above summed to 1,032px there: the grid scrolled, Item shrank to
+ * "Search the catal" and Tax, Total and remove sat off the right edge (13a H15). The grid is
+ * `table-fixed` instead, each column taking its `share` of the width, so the floor only
+ * decides when a phone-width form scrolls.
+ */
+const LINE_ITEM_MIN_WIDTH = { sm: 64, md: 88, lg: 168 } as const;
+const LINE_ITEM_ACTIONS_WIDTH = 48;
 
 export type RecordTableColumn<T> = {
   key: string;
@@ -73,8 +82,20 @@ export type RecordTableColumn<T> = {
   align?: "left" | "right";
   /** Width hint for the derived min-width. Defaults to `md`. */
   size?: keyof typeof COLUMN_WIDTH;
+  /**
+   * `lineItems` only: the column's share of the grid's width, relative to the other columns'
+   * (defaults by `size`: 1, 1.5, 3). The item column takes the largest share (13a H15).
+   */
+  share?: number;
   /** Set when the cell carries its own controls, so a click there never opens the row. */
   interactive?: boolean;
+  /**
+   * The cell is the link: it renders its own `<a>` (a `TextLink` to the record, say), so the
+   * table must not wrap it in the row's link as well. An `<a>` inside an `<a>` is invalid
+   * HTML and a hydration error (13a H9). `design-rules.spec.ts` fails any page that nests
+   * them.
+   */
+  rendersLink?: boolean;
   className?: string;
 };
 
@@ -277,10 +298,15 @@ export function RecordTable<T>({
   const canOpenRow = isList && Boolean(onOpenRow || rowHref);
   const canSort = isList && Boolean(onSortChange);
 
-  const minWidth =
-    columns.reduce((total, column) => total + COLUMN_WIDTH[column.size ?? "md"], 0) +
-    (hasSelection ? SELECTION_COLUMN_WIDTH : 0) +
-    (hasRowActions ? ACTIONS_COLUMN_WIDTH : 0);
+  const isLineItems = variant === "lineItems";
+  const minWidth = isLineItems
+    ? columns.reduce((total, column) => total + LINE_ITEM_MIN_WIDTH[column.size ?? "md"], 0) +
+      (hasRowActions ? LINE_ITEM_ACTIONS_WIDTH : 0)
+    : columns.reduce((total, column) => total + COLUMN_WIDTH[column.size ?? "md"], 0) +
+      (hasSelection ? SELECTION_COLUMN_WIDTH : 0) +
+      (hasRowActions ? ACTIONS_COLUMN_WIDTH : 0);
+  const shares = columns.map((column) => column.share ?? { sm: 1, md: 1.5, lg: 3 }[column.size ?? "md"]);
+  const shareTotal = shares.reduce((total, share) => total + share, 0);
 
   const selectedIds = selection?.selectedIds ?? [];
   const selectableRows = selection?.isRowSelectable ? rows.filter(selection.isRowSelectable) : rows;
@@ -472,7 +498,7 @@ export function RecordTable<T>({
                 >
                   {/* Never wrap a cell that holds its own link — the visible columns are
                       operator-ordered, so any column can end up first. */}
-                  {isIdentity && href && !column.interactive ? (
+                  {isIdentity && href && !column.interactive && !column.rendersLink ? (
                     // A real link, so the row can still be opened in a new tab or copied,
                     // but never a second tab stop: the row is the gesture.
                     <Link
@@ -508,7 +534,15 @@ export function RecordTable<T>({
 
   return (
     <ModuleTableShell isRefreshing={isRefreshing} isLoading={isLoading} label={label} variant={shellVariant} className={className}>
-      <Table data-variant={variant} style={{ minWidth: `${minWidth}px` }}>
+      <Table data-variant={variant} className={isLineItems ? "table-fixed" : undefined} style={{ minWidth: `${minWidth}px` }}>
+        {isLineItems ? (
+          <colgroup>
+            {columns.map((column, index) => (
+              <col key={column.key} style={{ width: `${(shares[index] / shareTotal) * 100}%` }} />
+            ))}
+            {rowActions ? <col style={{ width: `${LINE_ITEM_ACTIONS_WIDTH}px` }} /> : null}
+          </colgroup>
+        ) : null}
         <TableHeader>
           <TableHeaderRow>
             {selection ? (
@@ -539,7 +573,10 @@ export function RecordTable<T>({
               );
             })}
             {rowActions ? (
-              <TableHead className={recordTableHeadVariants({ align: "right", variant })}>{rowActionsLabel}</TableHead>
+              <TableHead className={recordTableHeadVariants({ align: "right", variant })}>
+                {/* The editable grid's remove column is an icon wide; its name is for the reader only. */}
+                {isLineItems ? <span className="sr-only">{rowActionsLabel}</span> : rowActionsLabel}
+              </TableHead>
             ) : null}
           </TableHeaderRow>
         </TableHeader>

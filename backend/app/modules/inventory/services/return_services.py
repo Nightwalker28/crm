@@ -12,16 +12,32 @@ from datetime import datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine, InventoryReturn, InventoryReturnLine, InventoryWarehouse
 from app.modules.inventory.services.inventory_services import get_warehouse_or_404
-from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves, stage_inventory_event
+from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves
+from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem
+
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, delivery_id: int | None = None):
+    """The return list's rows. The list and its export both start here (13a A5)."""
+    query = db.query(InventoryReturn).options(selectinload(InventoryReturn.lines)).filter(
+        InventoryReturn.tenant_id == tenant_id, InventoryReturn.deleted_at.is_(None))
+    if status:
+        query = query.filter(InventoryReturn.status == status)
+    if delivery_id:
+        query = query.filter(InventoryReturn.delivery_id == delivery_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.join(SalesOrder, SalesOrder.id == InventoryReturn.order_id).filter(SalesOrder.tenant_id == tenant_id, or_(
+            InventoryReturn.number.ilike(pattern), InventoryReturn.reason.ilike(pattern), SalesOrder.order_number.ilike(pattern)))
+    return query
 
 
 def _quantity(value) -> Decimal:
@@ -210,7 +226,7 @@ def receive_return(db: Session, *, tenant_id: int, actor_user_id: int | None, re
         from app.modules.finance.services.invoicing_services import refresh_invoice_status
 
         refresh_invoice_status(db, order=order)
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="inventory.return_received",
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="inventory.return_received",
         entity_type="inventory_return", entity_id=doc.id,
         payload={"number": doc.number, "reason": doc.reason, "delivery_id": delivery.id, "delivery_number": delivery.number,
                  "order_id": doc.order_id, "order_number": order.order_number if order else None, "warehouse_id": doc.warehouse_id,

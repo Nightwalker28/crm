@@ -625,6 +625,53 @@ class AutomationRuleTests(unittest.TestCase):
         self.assertEqual(self.db.query(ActivityLog).filter(ActivityLog.action == "automation.convert_lead").count(), 1)
         self.assertEqual(run.step_results_json[0]["result"]["type"], "convert_lead_to_opportunity")
 
+    def test_a_failing_action_rolls_back_the_actions_before_it(self):
+        # 13a E5: the run used to commit the first action's records beside a run marked failed.
+        self.db.add(SalesLead(lead_id=710, tenant_id=10, first_name="Grace", last_name="Hopper", company="Compilers Inc",
+                              primary_email="grace@example.test", status="qualified", assigned_to=1))
+        self.db.commit()
+        create_automation_rule(
+            self.db,
+            tenant_id=10,
+            actor_user_id=1,
+            payload={
+                "name": "Convert, then follow up",
+                "trigger_event": "lead.status_changed",
+                "actions_json": [
+                    {"type": "convert_lead_to_opportunity", "deal_stage": "qualified"},
+                    {"type": "create_task", "title": "Welcome {{payload.first_name}}", "assignee_user_id": "actor"},
+                ],
+            },
+        )
+        from app.modules.platform.services import automation_rules
+
+        real_execute = automation_rules._execute_action
+
+        def fail_on_task(db, *, action, **kwargs):
+            if action.get("type") == "create_task":
+                raise RuntimeError("task service down")
+            return real_execute(db, action=action, **kwargs)
+
+        with patch.object(automation_rules, "_execute_action", side_effect=fail_on_task):
+            self._emit_and_process(
+                self.db,
+                tenant_id=10,
+                actor_user_id=1,
+                event_type="lead.status_changed",
+                entity_type="sales_lead",
+                entity_id=710,
+                payload={"first_name": "Grace", "last_name": "Hopper", "status": "qualified"},
+            )
+
+        self.db.expire_all()
+        run = self.db.query(AutomationRuleRun).one()
+        self.assertEqual(run.status, "failed")
+        self.assertEqual([step["status"] for step in run.step_results_json], ["success", "failed"])
+        self.assertEqual(self.db.query(AutomationRuleDeadLetter).count(), 1)
+        self.assertEqual(self.db.query(SalesLead).filter(SalesLead.lead_id == 710).one().status, "qualified")
+        self.assertEqual(self.db.query(SalesOrganization).filter(SalesOrganization.tenant_id == 10).count(), 0)
+        self.assertEqual(self.db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == 10).count(), 0)
+
     def test_cross_module_action_converts_accepted_quote_to_order(self):
         self.db.add_all(
             [

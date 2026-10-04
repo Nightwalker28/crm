@@ -511,7 +511,7 @@ function InvoiceOverview({
             rowHref={(row) => `${DASHBOARD_ROUTES.creditNotes}/${row.id}`}
             emptyState={{ title: "No credit notes" }}
             columns={[
-              { key: "number", label: "Number", size: "sm", render: (row) => <TextLink href={`${DASHBOARD_ROUTES.creditNotes}/${row.id}`}>{row.number ?? "Draft"}</TextLink> },
+              { key: "number", label: "Number", size: "sm", rendersLink: true, render: (row) => <TextLink href={`${DASHBOARD_ROUTES.creditNotes}/${row.id}`}>{row.number ?? "Draft"}</TextLink> },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getCreditNoteStatus(row.status)} /> },
               { key: "issue_date", label: "Issued", size: "sm", render: (row) => (row.issue_date ? formatDateOnly(row.issue_date) : "—") },
               { key: "reason", label: "Reason", size: "lg", render: (row) => row.reason ?? "—" },

@@ -896,7 +896,9 @@ Doing these later would mean rewriting the features that sit on them.
 ### Step 5 — F1 names, retirement, one order model
 
 **Before F2–F5:** invoices at `/invoices`, insertion orders retired, website orders as
-sales orders (C5, A3's lasting fix), and the sidebar for new modules (H27). Later phases
+sales orders (C5, A3's lasting fix), and the sidebar for new modules (H27). B7 (website-integration
+routes on module permissions, from FQ.5) moved here in Step 4: it needs its own module key, and
+this step reshapes website orders anyway. Later phases
 then build on the final paths and models.
 
 ### Step 6 — F2 picklists and standard records, then F3 customization

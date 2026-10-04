@@ -184,9 +184,9 @@ def record_payment(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, module_key=PAYMENTS_MODULE, entity_type="finance_payment",
         entity_id=payment.id, action="create", description=f"Recorded {payment.number}: {total} {payment.currency} for "
         + ", ".join(row[5] or "document" for row in resolved))
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
 
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="finance.payment_recorded",
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="finance.payment_recorded",
         entity_type="finance_payment", entity_id=payment.id, payload={"number": payment.number, "direction": direction, "kind": kind,
         "amount": str(total), "currency": payment.currency, "party_name": party_name,
         "documents": [row[5] for row in resolved]})
@@ -307,9 +307,9 @@ PAYMENT_SORT_FIELDS = {
 }
 
 
-def list_payments(db: Session, user, *, pagination: Pagination, search: str | None = None, direction: str | None = None,
-                  status: str | None = None, method: str | None = None, date_from: date | None = None, date_to: date | None = None,
-                  sort_by: str | None = None, sort_direction: str | None = None) -> dict:
+def list_query(db: Session, user, *, search: str | None = None, direction: str | None = None, status: str | None = None,
+               method: str | None = None, date_from: date | None = None, date_to: date | None = None):
+    """The payment list's rows, in the finance scope. The list and its export both start here (13a A5)."""
     query = _scoped(db.query(FinancePayment).options(selectinload(FinancePayment.allocations)).filter(FinancePayment.tenant_id == user.tenant_id), db, user)
     if direction in DIRECTIONS:
         query = query.filter(FinancePayment.direction == direction)
@@ -327,6 +327,13 @@ def list_payments(db: Session, user, *, pagination: Pagination, search: str | No
             FinancePaymentAllocation.tenant_id == user.tenant_id, FinancePosInvoice.invoice_number.ilike(pattern))
         query = query.filter(or_(FinancePayment.number.ilike(pattern), FinancePayment.party_name.ilike(pattern),
             FinancePayment.reference.ilike(pattern), FinancePayment.method.ilike(pattern), FinancePayment.id.in_(invoice_hits)))
+    return query
+
+
+def list_payments(db: Session, user, *, pagination: Pagination, search: str | None = None, direction: str | None = None,
+                  status: str | None = None, method: str | None = None, date_from: date | None = None, date_to: date | None = None,
+                  sort_by: str | None = None, sort_direction: str | None = None) -> dict:
+    query = list_query(db, user, search=search, direction=direction, status=status, method=method, date_from=date_from, date_to=date_to)
     total = query.count()
     column = PAYMENT_SORT_FIELDS.get((sort_by or "").strip())
     if column is not None:

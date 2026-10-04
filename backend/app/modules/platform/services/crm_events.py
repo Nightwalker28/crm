@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.pagination import Pagination
+from app.core.unit_of_work import in_unit_of_work, on_commit, on_commit_session, savepoint
 from app.modules.platform.models import CrmEvent, CrmEventDelivery, NotificationChannel
 
 
@@ -423,7 +424,7 @@ def send_test_message(db: Session, *, channel: NotificationChannel, actor_name: 
     return {"ok": True, "message": "Test message sent"}
 
 
-def emit_crm_event(
+def stage_crm_event(
     db: Session,
     *,
     tenant_id: int,
@@ -433,6 +434,12 @@ def emit_crm_event(
     entity_id: str | int,
     payload: dict[str, Any] | None = None,
 ) -> CrmEvent:
+    """Write the event with the caller's transaction; queue its work only once that commits.
+
+    Automation and channel deliveries run in Celery and read the event from the database, so
+    queueing them before the commit could run them against a row that is not there yet, or
+    that a rollback then removes (13a E5).
+    """
     encoded_payload = jsonable_encoder(payload or {})
     event = CrmEvent(
         tenant_id=tenant_id,
@@ -445,7 +452,7 @@ def emit_crm_event(
     db.add(event)
     db.flush()
 
-    deliveries: list[CrmEventDelivery] = []
+    delivery_ids: list[int] = []
     if event_type in SLACK_ALERT_EVENT_TYPES:
         channels = (
             db.query(NotificationChannel)
@@ -466,34 +473,104 @@ def emit_crm_event(
             )
             db.add(delivery)
             db.flush()
-            deliveries.append(delivery)
+            delivery_ids.append(delivery.id)
 
-    db.commit()
-    db.refresh(event)
-    for delivery in deliveries:
+    event_id = event.id
+    on_commit(db, lambda: _dispatch_crm_event(db, event_id=event_id, delivery_ids=delivery_ids))
+    return event
+
+
+def stage_standard_crm_event(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int | None,
+    event_type: str,
+    entity_type: str,
+    entity_id: str | int,
+    payload: dict[str, Any] | None = None,
+) -> CrmEvent:
+    """`stage_crm_event` for a standard event type, with the entity named in its payload."""
+    return stage_crm_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        event_type=_standard_event_type(event_type),
+        entity_type=entity_type,
+        entity_id=entity_id,
+        payload=_standard_event_payload(entity_type, entity_id, payload),
+    )
+
+
+def _standard_event_type(event_type: str) -> str:
+    normalized_type = event_type.strip().lower()
+    if normalized_type not in CRM_EVENT_TYPES:
+        raise ValueError(f"Unsupported standard CRM event type: {normalized_type}")
+    return normalized_type
+
+
+def _standard_event_payload(entity_type: str, entity_id: str | int, payload: dict[str, Any] | None) -> dict[str, Any]:
+    return {"entity_type": entity_type, "entity_id": str(entity_id), **(payload or {})}
+
+
+def _dispatch_crm_event(db: Session, *, event_id: int, delivery_ids: list[int]) -> None:
+    """Queue an event's deliveries and automation; a queueing failure is recorded on the rows."""
+    failed_deliveries: dict[int, str] = {}
+    for delivery_id in delivery_ids:
         try:
-            enqueue_crm_event_delivery(delivery.id)
+            enqueue_crm_event_delivery(delivery_id)
         except Exception as exc:
-            logger.exception("Failed to enqueue CRM event delivery", extra={"delivery_id": delivery.id, "event_id": event.id})
-            delivery.status = "failed"
-            delivery.error_message = f"Delivery could not be queued: {str(exc)[:900]}"
-            db.add(delivery)
-    if deliveries:
-        db.commit()
-
+            logger.exception("Failed to enqueue CRM event delivery", extra={"delivery_id": delivery_id, "event_id": event_id})
+            failed_deliveries[delivery_id] = f"Delivery could not be queued: {str(exc)[:900]}"
+    automation_error: str | None = None
     try:
-        enqueue_crm_event_automation(event.id)
+        enqueue_crm_event_automation(event_id)
     except Exception as exc:
-        logger.exception("Failed to enqueue CRM event automation", extra={"event_id": event.id})
-        persisted_payload = dict(event.payload or {})
-        persisted_payload["_automation_dispatch"] = {
-            "status": "failed",
-            "error_message": str(exc)[:1000],
-            "failed_at": _utcnow().isoformat(),
-        }
-        event.payload = jsonable_encoder(persisted_payload)
-        db.add(event)
-        db.commit()
+        logger.exception("Failed to enqueue CRM event automation", extra={"event_id": event_id})
+        automation_error = str(exc)[:1000]
+    if not failed_deliveries and automation_error is None:
+        return
+
+    # This runs after the commit, when the caller's session is between transactions.
+    with on_commit_session(db) as session:
+        for delivery in session.query(CrmEventDelivery).filter(CrmEventDelivery.id.in_(list(failed_deliveries))).all():
+            delivery.status = "failed"
+            delivery.error_message = failed_deliveries[delivery.id]
+        if automation_error is not None:
+            event = session.query(CrmEvent).filter(CrmEvent.id == event_id).first()
+            if event is not None:
+                persisted_payload = dict(event.payload or {})
+                persisted_payload["_automation_dispatch"] = {
+                    "status": "failed",
+                    "error_message": automation_error,
+                    "failed_at": _utcnow().isoformat(),
+                }
+                event.payload = jsonable_encoder(persisted_payload)
+        session.commit()
+
+
+def emit_crm_event(
+    db: Session,
+    *,
+    tenant_id: int,
+    actor_user_id: int | None,
+    event_type: str,
+    entity_type: str,
+    entity_id: str | int,
+    payload: dict[str, Any] | None = None,
+) -> CrmEvent:
+    """Stage the event and commit. Inside a unit of work the commit is the action's own."""
+    event = stage_crm_event(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=actor_user_id,
+        event_type=event_type,
+        entity_type=entity_type,
+        entity_id=entity_id,
+        payload=payload,
+    )
+    db.commit()
+    if not in_unit_of_work(db):
         db.refresh(event)
     return event
 
@@ -555,6 +632,18 @@ def enqueue_crm_event_automation(event_id: int) -> None:
 
 
 def safe_emit_crm_event(db: Session, **kwargs: Any) -> CrmEvent | None:
+    """An event that must never fail the action it reports.
+
+    Inside a unit of work the event gets a savepoint: a failure drops the event alone, where a
+    rollback would have dropped the whole business action with it.
+    """
+    if in_unit_of_work(db):
+        try:
+            with savepoint(db):
+                return stage_crm_event(db, **kwargs)
+        except Exception:
+            logger.exception("CRM event not recorded", extra={"event_type": kwargs.get("event_type")})
+            return None
     try:
         return emit_crm_event(db, **kwargs)
     except Exception:
@@ -572,21 +661,14 @@ def safe_publish_crm_event(
     entity_id: str | int,
     payload: dict[str, Any] | None = None,
 ) -> CrmEvent | None:
-    normalized_type = event_type.strip().lower()
-    if normalized_type not in CRM_EVENT_TYPES:
-        raise ValueError(f"Unsupported standard CRM event type: {normalized_type}")
     return safe_emit_crm_event(
         db,
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
-        event_type=normalized_type,
+        event_type=_standard_event_type(event_type),
         entity_type=entity_type,
         entity_id=entity_id,
-        payload={
-            "entity_type": entity_type,
-            "entity_id": str(entity_id),
-            **(payload or {}),
-        },
+        payload=_standard_event_payload(entity_type, entity_id, payload),
     )
 
 

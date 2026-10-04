@@ -7,7 +7,8 @@ from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryWarehouse
-from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves, stage_inventory_event
+from app.modules.inventory.services.stock_ledger import MoveSpec, ensure_default_warehouse, post_moves
+from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.user_management.models import User
@@ -131,7 +132,7 @@ def quick_adjust(db: Session, *, tenant_id: int, actor_user_id: int, product_id:
     db.add(line)
     db.flush()
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[MoveSpec(product_id=product_id, warehouse_id=warehouse.id, quantity=delta, move_type="adjustment", source_type="inventory_adjustment", source_id=adjustment.id, source_line_id=line.id, reason=reason, note=note, unit_cost=cost, cost_source=cost_source)])
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id,
         event_type="inventory.adjustment_posted", entity_type="inventory_adjustment", entity_id=adjustment.id,
         payload={"number": adjustment.number, "mode": "quantity", "warehouse_id": warehouse.id,
             "record_label": adjustment.number, "record_url": f"/dashboard/inventory/adjustments/{adjustment.id}"})

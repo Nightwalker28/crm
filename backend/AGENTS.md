@@ -27,6 +27,33 @@ The backend is FastAPI + SQLAlchemy + Alembic on PostgreSQL, with Redis and Cele
 - Keep client portal auth, CRM user auth, and public integration-key auth as separate boundaries.
 - Public integration endpoints may return only explicitly public data.
 
+## Foundations every module uses (13-final-fixes.md FQ)
+
+- **One commit per business action.** Services flush; the route, job or automation run that
+  owns the action commits once, with its activity rows and events in the same transaction.
+  A composite flow (conversion, quote → order, posting a document) wraps its route body in
+  `with unit_of_work(db):` (`app/core/unit_of_work.py`), which turns a nested `db.commit()`
+  into a flush. Work that must wait for the commit (queueing Celery tasks) goes through
+  `on_commit(db, fn)`; events are staged with `stage_crm_event` / `stage_standard_crm_event`
+  and dispatched after commit. `safe_emit_crm_event` and `safe_log_activity` use a savepoint
+  inside a unit of work, so their failure never undoes the action.
+- **One list query per module.** The list, its cursor, its export, reports and mass actions
+  all start from the same builder, so an export holds exactly the rows the list shows:
+  - repositories (`build_*_query` in `modules/<area>/repositories/`): leads, contacts,
+    accounts, deals, quotes, tasks, documents, calendar, mail, custom module records, admin
+    users, invoices, insertion orders, catalog items (`catalog_item_repository`), client
+    portal, website integrations, WhatsApp, call logs, inventory documents;
+  - services: deliveries, returns, purchase orders, receipts, bills, credit notes and
+    payments (`list_query`), sales orders (`build_orders_query`). The document exports go through
+    `platform/services/document_exports.py`, and the export-job routes take the list's own
+    filters.
+  New code follows the module it joins; a new module uses a repository.
+- **One permission check outside a route's dependencies:** `can_access` / `require_access`
+  (and the `_any` forms) from `app/core/permissions.py`, or `PermissionPolicy(db, user).can(...)`
+  in a service. All three layers, every time; no private `_allowed`/`_can`/`_require`.
+- **Products and services are one implementation** (`catalog_item_services`,
+  `catalog_item_repository`, `catalog_item_routes`), parameterised by `CatalogKind`.
+
 ## Data and migration rules
 
 - Use Alembic for schema changes.

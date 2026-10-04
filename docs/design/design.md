@@ -1145,9 +1145,11 @@ Contract:
 
 The cost, recorded rather than discovered later: the rail spends ~320px on every record, so
 the content region is about 700px at a 1280px viewport. A two-column field grid fits; a
-three-column one does not. The three line-item documents (quote, order, invoice) are where
-this bites, and the answer is that `RecordTable variant="lineItems"` scrolls sideways inside
-the content region — the archetype does not bend for them.
+three-column one does not. The line-item documents are where this bites. The archetype does
+not bend for them; the grid does: `RecordTable variant="lineItems"` is `table-fixed`, each column
+takes a share of the content width, the item column the largest, and a line's description sits
+under its item. Item, Tax, Total and remove all fit at 1280px (13a H15); only a phone-width form
+scrolls sideways.
 
 **The read-only variant: a record with no editable field collapses its spine.**
 
@@ -1852,7 +1854,7 @@ There are three, and the set is closed:
 | Variant | What it is | Drops |
 |---|---|---|
 | `default` | A module list | — |
-| `lineItems` | The editable grid inside a line-item document: an input per cell, add and remove row, Enter walks down a column | selection, sort, row-open, pagination |
+| `lineItems` | The editable grid inside a line-item document: an input per cell, add and remove row, Enter walks down a column. Columns take a `share` of the width, not a minimum (13a H15). A document with add/remove lines builds it through `LineItemsEditor`, never its own grid (13a E8) | selection, sort, row-open, pagination |
 | `readOnly` | The same document's items once saved, and the client portal's tables | selection, sort, row-open |
 
 `selectable` and `rowActions` are independent props, because they combine freely with

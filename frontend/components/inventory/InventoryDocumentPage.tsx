@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { LineItemsEditor, LineNumberInput, type LineCellContext } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -26,27 +26,40 @@ type DraftLine = { key: number; productId: number | null; name: string; value: s
 let nextKey = 1;
 const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", value: "", expected: null, unitCost: "" });
 
-function LineEditor({ line, kind, mode, warehouseId, onChange, onRemove }: {
-  line: DraftLine; kind: InventoryKind; mode: "quantity" | "count"; warehouseId: number | null;
-  onChange: (line: DraftLine) => void; onRemove: () => void;
-}) {
+/** What a line's stock says: the quantity expected on a count, and whether added stock needs a cost. */
+function useLineStock(line: DraftLine, kind: InventoryKind, mode: "quantity" | "count", warehouseId: number | null) {
   const stock = useProductStock(line.productId);
   const current = stock.data?.warehouses.find((row) => row.id === warehouseId)?.on_hand ?? "0";
   const expected = line.expected ?? current;
   const difference = kind === "adjustments" && mode === "count" && line.value !== "" ? Number(line.value) - Number(expected) : null;
   // Stock added to a product with no cost yet needs a unit cost (12d §3.2).
   const adding = mode === "count" ? (difference ?? 0) > 0 : Number(line.value) > 0;
-  const askCost = kind === "adjustments" && Boolean(stock.data?.needs_cost) && adding;
-  return <div className="grid gap-3 border-b border-line-subtle py-3 md:grid-cols-[minmax(0,2fr)_minmax(0,1fr)_minmax(0,1fr)_auto] md:items-end">
-    <Field><FieldLabel htmlFor={`inventory-product-${line.key}`}>Product</FieldLabel><LinkedRecordPicker inputId={`inventory-product-${line.key}`} recordType="inventory_product"
-      valueId={line.productId} displayValue={line.name} onDisplayValueChange={(value) => onChange({ ...line, name: value, productId: null, expected: null })}
-      onSelect={(option) => onChange({ ...line, productId: option.id, name: option.label, expected: null })}
-      onClear={() => onChange({ ...line, productId: null, name: "", expected: null })} placeholder="Search tracked products" /></Field>
-    {kind === "adjustments" && mode === "count" ? <div className="text-sm text-copy-secondary"><span className="block text-copy-label">Expected</span><span className="tabular-nums">{Number(expected).toLocaleString()}</span></div> : <div className="hidden md:block" />}
-    <Field><FieldLabel htmlFor={`inventory-quantity-${line.key}`}>{kind === "transfers" ? "Quantity" : mode === "count" ? "Counted" : "Change"}</FieldLabel><Input id={`inventory-quantity-${line.key}`} type="number" step="0.0001" value={line.value} onChange={(event) => onChange({ ...line, value: event.target.value })} /></Field>
-    <div className="flex items-center gap-2">{difference !== null ? <span className="text-sm tabular-nums text-copy-secondary" aria-label="Difference">{difference > 0 ? "+" : ""}{difference}</span> : null}<Button type="button" variant="ghost" size="icon" aria-label={`Remove ${line.name || "line"}`} onClick={onRemove}><Trash2 /></Button></div>
-    {askCost ? <Field className="md:col-span-2"><FieldLabel htmlFor={`inventory-cost-${line.key}`}>Unit cost</FieldLabel><Input id={`inventory-cost-${line.key}`} type="number" min="0" step="0.0001" value={line.unitCost} onChange={(event) => onChange({ ...line, unitCost: event.target.value })} /><FieldDescription>{line.name || "This product"} has no cost yet. What one unit cost you, used to value the stock added.</FieldDescription></Field> : null}
-  </div>;
+  return { expected, difference, askCost: kind === "adjustments" && Boolean(stock.data?.needs_cost) && adding };
+}
+
+type LineStockProps = { line: DraftLine; kind: InventoryKind; mode: "quantity" | "count"; warehouseId: number | null };
+
+function ExpectedCell(props: LineStockProps) {
+  const { expected } = useLineStock(props.line, props.kind, props.mode, props.warehouseId);
+  return <span className="tabular-nums text-copy-secondary">{Number(expected).toLocaleString()}</span>;
+}
+
+function DifferenceCell(props: LineStockProps) {
+  const { difference } = useLineStock(props.line, props.kind, props.mode, props.warehouseId);
+  if (difference === null) return <span className="text-copy-muted">—</span>;
+  return <span className="tabular-nums text-copy-secondary" aria-label="Difference">{difference > 0 ? "+" : ""}{difference}</span>;
+}
+
+function UnitCostCell({ cellProps, onChange, ...props }: LineStockProps & { cellProps: ReturnType<LineCellContext["cellProps"]>; onChange: (value: string) => void }) {
+  const { askCost } = useLineStock(props.line, props.kind, props.mode, props.warehouseId);
+  if (!askCost) return <span className="text-copy-muted">—</span>;
+  const hintId = `inventory-cost-hint-${props.line.key}`;
+  return (
+    <div className="flex min-w-0 flex-col gap-1">
+      <LineNumberInput cellProps={cellProps} step="0.0001" ariaLabel={`Unit cost for ${props.line.name || "line"}`} describedBy={hintId} value={props.line.unitCost} onChange={onChange} />
+      <span id={hintId} className="text-xs text-copy-muted">{props.line.name || "This product"} has no cost yet. What one unit cost you values the stock added.</span>
+    </div>
+  );
 }
 
 export function InventoryDocumentPage({ kind, documentId = null }: { kind: InventoryKind; documentId?: number | null }) {
@@ -86,6 +99,7 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
   }, [doc, kind, loadedId]);
 
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => line.key === updated.key ? updated : line));
+  const lineWarehouseId = warehouseId ?? activeWarehouses.find((row) => row.is_default)?.id ?? null;
   async function save() {
     const from = warehouseId ?? activeWarehouses.find((row) => row.is_default)?.id;
     if (!from || (kind === "transfers" && (!toWarehouseId || toWarehouseId === from)) || (kind === "adjustments" && !reason.trim())) {
@@ -145,8 +159,38 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
       {kind === "adjustments" ? <Field><FieldLabel htmlFor="inventory-reason">Reason</FieldLabel><Input id="inventory-reason" maxLength={120} value={reason} onChange={(event) => setReason(event.target.value)} disabled={!editable} /></Field> : null}
       <Field><FieldLabel htmlFor="inventory-notes">Notes</FieldLabel><Textarea id="inventory-notes" value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!editable} /></Field>
     </div>
-    <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-copy-primary">Products</h2>{editable ? <Button type="button" variant="outline" size="sm" onClick={() => setLines((current) => [...current, blankLine()])}><Plus />Add product</Button> : null}</div>
-      {editable ? <div>{lines.map((line) => <LineEditor key={line.key} line={line} kind={kind} mode={mode} warehouseId={warehouseId ?? activeWarehouses.find((row) => row.is_default)?.id ?? null} onChange={updateLine} onRemove={() => setLines((current) => current.filter((item) => item.key !== line.key))} />)}</div>
+    <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-copy-primary">Products</h2></div>
+      {editable ? <LineItemsEditor<DraftLine>
+          id={`inventory-${kind}`}
+          label="Document products"
+          lines={lines}
+          lineKey={(line) => line.key}
+          onChange={setLines}
+          createLine={blankLine}
+          addLabel="Add product"
+          lineLabel={(line) => line.name || "line"}
+          columns={[
+            { key: "product", label: "Product", size: "lg", share: 4, render: (line, { index, cellProps }) => {
+              const productCell = cellProps("product");
+              return <LinkedRecordPicker inputId={`inventory-product-${line.key}`} ariaLabel={`Product, line ${index + 1}`} recordType="inventory_product"
+                valueId={line.productId} displayValue={line.name} onDisplayValueChange={(value) => updateLine({ ...line, name: value, productId: null, expected: null })}
+                onSelect={(option) => updateLine({ ...line, productId: option.id, name: option.label, expected: null })}
+                onClear={() => updateLine({ ...line, productId: null, name: "", expected: null })} placeholder="Search tracked products"
+                onInputKeyDown={productCell.onKeyDown}
+                inputDataAttributes={{ "data-line-editor": productCell["data-line-editor"], "data-line-row": index, "data-line-field": "product" }} />;
+            } },
+            ...(kind === "adjustments" && mode === "count" ? [{ key: "expected", label: "Expected", size: "sm" as const, align: "right" as const, share: 1.25,
+              render: (line: DraftLine) => <ExpectedCell line={line} kind={kind} mode={mode} warehouseId={lineWarehouseId} /> }] : []),
+            { key: "value", label: kind === "transfers" ? "Quantity" : mode === "count" ? "Counted" : "Change", size: "sm", align: "right", share: 1.5,
+              render: (line, { index, cellProps }) => <LineNumberInput cellProps={cellProps("value")} step="0.0001" min={kind === "adjustments" && mode === "quantity" ? undefined : "0"}
+                ariaLabel={`${kind === "transfers" ? "Quantity" : mode === "count" ? "Counted" : "Change"}, line ${index + 1}`} value={line.value} onChange={(value) => updateLine({ ...line, value })} /> },
+            ...(kind === "adjustments" && mode === "count" ? [{ key: "difference", label: "Difference", size: "sm" as const, align: "right" as const, share: 1.25,
+              render: (line: DraftLine) => <DifferenceCell line={line} kind={kind} mode={mode} warehouseId={lineWarehouseId} /> }] : []),
+            ...(kind === "adjustments" ? [{ key: "unit_cost", label: "Unit cost", size: "sm" as const, align: "right" as const, share: 1.75,
+              render: (line: DraftLine, { cellProps }: LineCellContext) => <UnitCostCell line={line} kind={kind} mode={mode} warehouseId={lineWarehouseId}
+                cellProps={cellProps("unit_cost")} onChange={(value) => updateLine({ ...line, unitCost: value })} /> }] : []),
+          ]}
+        />
         : <RecordTable variant="readOnly" label="Document products" rows={doc?.lines ?? []} rowKey={(line) => line.id} emptyState={{ title: "No products" }} columns={[{ key: "product", label: "Product", render: (line) => line.product_name }, { key: "expected", label: kind === "transfers" ? "Quantity" : mode === "count" ? "Expected" : "Change", align: "right", render: (line) => <span className="tabular-nums">{kind === "transfers" ? line.quantity : mode === "count" ? line.expected : line.delta}</span> }, ...(kind === "adjustments" && mode === "count" ? [{ key: "counted", label: "Counted", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.counted}</span> }, { key: "delta", label: "Difference", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.delta}</span> }] : []), ...(kind === "adjustments" && doc?.lines?.some((line) => line.unit_cost != null) ? [{ key: "unit_cost", label: "Unit cost", align: "right" as const, render: (line: NonNullable<InventoryDocument["lines"]>[number]) => <span className="tabular-nums">{line.unit_cost ?? "—"}</span> }] : [])]} />}
     </section>
     {editable ? <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : doc ? "Changes are saved as a draft until posted." : "Posting is available after saving the draft."}><Button type="button" variant="outline" asChild><Link href={base}>Back</Link></Button><Button type="button" onClick={() => void save()} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save draft"}</Button></FormFooter> : error ? <p role="alert" className="text-sm text-state-danger">{error}</p> : null}

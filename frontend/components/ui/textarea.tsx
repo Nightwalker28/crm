@@ -2,7 +2,14 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
+type TextareaProps = Omit<React.ComponentProps<"textarea">, "value"> & {
+  /** `null` is drawn as empty, as on `Input` (13a H10). */
+  value?: React.ComponentProps<"textarea">["value"] | null
+}
+
+function Textarea(allProps: TextareaProps) {
+  const { className, value, ...props } = allProps
+  const controlled = "value" in allProps ? { value: value ?? "" } : {}
   return (
     <textarea
       data-slot="textarea"
@@ -13,6 +20,7 @@ function Textarea({ className, ...props }: React.ComponentProps<"textarea">) {
         className
       )}
       {...props}
+      {...controlled}
     />
   )
 }

@@ -49,10 +49,13 @@ class DeliveryTests(unittest.TestCase):
         self.db.commit()
 
     def order(self, *lines, status="confirmed"):
-        return create_sales_order(self.db, {"status": status, "items": [
+        order = create_sales_order(self.db, {"status": status, "items": [
             {"catalog_product_id": product_id, "name": f"Item {product_id}", "quantity": str(quantity), "unit_price": "1"}
             for product_id, quantity in lines
         ]}, self.user)
+        # The service flushes; its caller commits (13a E5). Here the test is the caller.
+        self.db.commit()
+        return order
 
     def deliver(self, order, quantity, *, post=True):
         line = next(item for item in order.items if item.catalog_product_id == 1)
@@ -127,6 +130,7 @@ class DeliveryTests(unittest.TestCase):
         self.stock(10)
         order = self.order((1, 4), (2, 1))
         updated = update_sales_order(self.db, order, {"status": "fulfilled"}, actor_user_id=1)
+        self.db.commit()
         self.assertEqual((updated.status, updated.delivery_status), ("fulfilled", "delivered"))
         deliveries = self.db.query(InventoryDelivery).filter_by(order_id=order.id).all()
         self.assertEqual([(doc.status, len(doc.lines)) for doc in deliveries], [("posted", 1)])

@@ -7,6 +7,7 @@ from unittest.mock import patch
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.access_control import PermissionPolicy
 from app.core.database import Base
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
@@ -91,6 +92,9 @@ class SummaryHydrationTests(unittest.TestCase):
 class AllowEverythingPolicy:
     def __init__(self, db=None, user=None):
         pass
+
+    # The real combinator over the two answers this fake gives.
+    can = PermissionPolicy.can
 
     def can_view_module(self, module_key):
         return True

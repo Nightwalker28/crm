@@ -5,18 +5,15 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.inventory.models import InventoryReturn
-from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job
 from app.modules.inventory.services import return_services as service
-from app.modules.sales.models import SalesOrder
+from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
 
@@ -56,16 +53,7 @@ def _get(db: Session, *, tenant_id: int, return_id: int) -> dict:
 def returns(status: str | None = Query(default=None, pattern="^(draft|received|cancelled)$"), search: str | None = Query(default=None, max_length=100),
             delivery_id: int | None = Query(default=None, gt=0), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db),
             user=Depends(require_user), _module=Depends(require_module_access(MODULE)), _view=Depends(require_action_access(MODULE, "view"))):
-    query = db.query(InventoryReturn).options(selectinload(InventoryReturn.lines)).filter(
-        InventoryReturn.tenant_id == user.tenant_id, InventoryReturn.deleted_at.is_(None))
-    if status:
-        query = query.filter(InventoryReturn.status == status)
-    if delivery_id:
-        query = query.filter(InventoryReturn.delivery_id == delivery_id)
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.join(SalesOrder, SalesOrder.id == InventoryReturn.order_id).filter(SalesOrder.tenant_id == user.tenant_id, or_(
-            InventoryReturn.number.ilike(pattern), InventoryReturn.reason.ilike(pattern), SalesOrder.order_number.ilike(pattern)))
+    query = service.list_query(db, tenant_id=user.tenant_id, status=status, search=search, delivery_id=delivery_id)
     total = query.count()
     rows = query.order_by(InventoryReturn.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([service.serialize_return(db, tenant_id=user.tenant_id, doc=row, include_lines=False) for row in rows]), total, pagination)
@@ -74,9 +62,7 @@ def returns(status: str | None = Query(default=None, pattern="^(draft|received|c
 @router.post("/returns", status_code=201)
 def create_return(payload: ReturnCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(MODULE)), _create=Depends(require_action_access(MODULE, "create"))):
-    policy = PermissionPolicy(db, user)
-    if not (policy.can_view_module("inventory_deliveries") and policy.can_perform_action("inventory_deliveries", "view")):
-        raise HTTPException(status_code=403, detail="Delivery access required")
+    require_access(db, user, "inventory_deliveries", "view", detail="Delivery access required")
     doc = service.save_return(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
     db.commit()
     return _get(db, tenant_id=user.tenant_id, return_id=doc.id)
@@ -129,7 +115,8 @@ def restore_return(return_id: int, db: Session = Depends(get_db), user=Depends(r
 
 
 @router.post("/returns/export-job", status_code=202)
-def export_returns(db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access(MODULE)), _export=Depends(require_action_access(MODULE, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=MODULE, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_returns(status: str | None = Query(default=None, pattern="^(draft|received|cancelled)$"), search: str | None = Query(default=None, max_length=100),
+        delivery_id: int | None = Query(default=None, gt=0), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(MODULE)), _export=Depends(require_action_access(MODULE, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=MODULE, filters={"status": status, "search": search, "delivery_id": delivery_id})

@@ -1,3 +1,5 @@
+from collections.abc import Iterable
+
 from fastapi import Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.core.access_control import PermissionPolicy
@@ -75,4 +77,30 @@ def require_action_access(module_key: str, action: str):
 
     return checker
 
-        
+
+# One way to ask "may this user do X in module Y" outside a route's dependencies (13a B6).
+# Routes guard their own module with `require_module_access` + `require_action_access`; a
+# second module the route touches, or a part of a response that depends on one, goes through
+# these. They check all three layers, as the dependencies do.
+
+
+def can_access(db: Session, user, module_key: str, *actions: str) -> bool:
+    """Module enabled, available to the user's team, and each action (default `view`) granted."""
+    return PermissionPolicy(db, user).can(module_key, *actions)
+
+
+def can_access_any(db: Session, user, grants: Iterable[tuple[str, str]]) -> bool:
+    policy = PermissionPolicy(db, user)
+    return any(policy.can(module_key, action) for module_key, action in grants)
+
+
+def require_access(db: Session, user, module_key: str, *actions: str, detail: str) -> None:
+    """`can_access` or a 403 carrying `detail`, which names what the user cannot do."""
+    if not can_access(db, user, module_key, *actions):
+        raise HTTPException(status_code=403, detail=detail)
+
+
+def require_any_access(db: Session, user, grants: Iterable[tuple[str, str]], *, detail: str) -> None:
+    if not can_access_any(db, user, grants):
+        raise HTTPException(status_code=403, detail=detail)
+

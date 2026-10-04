@@ -6,20 +6,18 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import can_access, require_action_access, require_any_access, require_module_access
 from app.core.security import require_user
-from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job
 from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
 from app.modules.purchasing.services import purchase_order_services as orders
 from app.modules.purchasing.services import receipt_services as receipts
 from app.modules.purchasing.services import reorder_services as reorder
 from app.modules.sales.models import SalesOrganization
+from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/purchasing", tags=["Purchasing"])
 
@@ -87,9 +85,6 @@ def _receipt(db: Session, tenant_id: int, receipt_id: int) -> dict:
     return jsonable_encoder(receipts.serialize_receipt(db, tenant_id=tenant_id, receipt=receipt))
 
 
-def _can(db: Session, user, module: str, action: str) -> bool:
-    policy = PermissionPolicy(db, user)
-    return policy.can_view_module(module) and policy.can_perform_action(module, action)
 
 
 # Vendors -------------------------------------------------------------------------------
@@ -98,8 +93,7 @@ def _can(db: Session, user, module: str, action: str) -> bool:
 def search_vendors(query: str = Query(default="", max_length=100), limit: int = Query(default=10, ge=1, le=25),
                    db: Session = Depends(get_db), user=Depends(require_user)):
     """Vendor-flagged Accounts, for the product form and the purchase order form."""
-    if not any(_can(db, user, module, action) for module, action in ((ORDERS, "view"), ("sales_organizations", "view"), ("catalog_products", "edit"))):
-        raise HTTPException(status_code=403, detail="Vendor access required")
+    require_any_access(db, user, ((ORDERS, "view"), ("sales_organizations", "view"), ("catalog_products", "edit")), detail="Vendor access required")
     rows = db.query(SalesOrganization).filter(SalesOrganization.tenant_id == user.tenant_id, SalesOrganization.deleted_at.is_(None),
         SalesOrganization.is_vendor == 1)
     if query.strip():
@@ -115,17 +109,7 @@ def list_orders(status: str | None = Query(default=None, pattern="^(draft|ordere
                 vendor_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100),
                 pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(ORDERS)), _view=Depends(require_action_access(ORDERS, "view"))):
-    query = db.query(PurchaseOrder).options(selectinload(PurchaseOrder.lines)).filter(PurchaseOrder.tenant_id == user.tenant_id, PurchaseOrder.deleted_at.is_(None))
-    if status == "open":
-        query = query.filter(PurchaseOrder.status.in_(["draft", "ordered"]))
-    elif status:
-        query = query.filter(PurchaseOrder.status == status)
-    if vendor_id:
-        query = query.filter(PurchaseOrder.vendor_id == vendor_id)
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.join(SalesOrganization, SalesOrganization.org_id == PurchaseOrder.vendor_id).filter(or_(
-            PurchaseOrder.number.ilike(pattern), PurchaseOrder.vendor_reference.ilike(pattern), SalesOrganization.org_name.ilike(pattern)))
+    query = orders.list_query(db, tenant_id=user.tenant_id, status=status, vendor_id=vendor_id, search=search)
     total = query.count()
     rows = query.order_by(PurchaseOrder.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([orders.serialize_order(db, tenant_id=user.tenant_id, order=row, include_lines=False) for row in rows]), total, pagination)
@@ -140,11 +124,11 @@ def create_order(payload: OrderPayload, db: Session = Depends(get_db), user=Depe
 
 
 @router.post("/orders/export-job", status_code=202)
-def export_orders(db: Session = Depends(get_db), user=Depends(require_user),
-                  _module=Depends(require_module_access(ORDERS)), _export=Depends(require_action_access(ORDERS, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=ORDERS, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_orders(status: str | None = Query(default=None, pattern="^(draft|ordered|received|closed|cancelled|open)$"),
+        vendor_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(ORDERS)), _export=Depends(require_action_access(ORDERS, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=ORDERS, filters={"status": status, "vendor_id": vendor_id, "search": search})
 
 
 @router.get("/orders/{order_id}")
@@ -220,15 +204,7 @@ def list_receipts(status: str | None = Query(default=None, pattern="^(draft|post
                   search: str | None = Query(default=None, max_length=100), pagination: Pagination = Depends(get_pagination),
                   db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(RECEIPTS)), _view=Depends(require_action_access(RECEIPTS, "view"))):
-    query = db.query(PurchaseReceipt).options(selectinload(PurchaseReceipt.lines)).filter(PurchaseReceipt.tenant_id == user.tenant_id, PurchaseReceipt.deleted_at.is_(None))
-    if status:
-        query = query.filter(PurchaseReceipt.status == status)
-    if order_id:
-        query = query.filter(PurchaseReceipt.order_id == order_id)
-    if search and search.strip():
-        pattern = f"%{search.strip()}%"
-        query = query.join(PurchaseOrder, PurchaseOrder.id == PurchaseReceipt.order_id).filter(PurchaseOrder.tenant_id == user.tenant_id, or_(
-            PurchaseReceipt.number.ilike(pattern), PurchaseReceipt.vendor_delivery_ref.ilike(pattern), PurchaseOrder.number.ilike(pattern)))
+    query = receipts.list_query(db, tenant_id=user.tenant_id, status=status, order_id=order_id, search=search)
     total = query.count()
     rows = query.order_by(PurchaseReceipt.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([receipts.serialize_receipt(db, tenant_id=user.tenant_id, receipt=row, include_lines=False) for row in rows]), total, pagination)
@@ -237,7 +213,7 @@ def list_receipts(status: str | None = Query(default=None, pattern="^(draft|post
 @router.post("/receipts", status_code=201)
 def create_receipt(payload: ReceiptCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                    _module=Depends(require_module_access(RECEIPTS)), _create=Depends(require_action_access(RECEIPTS, "create"))):
-    if not _can(db, user, ORDERS, "view"):
+    if not can_access(db, user, ORDERS, "view"):
         raise HTTPException(status_code=403, detail="Purchase order access required")
     receipt = receipts.save_receipt(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
     db.commit()
@@ -245,11 +221,11 @@ def create_receipt(payload: ReceiptCreatePayload, db: Session = Depends(get_db),
 
 
 @router.post("/receipts/export-job", status_code=202)
-def export_receipts(db: Session = Depends(get_db), user=Depends(require_user),
-                    _module=Depends(require_module_access(RECEIPTS)), _export=Depends(require_action_access(RECEIPTS, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=RECEIPTS, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_receipts(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), order_id: int | None = Query(default=None, gt=0),
+        search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(RECEIPTS)), _export=Depends(require_action_access(RECEIPTS, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=RECEIPTS, filters={"status": status, "order_id": order_id, "search": search})
 
 
 @router.get("/receipts/{receipt_id}")

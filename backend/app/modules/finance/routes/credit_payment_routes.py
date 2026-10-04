@@ -5,17 +5,16 @@ that document's module."""
 from datetime import date
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.pagination import Pagination, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.finance.services import credit_note_services, payment_services
-from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job
+from app.modules.platform.services.document_exports import start_document_export
 from sqlalchemy.orm import Session
 
 router = APIRouter(tags=["Finance credit notes and payments"])
@@ -24,10 +23,6 @@ CREDIT_NOTES = "finance_credit_notes"
 PAYMENTS = "finance_payments"
 
 
-def _require(db: Session, user, module: str, action: str, message: str) -> None:
-    policy = PermissionPolicy(db, user)
-    if not (policy.can_view_module(module) and policy.can_perform_action(module, action)):
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=message)
 
 
 class CreditLinePayload(BaseModel):
@@ -90,16 +85,16 @@ def list_credit_notes(status_filter: str | None = Query(default=None, alias="sta
 def credit_note_return_candidates(return_id: int = Query(gt=0), db: Session = Depends(get_db), user=Depends(require_user),
                                   _module=Depends(require_module_access(CREDIT_NOTES)), _create=Depends(require_action_access(CREDIT_NOTES, "create"))):
     """The invoices a return can be credited against, with the quantities to credit."""
-    _require(db, user, "inventory_returns", "view", "Crediting a return needs access to returns")
+    require_access(db, user, "inventory_returns", "view", detail="Crediting a return needs access to returns")
     return jsonable_encoder(credit_note_services.return_candidates(db, user, return_id=return_id))
 
 
 @router.post("/credit-notes", status_code=201)
 def create_credit_note(payload: CreditNoteCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                        _module=Depends(require_module_access(CREDIT_NOTES)), _create=Depends(require_action_access(CREDIT_NOTES, "create"))):
-    _require(db, user, "finance_pos", "view", "Crediting an invoice needs access to invoices")
+    require_access(db, user, "finance_pos", "view", detail="Crediting an invoice needs access to invoices")
     if payload.return_id:
-        _require(db, user, "inventory_returns", "view", "Crediting a return needs access to returns")
+        require_access(db, user, "inventory_returns", "view", detail="Crediting a return needs access to returns")
     data = payload.model_dump()
     if data.get("lines") is None:
         data.pop("lines", None)
@@ -109,11 +104,11 @@ def create_credit_note(payload: CreditNoteCreatePayload, db: Session = Depends(g
 
 
 @router.post("/credit-notes/export-job", status_code=202)
-def export_credit_notes(db: Session = Depends(get_db), user=Depends(require_user),
-                        _module=Depends(require_module_access(CREDIT_NOTES)), _export=Depends(require_action_access(CREDIT_NOTES, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=CREDIT_NOTES, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_credit_notes(status_filter: str | None = Query(default=None, alias="status", pattern="^(draft|issued|void|refund_due)$"),
+        invoice_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(CREDIT_NOTES)), _export=Depends(require_action_access(CREDIT_NOTES, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=CREDIT_NOTES, filters={"status": status_filter, "search": search, "invoice_id": invoice_id})
 
 
 @router.get("/credit-notes/{credit_note_id}")
@@ -181,22 +176,24 @@ def record_payment(payload: PaymentPayload, db: Session = Depends(get_db), user=
                    _module=Depends(require_module_access(PAYMENTS)), _create=Depends(require_action_access(PAYMENTS, "create"))):
     for allocation in payload.allocations:
         if allocation.invoice_id:
-            _require(db, user, "finance_pos", "view", "Recording a payment on an invoice needs access to invoices")
+            require_access(db, user, "finance_pos", "view", detail="Recording a payment on an invoice needs access to invoices")
         elif allocation.credit_note_id:
-            _require(db, user, CREDIT_NOTES, "view", "Recording a refund needs access to credit notes")
+            require_access(db, user, CREDIT_NOTES, "view", detail="Recording a refund needs access to credit notes")
         elif allocation.bill_id:
-            _require(db, user, "purchase_bills", "view", "Paying a bill needs access to bills")
+            require_access(db, user, "purchase_bills", "view", detail="Paying a bill needs access to bills")
     payment = payment_services.record_payment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), finance_user=user)
     db.commit()
     return jsonable_encoder(payment_services.serialize_payments(db, [payment_services.get_payment(db, user, payment.id)])[0])
 
 
 @router.post("/payments/export-job", status_code=202)
-def export_payments(db: Session = Depends(get_db), user=Depends(require_user),
-                    _module=Depends(require_module_access(PAYMENTS)), _export=Depends(require_action_access(PAYMENTS, "export"))):
-    job = create_data_transfer_job(db, tenant_id=user.tenant_id, actor_user_id=user.id, module_key=PAYMENTS, operation_type="export", payload={})
-    enqueue_export_job(job.id)
-    return {"job_id": job.id}
+def export_payments(direction: str | None = Query(default=None, pattern="^(received|made)$"),
+        status_filter: str | None = Query(default=None, alias="status", pattern="^(posted|void)$"),
+        method: str | None = Query(default=None, max_length=100), search: str | None = Query(default=None, max_length=100),
+        date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access(PAYMENTS)), _export=Depends(require_action_access(PAYMENTS, "export"))):
+    """Exports what the list shows under the same filters (13a A5)."""
+    return start_document_export(db, user, module_key=PAYMENTS, filters={"direction": direction, "status": status_filter, "method": method, "search": search, "date_from": date_from, "date_to": date_to})
 
 
 @router.get("/payments/{payment_id}")

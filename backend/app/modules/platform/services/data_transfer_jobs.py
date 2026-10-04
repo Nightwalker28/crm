@@ -10,6 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import (
+    PermissionPolicy,
     get_finance_user_scope,
     require_department_module_access,
     require_role_module_action_access,
@@ -19,6 +20,7 @@ from app.core.database import SessionLocal
 from app.core.job_errors import safe_data_transfer_error, technical_job_error
 from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
+from app.modules.platform.services.document_exports import DOCUMENT_EXPORT_MODULES, document_export_rows
 from app.modules.platform.models import DataTransferJob
 from app.modules.user_management.models import User
 
@@ -822,10 +824,7 @@ def process_export_job(*, job_id: int) -> None:
             elif export_kind == "movements":
                 rows = db.query(InventoryStockMove, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(InventoryStockMove.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockMove.id).all()
                 # Cost and value need access to valuation (12d §3.4).
-                from app.core.access_control import PermissionPolicy
-
-                policy = PermissionPolicy(db, current_user)
-                with_cost = policy.can_view_module("inventory_valuation") and policy.can_perform_action("inventory_valuation", "view")
+                with_cost = PermissionPolicy(db, current_user).can("inventory_valuation")
                 headers = ("id", "occurred_at", "sku", "product", "warehouse_code", "move_type", "quantity", "on_hand_after", "source_type", "source_id") \
                     + (("unit_cost", "value", "average_cost_after", "cost_source") if with_cost else ())
                 content = dict_rows_to_csv_bytes(headers=headers, rows=({"id": move.id, "occurred_at": move.occurred_at,
@@ -868,87 +867,14 @@ def process_export_job(*, job_id: int) -> None:
             exported_rows = len(rows)
             file_name = f"inventory_{export_kind}.csv"
             media_type = "text/csv"
-        elif module_key in {"inventory_deliveries", "inventory_returns"}:
+        elif module_key in DOCUMENT_EXPORT_MODULES:
+            # The list's own query and serializer, under the list's own filters (13a A5).
             from app.core.module_export import dict_rows_to_csv_bytes
-            from app.modules.inventory.models import InventoryDelivery, InventoryReturn
-            from app.modules.inventory.services.delivery_services import serialize_delivery
-            from app.modules.inventory.services.return_services import serialize_return
 
             if current_user is None:
-                raise ValueError("Inventory export has no actor")
+                raise ValueError("Document export has no actor")
             require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
-            if module_key == "inventory_deliveries":
-                docs = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == job.tenant_id, InventoryDelivery.deleted_at.is_(None)).order_by(InventoryDelivery.id).all()
-                rows = [serialize_delivery(db, tenant_id=job.tenant_id, doc=doc, include_lines=False) for doc in docs]
-                headers = ("number", "status", "order_number", "customer_name", "warehouse_name", "shipped_on", "carrier", "tracking_number", "total_quantity", "posted_at", "cancel_reason")
-            else:
-                docs = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == job.tenant_id, InventoryReturn.deleted_at.is_(None)).order_by(InventoryReturn.id).all()
-                rows = [serialize_return(db, tenant_id=job.tenant_id, doc=doc, include_lines=False) for doc in docs]
-                headers = ("number", "status", "reason", "delivery_number", "order_number", "customer_name", "warehouse_name", "total_quantity", "received_at", "cancel_reason")
-            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
-            exported_rows = len(rows)
-            file_name = f"{module_key}.csv"
-            media_type = "text/csv"
-        elif module_key in {"purchase_orders", "purchase_receipts"}:
-            from app.core.module_export import dict_rows_to_csv_bytes
-            from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
-            from app.modules.purchasing.services.purchase_order_services import serialize_order
-            from app.modules.purchasing.services.receipt_services import serialize_receipt
-
-            if current_user is None:
-                raise ValueError("Purchasing export has no actor")
-            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
-            if module_key == "purchase_orders":
-                docs = db.query(PurchaseOrder).filter(PurchaseOrder.tenant_id == job.tenant_id, PurchaseOrder.deleted_at.is_(None)).order_by(PurchaseOrder.id).all()
-                rows = [serialize_order(db, tenant_id=job.tenant_id, order=doc, include_lines=False) for doc in docs]
-                headers = ("number", "status", "receipt_status", "vendor_name", "warehouse_name", "currency", "subtotal", "expected_date", "vendor_reference", "ordered_at", "close_reason", "cancel_reason")
-            else:
-                docs = db.query(PurchaseReceipt).filter(PurchaseReceipt.tenant_id == job.tenant_id, PurchaseReceipt.deleted_at.is_(None)).order_by(PurchaseReceipt.id).all()
-                rows = [serialize_receipt(db, tenant_id=job.tenant_id, receipt=doc, include_lines=False) for doc in docs]
-                headers = ("number", "status", "order_number", "vendor_name", "warehouse_name", "received_on", "vendor_delivery_ref", "total_quantity", "posted_at", "cancel_reason")
-            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
-            exported_rows = len(rows)
-            file_name = f"{module_key}.csv"
-            media_type = "text/csv"
-        elif module_key in {"purchase_bills", "finance_pos", "finance_credit_notes", "finance_payments"}:
-            # E5 (12c-erp-invoicing.md §3.6): the finance lists, in the finance visibility scope.
-            from app.core.module_export import dict_rows_to_csv_bytes
-            from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePosInvoice
-            from app.modules.finance.services import credit_note_services, payment_services
-            from app.modules.finance.services.pos_invoice_services import serialize_invoice
-            from app.modules.purchasing.models import PurchaseBill
-            from app.modules.purchasing.services.bill_services import serialize_bill
-
-            if current_user is None:
-                raise ValueError("Finance export has no actor")
-            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
-            scope_user_id = get_finance_user_scope(db, current_user).user_id_filter
-            if module_key == "purchase_bills":
-                docs = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == job.tenant_id, PurchaseBill.deleted_at.is_(None)).order_by(PurchaseBill.id).all()
-                rows = [serialize_bill(db, tenant_id=job.tenant_id, bill=doc, include_lines=False) for doc in docs]
-                headers = ("number", "status", "vendor_name", "vendor_invoice_number", "order_number", "bill_date", "due_date", "currency",
-                           "subtotal", "tax_total", "total", "amount_paid", "balance_due", "payment_status", "match_status", "void_reason")
-            elif module_key == "finance_pos":
-                query = db.query(FinancePosInvoice).filter(FinancePosInvoice.tenant_id == job.tenant_id, FinancePosInvoice.deleted_at.is_(None))
-                if scope_user_id is not None:
-                    query = query.filter(FinancePosInvoice.user_id == scope_user_id)
-                rows = [serialize_invoice(doc, include_lines=False) for doc in query.order_by(FinancePosInvoice.id).all()]
-                headers = ("invoice_number", "status", "payment_status", "is_overdue", "customer_name", "customer_email", "issue_date", "due_date",
-                           "currency", "subtotal_amount", "discount_amount", "tax_amount", "total_amount", "amount_paid", "amount_credited",
-                           "balance_due", "source", "void_reason")
-            elif module_key == "finance_credit_notes":
-                query = credit_note_services._scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == job.tenant_id,
-                    FinanceCreditNote.deleted_at.is_(None)), db, current_user)
-                rows = [credit_note_services.serialize(db, doc, include_lines=False) for doc in query.order_by(FinanceCreditNote.id).all()]
-                headers = ("number", "status", "invoice_number", "customer_name", "reason", "issue_date", "currency", "subtotal_amount",
-                           "tax_amount", "total_amount", "refund_due", "void_reason")
-            else:
-                query = payment_services._scoped(db.query(FinancePayment).filter(FinancePayment.tenant_id == job.tenant_id), db, current_user)
-                rows = payment_services.serialize_payments(db, query.order_by(FinancePayment.id).all())
-                for row in rows:
-                    row["documents"] = "; ".join(allocation["document_label"] or "" for allocation in row["allocations"])
-                headers = ("number", "status", "direction", "kind", "paid_on", "party_name", "documents", "method", "reference", "currency",
-                           "amount", "void_reason")
+            rows, headers = document_export_rows(db, current_user, module_key=module_key, filters=payload.get("filters"))
             content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
             exported_rows = len(rows)
             file_name = f"{module_key}.csv"

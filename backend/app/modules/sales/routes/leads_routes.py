@@ -18,6 +18,7 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.access_control import require_role_module_action_access
 from app.core.permissions import require_action_access, require_module_access
+from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
@@ -516,46 +517,49 @@ def convert_lead(
 ):
     lead = get_lead_or_404(db, lead_id, tenant_id=current_user.tenant_id)
     _require_conversion_target_permissions(db, current_user, payload)
-    before_state = _serialize_lead(lead)
-    result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="sales_leads",
-        entity_type="sales_lead",
-        entity_id=result["lead"].lead_id,
-        action="convert",
-        description=f"Converted lead {_display_lead_name(result['lead'])}",
-        before_state=before_state,
-        after_state={
-            **_serialize_lead(result["lead"]),
-            "account_id": result["account_id"],
-            "contact_id": result["contact_id"],
-            "deal_id": result["deal_id"],
-        },
-    )
-    _log_conversion_targets(db, current_user=current_user, result=result)
-    safe_emit_crm_event(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        event_type="lead.converted",
-        entity_type="sales_lead",
-        entity_id=result["lead"].lead_id,
-        payload={
-            **actor_payload(current_user),
-            "lead_id": result["lead"].lead_id,
-            "lead_name": _display_lead_name(result["lead"]),
-            "primary_email": result["lead"].primary_email,
-            "company": result["lead"].company,
-            "status": result["lead"].status,
-            "account_id": result["account_id"],
-            "contact_id": result["contact_id"],
-            "deal_id": result["deal_id"],
-            "href": f"/dashboard/sales/leads/{result['lead'].lead_id}",
-        },
-    )
+    # One commit for the records, their timeline rows and the event: a failure anywhere
+    # leaves no half-converted lead behind (13a E5).
+    with unit_of_work(db):
+        before_state = _serialize_lead(lead)
+        result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_leads",
+            entity_type="sales_lead",
+            entity_id=result["lead"].lead_id,
+            action="convert",
+            description=f"Converted lead {_display_lead_name(result['lead'])}",
+            before_state=before_state,
+            after_state={
+                **_serialize_lead(result["lead"]),
+                "account_id": result["account_id"],
+                "contact_id": result["contact_id"],
+                "deal_id": result["deal_id"],
+            },
+        )
+        _log_conversion_targets(db, current_user=current_user, result=result)
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="lead.converted",
+            entity_type="sales_lead",
+            entity_id=result["lead"].lead_id,
+            payload={
+                **actor_payload(current_user),
+                "lead_id": result["lead"].lead_id,
+                "lead_name": _display_lead_name(result["lead"]),
+                "primary_email": result["lead"].primary_email,
+                "company": result["lead"].company,
+                "status": result["lead"].status,
+                "account_id": result["account_id"],
+                "contact_id": result["contact_id"],
+                "deal_id": result["deal_id"],
+                "href": f"/dashboard/sales/leads/{result['lead'].lead_id}",
+            },
+        )
     return LeadConversionResponse.model_validate(result)
 
 

@@ -241,9 +241,9 @@ def issue(db: Session, user, credit_note_id: int) -> FinanceCreditNote:
     _audit(db, credit_note=credit_note, actor_user_id=user.id, action="issue",
         description=f"Issued credit note {credit_note.number} for {credit_note.total_amount} {credit_note.currency} against {invoice.invoice_number}"
         + (f"; {credit_note.refund_due} to refund" if money(credit_note.refund_due) > 0 else ""))
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
 
-    stage_inventory_event(db, tenant_id=credit_note.tenant_id, actor_user_id=user.id, event_type="finance.credit_note_issued",
+    stage_standard_crm_event(db, tenant_id=credit_note.tenant_id, actor_user_id=user.id, event_type="finance.credit_note_issued",
         entity_type="finance_credit_note", entity_id=credit_note.id, payload={"number": credit_note.number,
         "invoice_number": invoice.invoice_number, "total_amount": str(credit_note.total_amount), "currency": credit_note.currency,
         "refund_due": str(credit_note.refund_due)})
@@ -324,8 +324,8 @@ def invoice_credit_notes(db: Session, *, tenant_id: int, invoice_id: int) -> lis
     return [serialize(db, row, include_lines=False) for row in rows]
 
 
-def list_credit_notes(db: Session, user, *, pagination: Pagination, status: str | None = None, search: str | None = None,
-                      invoice_id: int | None = None) -> dict:
+def list_query(db: Session, user, *, status: str | None = None, search: str | None = None, invoice_id: int | None = None):
+    """The credit note list's rows, in the finance scope. The list and its export both start here (13a A5)."""
     query = _scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == user.tenant_id, FinanceCreditNote.deleted_at.is_(None)), db, user)
     if status in {"draft", "issued", "void"}:
         query = query.filter(FinanceCreditNote.status == status)
@@ -339,6 +339,12 @@ def list_credit_notes(db: Session, user, *, pagination: Pagination, status: str 
             FinancePosInvoice.invoice_number.ilike(pattern), FinancePosInvoice.customer_name.ilike(pattern)))
         query = query.filter(or_(FinanceCreditNote.number.ilike(pattern), FinanceCreditNote.reason.ilike(pattern),
             FinanceCreditNote.invoice_id.in_(matching)))
+    return query
+
+
+def list_credit_notes(db: Session, user, *, pagination: Pagination, status: str | None = None, search: str | None = None,
+                      invoice_id: int | None = None) -> dict:
+    query = list_query(db, user, status=status, search=search, invoice_id=invoice_id)
     total = query.count()
     rows = query.order_by(FinanceCreditNote.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response([serialize(db, row, include_lines=False) for row in rows], total, pagination)

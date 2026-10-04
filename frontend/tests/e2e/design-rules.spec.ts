@@ -206,7 +206,7 @@ type Scope = "dashboard" | "public" | "portal";
 const CATEGORIES = [
   "uppercase", "mono", "radius", "controlHeight", "font", "nesting", "formTitle", "formFooter", "formSticky",
   "typeRamp", "pageRoot", "cardBorder", "controlBorder", "titleCase", "siblingHeight", "colourBudget",
-  "archetype", "settingsNav", "focus", "controlName",
+  "archetype", "settingsNav", "focus", "controlName", "nestedLink",
 ] as const;
 type Category = (typeof CATEGORIES)[number];
 type Findings = Record<Category, string[]>;
@@ -268,6 +268,13 @@ async function probeRoute(page: Page, args: { route: string; scope: Scope; recor
         const v = cs[corner];
         if (v && v !== "0px" && !a.allowedRadii.includes(v) && !v.includes("%")) out.radius.push(`${v} ${label(el)}`);
       }
+    });
+    // An <a> inside an <a> (13a H9): invalid HTML and a hydration error. React builds the DOM
+    // directly, so it can nest them where the HTML parser never would. A RecordTable column
+    // that renders its own link says so with `rendersLink`.
+    document.querySelectorAll("a a").forEach((el) => {
+      const outer = el.parentElement?.closest("a");
+      out.nestedLink.push(`${outer ? label(outer) : "<a>"} > ${label(el)} :: ${(el.textContent || "").trim().slice(0, 40)}`);
     });
     // Only real form controls carry the height contract - nav items, card-buttons,
     // sort headers, tabs and pills size to their content by design.
@@ -775,16 +782,26 @@ test("design rule audit", async ({ page, browser }) => {
       <a class="guard-canary" href="#canary" style="outline:none !important;box-shadow:none !important">canary focus</a>
       <input class="guard-canary" placeholder="no name" style="height:38px" />
       <table class="guard-canary"><tbody>${Array.from({ length: 5 }, () => '<tr><td><span style="color:var(--color-success)">paid</span></td></tr>').join("")}</tbody></table>`;
+    // Nested links only come from the DOM API: the HTML parser closes the outer <a> first.
+    const outerLink = document.createElement("a");
+    outerLink.className = "guard-canary";
+    outerLink.href = "#canary-outer";
+    const innerLink = document.createElement("a");
+    innerLink.className = "guard-canary";
+    innerLink.href = "#canary-inner";
+    innerLink.textContent = "canary nested";
+    outerLink.appendChild(innerLink);
+    host.appendChild(outerLink);
     document.querySelector("main div.overflow-y-auto")?.prepend(host);
   });
-  expect(await page.locator("#guard-canary .guard-canary").count(), "the canary is planted").toBe(9);
+  expect(await page.locator("#guard-canary .guard-canary").count(), "the canary is planted").toBe(11);
   const canary = await probeRoute(page, { route: "/dashboard", scope: "dashboard", record: false, inScope: true, dataTitled: false });
   const canaryFocus = await probeFocus(page, new Set());
   const canaryPresent = await page.locator("#guard-canary a").count();
   const canaryHits = {
     typeRamp: canary.typeRamp, cardBorder: canary.cardBorder, controlBorder: canary.controlBorder,
     titleCase: canary.titleCase, siblingHeight: canary.siblingHeight, colourBudget: canary.colourBudget,
-    focus: canaryFocus.invisible, controlName: canary.controlName,
+    focus: canaryFocus.invisible, controlName: canary.controlName, nestedLink: canary.nestedLink,
   };
   const blind = Object.entries(canaryHits).filter(([, hits]) => !hits.some((h) => h.includes("guard-canary"))).map(([k]) => k);
   expect(blind, `rendered checks that did not see their planted violation — focus probe: ${JSON.stringify({ ...canaryFocus, present: canaryPresent })}`).toEqual([]);
@@ -909,6 +926,7 @@ test("design rule audit", async ({ page, browser }) => {
   expect.soft(findings.settingsNav, "settings navigation: a rail is back, a page lacks its back arrow, or the hub misses a page").toEqual([]);
   expect.soft(findings.focus, "focus that does not show (design.md 2.3, 8)").toEqual([]);
   expect.soft(findings.controlName, "a form control with no accessible name (design.md 8)").toEqual([]);
+  expect.soft(findings.nestedLink, "a link inside a link (13a H9; RecordTable `rendersLink`)").toEqual([]);
   expect.soft(running, "an animation still running under reduced motion (design.md 6)").toEqual([]);
   expect(unreachable.filter((u) => !u.startsWith("/dashboard/custom")), "routes the audit could not reach").toEqual([]);
 });

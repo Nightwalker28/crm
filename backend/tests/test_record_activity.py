@@ -7,6 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+from app.core.access_control import PermissionPolicy
 from app.core.database import Base
 from app.modules.calendar.models import CalendarEvent
 from app.modules.mail.models import MailMessage, MailRecordAssociation
@@ -44,6 +45,9 @@ def at(minutes: int) -> datetime:
 class _AllowAllPolicy:
     def __init__(self, db, user):
         self.user = user
+
+    # The real combinator over the two answers this fake gives.
+    can = PermissionPolicy.can
 
     def can_view_module(self, module_key: str) -> bool:
         return module_key not in getattr(self.user, "denied_modules", set())

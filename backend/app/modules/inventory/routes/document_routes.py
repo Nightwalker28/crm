@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import can_access, require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.inventory.repositories import document_repository as repo
 from app.modules.inventory.services import document_services as service
@@ -69,8 +69,7 @@ def _get(db: Session, *, tenant_id: int, kind: str, document_id: int, include_de
 @router.get("/adjustments")
 def adjustments(status: str | None = None, include_deleted: bool = Query(default=False), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _view=Depends(require_action_access("inventory_adjustments", "view"))):
     if include_deleted:
-        from app.core.access_control import PermissionPolicy
-        if not PermissionPolicy(db, user).can_perform_action("inventory_adjustments", "restore"):
+        if not can_access(db, user, "inventory_adjustments", "restore"):
             raise HTTPException(status_code=403, detail="Restore access required")
     return _list(db, tenant_id=user.tenant_id, kind="adjustments", status=status, include_deleted=include_deleted, pagination=pagination)
 
@@ -119,8 +118,7 @@ def restore_adjustment(document_id: int, db: Session = Depends(get_db), user=Dep
 @router.get("/transfers")
 def transfers(status: str | None = None, include_deleted: bool = Query(default=False), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_transfers")), _view=Depends(require_action_access("inventory_transfers", "view"))):
     if include_deleted:
-        from app.core.access_control import PermissionPolicy
-        if not PermissionPolicy(db, user).can_perform_action("inventory_transfers", "restore"):
+        if not can_access(db, user, "inventory_transfers", "restore"):
             raise HTTPException(status_code=403, detail="Restore access required")
     return _list(db, tenant_id=user.tenant_id, kind="transfers", status=status, include_deleted=include_deleted, pagination=pagination)
 

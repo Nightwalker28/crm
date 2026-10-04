@@ -3,11 +3,11 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
-from app.core.access_control import PermissionPolicy
 from app.core.database import get_db
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import can_access, require_access, require_action_access, require_module_access
+from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.crm_events import safe_publish_crm_event
@@ -38,10 +38,8 @@ def _parse_filters(filter_logic: str, filters: str | None, filters_all: str | No
 
 def _require_delivery_access(db: Session, current_user) -> None:
     """Marking an order with stocked lines fulfilled posts a delivery, so it needs delivery access."""
-    policy = PermissionPolicy(db, current_user)
-    if not (policy.can_view_module("inventory_deliveries") and policy.can_perform_action("inventory_deliveries", "create")
-            and policy.can_perform_action("inventory_deliveries", "edit")):
-        raise HTTPException(status_code=403, detail="Marking this order fulfilled ships its stock, which needs access to create and post deliveries")
+    require_access(db, current_user, "inventory_deliveries", "create", "edit",
+        detail="Marking this order fulfilled ships its stock, which needs access to create and post deliveries")
 
 
 def _serialize_order(order) -> dict:
@@ -127,27 +125,28 @@ def create_order(
     require_catalog_line_link_access(db, user=current_user, lines=order_payload.get("items"))
     if order_payload.get("status") == "fulfilled" and any(item.get("catalog_product_id") for item in order_payload.get("items") or []):
         _require_delivery_access(db, current_user)
-    created = create_sales_order(db, order_payload, current_user)
-    safe_log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="sales_orders",
-        entity_type="sales_order",
-        entity_id=created.id,
-        action="create",
-        description=f"Created order {created.order_number}",
-        after_state=_serialize_order(created),
-    )
-    safe_publish_crm_event(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id,
-        event_type="order.created",
-        entity_type="sales_order",
-        entity_id=created.id,
-        payload={"order_number": created.order_number, "status": created.status, "quote_id": created.quote_id},
-    )
+    with unit_of_work(db):
+        created = create_sales_order(db, order_payload, current_user)
+        safe_log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_orders",
+            entity_type="sales_order",
+            entity_id=created.id,
+            action="create",
+            description=f"Created order {created.order_number}",
+            after_state=_serialize_order(created),
+        )
+        safe_publish_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id,
+            event_type="order.created",
+            entity_type="sales_order",
+            entity_id=created.id,
+            payload={"order_number": created.order_number, "status": created.status, "quote_id": created.quote_id},
+        )
     return _with_currency(db, created)
 
 
@@ -177,42 +176,42 @@ def update_order(
     if update_payload.get("status") == "fulfilled" and order.status != "fulfilled" and order_needs_delivery(db, order):
         _require_delivery_access(db, current_user)
     before_state = _serialize_order(order)
-    updated = update_sales_order(db, order, update_payload, actor_user_id=current_user.id)
-    safe_log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="sales_orders",
-        entity_type="sales_order",
-        entity_id=updated.id,
-        action="update",
-        description=f"Updated order {updated.order_number}",
-        before_state=before_state,
-        after_state=_serialize_order(updated),
-    )
-    if before_state.get("status") != updated.status:
-        safe_publish_crm_event(
+    with unit_of_work(db):
+        updated = update_sales_order(db, order, update_payload, actor_user_id=current_user.id)
+        safe_log_activity(
             db,
             tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id,
-            event_type="order.status_changed",
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_orders",
             entity_type="sales_order",
             entity_id=updated.id,
-            payload={
-                "order_number": updated.order_number,
-                "previous_status": before_state.get("status"),
-                "status": updated.status,
-                "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
-            },
+            action="update",
+            description=f"Updated order {updated.order_number}",
+            before_state=before_state,
+            after_state=_serialize_order(updated),
         )
+        if before_state.get("status") != updated.status:
+            safe_publish_crm_event(
+                db,
+                tenant_id=current_user.tenant_id,
+                actor_user_id=current_user.id,
+                event_type="order.status_changed",
+                entity_type="sales_order",
+                entity_id=updated.id,
+                payload={
+                    "order_number": updated.order_number,
+                    "previous_status": before_state.get("status"),
+                    "status": updated.status,
+                    "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
+                },
+            )
     return _with_currency(db, updated)
 
 
 def _fulfilment(db: Session, current_user, order) -> dict:
     data = order_fulfilment(db, tenant_id=current_user.tenant_id, order=order)
     # Free stock in the warehouse is inventory data; the order's own holds are not.
-    policy = PermissionPolicy(db, current_user)
-    if not (policy.can_view_module("inventory_stock") and policy.can_perform_action("inventory_stock", "view")):
+    if not can_access(db, current_user, "inventory_stock"):
         for line in data["lines"]:
             line["available"] = None
     return data
@@ -260,8 +259,7 @@ def get_order_invoicing(
 
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
     data = order_invoicing_summary(db, order=order)
-    policy = PermissionPolicy(db, current_user)
-    if not (policy.can_view_module("finance_pos") and policy.can_perform_action("finance_pos", "view")):
+    if not can_access(db, current_user, "finance_pos"):
         data["invoices"] = []
     return jsonable_encoder(data)
 

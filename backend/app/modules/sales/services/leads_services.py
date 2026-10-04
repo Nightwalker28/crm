@@ -589,14 +589,8 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         lead.assigned_to = assigned_to
     db.add(lead)
     recalculate_lead_score(db, lead)
-    db.commit()
-    db.refresh(lead)
-    if organization is not None:
-        db.refresh(organization)
-    if contact is not None:
-        db.refresh(contact)
-    if opportunity is not None:
-        db.refresh(opportunity)
+    # The caller commits: the route's unit of work, or the automation run (13a E5).
+    db.flush()
 
     return {
         "lead": _hydrate_lead_record(db, tenant_id=tenant_id, record=lead),

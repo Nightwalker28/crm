@@ -50,7 +50,7 @@ def _can_manage_participants(db: Session, current_user) -> bool:
 
     if current_user is None:
         return False
-    return PermissionPolicy(db, current_user).can_perform_action(MODULE_KEY, "edit")
+    return PermissionPolicy(db, current_user).can(MODULE_KEY, "edit")
 
 
 def _serialize(link) -> OpportunityContactParticipant:

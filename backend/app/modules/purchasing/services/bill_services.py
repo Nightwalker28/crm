@@ -266,9 +266,9 @@ def post_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, bill_id
     _audit(db, bill=bill, actor_user_id=actor_user_id, action="post",
         description=f"Posted bill {bill.number} ({bill.vendor_invoice_number}) for {bill.total} {bill.currency}"
         + ("; prices differ from the purchase order" if bill.match_status == "variance" else ""))
-    from app.modules.inventory.services.stock_ledger import stage_inventory_event
+    from app.modules.platform.services.crm_events import stage_standard_crm_event
 
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="purchase.bill_posted", entity_type="purchase_bill",
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="purchase.bill_posted", entity_type="purchase_bill",
         entity_id=bill.id, payload={"number": bill.number, "vendor_invoice_number": bill.vendor_invoice_number,
         "vendor_name": bill.vendor.org_name if bill.vendor else None, "total": str(bill.total), "currency": bill.currency,
         "match_status": bill.match_status, "purchase_order_id": bill.order_id})
@@ -363,8 +363,9 @@ BILL_SORT_FIELDS = {"number": PurchaseBill.number, "bill_date": PurchaseBill.bil
                     "total": PurchaseBill.total, "balance_due": PurchaseBill.balance_due, "status": PurchaseBill.status}
 
 
-def list_bills(db: Session, *, tenant_id: int, pagination: Pagination, status: str | None = None, vendor_id: int | None = None,
-               order_id: int | None = None, search: str | None = None, sort_by: str | None = None, sort_direction: str | None = None) -> dict:
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, vendor_id: int | None = None, order_id: int | None = None,
+               search: str | None = None):
+    """The bill list's rows. The list and its export both start here (13a A5)."""
     from app.modules.sales.models import SalesOrganization
 
     query = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id, PurchaseBill.deleted_at.is_(None))
@@ -384,6 +385,12 @@ def list_bills(db: Session, *, tenant_id: int, pagination: Pagination, status: s
         pattern = f"%{search.strip()}%"
         query = query.join(SalesOrganization, SalesOrganization.org_id == PurchaseBill.vendor_id).filter(or_(
             PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern), SalesOrganization.org_name.ilike(pattern)))
+    return query
+
+
+def list_bills(db: Session, *, tenant_id: int, pagination: Pagination, status: str | None = None, vendor_id: int | None = None,
+               order_id: int | None = None, search: str | None = None, sort_by: str | None = None, sort_direction: str | None = None) -> dict:
+    query = list_query(db, tenant_id=tenant_id, status=status, vendor_id=vendor_id, order_id=order_id, search=search)
     total = query.count()
     column = BILL_SORT_FIELDS.get((sort_by or "").strip())
     if column is not None:

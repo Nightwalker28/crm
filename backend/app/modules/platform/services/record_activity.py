@@ -752,8 +752,7 @@ def list_record_activity(
         if not adapter.applies(module_key):
             continue
         if adapter.permission_module_key and not (
-            policy.can_view_module(adapter.permission_module_key)
-            and policy.can_perform_action(adapter.permission_module_key, "view")
+            policy.can(adapter.permission_module_key)
         ):
             # Record access does not grant source-domain access. Drop the whole
             # adapter rather than leaking a redacted stub.

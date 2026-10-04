@@ -60,7 +60,10 @@ class ReservationTests(unittest.TestCase):
         ]}
         if warehouse_id:
             payload["warehouse_id"] = warehouse_id
-        return create_sales_order(self.db, payload, self.user)
+        order = create_sales_order(self.db, payload, self.user)
+        # The service flushes; its caller commits (13a E5). Here the test is the caller.
+        self.db.commit()
+        return order
 
     def held(self, order):
         return {row.order_line_id: Decimal(row.quantity) for row in self.db.query(InventoryReservation).filter_by(order_id=order.id)}

@@ -8,7 +8,6 @@ from sqlalchemy.orm import Session
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
-from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
 from app.modules.sales.repositories import contacts_repository
 from app.modules.platform.services.custom_fields import (
@@ -56,15 +55,6 @@ def _contact_name_expression():
             + " "
             + func.coalesce(SalesContact.last_name, "")
         )
-    )
-
-
-def _apply_search_filter(query, search: str | None):
-    return apply_ranked_search(
-        query,
-        search=search,
-        document=SalesContact.search_doc,
-        default_order_column=SalesContact.created_time,
     )
 
 

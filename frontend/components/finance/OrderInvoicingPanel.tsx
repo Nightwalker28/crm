@@ -96,7 +96,7 @@ export function OrderInvoicingPanel({ orderId, canCreateInvoice, canViewInvoices
             rowHref={(row) => `${DASHBOARD_ROUTES.financePos}/${row.id}`}
             emptyState={{ title: "No invoices yet" }}
             columns={[
-              { key: "number", label: "Invoice", size: "sm", render: (row) => <Link className="font-semibold text-copy-primary" href={`${DASHBOARD_ROUTES.financePos}/${row.id}`}>{row.invoice_number ?? "Draft"}</Link> },
+              { key: "number", label: "Invoice", size: "sm", rendersLink: true, render: (row) => <Link className="font-semibold text-copy-primary" href={`${DASHBOARD_ROUTES.financePos}/${row.id}`}>{row.invoice_number ?? "Draft"}</Link> },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPosInvoiceStatus(row.status)} /> },
               { key: "payment", label: "Payment", size: "sm", render: (row) => (row.status !== "issued" ? "—"
                 : row.due_date && Number(row.balance_due) > 0 && row.due_date < todayIsoDate() ? <StatusValue status={OVERDUE_STATUS} />

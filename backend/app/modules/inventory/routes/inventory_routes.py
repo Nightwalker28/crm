@@ -9,9 +9,8 @@ from sqlalchemy.orm import Session
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
 from app.core.module_filters import apply_filter_conditions, parse_filter_conditions
-from app.core.access_control import PermissionPolicy
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import can_access, require_action_access, require_any_access, require_module_access
 from app.core.security import require_user
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
@@ -48,15 +47,12 @@ class QuickAdjustmentPayload(BaseModel):
 
 @router.get("/products/search")
 def search_tracked_products(query: str = Query(default="", max_length=100), limit: int = Query(default=10, ge=1, le=20), db: Session = Depends(get_db), user=Depends(require_user)):
-    policy = PermissionPolicy(db, user)
-    allowed = any(policy.can_view_module(module) and policy.can_perform_action(module, action) for module, action in (
+    require_any_access(db, user, (
         ("inventory_stock", "view"),
         ("inventory_adjustments", "create"), ("inventory_adjustments", "edit"),
         ("inventory_transfers", "create"), ("inventory_transfers", "edit"),
         ("purchase_orders", "create"), ("purchase_orders", "edit"),
-    ))
-    if not allowed:
-        raise HTTPException(status_code=403, detail="Inventory access required")
+    ), detail="Inventory access required")
     products = db.query(CatalogProduct).filter(CatalogProduct.tenant_id == user.tenant_id,
         CatalogProduct.deleted_at.is_(None), CatalogProduct.is_active == 1, CatalogProduct.track_inventory == 1)
     if query.strip():
@@ -67,9 +63,6 @@ def search_tracked_products(query: str = Query(default="", max_length=100), limi
         "preferred_vendor_id": row.preferred_vendor_id} for row in rows]}
 
 
-def _can_view_valuation(db: Session, user) -> bool:
-    policy = PermissionPolicy(db, user)
-    return policy.can_view_module("inventory_valuation") and policy.can_perform_action("inventory_valuation", "view")
 
 
 def _warehouse(row: InventoryWarehouse) -> dict:
@@ -79,7 +72,7 @@ def _warehouse(row: InventoryWarehouse) -> dict:
 @router.get("/warehouses")
 def warehouses(include_deleted: bool = Query(default=False), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
     if include_deleted:
-        if not PermissionPolicy(db, user).can_perform_action("inventory_stock", "configure"):
+        if not can_access(db, user, "inventory_stock", "configure"):
             raise HTTPException(status_code=403, detail="Warehouse configuration access required")
     return {"results": [_warehouse(row) for row in inventory_services.list_warehouses(db, tenant_id=user.tenant_id, include_deleted=include_deleted)]}
 
@@ -174,14 +167,14 @@ def movements(product_id: int | None = Query(default=None, gt=0), warehouse_id: 
     rows = query.order_by(None).order_by(InventoryStockMove.id.desc()).limit(pagination.limit + 1).all()
     actor_ids = {move.created_by for move, _, _ in rows if move.created_by is not None}
     actors = {actor.id: " ".join(part for part in (actor.first_name, actor.last_name) if part).strip() or actor.email for actor in db.query(User).filter(User.tenant_id == user.tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
-    with_cost = _can_view_valuation(db, user)
+    with_cost = can_access(db, user, "inventory_valuation")
     numbers = inventory_services.document_numbers(db, tenant_id=user.tenant_id, moves=[move for move, _, _ in rows])
     return build_cursor_response([inventory_services.serialize_move(move, product_name=product.name, warehouse_name=warehouse.name, actor_name=actors.get(move.created_by), with_cost=with_cost, document_number=numbers.get((move.source_type, move.source_id))) for move, product, warehouse in rows], limit=pagination.limit, id_attr="id")
 
 
 @router.get("/products/{product_id}/stock")
 def product_stock(product_id: int, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
-    return jsonable_encoder(inventory_services.product_stock(db, tenant_id=user.tenant_id, product_id=product_id, with_cost=_can_view_valuation(db, user)))
+    return jsonable_encoder(inventory_services.product_stock(db, tenant_id=user.tenant_id, product_id=product_id, with_cost=can_access(db, user, "inventory_valuation")))
 
 
 @router.post("/products/{product_id}/adjust", status_code=201)

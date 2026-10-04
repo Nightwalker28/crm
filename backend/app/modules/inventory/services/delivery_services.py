@@ -12,18 +12,35 @@ from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import (
     MoveSpec, _lock_levels, _lock_products, _set_hold, _tracked_lines, delivered_quantity, line_outstanding,
-    order_warehouse_id, post_moves, release_for_order, reserve_for_order, reverse_moves, stage_inventory_event,
+    order_warehouse_id, post_moves, release_for_order, reserve_for_order, reverse_moves,
 )
 from app.modules.inventory.services.return_services import delivery_returns, has_open_returns, returned_quantity
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem
+
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, order_id: int | None = None):
+    """The delivery list's rows. The list and its export both start here (13a A5)."""
+    query = db.query(InventoryDelivery).options(selectinload(InventoryDelivery.lines)).filter(
+        InventoryDelivery.tenant_id == tenant_id, InventoryDelivery.deleted_at.is_(None))
+    if status:
+        query = query.filter(InventoryDelivery.status == status)
+    if order_id:
+        query = query.filter(InventoryDelivery.order_id == order_id)
+    if search and search.strip():
+        pattern = f"%{search.strip()}%"
+        query = query.join(SalesOrder, SalesOrder.id == InventoryDelivery.order_id).filter(SalesOrder.tenant_id == tenant_id, or_(
+            InventoryDelivery.number.ilike(pattern), InventoryDelivery.tracking_number.ilike(pattern), SalesOrder.order_number.ilike(pattern)))
+    return query
 
 
 def _quantity(value) -> Decimal:
@@ -207,7 +224,7 @@ def _post(db: Session, *, tenant_id: int, actor_user_id: int | None, doc: Invent
     if refresh_delivery_status(db, order=order) == "delivered":
         order.status = "fulfilled"
     reserve_for_order(db, tenant_id=tenant_id, order=order, actor_user_id=actor_user_id)
-    stage_inventory_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="inventory.delivery_posted",
+    stage_standard_crm_event(db, tenant_id=tenant_id, actor_user_id=actor_user_id, event_type="inventory.delivery_posted",
         entity_type="inventory_delivery", entity_id=doc.id,
         payload={"number": doc.number, "order_id": order.id, "order_number": order.order_number, "warehouse_id": doc.warehouse_id,
                  "delivery_status": order.delivery_status, "record_label": doc.number, "record_url": f"/dashboard/inventory/deliveries/{doc.id}"})

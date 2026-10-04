@@ -40,6 +40,12 @@ class LeadConversionDealTests(StageRefFixture):
         return lead
 
     def test_the_deal_takes_amount_currency_and_close_date(self):
+        # The tenant's currencies, seeded rather than left to whichever earlier test happened to
+        # cache them in this process.
+        from app.modules.user_management.models import CompanyProfile
+
+        self.db.add(CompanyProfile(id=1, tenant_id=TENANT, name="Prospect seller", operating_currencies=["USD"], base_currency="USD"))
+        self.db.commit()
         result = convert_sales_lead(
             self.db,
             self.make_lead(),

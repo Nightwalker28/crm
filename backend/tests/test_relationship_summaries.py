@@ -17,6 +17,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.access_control import PermissionPolicy
 from app.core import permissions as permissions_module
 from app.core.database import Base, get_db
 from app.core.security import require_user
@@ -64,6 +65,9 @@ def policy_for(viewable):
     class Policy:
         def __init__(self, db=None, user=None):
             pass
+
+        # The real combinator over the two answers this fake gives.
+        can = PermissionPolicy.can
 
         def can_view_module(self, module_key):
             return module_key in viewable
