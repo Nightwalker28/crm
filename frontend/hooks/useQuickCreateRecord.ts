@@ -8,6 +8,7 @@ import {
   useResolvedRecordLayout,
   type ResolvedRecordLayout,
 } from "@/hooks/useResolvedRecordLayout";
+import { formFieldErrors } from "@/lib/apiErrors";
 
 /**
  * Typed context a contextual Quick Create passes from the record it was opened on.
@@ -147,8 +148,16 @@ export function useQuickCreateRecord<TForm extends Record<string, unknown>>({
       await onCreated(createdId, outcome);
     } catch (error) {
       const failure = describeSubmitError(error);
+      // H2: the server's field errors land on the fields they name. Layout keys for custom
+      // fields are the bare key, the payload's path is `custom_fields.<key>`.
+      const serverErrors = Object.fromEntries(
+        Object.entries(formFieldErrors(error)).map(([path, message]) => [path.replace(/^custom_fields\./, ""), message]),
+      );
+      const serverKeys = Object.keys(serverErrors);
+      if (serverKeys.length) setErrors(serverErrors);
       setSubmitError(failure.message);
-      if (failure.focusFieldKey) focusField(failure.focusFieldKey);
+      const focusKey = failure.focusFieldKey ?? serverKeys[0];
+      if (focusKey) focusField(focusKey);
     } finally {
       setIsSubmitting(false);
     }

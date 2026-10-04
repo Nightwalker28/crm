@@ -19,6 +19,7 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { TextLink } from "@/components/ui/TextLink";
+import { useReturnCreditCandidates } from "@/hooks/finance/useFinanceDocuments";
 import { useDelivery, type DeliveryLine } from "@/hooks/inventory/useDeliveries";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useReturn, useReturnActions, type ReturnLine } from "@/hooks/inventory/useReturns";
@@ -28,11 +29,8 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getReturnStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -57,6 +55,7 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const warehouses = useWarehouses(false, canViewStock);
   const query = useReturn(returnId);
   const doc = query.data;
+  const creditCandidates = useReturnCreditCandidates(doc?.status === "received" && canCredit ? doc.id : null);
   const effectiveDeliveryId = doc?.delivery_id ?? deliveryId;
   const delivery = useDelivery(effectiveDeliveryId ?? null);
   const mutations = useReturnActions();
@@ -167,7 +166,17 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
           {doc ? <StatusValue status={getReturnStatus(doc.status)} context="record" /> : null}
           {doc?.status === "draft" && actions?.can_edit ? <Button onClick={() => void receive()} disabled={mutations.isSaving}>Receive</Button> : null}
           {/* E5 (12c §3.5): credit what came back, against the invoice that charged for it. */}
-          {doc?.status === "received" && canCredit ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.creditNotes}/new?return_id=${doc.id}`}>Create credit note</Link></Button> : null}
+          {doc?.status === "received" && canCredit ? (
+            // I3: offered only when something on the return was invoiced; otherwise it says why.
+            creditCandidates.data && !creditCandidates.data.candidates.length ? (
+              <span className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" disabled aria-describedby="return-credit-unavailable">Create credit note</Button>
+                <span id="return-credit-unavailable" className="text-p-xs text-copy-muted">Nothing on this return was invoiced, so there is nothing to credit.</span>
+              </span>
+            ) : (
+              <Button asChild variant="outline" disabled={creditCandidates.isLoading}><Link href={`${DASHBOARD_ROUTES.creditNotes}/new?return_id=${doc.id}`}>Create credit note</Link></Button>
+            )
+          ) : null}
           {doc?.status === "received" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel return</Button> : null}
           {doc?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>
@@ -238,9 +247,8 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
                           aria-label={`Restock ${line.name}`}
                           checked={restock}
                           onCheckedChange={(checked) => setDrafts((current) => ({ ...current, [line.id]: { ...(current[line.id] ?? { quantity: "0" }), restock: checked } }))}
-                          className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
                         >
-                          <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
+                          <SwitchThumb />
                         </Switch>
                         <span className="text-sm text-copy-secondary">{restock ? "Yes" : "No, damaged"}</span>
                       </span>

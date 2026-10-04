@@ -10,6 +10,7 @@
 import type { LeadFormValue } from "@/components/leads/LeadFormFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
 const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "custom_fields"];
@@ -70,24 +71,11 @@ export function buildLeadPayload(
  * Carries the backend status and `detail` so a caller can distinguish a duplicate-email
  * conflict, a rejected cross-tenant owner/team, and revoked permission from a generic failure.
  */
-export class LeadMutationError extends Error {
-  readonly status: number;
-  readonly detail: string | null;
-
-  constructor(status: number, detail: string | null) {
-    super(detail ?? `Failed with ${status}`);
+export class LeadMutationError extends RecordMutationError {
+  constructor(status: number, body: unknown) {
+    super(status, body, "The lead could not be saved.");
     this.name = "LeadMutationError";
-    this.status = status;
-    this.detail = detail;
   }
-}
-
-function errorDetail(body: unknown) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-  }
-  return null;
 }
 
 /**
@@ -110,7 +98,7 @@ export async function saveLead({
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new LeadMutationError(res.status, errorDetail(body));
+  if (!res.ok) throw new LeadMutationError(res.status, body);
   if (mode === "edit") return leadId === undefined ? null : Number(leadId);
   const createdId = body && typeof body === "object" && "lead_id" in body ? (body as { lead_id: unknown }).lead_id : null;
   return typeof createdId === "number" ? createdId : null;

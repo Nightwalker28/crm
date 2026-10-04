@@ -17,11 +17,8 @@ import { useInvoiceActions } from "@/hooks/finance/usePosInvoices";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getOrderInvoiceStatus, getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /**
  * The order's Invoicing tab (12c-erp-invoicing.md §3.5): per line, what can be invoiced, what

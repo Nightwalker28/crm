@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
@@ -326,13 +326,18 @@ function CatalogOverview({
         <div className="mt-4 max-w-xs">
           {record.media_url ? (
             <>
-              <Image
+              <MediaImage
                 src={resolveMediaUrl(record.media_url)}
                 alt={`${record.name} catalog image`}
                 width={320}
                 height={240}
                 unoptimized
                 className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover"
+                fallback={(
+                  <div className="flex aspect-[4/3] w-full items-center justify-center rounded-[var(--radius-control)] border border-dashed border-line-strong bg-surface-muted text-sm text-copy-muted">
+                    Image file missing
+                  </div>
+                )}
               />
               {record.media_original_filename ? (
                 <p className="mt-2 truncate text-p-xs text-copy-muted" title={record.media_original_filename}>

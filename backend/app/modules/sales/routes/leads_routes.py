@@ -469,6 +469,42 @@ def log_lead_follow_up_route(
     return log_lead_follow_up(db, lead=lead, payload=payload.model_dump(), current_user=current_user)
 
 
+# (result key, created flag, module key, entity type) for each record a conversion can touch.
+_CONVERSION_TARGETS = (
+    ("account_id", "created_account", "sales_organizations", "sales_organization"),
+    ("contact_id", "created_contact", "sales_contacts", "sales_contact"),
+    ("deal_id", "created_deal", "sales_opportunities", "sales_opportunity"),
+)
+
+
+def _log_conversion_targets(db: Session, *, current_user, result: dict) -> None:
+    """Opens each converted record's story on its own timeline (13a H11).
+
+    A record the conversion made reads "Created from lead …"; one it reused reads "Linked to
+    lead … on conversion". Both are `create`/`convert` rows, which the timeline's lifecycle
+    adapter shows; the after-state carries the sibling ids so the timeline can link them.
+    """
+    lead = result["lead"]
+    name = _display_lead_name(lead)
+    links = {"lead_id": lead.lead_id, "account_id": result["account_id"], "contact_id": result["contact_id"], "deal_id": result["deal_id"]}
+    for id_key, created_key, module_key, entity_type in _CONVERSION_TARGETS:
+        entity_id = result.get(id_key)
+        if not entity_id:
+            continue
+        created = bool(result.get(created_key))
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action="create" if created else "convert",
+            description=f"Created from lead {name}" if created else f"Linked to lead {name} on conversion",
+            after_state=links,
+        )
+
+
 @router.post("/{lead_id}/convert", response_model=LeadConversionResponse)
 def convert_lead(
     lead_id: int,
@@ -499,6 +535,7 @@ def convert_lead(
             "deal_id": result["deal_id"],
         },
     )
+    _log_conversion_targets(db, current_user=current_user, result=result)
     safe_emit_crm_event(
         db,
         tenant_id=current_user.tenant_id,

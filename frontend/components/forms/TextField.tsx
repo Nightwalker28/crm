@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import { useServerFieldError } from "@/components/forms/ServerFieldErrors";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RequiredMark } from "@/components/ui/RequiredMark";
@@ -58,7 +59,7 @@ export function TextField({
   placeholder,
   inputMode,
   required = false,
-  error,
+  error: clientError,
   description,
   maxLength,
   min,
@@ -67,6 +68,9 @@ export function TextField({
   disabled,
   className,
 }: TextFieldProps) {
+  const serverError = useServerFieldError(id);
+  // A client-side message wins: it is about what the operator typed since the save failed.
+  const error = clientError || serverError;
   const errorId = error ? `${id}-error` : undefined;
   return (
     <Field data-invalid={Boolean(error)} className={className}>

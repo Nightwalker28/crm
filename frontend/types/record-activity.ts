@@ -35,6 +35,7 @@ export const RECORD_ACTIVITY_TYPES = [
   "call",
   "email",
   "follow_up",
+  "lifecycle",
   "meeting",
   "note",
   "task",

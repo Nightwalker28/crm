@@ -4,7 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { Delivery } from "@/hooks/inventory/useDeliveries";
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
-import { ApiError, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 
 export type Availability = "reserved" | "partly_reserved" | "waiting";
 
@@ -17,7 +18,7 @@ export type OrderFulfilmentLine = {
 };
 
 export type OrderFulfilment = {
-  order_id: number; status: string; delivery_status: string;
+  order_id: number; order_number: string | null; status: string; delivery_status: string;
   remaining_closed_at: string | null; remaining_close_reason: string | null;
   warehouse_id: number; warehouse_name: string | null;
   availability: Availability | null; lines: OrderFulfilmentLine[];
@@ -37,10 +38,7 @@ export type ProductReservations = {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
-    throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : "Reservations could not be loaded.");
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response, "Reservations could not be loaded.");
   return response.json() as Promise<T>;
 }
 

@@ -3,7 +3,8 @@
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
-import { ApiError, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 
 /** Credit notes, payment records and an order's invoicing (12c-erp-invoicing.md §3.5). */
 
@@ -52,10 +53,7 @@ type Page<T> = { results: T[]; page: number; page_size: number; total_count: num
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
-    throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : "This could not be loaded.");
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response, "This could not be loaded.");
   return response.status === 204 ? (null as T) : (response.json() as Promise<T>);
 }
 

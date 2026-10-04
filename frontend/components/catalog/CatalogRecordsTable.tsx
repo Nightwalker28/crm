@@ -2,20 +2,21 @@
 
 import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useMemo } from "react";
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
-import { ImageIcon, Package, Wrench } from "lucide-react";
+import { ImageIcon, MoreHorizontal, Package, Power, PowerOff, Wrench } from "lucide-react";
 
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { TableColumnOption } from "@/types/table";
 import type { CatalogKind, CatalogRecord } from "@/hooks/catalog/useCatalogRecords";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
 import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
+import { formatQuantity, formatQuantityWithUnit } from "@/lib/quantity";
 
 type Props = {
   kind: CatalogKind;
@@ -186,33 +187,20 @@ export default function CatalogRecordsTable({
                 {stockLabel(record.stock_status)}
               </span>
               <span className="text-xs text-copy-muted">
-                {record.stock_quantity == null ? "Quantity untracked" : `${record.stock_quantity} units`}
+                {record.stock_quantity == null ? "Quantity untracked" : formatQuantityWithUnit(record.stock_quantity, record.unit)}
               </span>
             </div>
           ) : null;
         case "stock_quantity":
           return isProduct ? (
             <span className="text-sm tabular-nums text-copy-secondary">
-              {record.stock_quantity == null ? "Untracked" : record.stock_quantity}
+              {record.stock_quantity == null ? "Untracked" : formatQuantity(record.stock_quantity)}
             </span>
           ) : null;
         case "is_active":
-          return onToggleActive ? (
-            <div className="inline-flex items-center gap-2">
-              <Switch
-                aria-label={`${record.is_active ? "Deactivate" : "Activate"} ${record.name}`}
-                checked={record.is_active}
-                disabled={togglingRecordId === record.id}
-                onCheckedChange={(checked) => onToggleActive(record, checked)}
-                className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
-              >
-                <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
-              </Switch>
-              <span className="text-sm text-copy-secondary">{record.is_active ? "Active" : "Inactive"}</span>
-            </div>
-          ) : (
-            <StatusValue status={{ tone: record.is_active ? "success" : "neutral", label: record.is_active ? "Active" : "Inactive" }} />
-          );
+          // H21: the state only. Changing it is a menu action with a confirmation: a live
+          // switch in a row deactivated a product on one stray click.
+          return <StatusValue status={{ tone: record.is_active ? "success" : "neutral", label: record.is_active ? "Active" : "Inactive" }} />;
         case "is_public":
           return record.is_public ? (
             <StatusValue status={{ tone: "success", label: "Public" }} className="w-20" />
@@ -220,22 +208,23 @@ export default function CatalogRecordsTable({
             <StatusValue status={{ tone: "neutral", label: "Private" }} className="w-20" />
           );
         case "media_url":
-          return record.media_url ? (
-            <Image
+          return (
+            <MediaImage
               src={resolveMediaUrl(record.media_url)}
               width={32}
               height={32}
               unoptimized
               className="h-8 w-8 rounded-[var(--radius-control-sm)] border border-line-default object-cover"
               alt={`${record.name} catalog image`}
+              fallback={(
+                <span
+                  className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-copy-disabled"
+                  title="No catalog image"
+                >
+                  <ImageIcon className="h-4 w-4" aria-hidden="true" />
+                </span>
+              )}
             />
-          ) : (
-            <span
-              className="flex h-8 w-8 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-muted text-copy-disabled"
-              title="No catalog image"
-            >
-              <ImageIcon className="h-4 w-4" aria-hidden="true" />
-            </span>
           );
         case "updated_at":
         case "created_at":
@@ -256,10 +245,9 @@ export default function CatalogRecordsTable({
         label: getReadableColumnLabel(column, columnOptions),
         sortable: sortableColumns.has(column),
         size: COLUMN_SIZES[column],
-        interactive: column === "is_active" && Boolean(onToggleActive),
         render: (record: CatalogRecord) => renderCell(record, column),
       }));
-  }, [visibleColumns, columnOptions, isProduct, onToggleActive, togglingRecordId]);
+  }, [visibleColumns, columnOptions, isProduct]);
 
   return (
     <RecordTable
@@ -269,6 +257,18 @@ export default function CatalogRecordsTable({
       rowKey={(record) => record.id}
       rowHref={(record) => `/dashboard/catalog/${kind}/${record.id}`}
       rowLabel={(record) => `Open ${singular} ${record.name}`}
+      rowActions={onToggleActive ? (record) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${record.name}`} disabled={togglingRecordId === record.id}><MoreHorizontal /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onSelect={() => onToggleActive(record, !record.is_active)}>
+              {record.is_active ? <PowerOff /> : <Power />}{record.is_active ? "Deactivate" : "Activate"}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ) : undefined}
       sort={sort}
       onSortChange={onSortChange}
       isLoading={isLoading}

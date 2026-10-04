@@ -309,8 +309,8 @@ function OrderRecordFormEditor({
       title={mode === "edit" ? `Edit ${form.order_number}` : "Create order"}
       description={
         mode === "edit"
-          ? "Update customer links, line items, fulfillment details, and ownership."
-          : "Create an itemized order with customer, fulfillment, and payment context."
+          ? "Update customer links, line items, fulfilment details, and ownership."
+          : "Create an itemized order with customer, fulfilment, and payment context."
       }
       actions={
         <Button asChild variant="ghost" size="sm">
@@ -505,8 +505,8 @@ function OrderRecordFormEditor({
           idPrefix="order"
         />
         <FormSection
-          title="Fulfillment"
-          description="Set fulfillment expectations and customer-facing payment terms."
+          title="Fulfilment"
+          description="Set fulfilment expectations and customer-facing payment terms."
         >
           <FieldGroup columns={2}>
             {showWarehouse ? (
@@ -584,7 +584,7 @@ function OrderRecordFormEditor({
         </FormSection>
         <FormSection
           title="Terms and notes"
-          description="Internal or fulfillment notes associated with this order."
+          description="Internal or fulfilment notes associated with this order."
         >
           <Field>
             <FieldLabel htmlFor="order-notes">Notes</FieldLabel>
@@ -704,7 +704,7 @@ function OrderSidebar({
       </FormSection>
       <FormSection
         title="Ownership"
-        description="Assign responsibility for fulfillment."
+        description="Assign responsibility for fulfilment."
       >
         <Field>
           <FieldLabel htmlFor="order-owner">Owner</FieldLabel>

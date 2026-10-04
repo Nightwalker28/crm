@@ -9,6 +9,7 @@
 import type { ContactFormValue } from "@/components/contacts/ContactFormFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
 const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "custom_fields"];
@@ -55,24 +56,11 @@ export function buildContactPayload(
  * Carries the backend status and `detail` so a caller can distinguish a duplicate contact, a
  * rejected cross-tenant account or owner, and a revoked link permission from a generic failure.
  */
-export class ContactMutationError extends Error {
-  readonly status: number;
-  readonly detail: string | null;
-
-  constructor(status: number, detail: string | null) {
-    super(detail ?? `Failed with ${status}`);
+export class ContactMutationError extends RecordMutationError {
+  constructor(status: number, body: unknown) {
+    super(status, body, "The contact could not be saved.");
     this.name = "ContactMutationError";
-    this.status = status;
-    this.detail = detail;
   }
-}
-
-function errorDetail(body: unknown) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-  }
-  return null;
 }
 
 /**
@@ -95,7 +83,7 @@ export async function saveContact({
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new ContactMutationError(res.status, errorDetail(body));
+  if (!res.ok) throw new ContactMutationError(res.status, body);
   if (mode === "edit") return contactId === undefined ? null : Number(contactId);
   const createdId = body && typeof body === "object" && "contact_id" in body
     ? (body as { contact_id: unknown }).contact_id

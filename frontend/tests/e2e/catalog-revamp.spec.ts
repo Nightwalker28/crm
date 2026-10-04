@@ -205,10 +205,17 @@ test("Product list uses permission-aware semantic actions and safe mutation feed
   await expect(page.getByRole("link", { name: "Camera kit" })).toHaveAttribute("href", `/dashboard/catalog/products/${productId}`);
   await expect(page.getByText("Public", { exact: true })).toBeVisible();
 
-  await page.getByRole("switch", { name: "Deactivate Camera kit" }).click();
+  // H21: Active is a menu action with a confirmation, not a live switch in the row.
+  await expect(page.getByRole("switch")).toHaveCount(0);
+  await page.getByRole("button", { name: "More actions for Camera kit" }).click();
+  await page.getByRole("menuitem", { name: "Deactivate" }).click();
+  const confirmDialog = page.getByRole("dialog", { name: "Deactivate Camera kit?" });
+  await expect(confirmDialog).toBeVisible();
+  await confirmDialog.getByRole("button", { name: "Deactivate" }).click();
   await expect(page.getByText("We could not deactivate this product. Try again.")).toBeVisible();
   await expect(page.getByText("database_password=secret")).toHaveCount(0);
-  expect(updatedPayload).toMatchObject({ name: "Camera kit", is_active: false });
+  // Only the field that changes is sent; the route is `exclude_unset`.
+  expect(updatedPayload).toEqual({ is_active: false });
 });
 
 test("Catalog lists hide ungranted actions and distinguish filtered empty states", async ({ page }) => {
@@ -233,7 +240,7 @@ test("Catalog lists hide ungranted actions and distinguish filtered empty states
 
   await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Create service" })).toHaveCount(0);
-  await expect(page.getByRole("switch")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /More actions for/ })).toHaveCount(0);
   await expect(page.getByText("No services yet")).toBeVisible();
   await expect(page.getByText("Services will appear here when a teammate creates one.")).toBeVisible();
 
@@ -315,6 +322,11 @@ test("Product editing hydrates the routed form and saves back to detail", async 
 });
 
 test("Product detail uses the shared responsive summary and explains recoverable deletion", async ({ page }) => {
+  // The fixture's image must exist: since H17 a missing file renders the "Image file missing"
+  // placeholder instead of a broken image.
+  await page.route("**/uploads/catalog/camera-kit.jpg", (route) =>
+    route.fulfill({ status: 200, contentType: "image/png", body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", "base64") }),
+  );
   await cacheCatalogPermissions(page, { can_edit: true, can_delete: true });
   await page.route(`**/api/v1/catalog/products/${productId}`, async (route) => {
     await route.fulfill({

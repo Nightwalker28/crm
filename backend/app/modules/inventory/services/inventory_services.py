@@ -145,7 +145,7 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int, with_cost: bo
     product = db.query(CatalogProduct).filter(CatalogProduct.id == product_id, CatalogProduct.tenant_id == tenant_id, CatalogProduct.deleted_at.is_(None)).first()
     if product is None:
         raise HTTPException(status_code=404, detail="Product not found")
-    levels = db.query(InventoryStockLevel, InventoryWarehouse).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(InventoryStockLevel.tenant_id == tenant_id, InventoryStockLevel.product_id == product_id).order_by(InventoryWarehouse.name).all()
+    levels = db.query(InventoryStockLevel, InventoryWarehouse).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(InventoryStockLevel.tenant_id == tenant_id, InventoryStockLevel.product_id == product_id, InventoryWarehouse.deleted_at.is_(None)).order_by(InventoryWarehouse.name).all()
     moves = db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id, InventoryStockMove.product_id == product_id).order_by(InventoryStockMove.id.desc()).limit(10).all()
     from app.modules.purchasing.services.purchase_order_services import incoming
 
@@ -155,6 +155,7 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int, with_cost: bo
     waiting = sum((_waiting(db, tenant_id=tenant_id, product=product, warehouse=warehouse) for _level, warehouse in levels), Decimal(0)) if product.track_inventory else Decimal(0)
     actor_ids = {move.created_by for move in moves if move.created_by is not None}
     actors = {user.id: " ".join(part for part in (user.first_name, user.last_name) if part).strip() or user.email for user in db.query(User).filter(User.tenant_id == tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
+    numbers = document_numbers(db, tenant_id=tenant_id, moves=moves)
     valuation = None
     if with_cost and product.track_inventory:
         from app.modules.inventory.services.valuation_services import product_valuation
@@ -178,11 +179,48 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int, with_cost: bo
         "warehouses": [{"id": warehouse.id, "name": warehouse.name, "code": warehouse.code, "on_hand": level.on_hand, "reserved": level.reserved,
             "available": Decimal(level.on_hand) - Decimal(level.reserved), "incoming": on_order.get((product.id, warehouse.id), Decimal(0)),
             "stock_value": warehouse_values.get(warehouse.id) if valuation else None} for level, warehouse in levels],
-        "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by), with_cost=with_cost) for move in moves],
+        "movements": [serialize_move(move, product_name=product.name, warehouse_name=next((warehouse.name for level, warehouse in levels if warehouse.id == move.warehouse_id), "Warehouse"), actor_name=actors.get(move.created_by), with_cost=with_cost, document_number=numbers.get((move.source_type, move.source_id))) for move in moves],
     }
 
 
-def serialize_move(move: InventoryStockMove, *, product_name: str, warehouse_name: str, actor_name: str | None = None, with_cost: bool = False) -> dict:
+def _document_number_sources():
+    """source_type → (model, number column) for every document that posts stock."""
+    from app.modules.inventory.models import InventoryDelivery, InventoryReturn
+    from app.modules.purchasing.models import PurchaseReceipt
+    from app.modules.sales.models import SalesOrder
+    from app.modules.website_integrations.models import WebsiteIntegrationOrder
+
+    return {
+        "inventory_adjustment": (InventoryAdjustment, InventoryAdjustment.number),
+        "inventory_transfer": (InventoryTransfer, InventoryTransfer.number),
+        "inventory_delivery": (InventoryDelivery, InventoryDelivery.number),
+        "inventory_return": (InventoryReturn, InventoryReturn.number),
+        "purchase_receipt": (PurchaseReceipt, PurchaseReceipt.number),
+        "sales_order": (SalesOrder, SalesOrder.order_number),
+        "website_order": (WebsiteIntegrationOrder, WebsiteIntegrationOrder.external_reference),
+    }
+
+
+def document_numbers(db: Session, *, tenant_id: int, moves: list[InventoryStockMove]) -> dict[tuple[str, int], str]:
+    """The number each movement's source document is known by (13a H22): "RCV-20261003-0001",
+    not "Receipt #9". One query per source type on the page, tenant-scoped."""
+    wanted: dict[str, set[int]] = {}
+    for move in moves:
+        if move.source_id is not None:
+            wanted.setdefault(move.source_type, set()).add(move.source_id)
+    sources = _document_number_sources()
+    numbers: dict[tuple[str, int], str] = {}
+    for source_type, ids in wanted.items():
+        if source_type not in sources:
+            continue
+        model, column = sources[source_type]
+        for row_id, number in db.query(model.id, column).filter(model.tenant_id == tenant_id, model.id.in_(ids)).all():
+            if number:
+                numbers[(source_type, row_id)] = str(number)
+    return numbers
+
+
+def serialize_move(move: InventoryStockMove, *, product_name: str, warehouse_name: str, actor_name: str | None = None, with_cost: bool = False, document_number: str | None = None) -> dict:
     actor_label = actor_name or ("Website integration" if move.source_type == "website_order" else "System")
     cost = {"unit_cost": move.unit_cost, "value": move.value, "average_cost_after": move.average_cost_after, "cost_source": move.cost_source} if with_cost else {}
-    return {**cost,"id": move.id, "product_id": move.product_id, "product_name": product_name, "warehouse_id": move.warehouse_id, "warehouse_name": warehouse_name, "quantity": move.quantity, "on_hand_after": move.on_hand_after, "move_type": move.move_type, "source_type": move.source_type, "source_id": move.source_id, "reason": move.reason, "note": move.note, "created_by": move.created_by, "actor_label": actor_label, "occurred_at": move.occurred_at}
+    return {**cost,"id": move.id, "product_id": move.product_id, "product_name": product_name, "warehouse_id": move.warehouse_id, "warehouse_name": warehouse_name, "quantity": move.quantity, "on_hand_after": move.on_hand_after, "move_type": move.move_type, "source_type": move.source_type, "source_id": move.source_id, "document_number": document_number, "document_number": document_number, "reason": move.reason, "note": move.note, "created_by": move.created_by, "actor_label": actor_label, "occurred_at": move.occurred_at}

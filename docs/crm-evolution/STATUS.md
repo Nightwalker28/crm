@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-04 (Step 2).
+Last updated 2026-10-04 (Step 3).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -31,7 +31,82 @@ Last updated 2026-10-04 (Step 2).
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
 | ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 implemented and verified (2026-10-04): H3, H4, B2, B3/B4, F1–F6, I2, I6, I10, E13, E14, F0.5, H29. Next: §7 Step 3** (errors users can see: H2, H23, H12, H11, the F0.9 polish list). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 implemented and verified (2026-10-04): H2, H23, H12, H11, H17, H20, H21, H22, H26, H27, I3, I4. Next: §7 Step 4** (FQ code foundations). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+
+## Final fixes §7 Step 3 — errors users can see and act on (2026-10-04)
+
+Every Step 3 item of `13-final-fixes.md` §7, built first and tested once.
+
+- **H2:** one mapper, `lib/apiErrors.ts`. `ApiError` now carries `fieldErrors`; a 422 list is
+  mapped by `loc` with sentences that name the fix ("Enter a valid email address."), a 4xx
+  string is the domain's own sentence, a 5xx detail is never shown. `ServerFieldErrorsProvider`
+  (`components/forms/ServerFieldErrors.tsx`) puts each message on its input by id, and
+  `TextField`/`CustomFieldInput` read theirs. Wired into the lead, contact, account and deal
+  forms, all four quick creates (`useQuickCreateRecord` merges server errors into the layout's),
+  every ERP `request` helper, invoice actions, the conversion form and the bill (the vendor
+  invoice clash goes on its field, which is now marked required).
+- **H23:** `apiFetch` bounds the time to the response headers: reads 20 s, writes 60 s, uploads
+  5 min; a timeout is not retried and throws `RequestTimeoutError`. Lists already had an error
+  state with *Try again*; it now appears instead of endless skeletons.
+- **H12:** two bugs: the composer invalidated `["record-activity", …]` while the feed is keyed
+  `record-activity-feed`, and the mention search sent `search=` to a route that reads `query=`.
+- **H11:** the conversion's toggles are `SegmentedBoolean` Yes/No (design ruling 4) — the
+  switch's *on* was invisible in dark. *Create deal* is on by default, with amount, currency
+  (when there are several) and expected close date (`LeadConversionRequest.deal_amount`,
+  `deal_currency`, `deal_close_date`; the deal also gets the base currency when none is given).
+  The result screen stays (the page no longer swaps to "already converted"), says what was new
+  and what was linked, and links each. Each record the conversion touched gets a lifecycle row
+  ("Created from lead …" / "Linked to lead … on conversion"), and the timeline has a narrow
+  `lifecycle` adapter that shows a CRM record's own create/convert rows with links to its
+  siblings (HubSpot and Dynamics open a record's timeline with its origin). "Opportunity" →
+  "Deal" in this form.
+- **H17:** `components/ui/MediaImage.tsx` renders its fallback when the file fails to load or
+  there is no `src`; `Avatar`, the three print headers, catalog images, `ImageAssetField`, the
+  user dialog, the insertion-order list and the portal logo use it.
+- **H20:** Stock and a product's Stock tab hide removed warehouses.
+- **H21:** `lib/quantity.ts` (`formatQuantity`, `formatQuantityWithUnit`) replaced 14 local
+  copies; "83 units", not "83.0000 units". The Products/Services *Active* switch is a row menu
+  action with a confirmation that sends `{is_active}` only (it sent the whole record before).
+  The `Switch` primitive now owns its track and thumb, with a contrast thumb when on.
+- **H22:** movements carry `document_number` (`inventory_services.document_numbers`, one query
+  per source type, tenant-scoped); the page shows "ADJ-…" not "Adjustment #15", and Change and
+  On hand sit beside the product.
+- **H26:** Permissions labels modules by name; Fields says in the page why *Create field* is
+  unavailable (and links the module builder for custom modules); Backups marks an enabled
+  schedule whose next run is over an hour gone as *Overdue* and says beat must run.
+- **H27:** `inventory` and `purchasing` are system sidebar tabs and the defaults for
+  `inventory_*` / `purchase_*`; migration `20261006_sidebar_regroup` clears stored `other` on
+  those and the stored `none` on Tasks and Documents (both tenants in the dev DB had it).
+- **I3:** *Create credit note* on a return is disabled with its reason when nothing on it was
+  invoiced (from `return-candidates`).
+- **I4:** the fulfilment payload has `order_number`, so a new delivery names its order; one
+  spelling "Fulfilment" (the order layout seed and stored layouts too); the fulfilment table's
+  Reallocate is a compact row menu; tracking numbers link to DHL, FedEx, UPS, USPS or Aramex
+  (`TrackingNumber`).
+
+**Found on the way:** design ruling 4 already said the boolean is `SegmentedBoolean`; the
+conversion form was one of the three Switch sites filed to move, so it moved. Conversion now
+resolves a currency only when one is sent, so automation's convert action (which sends none)
+behaves as before.
+
+**Verification (one pass, fixes, then the touched set again):** compileall clean; full backend
+suite 1533 tests, 2 errors, both this step's (the automation conversion resolving currencies;
+a test fixture missing a required column), fixed and the six touched modules rerun green (104).
+`verify_migrations` passes at head `20261006_sidebar_regroup`; `verify_openapi` 469 paths.
+Frontend lint clean, production build passes (one type error fixed: the overdue tone),
+`check-design.sh` 21/21. Browser, through `e2e.sh` on disposable databases: 23 specs in three
+runs (56/59, then 36/37 with chunk one's two failing specs rerun green, then 29/30). The 5 failures were all spec-side: two locators in the new
+`final-fixes-step3.spec.ts`, a catalog fixture whose image file did not exist (H17 now shows
+the placeholder, so the spec serves a real PNG), `fulfilment-phase1` clicking the Reallocate
+button that is now in a row menu, and the design guard calling seven empty ERP lists
+"unreachable" on the fresh e2e database. The guard now reports a list that rendered its empty
+state as empty, as it already did for the portal; the reruns are green. The scoped design and
+scroll guards audited 45 routes across leads, deals, orders, inventory, catalog, purchasing,
+invoices and the three settings pages with no findings. **Not run:** the generated-contract
+drift check (no record-layout API change), the full rendered walk (due at F4), and a record
+page audit for the seven ERP document lists, which are empty on a fresh database until the
+e2e seed creates ERP documents (worth doing before F4's walk). The dev database is now at
+`20261006_sidebar_regroup`, so both dev tenants have been regrouped.
 
 ## Final fixes §7 Step 2 — safe to run, implemented and verified (2026-10-04)
 

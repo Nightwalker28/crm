@@ -12,6 +12,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Input } from "@/components/ui/input";
 import { MatrixTable, type MatrixColumn, type MatrixGroup } from "@/components/ui/MatrixTable";
 import { isForbiddenError } from "@/lib/api";
+import { getModuleDisplayName } from "@/lib/module-display";
 import { PageShell } from "@/components/ui/PageShell";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
@@ -51,6 +52,14 @@ const PRODUCT_AREA_LABELS: Record<string, string> = {
   none: "Not in sidebar",
   other: "Other",
 };
+
+/**
+ * The module's name as the sidebar shows it (13a H26). The API sends the key
+ * (`sales_contacts`), which is not a word an administrator should have to read.
+ */
+function moduleLabel(permission: ModulePermission) {
+  return getModuleDisplayName(permission.module_name, permission.module_description ?? undefined);
+}
 
 const PRESETS: Array<{ value: PermissionPreset; label: string }> = [
   { value: "none", label: "No access" },
@@ -160,7 +169,7 @@ export default function RolesPermissionsPage() {
     if (!query) return localPermissions;
     return localPermissions.filter((permission) => {
       const area = productAreaLabel(permission.product_area);
-      return [permission.module_name, permission.module_description, area]
+      return [moduleLabel(permission), permission.module_name, permission.module_description, area]
         .filter(Boolean)
         .some((value) => value?.toLocaleLowerCase().includes(query));
     });
@@ -395,7 +404,7 @@ export default function RolesPermissionsPage() {
                     rowKey={(permission) => permission.module_id}
                     renderIdentity={(permission) => (
                       <>
-                        <div className="font-medium text-copy-primary">{permission.module_name}</div>
+                        <div className="font-medium text-copy-primary">{moduleLabel(permission)}</div>
                         {permission.module_description ? (
                           <div className="mt-1 text-xs text-copy-muted">{permission.module_description}</div>
                         ) : null}
@@ -414,8 +423,8 @@ export default function RolesPermissionsPage() {
                         actions: { ...permission.actions, [column.key]: checked },
                       }))
                     }
-                    rowToggleLabel={(permission) => `Set all permissions for ${permission.module_name}`}
-                    cellLabel={(permission, column) => `${column.label} ${permission.module_name}`}
+                    rowToggleLabel={(permission) => `Set all permissions for ${moduleLabel(permission)}`}
+                    cellLabel={(permission, column) => `${column.label} ${moduleLabel(permission)}`}
                     columnToggleLabel={(column) => `Set ${column.label.toLocaleLowerCase()} for all visible modules`}
                     disabled={isSaving}
                     isLoading={isPermissionsLoading || isAwaitingHydration}

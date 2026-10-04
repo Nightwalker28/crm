@@ -24,6 +24,7 @@ import {
 import { QuickCreateSurface, type QuickCreateOutcome } from "@/components/ui/QuickCreateSurface";
 import { useQuickCreateRecord } from "@/hooks/useQuickCreateRecord";
 import { RecordLayoutContractError } from "@/hooks/useResolvedRecordLayout";
+import { formErrorMessage } from "@/lib/apiErrors";
 
 type Props = {
   open: boolean;
@@ -46,8 +47,10 @@ function layoutErrorMessage(error: unknown) {
 
 function submitErrorMessage(error: unknown) {
   if (!(error instanceof LeadMutationError)) {
-    return { message: "We could not reach the server. Your entries are still here — try again." };
+    return { message: formErrorMessage(error, "We could not reach the server. Your entries are still here. Try again.") };
   }
+  // A 422 names its fields; the shared hook has already put each message on its field.
+  if (error.hasFieldErrors) return { message: error.message };
   // 400/409 carry a specific domain reason: duplicate email, a rejected owner or team, or a
   // tag/status the domain refused. Those are worth showing verbatim.
   if (error.detail && (error.status === 400 || error.status === 409)) {

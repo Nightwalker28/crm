@@ -19,6 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { apiFetch } from "@/lib/api";
+import { recordActivityQueryKeyPrefix } from "@/hooks/useRecordActivity";
 import {
   fetchRecordTasks,
   fetchTaskAssignmentOptions,
@@ -163,7 +164,7 @@ export default function RecordTasksPanel({
   async function refreshTaskQueries() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ["record-tasks", moduleKey, String(entityId)] }),
-      queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+      queryClient.invalidateQueries({ queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)] }),
       queryClient.invalidateQueries({ queryKey: ["tasks"] }),
       queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
     ]);

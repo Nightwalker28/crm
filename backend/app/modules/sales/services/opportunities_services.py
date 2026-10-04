@@ -164,7 +164,8 @@ def _get_allowed_currencies(db: Session, current_user) -> tuple[str, ...]:
     return cache[tenant_id]
 
 
-def _normalize_currency(db: Session, current_user, currency: str | None) -> str:
+def normalize_opportunity_currency(db: Session, current_user, currency: str | None) -> str:
+    """A deal's currency: one the company operates in, its first (base) when none is given."""
     allowed = _get_allowed_currencies(db, current_user)
     normalized = (currency or allowed[0]).strip().upper()
     if normalized not in allowed:
@@ -427,7 +428,7 @@ def create_opportunity(db: Session, data: dict, *, current_user) -> SalesOpportu
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
     if "currency_type" in data:
-        data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
+        data["currency_type"] = normalize_opportunity_currency(db, current_user, data.get("currency_type"))
 
     sales_stage = data.pop("sales_stage", None)
     pipeline_stage_id = data.pop("pipeline_stage_id", None)
@@ -493,7 +494,7 @@ def update_opportunity(db: Session, opportunity: SalesOpportunity, data: dict, *
     if "attachments" in data:
         data["attachments"] = _serialize_attachment_paths(data.get("attachments"))
     if "currency_type" in data and data["currency_type"] is not None:
-        data["currency_type"] = _normalize_currency(db, current_user, data.get("currency_type"))
+        data["currency_type"] = normalize_opportunity_currency(db, current_user, data.get("currency_type"))
 
     stage_changes = {key: data.pop(key) for key in ("sales_stage", "pipeline_stage_id") if key in data}
     for field, value in data.items():

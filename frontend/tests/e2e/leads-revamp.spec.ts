@@ -644,11 +644,13 @@ test("Lead conversion uses permitted existing targets without creating forbidden
   await expect(page.getByRole("link", { name: "Convert" })).toBeVisible();
   await page.getByRole("link", { name: "Convert" }).click();
 
-  await expect(page.getByRole("switch", { name: "Create account" })).toBeDisabled();
-  await expect(page.getByRole("switch", { name: "Create account" })).not.toBeChecked();
-  await expect(page.getByRole("switch", { name: "Create contact" })).toBeDisabled();
-  await expect(page.getByRole("switch", { name: "Create contact" })).not.toBeChecked();
-  await expect(page.getByRole("switch", { name: "Create opportunity" })).toBeDisabled();
+  // H11: each toggle is a Yes/No pair (SegmentedBoolean), so its state is written out.
+  const toggle = (name: string, option: "Yes" | "No") => page.getByRole("group", { name }).getByRole("radio", { name: option });
+  await expect(toggle("Create account", "Yes")).toBeDisabled();
+  await expect(toggle("Create account", "No")).toHaveAttribute("aria-checked", "true");
+  await expect(toggle("Create contact", "Yes")).toBeDisabled();
+  await expect(toggle("Create contact", "No")).toHaveAttribute("aria-checked", "true");
+  await expect(toggle("Create deal", "Yes")).toBeDisabled();
   await expect(page.getByRole("button", { name: "Confirm conversion" })).toBeDisabled();
 
   await page.getByPlaceholder("Search accounts").fill("Existing");
@@ -699,8 +701,10 @@ test("Lead conversion guards unsaved work and returns to the tab it left from", 
 
   // Filling one in and leaving does prompt.
   await page.goto(`/dashboard/sales/leads/${fakeLeadId}/convert?tab=tasks`);
-  await page.getByRole("switch", { name: "Create opportunity" }).click();
-  await expect(page.getByRole("switch", { name: "Create opportunity" })).toBeChecked();
+  // H11: the deal is on by default, so turning it off is the change.
+  const createDeal = page.getByRole("group", { name: "Create deal" });
+  await createDeal.getByRole("radio", { name: "No" }).click();
+  await expect(createDeal.getByRole("radio", { name: "No" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("link", { name: "Cancel" }).click();
   expect(prompted, "a filled-in conversion warns before discarding it").toBe(true);
 });

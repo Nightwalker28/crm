@@ -268,6 +268,12 @@ export default function BackupSettingsPage() {
   const isSettingsDirty = Boolean(
     settingsQuery.data && JSON.stringify(draft) !== JSON.stringify(toDraft(settingsQuery.data)),
   );
+  // H26: an enabled schedule whose next run is more than an hour gone has stopped running
+  // (beat was down on 2026-10-03 and the page still said "Next run Oct 2").
+  const [openedAt] = useState(() => Date.now());
+  const isOverdue = Boolean(
+    settingsQuery.data?.enabled && settingsQuery.data.next_run_at && Date.parse(settingsQuery.data.next_run_at) < openedAt - 60 * 60 * 1000,
+  );
   const setDraft = (updater: BackupSettingsDraft | ((current: BackupSettingsDraft) => BackupSettingsDraft)) => {
     setDraftOverride((current) => {
       const base = current ?? toDraft(settingsQuery.data);
@@ -507,9 +513,17 @@ export default function BackupSettingsPage() {
             <StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" />
           </Fact>
           <Fact label="Last run">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</Fact>
-          <Fact label="Next run">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</Fact>
+          <Fact label="Next run">
+            {settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}
+            {isOverdue ? <StatusValue status={{ tone: "attention", label: "Overdue" }} context="record" className="mt-1" /> : null}
+          </Fact>
           <Fact label="Updated">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</Fact>
         </FactList>
+        {isOverdue ? (
+          <p role="status" className="mt-3 text-p-sm text-copy-secondary">
+            The scheduled backup has not run. Scheduled backups need the background scheduler (Celery beat) running; ask whoever runs this server to check it, or run a backup now.
+          </p>
+        ) : null}
       </FormSection>
 
       {/* The schedule was behind a `Configure` drawer — half the page's subject hidden from

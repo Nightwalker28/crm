@@ -16,6 +16,7 @@ import { SavedViewSelector } from "@/components/ui/SavedViewSelector";
 import type { CatalogKind, CatalogRecord, CatalogSortState } from "@/hooks/catalog/useCatalogRecords";
 import { useCatalogRecords } from "@/hooks/catalog/useCatalogRecords";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
@@ -33,6 +34,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const canCreate = Boolean(moduleActions?.can_create);
   const canEdit = Boolean(moduleActions?.can_edit);
   const [togglingRecordId, setTogglingRecordId] = useState<number | null>(null);
+  const { confirm } = useConfirm();
   const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
   const definition = useMemo(() => buildModuleViewDefinition(moduleKey, [], moduleFields), [moduleKey, moduleFields]);
   const defaultConfig = definition?.defaultConfig ?? MODULE_VIEW_DEFAULTS[moduleKey];
@@ -70,7 +72,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
     goToPage,
     onPageSizeChange,
     refresh,
-    updateRecord,
+    patchRecord,
   } = useCatalogRecords(kind, visibleColumns, activeFilters, activeSort);
 
   const searchValue = useMemo(() => (typeof activeFilters.search === "string" ? activeFilters.search : ""), [activeFilters.search]);
@@ -80,23 +82,23 @@ export default function CatalogRecordsPage({ kind }: Props) {
 
   async function handleToggleActive(record: CatalogRecord, active: boolean) {
     if (!canEdit || togglingRecordId !== null) return;
+    const noun = isProduct ? "product" : "service";
+    // H21: a confirmation names the record and what changes, like every other state change
+    // made from a list row (design.md §7.5).
+    const confirmed = await confirm({
+      title: `${active ? "Activate" : "Deactivate"} ${record.name}?`,
+      description: active
+        ? `The ${noun} can be added to quotes, orders and invoices again.`
+        : `The ${noun} can no longer be added to new quotes, orders or invoices. Documents that already use it are not changed.`,
+      confirmLabel: active ? "Activate" : "Deactivate",
+    });
+    if (!confirmed) return;
     setTogglingRecordId(record.id);
     try {
-      await updateRecord(record.id, {
-        name: record.name,
-        slug: record.slug ?? null,
-        description: record.description ?? null,
-        sku: record.sku ?? null,
-        currency: record.currency,
-        public_unit_price: Number(record.public_unit_price) || 0,
-        stock_status: record.stock_status,
-        stock_quantity: record.stock_quantity == null ? null : Number(record.stock_quantity),
-        is_public: record.is_public,
-        is_active: active,
-      });
+      await patchRecord(record.id, { is_active: active });
       toast.success(`${isProduct ? "Product" : "Service"} ${active ? "activated" : "deactivated"}.`);
     } catch {
-      toast.error(`We could not ${active ? "activate" : "deactivate"} this ${isProduct ? "product" : "service"}. Try again.`);
+      toast.error(`We could not ${active ? "activate" : "deactivate"} this ${noun}. Try again.`);
     } finally {
       setTogglingRecordId(null);
     }

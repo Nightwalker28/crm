@@ -29,6 +29,7 @@ import {
 import { QuickCreateSurface, type QuickCreateOutcome } from "@/components/ui/QuickCreateSurface";
 import { useQuickCreateRecord } from "@/hooks/useQuickCreateRecord";
 import { RecordLayoutContractError } from "@/hooks/useResolvedRecordLayout";
+import { formErrorMessage } from "@/lib/apiErrors";
 
 type Props = {
   open: boolean;
@@ -49,8 +50,10 @@ function layoutErrorMessage(error: unknown) {
 
 function describeSubmitError(error: unknown) {
   if (!(error instanceof OrganizationMutationError)) {
-    return { message: "We could not reach the server. Your entries are still here — try again." };
+    return { message: formErrorMessage(error, "We could not reach the server. Your entries are still here. Try again.") };
   }
+  // A 422 names its fields; the shared hook has already put each message on its field.
+  if (error.hasFieldErrors) return { message: error.message };
   // 400/409 carry a specific domain reason: a duplicate account name, or a rejected owner.
   if (error.detail && (error.status === 400 || error.status === 409)) {
     return {

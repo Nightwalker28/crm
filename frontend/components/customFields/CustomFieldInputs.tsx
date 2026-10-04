@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 
+import { useServerFieldError } from "@/components/forms/ServerFieldErrors";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ type CustomFieldInputProps = {
   error?: string | null;
 };
 
-export function CustomFieldInput({ definition: field, value, onChange, disabled = false, error }: CustomFieldInputProps) {
+export function CustomFieldInput({ definition: field, value, onChange, disabled = false, error: clientError }: CustomFieldInputProps) {
   useEffect(() => {
     if (field.field_type === "boolean" && field.is_required && value === undefined) {
       onChange(false);
@@ -25,6 +26,8 @@ export function CustomFieldInput({ definition: field, value, onChange, disabled 
   }, [field.field_type, field.is_required, onChange, value]);
 
   const inputId = `custom-field-${field.module_key}-${field.field_key}`;
+  const serverError = useServerFieldError(inputId);
+  const error = clientError || serverError;
   const descriptionId = field.help_text ? `${inputId}-description` : undefined;
   const errorId = error ? `${inputId}-error` : undefined;
   const describedBy = [descriptionId, errorId].filter(Boolean).join(" ") || undefined;

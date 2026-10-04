@@ -23,11 +23,8 @@ import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { isForbiddenError } from "@/lib/api";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null) {
-  if (value == null) return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /** Where a movement's cost came from (12d §3.1), in words. */
 const COST_SOURCES: Record<string, string> = {

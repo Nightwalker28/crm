@@ -11,6 +11,7 @@ import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { COUNTRIES } from "@/lib/countries";
+import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
 
 export type OrganizationFormValue = {
   org_name: string;
@@ -67,6 +68,26 @@ type Props = {
   mode: "create" | "edit";
 };
 
+/** Payload field → input id, for the server's field errors (H2). */
+export const ORGANIZATION_FORM_INPUT_IDS: Record<string, string> = {
+  org_name: "account-name",
+  industry: "account-industry",
+  website: "account-website",
+  annual_revenue: "account-revenue",
+  primary_email: "account-primary-email",
+  secondary_email: "account-secondary-email",
+  primary_phone: "account-primary-phone",
+  secondary_phone: "account-secondary-phone",
+  billing_address: "account-billing-address",
+  billing_city: "account-billing-city",
+  billing_state: "account-billing-state",
+  billing_postal_code: "account-billing-postal",
+  billing_country: "account-country",
+  assigned_to: "account-owner",
+  payment_terms_days: "account-payment-terms",
+};
+export const organizationFormInputIdFor = inputIdLookup("sales_organizations", ORGANIZATION_FORM_INPUT_IDS);
+
 export function OrganizationFormMainFields({ value, onChange, customFields, customFieldValues, onCustomFieldChange, moduleFields, nameError, emailError }: Props) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   const update = (key: keyof OrganizationFormValue, nextValue: string) => onChange({ ...value, [key]: nextValue });
@@ -90,11 +111,11 @@ export function OrganizationFormMainFields({ value, onChange, customFields, cust
       </FormSection>
       <FormSection title="Billing address" description="Keep billing and transaction documents aligned to the correct address.">
         <FieldGroup columns={2}>
-          {enabled("billing_address") ? <Field className="md:col-span-2"><FieldLabel htmlFor="account-billing-address">Address</FieldLabel><Textarea id="account-billing-address" rows={3} value={value.billing_address} onChange={(event) => update("billing_address", event.target.value)} /></Field> : null}
+          {enabled("billing_address") ? <Field className="md:col-span-2"><FieldLabel htmlFor="account-billing-address">Address</FieldLabel><Textarea id="account-billing-address" rows={3} value={value.billing_address} onChange={(event) => update("billing_address", event.target.value)} /><ServerFieldError inputId="account-billing-address" /></Field> : null}
           {enabled("billing_city") ? <TextField id="account-billing-city" label="City" value={value.billing_city} onChange={(next) => update("billing_city", next)} /> : null}
           {enabled("billing_state") ? <TextField id="account-billing-state" label="State or province" value={value.billing_state} onChange={(next) => update("billing_state", next)} /> : null}
           {enabled("billing_postal_code") ? <TextField id="account-billing-postal" label="Postal code" value={value.billing_postal_code} onChange={(next) => update("billing_postal_code", next)} /> : null}
-          {enabled("billing_country") ? <Field><FieldLabel htmlFor="account-country">Country</FieldLabel><Select value={value.billing_country || undefined} onValueChange={(billing_country) => onChange({ ...value, billing_country })}><SelectTrigger id="account-country"><SelectValue placeholder="Select country" /></SelectTrigger><SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent></Select></Field> : null}
+          {enabled("billing_country") ? <Field><FieldLabel htmlFor="account-country">Country</FieldLabel><Select value={value.billing_country || undefined} onValueChange={(billing_country) => onChange({ ...value, billing_country })}><SelectTrigger id="account-country"><SelectValue placeholder="Select country" /></SelectTrigger><SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent></Select><ServerFieldError inputId="account-country" /></Field> : null}
         </FieldGroup>
       </FormSection>
       {customFields.length ? <FormSection title="Custom fields" description="Additional information configured for your workspace."><CustomFieldInputs definitions={customFields} values={customFieldValues} onChange={onCustomFieldChange} /></FormSection> : null}
@@ -107,7 +128,7 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
   return (
     <>
       <FormSection title="Ownership" description="Assign responsibility for this account.">
-        {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
+        {enabled("assigned_to") ? <Field><FieldLabel htmlFor="account-owner">Owner</FieldLabel><OwnerSelect id="account-owner" moduleKey="sales_organizations" action={mode} ownerId={value.assigned_to} ownerName={value.assigned_to_name} onChange={(assigned_to, assigned_to_name) => onChange({ ...value, assigned_to, assigned_to_name })} /><FieldDescription>New accounts default to you when no owner is selected.</FieldDescription><ServerFieldError inputId="account-owner" /></Field> : <p className="text-sm text-copy-muted">Ownership is not enabled for this module.</p>}
       </FormSection>
       <FormSection title="Billing and purchasing" description="Payment terms, and whether you buy from this account.">
         <Field orientation="horizontal">
@@ -115,9 +136,8 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
             id="account-is-vendor"
             checked={value.is_vendor}
             onCheckedChange={(is_vendor) => onChange({ ...value, is_vendor })}
-            className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:bg-action-primary"
           >
-            <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" />
+            <SwitchThumb />
           </Switch>
           <FieldLabel htmlFor="account-is-vendor">Vendor</FieldLabel>
         </Field>
@@ -127,7 +147,7 @@ export function OrganizationFormSidebarFields({ value, onChange, moduleFields, m
           <Input id="account-payment-terms" type="number" min={0} max={365} step={1} inputMode="numeric" value={value.payment_terms_days}
             onChange={(event) => onChange({ ...value, payment_terms_days: event.target.value })} />
           <FieldDescription>Sets the due date on this account&apos;s invoices and bills. Blank uses the company default.</FieldDescription>
-        </Field>
+        <ServerFieldError inputId="account-payment-terms" /></Field>
       </FormSection>
     </>
   );

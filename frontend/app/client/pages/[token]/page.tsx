@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useMemo, useState } from "react";
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Check, Download, FileText, LogIn, MessageSquare, RefreshCw } from "lucide-react";
@@ -70,11 +70,7 @@ export default function PublicClientPage() {
       <div className="mx-auto flex min-h-screen max-w-6xl flex-col px-4 py-6">
         <header className="flex items-center justify-between border-b border-line-default pb-4">
           <Link href="/" className="flex items-center gap-3 text-copy-primary">
-            {logoUrl ? (
-              <Image src={logoUrl} alt="" width={36} height={36} unoptimized className="h-9 w-9 rounded-[var(--radius-control)] object-contain" />
-            ) : (
-              <span className="h-9 w-9 rounded-[var(--radius-control)]" style={{ backgroundColor: accentColor }} />
-            )}
+            <MediaImage src={logoUrl} alt="" width={36} height={36} className="h-9 w-9 rounded-[var(--radius-control)] object-contain" fallback={<span className="h-9 w-9 rounded-[var(--radius-control)]" style={{ backgroundColor: accentColor }} />} />
             {/* The *tenant's* name, in the product face. It was `font-lynk`, which is Lynk's
                 wordmark and nobody else's (§3.1) — rendering another company's name in it
                 made the tenant's brand read as Lynk's logo, on the one surface in the app

@@ -1,5 +1,8 @@
+import { ApiError, RequestTimeoutError } from "./apiErrors";
 import { currentPathForReturn, loginPathFor } from "./authRedirect";
 import { apiUrl } from "./runtime-config";
+
+export { ApiError, RequestTimeoutError } from "./apiErrors";
 
 const REFRESH_PATH = "/auth/refresh";
 const AUTH_PUBLIC_PATHS = new Set([
@@ -15,11 +18,51 @@ const AUTH_PUBLIC_PATHS = new Set([
 const MAX_TRANSIENT_RETRIES = 2;
 const RETRY_BACKOFF_MS = 300;
 const RETRYABLE_METHODS = new Set(["GET", "HEAD"]);
+/**
+ * How long a request may wait for the server's answer (13a H23). It bounds the time to the
+ * response headers only, so a large download is not cut off while its body streams. A read
+ * that never answered left skeletons on screen beside "Showing 0 – 0 of 0" for as long as the
+ * tab stayed open; now it fails, and the page's own error state offers Retry.
+ */
+const READ_TIMEOUT_MS = 20_000;
+const WRITE_TIMEOUT_MS = 60_000;
+const UPLOAD_TIMEOUT_MS = 300_000;
 const inFlightGetRequests = new Map<string, Promise<Response>>();
 let inFlightRefresh: Promise<boolean> | null = null;
 
 function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function timeoutFor(method: string, init?: RequestInit) {
+  if (RETRYABLE_METHODS.has(method)) return READ_TIMEOUT_MS;
+  return typeof FormData !== "undefined" && init?.body instanceof FormData ? UPLOAD_TIMEOUT_MS : WRITE_TIMEOUT_MS;
+}
+
+/**
+ * One fetch with a deadline on its answer. The caller's own signal still aborts it; only the
+ * deadline turns into a `RequestTimeoutError`.
+ */
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit | undefined, method: string) {
+  const controller = new AbortController();
+  const callerSignal = init?.signal ?? null;
+  let timedOut = false;
+  const abortFromCaller = () => controller.abort(callerSignal?.reason);
+  if (callerSignal?.aborted) controller.abort(callerSignal.reason);
+  else callerSignal?.addEventListener("abort", abortFromCaller, { once: true });
+  const timer = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutFor(method, init));
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (error) {
+    if (timedOut) throw new RequestTimeoutError(!RETRYABLE_METHODS.has(method));
+    throw error;
+  } finally {
+    clearTimeout(timer);
+    callerSignal?.removeEventListener("abort", abortFromCaller);
+  }
 }
 
 async function fetchWithTransientRetry(input: RequestInfo | URL, init?: RequestInit) {
@@ -29,13 +72,15 @@ async function fetchWithTransientRetry(input: RequestInfo | URL, init?: RequestI
 
   for (let attempt = 0; attempt <= retryLimit; attempt += 1) {
     try {
-      const res = await fetch(input, init);
+      const res = await fetchWithTimeout(input, init, method);
       if (res.status < 500 || attempt === retryLimit) {
         return res;
       }
     } catch (error) {
       lastError = error;
-      if (attempt === retryLimit) {
+      // A server that did not answer in time is not helped by asking twice more; a caller's
+      // own abort is not transient at all.
+      if (attempt === retryLimit || error instanceof RequestTimeoutError || init?.signal?.aborted) {
         throw error;
       }
     }
@@ -135,27 +180,6 @@ export async function apiFetch(path: string, init: RequestInit = {}) {
   }
 
   return res;
-}
-
-/**
- * A failed response, with the status kept.
- *
- * Every read path in `hooks/admin/` threw a bare `new Error("Failed to fetch …")`, which
- * discarded the one fact the page needed: **403 is not a broken page.** Settings is
- * admin-gated at the layout, so the wall a non-admin hits is already right — what was
- * missing is the finer case, an admin who lacks `configure` on the module they opened, or
- * a role whose permissions changed while the tab was open. Those arrived as "could not be
- * loaded", which sends the operator to look for a fault that does not exist (rebuild.md
- * 5.6 batch 3).
- */
-export class ApiError extends Error {
-  readonly status: number;
-
-  constructor(status: number, message: string) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-  }
 }
 
 /** Pass to `PageShell`'s `isPermissionDenied`, so a 403 renders the wall and not the error. */

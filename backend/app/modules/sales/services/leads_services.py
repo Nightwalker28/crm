@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+from decimal import Decimal
 from typing import Sequence
 
 from fastapi import HTTPException, status
@@ -23,6 +24,7 @@ from app.modules.platform.services.record_tags import hydrate_record_tags, norma
 from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization, SalesPipelineStage
 from app.modules.sales.repositories import leads_repository, organizations_repository
 from app.modules.sales.services import pipelines_services
+from app.modules.sales.services.opportunities_services import normalize_opportunity_currency
 from app.modules.sales.services.opportunity_contacts_services import sync_primary_contact_association
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
@@ -560,6 +562,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         if contact is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A contact is required to create a deal")
         deal_name = _coerce_optional(payload.get("deal_name")) or f"{_display_lead_name(lead)} opportunity"
+        amount = payload.get("deal_amount")
         opportunity = SalesOpportunity(
             tenant_id=tenant_id,
             opportunity_name=deal_name,
@@ -567,6 +570,11 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
             contact_id=contact.contact_id,
             organization_id=organization.org_id if organization else contact.organization_id,
             assigned_to=assigned_to,
+            total_cost_of_project=format(Decimal(str(amount)).normalize(), "f") if amount is not None else None,
+            # Only when the caller names one: automation conversions send none and keep the
+            # pre-H11 behaviour, without resolving the company's currencies.
+            currency_type=normalize_opportunity_currency(db, current_user, payload["deal_currency"]) if payload.get("deal_currency") else None,
+            expected_close_date=payload.get("deal_close_date"),
         )
         pipelines_services.assign_opportunity_stage(db, opportunity, pipeline_stage_id=deal_stage.id)
         db.add(opportunity)

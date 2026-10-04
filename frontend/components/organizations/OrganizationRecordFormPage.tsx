@@ -11,6 +11,7 @@ import {
   OrganizationFormMainFields,
   OrganizationFormSidebarFields,
   EMPTY_ORGANIZATION_FORM,
+  organizationFormInputIdFor,
   type OrganizationFormValue,
 } from "@/components/organizations/OrganizationFormFields";
 import {
@@ -24,6 +25,7 @@ import {
   isOrganizationQuickCreateHandoff,
 } from "@/components/organizations/organizationQuickCreateDraft";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -77,7 +79,7 @@ export default function OrganizationRecordFormPage({
   );
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const serverErrors = useServerFormErrors(organizationFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
@@ -153,7 +155,7 @@ export default function OrganizationRecordFormPage({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const savedOrgId = await saveOrganization({
         mode,
         organizationId: orgId,
@@ -169,8 +171,8 @@ export default function OrganizationRecordFormPage({
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Account updated." : "Account created.");
       router.push(mode === "edit" ? cancelHref : (savedOrgId ? `${listHref}/${savedOrgId}` : listHref));
-    } catch {
-      setSubmitError(
+    } catch (error) {
+      serverErrors.report(error, 
         mode === "edit"
           ? "The account could not be updated. Check the fields and try again."
           : "The account could not be created. Check the fields and try again.",
@@ -214,9 +216,10 @@ export default function OrganizationRecordFormPage({
         </Button>
       }
     >
-      {submitError ? (
-        <FormErrorBanner title="We could not save this account.">{submitError}</FormErrorBanner>
+      {serverErrors.message ? (
+        <FormErrorBanner title="We could not save this account.">{serverErrors.message}</FormErrorBanner>
       ) : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={organizationFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? (form.org_name.trim() || "Account") : "Create account"}
         sidebar={
@@ -268,6 +271,7 @@ export default function OrganizationRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }

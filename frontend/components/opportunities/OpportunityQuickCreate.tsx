@@ -30,6 +30,7 @@ import {
   type QuickCreateContext,
 } from "@/hooks/useQuickCreateRecord";
 import { RecordLayoutContractError } from "@/hooks/useResolvedRecordLayout";
+import { formErrorMessage } from "@/lib/apiErrors";
 
 /**
  * The layout-driven Deal Quick Create used by the list and contextual record actions.
@@ -56,8 +57,10 @@ function layoutErrorMessage(error: unknown) {
 
 function describeSubmitError(error: unknown) {
   if (!(error instanceof OpportunityMutationError)) {
-    return { message: "We could not reach the server. Your entries are still here — try again." };
+    return { message: formErrorMessage(error, "We could not reach the server. Your entries are still here. Try again.") };
   }
+  // A 422 names its fields; the shared hook has already put each message on its field.
+  if (error.hasFieldErrors) return { message: error.message };
   if (error.detail && (error.status === 400 || error.status === 409)) {
     // "Contact not found" / "Organization not found" mean the prefilled link was rejected.
     return {

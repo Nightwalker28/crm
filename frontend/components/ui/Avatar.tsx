@@ -1,6 +1,6 @@
-import Image from "next/image";
 import { UserRound } from "lucide-react";
 
+import { MediaImage } from "@/components/ui/MediaImage";
 import { resolveMediaUrl } from "@/lib/media";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +50,7 @@ type AvatarProps = {
  * `Pill` drew a border, a tint, a blur and a noise overlay around a word that already carried
  * its own meaning, where this shape *is* the information — it says the row is about someone.
  *
- * Three fallback steps, in order: the photo, the initials, a lucide glyph. The glyph rather
+ * Three fallback steps, in order: the photo (while its file loads), the initials, a lucide glyph. The glyph rather
  * than a placeholder string, because an operator with no name and no photo on a record should
  * see an empty seat, not the letters `US`.
  */
@@ -65,22 +65,7 @@ export function Avatar({ name, email, src, size = "default", className }: Avatar
     className,
   );
 
-  if (src) {
-    return (
-      <Image
-        src={resolveMediaUrl(src)}
-        // Decorative: every call site puts the person's name in text beside it, so announcing
-        // it again is a duplicate stop for a screen reader (design.md 8).
-        alt=""
-        width={dimensions.px}
-        height={dimensions.px}
-        unoptimized
-        className={cn(shell, "object-cover")}
-      />
-    );
-  }
-
-  return (
+  const placeholder = (
     <span
       data-slot="avatar"
       className={cn(shell, "border border-line-default bg-surface-muted text-copy-secondary")}
@@ -92,5 +77,21 @@ export function Avatar({ name, email, src, size = "default", className }: Avatar
         <UserRound className="size-1/2" aria-hidden="true" />
       )}
     </span>
+  );
+
+  if (!src) return placeholder;
+
+  // A photo whose file is missing falls back to the initials, not a broken image (H17).
+  return (
+    <MediaImage
+      src={resolveMediaUrl(src)}
+      // Decorative: every call site puts the person's name in text beside it, so announcing
+      // it again is a duplicate stop for a screen reader (design.md 8).
+      alt=""
+      width={dimensions.px}
+      height={dimensions.px}
+      className={cn(shell, "object-cover")}
+      fallback={placeholder}
+    />
   );
 }

@@ -7,13 +7,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { ContactFormMainFields, ContactFormSidebarFields, EMPTY_CONTACT_FORM, type ContactFormValue } from "@/components/contacts/ContactFormFields";
+import { ContactFormMainFields, ContactFormSidebarFields, EMPTY_CONTACT_FORM, type ContactFormValue, contactFormInputIdFor } from "@/components/contacts/ContactFormFields";
 import { buildContactPayload, saveContact, validateContactEmail } from "@/components/contacts/contactMutation";
 import {
   consumeContactQuickCreateDraft,
   isContactQuickCreateHandoff,
 } from "@/components/contacts/contactQuickCreateDraft";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [initialSnapshot, setInitialSnapshot] = useState(() => JSON.stringify([EMPTY_CONTACT_FORM, {}]));
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const serverErrors = useServerFormErrors(contactFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
@@ -112,7 +113,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const savedContactId = await saveContact({
         mode,
         contactId,
@@ -123,8 +124,8 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Contact updated." : "Contact created.");
       router.push(mode === "edit" ? cancelHref : (savedContactId ? `${listHref}/${savedContactId}` : listHref));
-    } catch {
-      setSubmitError(mode === "edit" ? "The contact could not be updated. Check the fields and try again." : "The contact could not be created. Check the fields and try again.");
+    } catch (error) {
+      serverErrors.report(error, mode === "edit" ? "The contact could not be updated. Check the fields and try again." : "The contact could not be created. Check the fields and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -148,7 +149,8 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       description={mode === "edit" ? "Update contact details, ownership, and account information." : "Add a person and connect them to the right account and owner."}
       actions={<Button asChild variant="ghost" size="sm"><Link href={cancelHref}><ArrowLeft />Back to {mode === "edit" ? "contact" : "contacts"}</Link></Button>}
     >
-      {submitError ? <FormErrorBanner title="We could not save this contact.">{submitError}</FormErrorBanner> : null}
+      {serverErrors.message ? <FormErrorBanner title="We could not save this contact.">{serverErrors.message}</FormErrorBanner> : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={contactFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? recordName : "Create contact"}
         sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
@@ -166,6 +168,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
           mode={mode}
         />
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }

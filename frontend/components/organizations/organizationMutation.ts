@@ -8,6 +8,7 @@
 import type { OrganizationFormValue } from "@/components/organizations/OrganizationFormFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
 const ALWAYS_SUBMITTED_FIELDS = ["org_name", "primary_email", "custom_fields", "is_vendor", "payment_terms_days"];
@@ -55,24 +56,11 @@ export function buildOrganizationPayload(
   );
 }
 
-export class OrganizationMutationError extends Error {
-  readonly status: number;
-  readonly detail: string | null;
-
-  constructor(status: number, detail: string | null) {
-    super(detail ?? `Failed with ${status}`);
+export class OrganizationMutationError extends RecordMutationError {
+  constructor(status: number, body: unknown) {
+    super(status, body, "The account could not be saved.");
     this.name = "OrganizationMutationError";
-    this.status = status;
-    this.detail = detail;
   }
-}
-
-function errorDetail(body: unknown) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-  }
-  return null;
 }
 
 /** Writes an Organization. `apiFetch` never replays writes; retry is the caller's decision. */
@@ -92,7 +80,7 @@ export async function saveOrganization({
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new OrganizationMutationError(res.status, errorDetail(body));
+  if (!res.ok) throw new OrganizationMutationError(res.status, body);
   if (mode === "edit") return organizationId === undefined ? null : Number(organizationId);
   const createdId = body && typeof body === "object" && "org_id" in body
     ? (body as { org_id: unknown }).org_id

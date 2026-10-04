@@ -27,6 +27,7 @@ import { usePageAddress } from "@/hooks/usePageAddress";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { SETTINGS_ROUTES } from "@/lib/routes";
+import { TextLink } from "@/components/ui/TextLink";
 import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
   CUSTOM_FIELD_SUPPORTED_MODULES,
@@ -549,7 +550,7 @@ export default function FieldsPage() {
               {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in the module builder."}>
+          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} aria-describedby={supportsCustomFields ? undefined : "fields-create-unavailable"}>
             <Plus />Create field
           </Button>
         </div>
@@ -578,6 +579,18 @@ export default function FieldsPage() {
         </div>
         <span className="text-sm text-copy-muted">{isLoading ? "Loading…" : `${filteredCatalog.length} of ${catalog.length} fields`}</span>
       </div>
+
+      {/* H26: the reason *Create field* is unavailable, in the page rather than a hover title
+          nobody on a touch screen or a keyboard ever sees. */}
+      {!supportsCustomFields ? (
+        <p id="fields-create-unavailable" className="text-p-sm text-copy-muted">
+          {selectedCustomModule ? (
+            <>Fields for this custom module are added in the <TextLink href={SETTINGS_ROUTES.moduleBuilder}>module builder</TextLink>.</>
+          ) : (
+            `${moduleOptions.find((option) => option.key === moduleKey)?.label ?? "This module"} does not take custom fields yet. You can still choose which of its standard fields show.`
+          )}
+        </p>
+      ) : null}
 
       {/* R10: the catalogue was a `divide-y` of hand-rolled rows with the whole row as a
           `<button aria-pressed>`, a page-local loading state, and a `Popover` of two ghost

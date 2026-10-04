@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { FileSpreadsheet } from "lucide-react";
 
@@ -160,16 +160,14 @@ function renderCell(order: InsertionOrder, column: string) {
     case "user_name":
       return (
         <div className="flex items-center gap-2">
-          {order.photo_url ? (
-            <Image
-              src={resolveMediaUrl(order.photo_url)}
-              alt=""
-              width={24}
-              height={24}
-              unoptimized
-              className="size-6 shrink-0 rounded-full object-cover"
-            />
-          ) : null}
+          <MediaImage
+            src={resolveMediaUrl(order.photo_url)}
+            alt=""
+            width={24}
+            height={24}
+            className="size-6 shrink-0 rounded-full object-cover"
+            fallback={null}
+          />
           {order.user_name ? <span className="text-sm text-copy-secondary">{order.user_name}</span> : emptyValue()}
         </div>
       );

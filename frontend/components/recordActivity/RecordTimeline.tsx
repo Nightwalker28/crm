@@ -10,6 +10,7 @@ import {
   MessageCircle,
   MessagesSquare,
   Phone,
+  Sparkles,
   PhoneCall,
   StickyNote,
   Trash2,
@@ -22,9 +23,10 @@ import { PanelEmpty, PanelError, PanelLoading } from "@/components/ui/PanelState
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { TextLink } from "@/components/ui/TextLink";
 import { ListRow, RowList } from "@/components/ui/ListRow";
 import { useConfirm } from "@/hooks/useConfirm";
-import { useRecordActivity } from "@/hooks/useRecordActivity";
+import { recordActivityQueryKeyPrefix, useRecordActivity } from "@/hooks/useRecordActivity";
 import { apiFetch } from "@/lib/api";
 import { callOutcomeLabel, formatCallDuration } from "@/lib/calls";
 import { formatDateTime } from "@/lib/datetime";
@@ -80,6 +82,7 @@ const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
   call: Phone,
   email: Mail,
   follow_up: PhoneCall,
+  lifecycle: Sparkles,
   meeting: CalendarDays,
   note: StickyNote,
   task: CheckSquare,
@@ -91,6 +94,7 @@ const TYPE_LABELS: Record<RecordActivityType, string> = {
   call: "Call",
   email: "Email",
   follow_up: "Follow-up",
+  lifecycle: "Record",
   meeting: "Meeting",
   note: "Note",
   task: "Task",
@@ -102,6 +106,13 @@ const CHANNEL_LABELS: Record<string, string> = {
   email: "Email",
   call: "Call",
 };
+
+const LIFECYCLE_LINKS = [
+  { key: "lead_id", module: "sales_leads", label: "Open lead", href: "/dashboard/sales/leads" },
+  { key: "account_id", module: "sales_organizations", label: "Open account", href: "/dashboard/sales/organizations" },
+  { key: "contact_id", module: "sales_contacts", label: "Open contact", href: "/dashboard/sales/contacts" },
+  { key: "deal_id", module: "sales_opportunities", label: "Open deal", href: "/dashboard/sales/opportunities" },
+] as const;
 
 /** A call reaches a contact's Timeline from the record it was logged on. */
 const LOGGED_ON_LABELS: Record<string, string> = {
@@ -235,6 +246,20 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
         </div>
       );
     }
+    case "lifecycle": {
+      // A conversion links the records it made or reused; the record's own link is omitted.
+      const links = LIFECYCLE_LINKS.filter((link) => {
+        const id = item.meta[link.key];
+        return (typeof id === "number" || typeof id === "string") && link.module !== item.record.module_key;
+      });
+      return links.length ? (
+        <div className="flex flex-wrap gap-x-3 gap-y-1 text-p-xs">
+          {links.map((link) => (
+            <TextLink key={link.key} href={`${link.href}/${String(item.meta[link.key])}`}>{link.label}</TextLink>
+          ))}
+        </div>
+      ) : null;
+    }
     case "case_reply":
     case "note":
     default:
@@ -336,7 +361,7 @@ export default function RecordTimeline({
       const res = await apiFetch(`/record-comments/${item.source.record_id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("not-deleted");
       await queryClient.invalidateQueries({
-        queryKey: ["record-activity", moduleKey, String(entityId)],
+        queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)],
       });
       toast.success("Note deleted.");
     } catch {

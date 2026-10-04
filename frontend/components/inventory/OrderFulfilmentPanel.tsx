@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { PackageSearch, RefreshCw, Truck } from "lucide-react";
+import { ArrowLeftRight, MoreHorizontal, PackageSearch, RefreshCw, Truck } from "lucide-react";
 import { toast } from "sonner";
 
 import { ReservationsDialog } from "@/components/inventory/ReservationsDialog";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { TrackingNumber } from "@/components/inventory/TrackingNumber";
 import { Card } from "@/components/ui/Card";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Fact, FactList } from "@/components/ui/Fact";
@@ -21,11 +23,8 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getDeliveryStatus, getOrderAvailability, getOrderDeliveryStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /**
  * The order's Fulfilment tab (12a-erp-fulfilment.md §3.5): per line, what was ordered,
@@ -148,7 +147,15 @@ export function OrderFulfilmentPanel({
           ]}
           rowActions={canReallocate && confirmed ? (row) => (
             row.tracked && row.product_id && Number(row.to_deliver) > 0 ? (
-              <Button type="button" variant="ghost" size="sm" onClick={() => setDialogLine(row)} aria-label={`Reallocate stock for ${row.name}`}>Reallocate…</Button>
+              // I4: a compact menu, so the actions column fits beside eight quantity columns.
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon-sm" aria-label={`More actions for ${row.name}`}><MoreHorizontal /></Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-52">
+                  <DropdownMenuItem onSelect={() => setDialogLine(row)}><ArrowLeftRight />Reallocate stock…</DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             ) : null
           ) : undefined}
         />
@@ -168,7 +175,7 @@ export function OrderFulfilmentPanel({
               { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getDeliveryStatus(row.status)} /> },
               { key: "shipped", label: "Shipped on", size: "sm", render: (row) => (row.shipped_on ? formatDateOnly(row.shipped_on) : "—") },
-              { key: "carrier", label: "Carrier", render: (row) => [row.carrier, row.tracking_number].filter(Boolean).join(" · ") || "—" },
+              { key: "carrier", label: "Carrier", interactive: true, render: (row) => (row.carrier || row.tracking_number ? <span className="inline-flex flex-wrap gap-x-1">{row.carrier ? <span>{row.carrier}</span> : null}{row.tracking_number ? <TrackingNumber carrier={row.carrier} number={row.tracking_number} /> : null}</span> : "—") },
               { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.total_quantity)}</span> },
             ]}
           />

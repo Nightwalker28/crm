@@ -196,7 +196,7 @@ export function useCatalogRecords(
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: CatalogRecordPayload }) => updateCatalogRecord(kind, id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<CatalogRecordPayload> }) => updateCatalogRecord(kind, id, payload),
     onSuccess: async (_record, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
@@ -241,6 +241,8 @@ export function useCatalogRecords(
     refresh: paged.refresh,
     createRecord: (payload: CatalogRecordPayload) => createMutation.mutateAsync(payload),
     updateRecord: (id: number, payload: CatalogRecordPayload) => updateMutation.mutateAsync({ id, payload }),
+    /** A partial write (the route is `exclude_unset`), for the list's Activate/Deactivate. */
+    patchRecord: (id: number, payload: Partial<CatalogRecordPayload>) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
     isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,

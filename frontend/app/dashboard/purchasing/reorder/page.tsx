@@ -15,13 +15,10 @@ import { useReorderSuggestions, usePurchasingActions, type ReorderSuggestion } f
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { isForbiddenError } from "@/lib/api";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
 const rowId = (row: ReorderSuggestion) => `${row.product_id}-${row.warehouse_id}`;
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /**
  * What to buy (12b-erp-purchasing.md §2 item 6): Odoo's Replenishment report, Zoho's *Order

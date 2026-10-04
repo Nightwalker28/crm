@@ -4,9 +4,12 @@ Each supported interaction keeps living in its own source-domain table. This
 module only *reads* those tables and merges them into one chronological feed.
 There is no canonical activity table and no second event store.
 
-Immutable audit history (``activity_logs``) is deliberately excluded: it is
-served separately by ``platform/routes/activity_logs.py`` and rendered in its
-own UI region.
+Immutable audit history (``activity_logs``) is served separately by
+``platform/routes/activity_logs.py`` and rendered in its own UI region. The one
+exception is a CRM record's lifecycle: its own "create" and "convert" rows
+(13a H11). A deal made by converting a lead showed an empty timeline, where
+HubSpot and Dynamics 365 open the record's story with how it came to exist.
+Edits stay in History.
 
 Linkage is always explicit. An adapter matches a source row to a record through
 linkage the source domain writes on purpose: ``source_module_key`` /
@@ -36,7 +39,7 @@ from app.core.access_control import PermissionPolicy
 from app.modules.calendar.models import CalendarEvent
 from app.modules.inventory.models import InventoryStockMove, InventoryWarehouse
 from app.modules.mail.models import MailMessage, MailRecordAssociation
-from app.modules.platform.models import RecordComment, RecordFollowUp
+from app.modules.platform.models import ActivityLog, RecordComment, RecordFollowUp
 from app.modules.platform.services.record_comments import get_record_reference
 from app.modules.support.models import SupportCaseComment
 from app.modules.tasks.models import Task
@@ -565,6 +568,47 @@ def _fetch_case_replies(db, *, tenant_id, module_key, entity_id, limit, cursor, 
     ]
 
 
+LIFECYCLE_ACTIONS = ("create", "convert")
+LIFECYCLE_MODULE_KEYS = frozenset({"sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities"})
+
+
+def _fetch_lifecycle(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
+    occurred = ActivityLog.created_at
+    query = (
+        db.query(ActivityLog, User)
+        .outerjoin(User, User.id == ActivityLog.actor_user_id)
+        .filter(
+            ActivityLog.tenant_id == tenant_id,
+            ActivityLog.module_key == module_key,
+            ActivityLog.entity_id == str(entity_id),
+            ActivityLog.action.in_(LIFECYCLE_ACTIONS),
+        )
+    )
+    predicate = _keyset_filter(occurred, ActivityLog.id, item_type="lifecycle", cursor=cursor)
+    if predicate is not None:
+        query = query.filter(predicate)
+    rows = query.order_by(None).order_by(occurred.desc(), ActivityLog.id.desc()).limit(limit).all()
+    return [
+        ActivityItem(
+            type="lifecycle",
+            source_id=row.id,
+            source_module_key=module_key,
+            occurred_at=_as_utc(row.created_at),
+            title=row.description or ("Converted" if row.action == "convert" else "Created"),
+            actor_user_id=row.actor_user_id,
+            actor_name=_user_label(actor),
+            meta={"action": row.action, **_lifecycle_links(row)},
+        )
+        for row, actor in rows
+    ]
+
+
+def _lifecycle_links(row) -> dict[str, Any]:
+    """The records a conversion made or linked, so the timeline can link them."""
+    state = row.after_state if isinstance(row.after_state, dict) else {}
+    return {key: state[key] for key in ("lead_id", "account_id", "contact_id", "deal_id") if state.get(key)}
+
+
 @dataclass(frozen=True)
 class _Adapter:
     type: str
@@ -593,6 +637,8 @@ ADAPTERS: tuple[_Adapter, ...] = (
     _Adapter("call", _fetch_calls, None, CALL_LOG_MODULE_KEYS),
     _Adapter("email", _fetch_emails, "mail"),
     _Adapter("follow_up", _fetch_follow_ups, None),
+    # Record-scoped: the record's own creation, shown on its timeline (13a H11).
+    _Adapter("lifecycle", _fetch_lifecycle, None, LIFECYCLE_MODULE_KEYS),
     _Adapter("meeting", _fetch_meetings, "calendar"),
     _Adapter("note", _fetch_notes, None),
     _Adapter("task", _fetch_tasks, "tasks"),

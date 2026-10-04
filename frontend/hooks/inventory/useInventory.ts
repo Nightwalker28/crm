@@ -2,12 +2,13 @@
 
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { ApiError, apiFetch } from "@/lib/api";
+import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 
 export type Warehouse = { id: number; code: string; name: string; address: string | null; is_default: boolean; is_active: boolean; is_deleted: boolean };
 export type StockRow = { product_id: number; product_name: string; sku: string | null; category_name: string | null; warehouse_id: number; warehouse_name: string; on_hand: string; reserved: string; available: string; incoming?: string; reorder_point: string; reorder_quantity: string; stock_status: string };
 /** Cost fields are present only with access to Inventory → Valuation (12d §3.4). */
-export type StockMove = { id: number; product_id: number; product_name: string; warehouse_id: number; warehouse_name: string; quantity: string; on_hand_after: string; move_type: string; source_type: string; source_id: number; reason: string | null; note: string | null; created_by: number | null; actor_label: string; occurred_at: string; unit_cost?: string | null; value?: string | null; average_cost_after?: string | null; cost_source?: string | null };
+export type StockMove = { id: number; product_id: number; product_name: string; warehouse_id: number; warehouse_name: string; quantity: string; on_hand_after: string; move_type: string; source_type: string; source_id: number; document_number?: string | null; reason: string | null; note: string | null; created_by: number | null; actor_label: string; occurred_at: string; unit_cost?: string | null; value?: string | null; average_cost_after?: string | null; cost_source?: string | null };
 // `cost_partial`: some units on hand came in with no cost, so the average and value are partial
 // and the product counts as *Cost missing* until revalued (13a H8).
 export type ProductValuation = { base_currency: string; average_cost: string | null; stock_value: string; cost_missing: boolean; cost_partial?: boolean; uncosted_quantity?: string };
@@ -28,10 +29,7 @@ type CursorPage<T> = { results: T[]; next_cursor: string | null; has_more: boole
 
 async function inventoryRequest<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(`/inventory${path}`, init);
-  if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: unknown } | null;
-    throw new ApiError(response.status, typeof body?.detail === "string" ? body.detail : "Inventory could not be loaded.");
-  }
+  if (!response.ok) throw await apiErrorFromResponse(response, "Inventory could not be loaded.");
   return response.status === 204 ? null as T : response.json() as Promise<T>;
 }
 

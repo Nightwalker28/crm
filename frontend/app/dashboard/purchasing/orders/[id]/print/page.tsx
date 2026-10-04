@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -15,6 +15,7 @@ import { apiFetch } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
 type CompanyProfile = {
   name?: string | null;
@@ -35,10 +36,6 @@ function lines(value?: string | null) {
   return (value || "").split("\n").map((line) => line.trim()).filter(Boolean);
 }
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /**
  * The purchase order as sent to the vendor: what to deliver, where, at what price. Drawn in
@@ -82,7 +79,7 @@ export default function PurchaseOrderPrintPage() {
       <section aria-labelledby="purchase-order-number" className="print-document rounded-[var(--radius-card)] border border-line-default bg-surface p-6 sm:p-8">
         <header className="flex flex-col justify-between gap-6 sm:flex-row">
           <div className="flex gap-4">
-            {logoUrl ? <Image src={logoUrl} alt={`${profile.name || "Company"} logo`} width={56} height={56} unoptimized className="h-14 w-14 rounded-[var(--radius-control)] object-cover" /> : null}
+            <MediaImage src={logoUrl} alt={`${profile.name || "Company"} logo`} width={56} height={56} className="h-14 w-14 rounded-[var(--radius-control)] object-cover" fallback={null} />
             <div className="text-p-sm text-copy-secondary">
               <p className="text-sm font-semibold text-copy-primary">{profile.name || "Company"}</p>
               {lines(profile.billing_address).map((line) => <p key={line}>{line}</p>)}

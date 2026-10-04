@@ -709,7 +709,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
             [
                 _seed_section(
                     "fulfillment",
-                    "Fulfillment",
+                    "Fulfilment",
                     0,
                     [("delivery_date", "half"), ("delivery_address", "full")],
                 ),

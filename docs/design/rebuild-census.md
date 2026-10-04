@@ -478,6 +478,15 @@ All 17 today hand-roll `min-h-screen bg-app` and the `font-lynk` wordmark; there
 | `documents/DocumentReferenceActions.tsx` | 71 | 5.3 | adopt | | **done, close-out** — audited against §4.7's render-only-when-it-works rule and it is the exception: a broken provider link is a state to see and fix, not an absent action. It stays disabled and its reason stopped being `title`-only (§8) |
 | `finance/payments/RecordPaymentDialog.tsx` | 95 | 5.5 | adopt | The faster of A7's two paths | **done — unchanged.** Confirmed as A7's fast path in batch 4; the row action opens it |
 
+### 2.7a Added by 13 §7 Step 3 (2026-10-04)
+
+| Path | Verdict | Note | Status |
+|---|---|---|---|
+| `components/forms/ServerFieldErrors.tsx` | **new** | H2: the server's field errors by input id; `TextField` and `CustomFieldInput` read their own, `ServerFieldError` serves composed fields | **done** |
+| `components/inventory/TrackingNumber.tsx` | **new** | I4: a tracking number linked to the carrier's page where the carrier is known | **done** |
+| `lib/apiErrors.ts` | **new** | H2/H23: `ApiError` with field errors, the 422 mapper, `RequestTimeoutError` | **done** |
+| `lib/quantity.ts` | **new** | H21: one quantity formatter; replaced 14 local copies | **done** |
+
 ### 2.8 Test harnesses (3)
 
 | Path | Lines | Owner | Verdict | Note | Status |
@@ -518,6 +527,7 @@ taken. Counted here so the denominator stays honest.
 | `hooks/useAutosave.ts` | **new** | R1's commit machine, extracted from `InlineFieldEdit` | **done** (5.6 batch 1) |
 | `PanelStates.tsx` | **new** | Promoted from `recordActivity/`. Header steps down to R7; loading and empty stop being boxes (R8) | **done** (A) |
 | `StatusValue.tsx` | **new** | Renders a tone per context; accepts a caller-computed override for derived tones like overdue | **done** (B) |
+| `MediaImage.tsx` | **new** (13 §7 Step 3, H17) | An uploaded image that renders its fallback when the file is missing or there is no `src`. `Avatar`, the three print headers, catalog images, `ImageAssetField` and the portal logo use it | **done** |
 | `Chip.tsx` | **new** | The tag/count/marker R5 says needs "a different component with a different name" | **done** (B) |
 | `SegmentedControl.tsx` | **new** | **Not in the plan.** `secondary` was 47 sites carrying a role, not 8 carrying none — see `rebuild.md` 5.1 and §2.2 | **done** (A) |
 | `dropdown-menu.tsx` | **new** | **Not in the plan.** No existing radix vendor for a menu; `ExportControls` / `ImportControls` needed one to leave `@headlessui/react` — see `rebuild.md` 5.1 batch D | **done** (D) |
@@ -562,7 +572,7 @@ taken. Counted here so the denominator stays honest.
 | `input-group.tsx` | 171 | — | unchanged | same | |
 | `checkbox.tsx` | 142 | — | unchanged | same | |
 | `radio-group.tsx` | 130 | — | unchanged | | |
-| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | **done (ruled, not rebuilt), batch 1; a fifth idiom found in 7c** — `SegmentedBoolean` is the boolean (ruling 4). Its 3 call sites are not 5.6's rows: `CatalogRecordsTable` and `LeadConversionForm` → 5.3, `CalendarEventDialog` → 5.7 (**done, 5.7 batch 5** — two importers left). 7c added a fifth: a `Button` flipping `variant` with `aria-pressed`, in `RecordLayoutBuilder` |
+| `switch.tsx` | 153 | 5.6 | adopt | Used in **zero** settings pages today | **Track and thumb moved into the primitive (13 §7 Step 3, H11/H21)**: the checked thumb was `copy-primary` on `action-primary`, both near-white in dark; it is `action-primary-contrast` now, and call sites pass no styling. `LeadConversionForm` moved to `SegmentedBoolean` and `CatalogRecordsTable` to a row menu, so two importers remain (`OrganizationFormFields`, `ReturnDocumentPage`). **done (ruled, not rebuilt), batch 1; a fifth idiom found in 7c** — `SegmentedBoolean` is the boolean (ruling 4). Its 3 call sites are not 5.6's rows: `CatalogRecordsTable` and `LeadConversionForm` → 5.3, `CalendarEventDialog` → 5.7 (**done, 5.7 batch 5** — two importers left). 7c added a fifth: a `Button` flipping `variant` with `aria-pressed`, in `RecordLayoutBuilder` |
 | `SettingsSwitchRow.tsx` | 112 | 5.6 | **delete** | A purpose-built settings primitive used in **2** files | **done, batch 1** — a hand-rolled `SegmentedBoolean` (ruling 4). Replaced by `SettingsRow`, whose control is a slot |
 | `label.tsx` | 24 | — | unchanged | | |
 | `field.tsx` | 248 | 5.4 | adopt | | **done, close-out** — shared form framing adopted |

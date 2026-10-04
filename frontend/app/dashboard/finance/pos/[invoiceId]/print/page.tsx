@@ -1,6 +1,6 @@
 "use client";
 
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -141,24 +141,23 @@ export default function PosInvoicePrintPage() {
         >
           <header className={`flex flex-col justify-between sm:flex-row ${isCompact ? "gap-4" : "gap-6"}`}>
             <div className="flex gap-4">
-              {logoUrl ? (
-                <Image
-                  src={logoUrl}
-                  alt={`${company.name || "Company"} logo`}
-                  width={56}
-                  height={56}
-                  unoptimized
-                  className="h-14 w-14 rounded-[var(--radius-control)] object-cover"
-                />
-              ) : (
-                <div
-                  className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-control)] text-lg font-bold text-white"
-                  style={{ backgroundColor: accentColor }}
-                  aria-hidden="true"
-                >
-                  {(company.name || "P").slice(0, 1)}
-                </div>
-              )}
+              <MediaImage
+                src={logoUrl}
+                alt={`${company.name || "Company"} logo`}
+                width={56}
+                height={56}
+                unoptimized
+                className="h-14 w-14 rounded-[var(--radius-control)] object-cover"
+                fallback={(
+                  <div
+                    className="flex h-14 w-14 items-center justify-center rounded-[var(--radius-control)] text-lg font-bold text-white"
+                    style={{ backgroundColor: accentColor }}
+                    aria-hidden="true"
+                  >
+                    {(company.name || "P").slice(0, 1)}
+                  </div>
+                )}
+              />
               <div>
                 {/* The printed document sits inside a page the shell has already named
                     "Print invoice" — §8 allows one h1, so the document's own headings are

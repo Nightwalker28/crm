@@ -12,7 +12,9 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { useDeliveries } from "@/hooks/inventory/useDeliveries";
 import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
+import { formatQuantity } from "@/lib/quantity";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
+import { TrackingNumber } from "@/components/inventory/TrackingNumber";
 import { getDeliveryStatus } from "@/lib/statusStyles";
 
 /**
@@ -56,8 +58,8 @@ export default function DeliveriesPage() {
           { key: "order", label: "Order", size: "sm", render: (row) => row.order_number ?? "—" },
           { key: "customer", label: "Customer", render: (row) => row.customer_name ?? "—" },
           { key: "shipped", label: "Shipped on", size: "sm", render: (row) => (row.shipped_on ? formatDateOnly(row.shipped_on) : "—") },
-          { key: "carrier", label: "Carrier", render: (row) => [row.carrier, row.tracking_number].filter(Boolean).join(" · ") || "—" },
-          { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{Number(row.total_quantity).toLocaleString(undefined, { maximumFractionDigits: 4 })}</span> },
+          { key: "carrier", label: "Carrier", interactive: true, render: (row) => (row.carrier || row.tracking_number ? <span className="inline-flex flex-wrap gap-x-1">{row.carrier ? <span>{row.carrier}</span> : null}{row.tracking_number ? <TrackingNumber carrier={row.carrier} number={row.tracking_number} /> : null}</span> : "—") },
+          { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{formatQuantity(row.total_quantity)}</span> },
         ]}
       />
       <Pagination

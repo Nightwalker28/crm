@@ -8,12 +8,14 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   EMPTY_OPPORTUNITY_FORM,
   OpportunityFormMainFields,
   OpportunityFormSidebarFields,
+  opportunityFormInputIdFor,
   type OpportunityFormValue,
 } from "@/components/opportunities/OpportunityFormFields";
 import {
@@ -80,7 +82,7 @@ export default function OpportunityRecordFormPage({
   );
   const [nameError, setNameError] = useState<string | null>(null);
   const [contactError, setContactError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const serverErrors = useServerFormErrors(opportunityFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFields = useModuleCustomFields("sales_opportunities", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
@@ -140,7 +142,7 @@ export default function OpportunityRecordFormPage({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const savedId = await saveOpportunity({
         mode,
         opportunityId,
@@ -155,8 +157,8 @@ export default function OpportunityRecordFormPage({
       setInitialSnapshot(snapshot);
       toast.success(mode === "edit" ? "Deal updated." : "Deal created.");
       router.push(mode === "edit" ? cancelHref : (savedId ? `${listHref}/${savedId}` : listHref));
-    } catch {
-      setSubmitError(
+    } catch (error) {
+      serverErrors.report(error, 
         mode === "edit"
           ? "The deal could not be updated. Check the fields and try again."
           : "The deal could not be created. Check the fields and try again.",
@@ -198,9 +200,10 @@ export default function OpportunityRecordFormPage({
         </Button>
       }
     >
-      {submitError ? (
-        <FormErrorBanner title="We could not save this deal.">{submitError}</FormErrorBanner>
+      {serverErrors.message ? (
+        <FormErrorBanner title="We could not save this deal.">{serverErrors.message}</FormErrorBanner>
       ) : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={opportunityFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "Create deal"}
         sidebar={
@@ -249,6 +252,7 @@ export default function OpportunityRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }

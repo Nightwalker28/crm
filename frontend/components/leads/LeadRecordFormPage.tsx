@@ -8,9 +8,10 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
-import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue } from "@/components/leads/LeadFormFields";
+import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue, leadFormInputIdFor } from "@/components/leads/LeadFormFields";
 import { buildLeadPayload, saveLead, toDatetimeLocalValue, validateLeadEmail } from "@/components/leads/leadMutation";
 import { consumeLeadQuickCreateDraft, isLeadQuickCreateHandoff } from "@/components/leads/leadQuickCreateDraft";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [initialSnapshot, setInitialSnapshot] = useState(() => JSON.stringify([EMPTY_LEAD_FORM, {}]));
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const serverErrors = useServerFormErrors(leadFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFieldsQuery = useModuleCustomFields("sales_leads", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
@@ -114,7 +115,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const savedLeadId = await saveLead({
         mode,
         leadId,
@@ -125,8 +126,8 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Lead updated." : "Lead created.");
       router.push(mode === "edit" ? cancelHref : (savedLeadId ? `${listHref}/${savedLeadId}` : listHref));
-    } catch {
-      setSubmitError(mode === "edit" ? "The lead could not be updated. Check the fields and try again." : "The lead could not be created. Check the fields and try again.");
+    } catch (error) {
+      serverErrors.report(error, mode === "edit" ? "The lead could not be updated. Check the fields and try again." : "The lead could not be created. Check the fields and try again.");
     } finally {
       setSubmitting(false);
     }
@@ -157,10 +158,11 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
         </Button>
       )}
     >
-      {submitError ? (
-        <FormErrorBanner title="We could not save this lead.">{submitError}</FormErrorBanner>
+      {serverErrors.message ? (
+        <FormErrorBanner title="We could not save this lead.">{serverErrors.message}</FormErrorBanner>
       ) : null}
 
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={leadFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? recordName : "Create lead"}
         sidebar={<LeadFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
@@ -184,6 +186,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
           emailError={emailError}
         />
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }

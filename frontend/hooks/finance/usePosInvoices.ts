@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { apiErrorFromBody } from "@/lib/apiErrors";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList } from "@/hooks/usePagedList";
@@ -181,7 +182,7 @@ async function invoiceAction(path: string, payload?: unknown): Promise<PosInvoic
     body: payload === undefined ? undefined : JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(typeof body?.detail === "string" ? body.detail : "The invoice could not be changed.");
+  if (!res.ok) throw apiErrorFromBody(res.status, body, "The invoice could not be changed.");
   return body as PosInvoice;
 }
 

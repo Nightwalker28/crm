@@ -11,8 +11,9 @@ import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Fact, FactList } from "@/components/ui/Fact";
-import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Money } from "@/components/ui/Money";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
@@ -27,11 +28,13 @@ import { usePurchaseBill, usePurchaseOrder, usePurchaseReceipt, usePurchasingAct
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useConfirm } from "@/hooks/useConfirm";
-import { isForbiddenError } from "@/lib/api";
+import { ApiError, isForbiddenError } from "@/lib/api";
+import { formErrorMessage, formFieldErrors } from "@/lib/apiErrors";
 import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getBillMatchStatus, getBillStatus, getPaymentRecordStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
 type DraftLine = {
   key: number; orderLineId: number | null; receiptLineId: number | null; name: string; description: string;
@@ -40,10 +43,6 @@ type DraftLine = {
 let nextKey = 1;
 const blankLine = (): DraftLine => ({ key: nextKey++, orderLineId: null, receiptLineId: null, name: "", description: "", quantity: "1", unitCost: "0", tax: "0", poCost: null, billable: null });
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /**
  * A vendor bill (12c-erp-invoicing.md §3.3, §3.5): E3's document layout. From a purchase
@@ -76,6 +75,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<{ vendor?: string; reference?: string }>({});
   const [panel, setPanel] = useState<"void" | "pay" | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [payAmount, setPayAmount] = useState("");
@@ -124,8 +124,9 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0), 0);
 
   async function save(andPost: boolean) {
-    if (!vendorId) { setError("Choose a vendor."); return; }
-    if (!reference.trim()) { setError("Enter the vendor's invoice number."); return; }
+    setFieldErrors({});
+    if (!vendorId) { setFieldErrors({ vendor: "Choose a vendor." }); setError("Check the highlighted field."); document.getElementById("bill-vendor")?.focus(); return; }
+    if (!reference.trim()) { setFieldErrors({ reference: "Enter the vendor's invoice number." }); setError("Check the highlighted field."); document.getElementById("bill-reference")?.focus(); return; }
     const chosen = lines.filter((line) => Number(line.quantity) > 0);
     if (!chosen.length) { setError("Bill at least one line."); return; }
     if (chosen.some((line) => !line.orderLineId && !line.description.trim())) { setError("Describe every line."); return; }
@@ -153,7 +154,18 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         toast.success("Draft saved.");
       }
       if (isNew && id) router.push(`${DASHBOARD_ROUTES.purchaseBills}/${id}`);
-    } catch (failure) { setError(failure instanceof Error ? failure.message : "The bill could not be saved."); }
+    } catch (failure) {
+      // H2: a clash with another bill's vendor invoice number belongs on that field, not the footer.
+      const clash = formFieldErrors(failure).vendor_invoice_number
+        ?? (failure instanceof ApiError && failure.status === 409 && /vendor's invoice/i.test(failure.message) ? failure.message : null);
+      if (clash) {
+        setFieldErrors({ reference: clash });
+        setError("Check the highlighted field.");
+        document.getElementById("bill-reference")?.focus();
+      } else {
+        setError(formErrorMessage(failure, "The bill could not be saved."));
+      }
+    }
   }
 
   async function post() {
@@ -220,18 +232,19 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
               <Fact label="Purchase order"><TextLink href={`${DASHBOARD_ROUTES.purchaseOrders}/${effectiveOrderId}`}>{order.data?.number ?? bill?.order_number ?? "Purchase order"}</TextLink></Fact>
             </FactList>
           ) : (
-            <Field className="lg:col-span-2">
-              <FieldLabel htmlFor="bill-vendor">Vendor</FieldLabel>
+            <Field className="lg:col-span-2" data-invalid={Boolean(fieldErrors.vendor)}>
+              <FieldLabel htmlFor="bill-vendor">Vendor <RequiredMark /></FieldLabel>
               <LinkedRecordPicker inputId="bill-vendor" recordType="vendor" valueId={vendorId} displayValue={vendorName}
                 onDisplayValueChange={(value) => { setVendorName(value); setVendorId(null); }}
                 onSelect={(option) => { setVendorId(option.id); setVendorName(option.label); }}
                 onClear={() => { setVendorId(null); setVendorName(""); }} placeholder="Search vendors" />
+              {fieldErrors.vendor ? <FieldError>{fieldErrors.vendor}</FieldError> : null}
             </Field>
           )}
-          <Field>
-            <FieldLabel htmlFor="bill-reference">Vendor invoice number</FieldLabel>
-            <Input id="bill-reference" maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} />
-            <FieldDescription>As printed on the vendor&apos;s invoice; used to catch a bill entered twice.</FieldDescription>
+          <Field data-invalid={Boolean(fieldErrors.reference)}>
+            <FieldLabel htmlFor="bill-reference">Vendor invoice number <RequiredMark /></FieldLabel>
+            <Input id="bill-reference" maxLength={120} value={reference} aria-required aria-invalid={Boolean(fieldErrors.reference)} aria-describedby={fieldErrors.reference ? "bill-reference-error" : undefined} onChange={(event) => setReference(event.target.value)} />
+            {fieldErrors.reference ? <FieldError id="bill-reference-error">{fieldErrors.reference}</FieldError> : <FieldDescription>As printed on the vendor&apos;s invoice; used to catch a bill entered twice.</FieldDescription>}
           </Field>
           <Field><FieldLabel htmlFor="bill-date">Bill date</FieldLabel><Input id="bill-date" type="date" value={billDate} onChange={(event) => setBillDate(event.target.value)} /></Field>
           <Field>

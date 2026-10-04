@@ -31,15 +31,12 @@ import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
 type DraftLine = { key: number; productId: number | null; name: string; description: string; quantity: string; unitCost: string };
 let nextKey = 1;
 const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", description: "", quantity: "1", unitCost: "0" });
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 /** The status a reader cares about: *Partly received* while an ordered PO has some stock in. */
 export function purchaseOrderStatus(order: Pick<PurchaseOrder, "status" | "receipt_status">) {

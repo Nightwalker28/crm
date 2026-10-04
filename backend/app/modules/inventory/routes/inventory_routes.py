@@ -107,7 +107,7 @@ def restore_warehouse(warehouse_id: int, db: Session = Depends(get_db), user=Dep
 
 @router.get("/stock")
 def stock(search: str | None = Query(default=None, max_length=100), warehouse_id: int | None = Query(default=None, gt=0), level_filter: str | None = Query(default=None, pattern="^(in_stock|low_stock|out_of_stock)$"), filters_all: str | None = Query(default=None), filters_any: str | None = Query(default=None), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_stock")), _action=Depends(require_action_access("inventory_stock", "view"))):
-    query = db.query(CatalogProduct, InventoryStockLevel, InventoryWarehouse).join(InventoryStockLevel, InventoryStockLevel.product_id == CatalogProduct.id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(CatalogProduct.tenant_id == user.tenant_id, InventoryStockLevel.tenant_id == user.tenant_id, InventoryWarehouse.tenant_id == user.tenant_id, CatalogProduct.deleted_at.is_(None), CatalogProduct.track_inventory == 1)
+    query = db.query(CatalogProduct, InventoryStockLevel, InventoryWarehouse).join(InventoryStockLevel, InventoryStockLevel.product_id == CatalogProduct.id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(CatalogProduct.tenant_id == user.tenant_id, InventoryStockLevel.tenant_id == user.tenant_id, InventoryWarehouse.tenant_id == user.tenant_id, CatalogProduct.deleted_at.is_(None), CatalogProduct.track_inventory == 1, InventoryWarehouse.deleted_at.is_(None))
     if search:
         pattern = f"%{search.strip()}%"
         query = query.filter(or_(CatalogProduct.name.ilike(pattern), CatalogProduct.sku.ilike(pattern)))
@@ -175,7 +175,8 @@ def movements(product_id: int | None = Query(default=None, gt=0), warehouse_id: 
     actor_ids = {move.created_by for move, _, _ in rows if move.created_by is not None}
     actors = {actor.id: " ".join(part for part in (actor.first_name, actor.last_name) if part).strip() or actor.email for actor in db.query(User).filter(User.tenant_id == user.tenant_id, User.id.in_(actor_ids))} if actor_ids else {}
     with_cost = _can_view_valuation(db, user)
-    return build_cursor_response([inventory_services.serialize_move(move, product_name=product.name, warehouse_name=warehouse.name, actor_name=actors.get(move.created_by), with_cost=with_cost) for move, product, warehouse in rows], limit=pagination.limit, id_attr="id")
+    numbers = inventory_services.document_numbers(db, tenant_id=user.tenant_id, moves=[move for move, _, _ in rows])
+    return build_cursor_response([inventory_services.serialize_move(move, product_name=product.name, warehouse_name=warehouse.name, actor_name=actors.get(move.created_by), with_cost=with_cost, document_number=numbers.get((move.source_type, move.source_id))) for move, product, warehouse in rows], limit=pagination.limit, id_attr="id")
 
 
 @router.get("/products/{product_id}/stock")

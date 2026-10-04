@@ -27,11 +27,8 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getCreditNoteStatus, getPaymentRecordStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 type Row = { line: PosInvoiceLine; creditable: number };
 

@@ -24,11 +24,8 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPurchaseReceiptStatus } from "@/lib/statusStyles";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 function plural(count: number, word: string) {
   return `${count.toLocaleString(undefined, { maximumFractionDigits: 4 })} ${word}${count === 1 ? "" : "s"}`;

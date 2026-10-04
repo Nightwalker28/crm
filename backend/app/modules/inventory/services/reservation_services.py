@@ -61,7 +61,7 @@ def order_fulfilment(db: Session, *, tenant_id: int, order: SalesOrder) -> dict:
     from app.modules.inventory.services.return_services import order_returns
 
     return {
-        "order_id": order.id, "status": order.status, "delivery_status": order.delivery_status,
+        "order_id": order.id, "order_number": order.order_number, "status": order.status, "delivery_status": order.delivery_status,
         "remaining_closed_at": order.remaining_closed_at, "remaining_close_reason": order.remaining_close_reason,
         "deliveries": order_deliveries(db, tenant_id=tenant_id, order_id=order.id),
         "returns": order_returns(db, tenant_id=tenant_id, order_id=order.id),

@@ -54,8 +54,8 @@ class OpportunityCurrencyTests(unittest.TestCase):
             "get_company_operating_currencies",
             return_value=["USD", "EUR"],
         ) as get_currencies:
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "eur"), "EUR")
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, None), "USD")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, "eur"), "EUR")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, None), "USD")
 
         get_currencies.assert_called_once_with(db, current_user)
 
@@ -68,9 +68,9 @@ class OpportunityCurrencyTests(unittest.TestCase):
             "get_company_operating_currencies",
             return_value=["USD", "EUR"],
         ) as get_currencies:
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "usd"), "USD")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, "usd"), "USD")
             with self.assertRaises(HTTPException) as exc:
-                opportunities_services._normalize_currency(db, current_user, "gbp")
+                opportunities_services.normalize_opportunity_currency(db, current_user, "gbp")
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Currency must be one of: USD, EUR")

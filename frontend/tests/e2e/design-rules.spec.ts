@@ -727,7 +727,13 @@ test("design rule audit", async ({ page, browser }) => {
   for (const l of LISTS) {
     if (!inRouteScope(l.list)) continue;
     const href = await discoverRecord(page, l.list, l.re);
-    if (!href) { unreachable.push(l.list); continue; }
+    if (!href) {
+      // A list that rendered its empty state was reached; it has no record to open. Since
+      // e2e runs on a fresh database (13a H29), the ERP document lists start empty.
+      if (await page.locator('main [data-slot="empty-state"]').count()) emptyLists.push(l.list);
+      else unreachable.push(l.list);
+      continue;
+    }
     for (const s of l.suffixes) routes.push({ route: href + s, record: Boolean(l.record) && s === "" });
   }
   // Custom modules are tenant data, so the route is found in the sidebar rather than named.

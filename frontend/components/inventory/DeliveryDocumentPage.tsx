@@ -27,13 +27,11 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
+import { TrackingNumber } from "@/components/inventory/TrackingNumber";
 import { getDeliveryStatus, getReturnStatus } from "@/lib/statusStyles";
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : "s"}`;
@@ -146,7 +144,8 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
     catch (failure) { setError(failure instanceof Error ? failure.message : "Removal failed."); }
   }
 
-  const orderNumber = doc?.order_number ?? null;
+  // I4: a new delivery names its order by number from the start, not "Order 41".
+  const orderNumber = doc?.order_number ?? fulfilment.data?.order_number ?? null;
   const missingOrder = isNew && !orderId;
   const canReturn = doc?.status === "posted" && Boolean(returnActions?.can_create)
     && (doc.lines ?? []).some((line) => Number(line.quantity) > Number(line.returned ?? 0));
@@ -189,13 +188,13 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
       {missingOrder ? null : (<>
       <FactList className="grid-cols-2 lg:grid-cols-4">
         <Fact label="Order">
-          {effectiveOrderId ? <TextLink href={`/dashboard/sales/orders/${effectiveOrderId}?tab=fulfilment`}>{orderNumber ?? `Order ${effectiveOrderId}`}</TextLink> : "—"}
+          {effectiveOrderId ? <TextLink href={`/dashboard/sales/orders/${effectiveOrderId}?tab=fulfilment`}>{orderNumber ?? "Open order"}</TextLink> : "—"}
         </Fact>
         {doc?.customer_name ? <Fact label="Customer">{doc.customer_name}</Fact> : null}
         {multipleWarehouses ? <Fact label="Warehouse">{doc?.warehouse_name ?? fulfilment.data?.warehouse_name ?? "—"}</Fact> : null}
         {!editable && doc ? <Fact label="Shipped on">{doc.shipped_on ? formatDateOnly(doc.shipped_on) : "—"}</Fact> : null}
         {!editable && doc?.carrier ? <Fact label="Carrier">{doc.carrier}</Fact> : null}
-        {!editable && doc?.tracking_number ? <Fact label="Tracking number">{doc.tracking_number}</Fact> : null}
+        {!editable && doc?.tracking_number ? <Fact label="Tracking number"><TrackingNumber carrier={doc.carrier} number={doc.tracking_number} /></Fact> : null}
         {doc?.status === "cancelled" && doc.cancel_reason ? <Fact label="Cancelled because">{doc.cancel_reason}</Fact> : null}
       </FactList>
 

@@ -34,6 +34,8 @@ SYSTEM_SIDEBAR_TABS: tuple[dict[str, object], ...] = (
     {"key": "sales", "label": "Sales", "sort_order": 10},
     {"key": "finance", "label": "Finance", "sort_order": 20},
     {"key": "catalog", "label": "Products & services", "sort_order": 30},
+    {"key": "inventory", "label": "Inventory", "sort_order": 35},
+    {"key": "purchasing", "label": "Purchasing", "sort_order": 37},
     {"key": "support", "label": "Support", "sort_order": 40},
     {"key": "reports", "label": "Reports", "sort_order": 80},
     {"key": "settings", "label": "Settings", "sort_order": 90},
@@ -58,6 +60,12 @@ def default_sidebar_tab_key(module_name: str) -> str:
         return "finance"
     if module_name.startswith("catalog_"):
         return "catalog"
+    # 13a H27: the ERP modules (E2–E6) fell through to "other", so a tenant's sidebar put
+    # 13 pages there, unordered. Their groups match the frontend registry's.
+    if module_name.startswith("inventory_"):
+        return "inventory"
+    if module_name.startswith("purchase_"):
+        return "purchasing"
     if module_name in {"support_cases", "client_portal"}:
         return "support"
     if module_name == "reports":

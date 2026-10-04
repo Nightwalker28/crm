@@ -10,6 +10,7 @@ import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { COUNTRIES } from "@/lib/countries";
+import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
 
 export type ContactFormValue = {
   first_name: string;
@@ -56,6 +57,21 @@ type Props = {
   emailError?: string | null;
   mode: "create" | "edit";
 };
+
+/** Payload field → input id, for the server's field errors (H2). */
+export const CONTACT_FORM_INPUT_IDS: Record<string, string> = {
+  first_name: "contact-first-name",
+  last_name: "contact-last-name",
+  current_title: "contact-job-title",
+  linkedin_url: "contact-linkedin",
+  primary_email: "contact-primary-email",
+  contact_telephone: "contact-phone",
+  organization_id: "contact-account",
+  assigned_to: "contact-owner",
+  region: "contact-region",
+  country: "contact-country",
+};
+export const contactFormInputIdFor = inputIdLookup("sales_contacts", CONTACT_FORM_INPUT_IDS);
 
 export function ContactFormMainFields({ value, onChange, customFields, customFieldValues, onCustomFieldChange, moduleFields, emailError }: Props) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
@@ -120,7 +136,7 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
               queryKeyPrefix="contact-account"
               noResultsText="No accounts matched this search."
             />
-          </Field>
+          <ServerFieldError inputId="contact-account" /></Field>
         ) : null}
         {enabled("assigned_to") ? (
           <Field>
@@ -136,7 +152,7 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
               }
             />
             <FieldDescription>New contacts default to you when no owner is selected.</FieldDescription>
-          </Field>
+          <ServerFieldError inputId="contact-owner" /></Field>
         ) : null}
         {enabled("region") ? (
           <Field>
@@ -145,7 +161,7 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
               <SelectTrigger id="contact-region"><SelectValue placeholder="Select region" /></SelectTrigger>
               <SelectContent>{REGIONS.map((region) => <SelectItem key={region} value={region}>{region}</SelectItem>)}</SelectContent>
             </Select>
-          </Field>
+          <ServerFieldError inputId="contact-region" /></Field>
         ) : null}
         {enabled("country") ? (
           <Field>
@@ -154,7 +170,7 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
               <SelectTrigger id="contact-country"><SelectValue placeholder="Select country" /></SelectTrigger>
               <SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent>
             </Select>
-          </Field>
+          <ServerFieldError inputId="contact-country" /></Field>
         ) : null}
       </FieldGroup>
     </FormSection>

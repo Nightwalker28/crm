@@ -2,7 +2,7 @@
 
 import type { StatusDescriptor } from "@/lib/statusStyles";
 import { useEffect, useState } from "react";
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import {
@@ -168,20 +168,19 @@ export default function EditUserDialog({
 
           <div className="mt-4 flex flex-col gap-4">
             <div className="flex items-center gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-3">
-              {user.photo_url ? (
-                <Image
-                  src={resolveMediaUrl(user.photo_url)}
-                  alt=""
-                  width={36}
-                  height={36}
-                  unoptimized
-                  className="h-9 w-9 rounded-[var(--radius-control-sm)] object-cover"
-                />
-              ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-raised text-xs font-semibold text-copy-secondary">
-                  {(user.first_name[0] || user.email[0] || "?").toUpperCase()}
-                </div>
-              )}
+              <MediaImage
+                src={resolveMediaUrl(user.photo_url)}
+                alt=""
+                width={36}
+                height={36}
+                unoptimized
+                className="h-9 w-9 rounded-[var(--radius-control-sm)] object-cover"
+                fallback={(
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control-sm)] border border-line-default bg-surface-raised text-xs font-semibold text-copy-secondary">
+                    {(user.first_name[0] || user.email[0] || "?").toUpperCase()}
+                  </div>
+                )}
+              />
               <div className="min-w-0 text-sm">
                 <div className="truncate font-medium text-copy-primary">
                   {[user.first_name, user.last_name].filter(Boolean).join(" ") || "Unnamed user"}

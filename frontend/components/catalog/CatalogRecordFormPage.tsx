@@ -1,7 +1,7 @@
 "use client";
 
 import { formatSnakeCaseLabel } from "@/lib/module-display";
-import Image from "next/image";
+import { MediaImage } from "@/components/ui/MediaImage";
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -307,11 +307,14 @@ function CatalogRecordFormEditor({
             <Card className="p-6">
               <SectionHeading description="Upload a customer-facing image for this catalog record.">Media</SectionHeading>
               <div className="mt-4 grid gap-3">
-                {record?.media_url ? (
-                  <Image src={resolveMediaUrl(record.media_url)} alt="" width={320} height={240} unoptimized className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover" />
-                ) : (
-                  <div className="flex aspect-[4/3] items-center justify-center rounded-[var(--radius-control)] border border-dashed border-line-strong text-sm text-copy-muted">No media uploaded</div>
-                )}
+                <MediaImage
+                  src={resolveMediaUrl(record?.media_url)}
+                  alt=""
+                  width={320}
+                  height={240}
+                  className="aspect-[4/3] w-full rounded-[var(--radius-control)] object-cover"
+                  fallback={<div className="flex aspect-[4/3] items-center justify-center rounded-[var(--radius-control)] border border-dashed border-line-strong text-sm text-copy-muted">No media uploaded</div>}
+                />
                 <Field>
                   <FieldLabel htmlFor="catalog-media">Image</FieldLabel>
                   <Input id="catalog-media" type="file" accept="image/*" onChange={(event) => setMediaFile(event.target.files?.[0] ?? null)} />

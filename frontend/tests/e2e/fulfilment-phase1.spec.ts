@@ -47,7 +47,8 @@ test("confirmed orders hold stock oldest first and holds move to a more urgent o
       await expect(lines.getByText("Waiting")).toBeVisible();
       await expect(page.getByRole("button", { name: "Check availability" })).toBeVisible();
 
-      await page.getByRole("button", { name: `Reallocate stock for ${product.name}` }).click();
+      await page.getByRole("button", { name: `More actions for ${product.name}` }).click();
+      await page.getByRole("menuitem", { name: "Reallocate stock…" }).click();
       const dialog = page.getByRole("dialog");
       await expect(dialog.getByRole("heading", { name: `Reservations · ${product.name}` })).toBeVisible();
       await expect(dialog.getByLabel(`Reserved for ${older.order_number}`)).toHaveValue("5");
@@ -57,7 +58,8 @@ test("confirmed orders hold stock oldest first and holds move to a more urgent o
     }
 
     // Give the newer, more urgent order three of the five units.
-    await page.getByRole("button", { name: `Reallocate stock for ${product.name}` }).click();
+    await page.getByRole("button", { name: `More actions for ${product.name}` }).click();
+    await page.getByRole("menuitem", { name: "Reallocate stock…" }).click();
     const dialog = page.getByRole("dialog");
     await dialog.getByLabel(`Reserved for ${older.order_number}`).fill("2");
     await dialog.getByLabel(`Reserved for ${newer.order_number}`).fill("3");

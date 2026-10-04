@@ -1655,6 +1655,18 @@ their way around it.
   time the operator finishes reading the field it is about. Twelve forms had already
   hand-written the identical `role="alert"` banner and two showed only a toast — the banner
   is the primitive now, and both idioms are it.
+- **The server's field errors go on the fields they name** (13 §7 Step 3, H2). A 422's
+  validation list is read by `lib/apiErrors.ts` (`loc` → field path, `type` → a sentence that
+  names the fix), and `ServerFieldErrorsProvider` hands each message to its input by id;
+  `TextField` and `CustomFieldInput` show theirs without a prop. The banner then says
+  `Check the highlighted field.`, and names any field the form has no input for. A 4xx
+  sentence the domain wrote is shown as written; a 5xx detail never is. Before this, the
+  deal form replaced every failure with one generic line and the bill put a field's error
+  in its footer.
+- **A request that gets no answer fails** (H23). `apiFetch` gives a read 20 s, a write 60 s
+  and an upload 5 min to answer, then throws `RequestTimeoutError`; the page's own error
+  state takes over. A timed-out write says to check whether it was saved, since it may have
+  been.
 - **One pending label and one dirty string.**
   - The pending label is the action's own verb plus a **`…` character**, never three
     periods: `Saving…`, `Creating…`, `Sending…`, `Recording…`, `Uploading…`.

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -26,6 +27,9 @@ async function fetchLeadSummary(leadId: string) {
 
 export default function ConvertLeadPage() {
   const params = useParams<{ leadId: string }>();
+  // Converting refetches the lead, which then reads as converted; the form's own result
+  // screen must stay rather than be replaced by "already converted" (13a H11).
+  const [convertedHere, setConvertedHere] = useState(false);
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const summaryQuery = useQuery({ queryKey: ["sales-lead-summary", params.leadId], queryFn: () => fetchLeadSummary(params.leadId), enabled: Boolean(params.leadId), refetchOnWindowFocus: false });
   // Convert is a trip off the record like Edit is, so it returns to the tab it left from.
@@ -53,10 +57,10 @@ export default function ConvertLeadPage() {
   const lead = summaryQuery.data.lead;
   const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.primary_email;
   return (
-    <PageShell title={`Convert ${leadName}`} description="Confirm the account, contact, and opportunity records created by this conversion." actions={<Button asChild variant="ghost" size="sm"><Link href={backHref}><ArrowLeft />Back to lead</Link></Button>}>
-      {lead.status === "converted" ? (
-        <Card className="p-6"><p className="text-sm text-copy-secondary">This lead has already been converted.</p><Button asChild className="mt-4"><Link href={backHref}>Return to lead</Link></Button></Card>
-      ) : <LeadConversionForm leadId={lead.lead_id} leadName={leadName} company={lead.company} capabilities={capabilities} />}
+    <PageShell title={`Convert ${leadName}`} description="Confirm the account, contact and deal this lead becomes." actions={<Button asChild variant="ghost" size="sm"><Link href={backHref}><ArrowLeft />Back to lead</Link></Button>}>
+      {lead.status === "converted" && !convertedHere ? (
+        <Card className="p-6"><p className="text-sm text-copy-secondary">This lead is already converted. Its timeline links the account, contact and deal it became.</p><Button asChild className="mt-4"><Link href={backHref}>Return to lead</Link></Button></Card>
+      ) : <LeadConversionForm leadId={lead.lead_id} leadName={leadName} company={lead.company} capabilities={capabilities} onConverted={() => setConvertedHere(true)} />}
     </PageShell>
   );
 }

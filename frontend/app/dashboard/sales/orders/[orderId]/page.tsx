@@ -190,7 +190,7 @@ export default function OrderDetailPage() {
   return (
     <RecordWorkspace
       title={orderName}
-      description="Review the order's fulfillment status, linked quote, line items, and activity."
+      description="Review the order's fulfilment status, linked quote, line items, and activity."
       backHref="/dashboard/sales/orders"
       backLabel="Orders"
       isPermissionDenied={orderError instanceof OrderRequestError && orderError.status === 403}

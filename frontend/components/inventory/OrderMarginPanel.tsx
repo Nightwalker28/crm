@@ -9,11 +9,8 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { useOrderMargin, type OrderMarginLine } from "@/hooks/sales/useOrders";
 import { isForbiddenError } from "@/lib/api";
+import { formatQuantity as quantity } from "@/lib/quantity";
 
-function quantity(value: string | number | null | undefined) {
-  if (value == null || value === "") return "—";
-  return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 });
-}
 
 function percent(value: string | null) {
   return value == null ? "—" : `${Number(value).toLocaleString(undefined, { maximumFractionDigits: 1 })}%`;

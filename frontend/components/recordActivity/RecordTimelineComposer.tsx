@@ -20,6 +20,7 @@ import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedContro
 import { Textarea } from "@/components/ui/textarea";
 import { useWhatsAppCapabilities } from "@/hooks/useWhatsAppCapabilities";
 import { apiFetch } from "@/lib/api";
+import { recordActivityQueryKeyPrefix } from "@/hooks/useRecordActivity";
 import {
   CALL_OUTCOMES,
   CALL_OUTCOME_LABELS,
@@ -249,7 +250,7 @@ function NoteMode({
       const params = new URLSearchParams({
         module_key: moduleKey,
         entity_id: String(entityId),
-        search: mentionQuery ?? "",
+        query: mentionQuery ?? "",
       });
       const res = await apiFetch(`/record-comments/mentionable-users?${params.toString()}`);
       const body = await res.json().catch(() => null);
@@ -314,7 +315,7 @@ function NoteMode({
       setMentionStart(null);
       setMentionQuery(null);
       await queryClient.invalidateQueries({
-        queryKey: ["record-activity", moduleKey, String(entityId)],
+        queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)],
       });
       toast.success("Note added.");
     } catch {
@@ -440,7 +441,7 @@ function FollowUpMode({
       if (pendingChat && chat?.ok) pendingChat.go(whatsAppChatUrl(chat.digits));
       setNote("");
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+        queryClient.invalidateQueries({ queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)] }),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["record-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
@@ -610,9 +611,9 @@ function CallMode({
       logged = true;
       reset();
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+        queryClient.invalidateQueries({ queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)] }),
         ...(person
-          ? [queryClient.invalidateQueries({ queryKey: ["record-activity", "sales_contacts", String(person.contactId)] })]
+          ? [queryClient.invalidateQueries({ queryKey: [recordActivityQueryKeyPrefix, "sales_contacts", String(person.contactId)] })]
           : []),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["record-tasks"] }),
@@ -857,7 +858,7 @@ function WhatsAppMode({
       pending.go(body.whatsapp_url);
       opened = true;
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: ["record-activity", moduleKey, String(entityId)] }),
+        queryClient.invalidateQueries({ queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)] }),
         queryClient.invalidateQueries({ queryKey: ["tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["record-tasks"] }),
         queryClient.invalidateQueries({ queryKey: ["user-notifications"] }),
@@ -982,7 +983,7 @@ function ReplyMode({
       if (!res.ok) throw new Error("not-sent");
       setDraft("");
       await queryClient.invalidateQueries({
-        queryKey: ["record-activity", moduleKey, String(entityId)],
+        queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)],
       });
       await config.onReplied?.();
       toast.success("Reply added.");

@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
+import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
 
 export type LeadFormValue = {
   first_name: string;
@@ -68,6 +69,24 @@ type Props = {
   emailError?: string | null;
 };
 
+/** Payload field → input id, for the server's field errors (H2). */
+export const LEAD_FORM_INPUT_IDS: Record<string, string> = {
+  first_name: "lead-first-name",
+  last_name: "lead-last-name",
+  company: "lead-company",
+  title: "lead-job-title",
+  primary_email: "lead-primary-email",
+  phone: "lead-phone",
+  notes: "lead-notes",
+  assigned_to: "lead-owner",
+  team_id: "lead-team",
+  status: "lead-status",
+  source: "lead-source",
+  next_follow_up_at: "lead-next-follow-up",
+  tags: "lead-tags",
+};
+export const leadFormInputIdFor = inputIdLookup("sales_leads", LEAD_FORM_INPUT_IDS);
+
 export function LeadFormMainFields({ value, onChange, customFields, customFieldValues, onCustomFieldChange, moduleFields, emailError }: Props) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   const update = (key: keyof LeadFormValue, nextValue: string) => onChange({ ...value, [key]: nextValue });
@@ -97,7 +116,7 @@ export function LeadFormMainFields({ value, onChange, customFields, customFieldV
           <Field>
             <FieldLabel htmlFor="lead-notes">Notes</FieldLabel>
             <Textarea id="lead-notes" rows={6} value={value.notes} onChange={(event) => update("notes", event.target.value)} />
-          </Field>
+          <ServerFieldError inputId="lead-notes" /></Field>
         </FormSection>
       ) : null}
 
@@ -129,7 +148,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               }
             />
             <FieldDescription>New leads default to you when no owner is selected.</FieldDescription>
-          </Field>
+          <ServerFieldError inputId="lead-owner" /></Field>
         ) : null}
         {enabled("team_id") ? (
           <Field>
@@ -147,7 +166,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               sourceModuleKey="sales_leads"
               sourceAction={mode}
             />
-          </Field>
+          <ServerFieldError inputId="lead-team" /></Field>
         ) : null}
         {enabled("status") ? (
           <Field>
@@ -156,7 +175,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               <SelectTrigger id="lead-status"><SelectValue /></SelectTrigger>
               <SelectContent>{LEAD_STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent>
             </Select>
-          </Field>
+          <ServerFieldError inputId="lead-status" /></Field>
         ) : null}
         {enabled("source") ? <TextField id="lead-source" label="Source" value={value.source} onChange={(source) => onChange({ ...value, source })} placeholder="Referral, website, event…" /> : null}
         {enabled("next_follow_up_at") ? (
@@ -169,7 +188,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               onChange={(event) => onChange({ ...value, next_follow_up_at: event.target.value })}
             />
             <FieldDescription>Sets the lead&rsquo;s planning date. Reminder tasks can be created from the Activity tab.</FieldDescription>
-          </Field>
+          <ServerFieldError inputId="lead-next-follow-up" /></Field>
         ) : null}
         {enabled("tags") ? (
           <Field>
@@ -182,7 +201,7 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
               action={mode}
             />
             <FieldDescription>Use existing workspace tags or create a new one while saving the lead.</FieldDescription>
-          </Field>
+          <ServerFieldError inputId="lead-tags" /></Field>
         ) : null}
       </FieldGroup>
     </FormSection>

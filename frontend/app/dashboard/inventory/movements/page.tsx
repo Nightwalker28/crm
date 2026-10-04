@@ -17,9 +17,11 @@ import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { Money } from "@/components/ui/Money";
 import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
+import { formatQuantity } from "@/lib/quantity";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 
-function amount(value: string) { const number = Number(value); return `${number > 0 ? "+" : ""}${number.toLocaleString(undefined, { maximumFractionDigits: 4 })}`; }
+function amount(value: string) { return `${Number(value) > 0 ? "+" : ""}${formatQuantity(value)}`; }
 
 /** Where each movement's source document lives; a movement opens the document that posted it. */
 const DOCUMENT_ROUTES: Record<string, string> = {
@@ -65,17 +67,19 @@ export default function InventoryMovementsPage() {
   return <PageShell variant="list" title="Movements" description="Every posted change to tracked stock, newest first." actions={<Button asChild variant="outline"><Link href={DASHBOARD_ROUTES.inventoryStock}>Stock</Link></Button>}>
     <div className="flex flex-wrap items-center gap-3">
       {showWarehouse ? <Select value={warehouseId || "all"} onValueChange={(value) => changeFilter(() => setWarehouseId(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter warehouse"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All warehouses</SelectItem>{warehouses.data?.filter((row) => row.is_active).map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent></Select> : null}
-      <Select value={moveType || "all"} onValueChange={(value) => changeFilter(() => setMoveType(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter movement type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{["opening", "adjustment", "count", "transfer_out", "transfer_in", "receipt", "delivery", "return", "sales_order", "website_order", "reversal"].map((type) => <SelectItem key={type} value={type}>{type.replaceAll("_", " ")}</SelectItem>)}</SelectContent></Select>
+      <Select value={moveType || "all"} onValueChange={(value) => changeFilter(() => setMoveType(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter movement type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{["opening", "adjustment", "count", "transfer_out", "transfer_in", "receipt", "delivery", "return", "sales_order", "website_order", "reversal"].map((type) => <SelectItem key={type} value={type}>{formatSnakeCaseLabel(type)}</SelectItem>)}</SelectContent></Select>
     </div>
     <InventoryDataTransferActions kind="movements" canExport={Boolean(stockActions?.can_export)} />
     <RecordTable label="Stock movements" rows={moves.data?.results ?? []} rowKey={(row) => row.id}
       isLoading={moves.isLoading} isPermissionDenied={isForbiddenError(moves.error)} hasError={Boolean(moves.error) && !isForbiddenError(moves.error)} onRetry={() => void moves.refetch()}
       emptyState={{ icon: History, title: "No movements", description: "Opening stock, orders and adjustments appear here when posted." }}
-      columns={[{ key: "date", label: "Date", render: (row) => formatDateTime(row.occurred_at) }, { key: "product", label: "Product", size: "lg", render: (row) => <Link className="text-copy-primary underline-offset-2 hover:underline" href={`${DASHBOARD_ROUTES.products}/${row.product_id}?tab=stock`}>{row.product_name}</Link> }, ...(showWarehouse ? [{ key: "warehouse", label: "Warehouse", render: (row: NonNullable<typeof moves.data>["results"][number]) => row.warehouse_name }] : []), { key: "type", label: "Type", render: (row) => row.move_type.replaceAll("_", " ") }, { key: "document", label: "Document", render: (row) => {
+      // H22: the quantity sits beside the product, so it stays in view at 1440 px; the
+      // document is named by its number, not its row id.
+      columns={[{ key: "date", label: "Date", render: (row) => formatDateTime(row.occurred_at) }, { key: "product", label: "Product", size: "lg", render: (row) => <Link className="text-copy-primary underline-offset-2 hover:underline" href={`${DASHBOARD_ROUTES.products}/${row.product_id}?tab=stock`}>{row.product_name}</Link> }, { key: "change", label: "Change", align: "right", render: (row) => <span className="tabular-nums">{amount(row.quantity)}</span> }, { key: "after", label: "On hand after", align: "right", render: (row) => <span className="tabular-nums">{formatQuantity(row.on_hand_after)}</span> }, ...(showWarehouse ? [{ key: "warehouse", label: "Warehouse", render: (row: NonNullable<typeof moves.data>["results"][number]) => row.warehouse_name }] : []), { key: "type", label: "Type", render: (row) => formatSnakeCaseLabel(row.move_type) }, { key: "document", label: "Document", render: (row) => {
         const href = documentHref(row.source_type, row.source_id);
-        const label = `${DOCUMENT_LABELS[row.source_type] ?? row.source_type.replaceAll("_", " ")} #${row.source_id}`;
+        const label = row.document_number ?? DOCUMENT_LABELS[row.source_type] ?? formatSnakeCaseLabel(row.source_type);
         return href ? <TextLink href={href}>{label}</TextLink> : label;
-      } }, { key: "reason", label: "Reason", render: (row) => row.reason || "—" }, { key: "actor", label: "By", render: (row) => row.actor_label }, { key: "change", label: "Change", align: "right", render: (row) => <span className="tabular-nums">{amount(row.quantity)}</span> }, { key: "after", label: "On hand after", align: "right", render: (row) => <span className="tabular-nums">{Number(row.on_hand_after).toLocaleString()}</span> },
+      } }, { key: "reason", label: "Reason", render: (row) => row.reason || "—" }, { key: "actor", label: "By", render: (row) => row.actor_label },
         // Cost fields arrive only with access to valuation (12d §3.4).
         ...(withCost ? [
           { key: "unit_cost", label: "Unit cost", align: "right" as const, render: (row: StockMove) => <Money amount={row.unit_cost} currency={baseCurrency.data} maximumFractionDigits={4} /> },

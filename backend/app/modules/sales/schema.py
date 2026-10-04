@@ -307,6 +307,11 @@ class LeadConversionRequest(BaseModel):
     create_deal: bool = False
     deal_name: str | None = None
     deal_stage: str | None = "qualified"
+    # 13a H11: a converted lead is qualified, so the deal it opens carries its value and
+    # expected close from the start (Dynamics 365's Qualify, Salesforce's Convert).
+    deal_amount: Decimal | None = Field(default=None, ge=0, max_digits=18, decimal_places=2)
+    deal_currency: str | None = Field(default=None, max_length=10)
+    deal_close_date: date | None = None
     assigned_to: int | None = None
 
 

@@ -13,17 +13,24 @@ import { OpportunityStageSelect } from "@/components/opportunities/OpportunitySt
 import { orderedStages } from "@/components/opportunities/opportunityStages";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
+import { TextLink } from "@/components/ui/TextLink";
 import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
+import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
+import { apiErrorFromBody, formErrorMessage } from "@/lib/apiErrors";
 
 type LeadConversionResult = {
   account_id?: number | null;
   contact_id?: number | null;
   deal_id?: number | null;
+  created_account?: boolean;
+  created_contact?: boolean;
+  created_deal?: boolean;
 };
 
 export type LeadConversionCapabilities = {
@@ -39,11 +46,14 @@ export default function LeadConversionForm({
   leadName,
   company,
   capabilities,
+  onConverted,
 }: {
   leadId: number;
   leadName: string;
   company?: string | null;
   capabilities: LeadConversionCapabilities;
+  /** Lets the page keep this form's result screen once the lead reads as converted. */
+  onConverted?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [createAccount, setCreateAccount] = useState(capabilities.canCreateOrganizations);
@@ -52,9 +62,17 @@ export default function LeadConversionForm({
   const [createContact, setCreateContact] = useState(capabilities.canCreateContacts);
   const [contactId, setContactId] = useState<number | null>(null);
   const [contactSearch, setContactSearch] = useState("");
-  const [createDeal, setCreateDeal] = useState(false);
+  // H11: a qualified lead usually becomes a deal, so the deal is on by default, as it is in
+  // Salesforce's Convert and Dynamics 365's Qualify.
+  const [createDeal, setCreateDeal] = useState(capabilities.canCreateOpportunities);
   const [dealName, setDealName] = useState("");
   const [dealStage, setDealStage] = useState("");
+  const [dealAmount, setDealAmount] = useState("");
+  const [dealCurrency, setDealCurrency] = useState("");
+  const [dealCloseDate, setDealCloseDate] = useState("");
+  const currenciesQuery = useCompanyCurrencies(capabilities.canCreateOpportunities);
+  const currencies = currenciesQuery.data ?? [];
+  const effectiveDealCurrency = dealCurrency || currencies[0] || "";
   const pipelineQuery = useOpportunityPipeline();
   // A converted lead is already qualified, so a new deal starts at the first stage in active
   // pursuit rather than at the pipeline's entry stage.
@@ -73,24 +91,25 @@ export default function LeadConversionForm({
   // against the state the page opened in, so the defaults the operator never touched do not
   // count as work: arriving and leaving costs no prompt.
   const initialSnapshot = useMemo(
-    () => JSON.stringify([capabilities.canCreateOrganizations, null, "", capabilities.canCreateContacts, null, "", false, "", ""]),
-    [capabilities.canCreateContacts, capabilities.canCreateOrganizations],
+    () => JSON.stringify([capabilities.canCreateOrganizations, null, "", capabilities.canCreateContacts, null, "", capabilities.canCreateOpportunities, "", "", "", "", ""]),
+    [capabilities.canCreateContacts, capabilities.canCreateOpportunities, capabilities.canCreateOrganizations],
   );
   const currentSnapshot = useMemo(
-    () => JSON.stringify([createAccount, accountId, accountSearch, createContact, contactId, contactSearch, createDeal, dealName, dealStage]),
-    [accountId, accountSearch, contactId, contactSearch, createAccount, createContact, createDeal, dealName, dealStage],
+    () => JSON.stringify([createAccount, accountId, accountSearch, createContact, contactId, contactSearch, createDeal, dealName, dealStage, dealAmount, dealCurrency, dealCloseDate]),
+    [accountId, accountSearch, contactId, contactSearch, createAccount, createContact, createDeal, dealAmount, dealCloseDate, dealCurrency, dealName, dealStage],
   );
   // The guard lifts once the conversion has run: the records exist, so the completion panel's
   // links are the operator's next step rather than an escape from unsaved work.
   useUnsavedChangesGuard(currentSnapshot !== initialSnapshot, submitting || Boolean(result));
 
-  const defaultDealName = useMemo(() => `${company || leadName} opportunity`, [company, leadName]);
+  const defaultDealName = useMemo(() => `${company || leadName} deal`, [company, leadName]);
   const shouldCreateAccount = capabilities.canCreateOrganizations && createAccount;
   const shouldCreateContact = capabilities.canCreateContacts && createContact;
   const shouldCreateDeal = capabilities.canCreateOpportunities && createDeal;
   const accountIsValid = shouldCreateAccount || (capabilities.canViewOrganizations && Boolean(accountId));
   const contactIsValid = shouldCreateContact || (capabilities.canViewContacts && Boolean(contactId));
-  const canSubmit = !submitting && accountIsValid && contactIsValid;
+  const amountError = shouldCreateDeal && dealAmount.trim() && !(Number(dealAmount) >= 0) ? "Enter an amount of zero or more." : null;
+  const canSubmit = !submitting && accountIsValid && contactIsValid && !amountError;
 
   async function submit() {
     try {
@@ -107,10 +126,14 @@ export default function LeadConversionForm({
           create_deal: shouldCreateDeal,
           deal_name: shouldCreateDeal ? (dealName.trim() || defaultDealName) : null,
           deal_stage: shouldCreateDeal ? effectiveDealStage || null : null,
+          deal_amount: shouldCreateDeal && dealAmount.trim() ? dealAmount.trim() : null,
+          deal_currency: shouldCreateDeal ? effectiveDealCurrency || null : null,
+          deal_close_date: shouldCreateDeal ? dealCloseDate || null : null,
         }),
       });
       const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+      if (!res.ok) throw apiErrorFromBody(res.status, body, "Review the selected records and try again.");
+      onConverted?.();
       setResult(body as LeadConversionResult);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
@@ -120,21 +143,32 @@ export default function LeadConversionForm({
         queryClient.invalidateQueries({ queryKey: ["sales-opportunities"] }),
       ]);
       toast.success("Lead converted.");
-    } catch {
-      setError("Review the selected records and try again.");
+    } catch (failure) {
+      setError(formErrorMessage(failure, "Review the selected records and try again."));
     } finally {
       setSubmitting(false);
     }
   }
 
   if (result) {
+    const outcomes = [
+      { id: result.account_id, created: result.created_account, noun: "account", href: "/dashboard/sales/organizations" },
+      { id: result.contact_id, created: result.created_contact, noun: "contact", href: "/dashboard/sales/contacts" },
+      { id: result.deal_id, created: result.created_deal, noun: "deal", href: "/dashboard/sales/opportunities" },
+    ].filter((outcome) => outcome.id);
     return (
-      <FormSection title="Conversion complete" description="The lead is converted and the selected records are ready.">
-        <div className="flex flex-wrap gap-2">
-          {result.account_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/organizations/${result.account_id}`}>Open account</Link></Button> : null}
-          {result.contact_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/contacts/${result.contact_id}`}>Open contact</Link></Button> : null}
-          {result.deal_id ? <Button asChild variant="outline"><Link href={`/dashboard/sales/opportunities/${result.deal_id}`}>Open opportunity</Link></Button> : null}
-          <Button asChild><Link href={recordHref}>Return to lead</Link></Button>
+      <FormSection title="Lead converted" description={`${leadName} is now a customer record. Each record's timeline shows where it came from.`}>
+        <ul className="grid gap-2 text-sm" aria-label="Records from this conversion">
+          {outcomes.map((outcome) => (
+            <li key={outcome.noun} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              <span className="text-copy-secondary">{outcome.created ? `New ${outcome.noun}` : `Existing ${outcome.noun} linked`}</span>
+              <TextLink href={`${outcome.href}/${outcome.id}`}>Open {outcome.noun}</TextLink>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-4 flex flex-wrap gap-2">
+          {result.deal_id ? <Button asChild><Link href={`/dashboard/sales/opportunities/${result.deal_id}`}>Open deal</Link></Button> : null}
+          <Button asChild variant={result.deal_id ? "outline" : "default"}><Link href={recordHref}>Return to lead</Link></Button>
         </div>
       </FormSection>
     );
@@ -150,7 +184,7 @@ export default function LeadConversionForm({
             <dl className="grid gap-3 text-sm">
               <SummaryRow label="Account" value={shouldCreateAccount ? "Create or reuse by name" : accountSearch || "Select an account"} />
               <SummaryRow label="Contact" value={shouldCreateContact ? "Create or reuse by email" : contactSearch || "Select a contact"} />
-              <SummaryRow label="Opportunity" value={shouldCreateDeal ? (dealName.trim() || defaultDealName) : "Do not create"} />
+              <SummaryRow label="Deal" value={shouldCreateDeal ? (dealName.trim() || defaultDealName) : "Do not create"} />
             </dl>
           </FormSection>
         )}
@@ -198,20 +232,38 @@ export default function LeadConversionForm({
           ) : null}
         </FormSection>
 
-        <FormSection title="Opportunity" description="Optionally create an opportunity linked to the converted records.">
+        <FormSection title="Deal" description="Open a deal for this business, linked to the account and contact.">
           <ToggleRow
-            label="Create opportunity"
+            label="Create deal"
             description={capabilities.canCreateOpportunities
               ? "Start a deal as part of this conversion."
-              : "Opportunity creation is unavailable with your current permissions."}
+              : "Deal creation is unavailable with your current permissions."}
             checked={shouldCreateDeal}
             disabled={!capabilities.canCreateOpportunities}
             onCheckedChange={setCreateDeal}
           />
           {shouldCreateDeal ? (
             <FieldGroup columns={2} className="mt-4">
-              <Field><FieldLabel htmlFor="lead-conversion-opportunity-name">Opportunity name</FieldLabel><Input id="lead-conversion-opportunity-name" value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
+              <Field><FieldLabel htmlFor="lead-conversion-opportunity-name">Deal name</FieldLabel><Input id="lead-conversion-opportunity-name" value={dealName} onChange={(event) => setDealName(event.target.value)} placeholder={defaultDealName} /></Field>
               <Field><FieldLabel htmlFor="lead-conversion-initial-stage">Initial stage</FieldLabel><OpportunityStageSelect id="lead-conversion-initial-stage" value={effectiveDealStage} onChange={setDealStage} filter={(semanticType) => semanticType !== "open"} /></Field>
+              <Field data-invalid={Boolean(amountError)}>
+                <FieldLabel htmlFor="lead-conversion-deal-amount">Amount</FieldLabel>
+                <Input id="lead-conversion-deal-amount" inputMode="decimal" value={dealAmount} onChange={(event) => setDealAmount(event.target.value)} placeholder="0.00" aria-invalid={Boolean(amountError)} aria-describedby={amountError ? "lead-conversion-deal-amount-error" : undefined} />
+                {amountError ? <FieldError id="lead-conversion-deal-amount-error">{amountError}</FieldError> : null}
+              </Field>
+              {currencies.length > 1 ? (
+                <Field>
+                  <FieldLabel htmlFor="lead-conversion-deal-currency">Currency</FieldLabel>
+                  <Select value={effectiveDealCurrency} onValueChange={setDealCurrency}>
+                    <SelectTrigger id="lead-conversion-deal-currency"><SelectValue /></SelectTrigger>
+                    <SelectContent>{currencies.map((code) => <SelectItem key={code} value={code}>{code}</SelectItem>)}</SelectContent>
+                  </Select>
+                </Field>
+              ) : null}
+              <Field>
+                <FieldLabel htmlFor="lead-conversion-deal-close-date">Expected close date</FieldLabel>
+                <Input id="lead-conversion-deal-close-date" type="date" value={dealCloseDate} onChange={(event) => setDealCloseDate(event.target.value)} />
+              </Field>
             </FieldGroup>
           ) : null}
         </FormSection>
@@ -221,10 +273,12 @@ export default function LeadConversionForm({
 }
 
 function ToggleRow({ label, description, checked, disabled = false, onCheckedChange }: { label: string; description: string; checked: boolean; disabled?: boolean; onCheckedChange: (checked: boolean) => void }) {
+  // H11: the switch's *on* could not be seen in the dark theme. The boolean is
+  // `SegmentedBoolean` (design.md §7.1, rebuild ruling 4), whose state is written as words.
   return (
-    <div className="flex items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
-      <div><div className="text-sm font-medium text-copy-primary">{label}</div><FieldDescription className="mt-1">{description}</FieldDescription></div>
-      <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onCheckedChange} className="relative h-6 w-11 shrink-0 rounded-full border border-line-control bg-surface-raised data-[state=checked]:bg-action-primary"><SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary data-[state=checked]:translate-x-5" /></Switch>
+    <div className="flex flex-wrap items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3">
+      <div className="min-w-0"><div className="text-sm font-medium text-copy-primary">{label}</div><FieldDescription className="mt-1">{description}</FieldDescription></div>
+      <SegmentedBoolean aria-label={label} value={checked} onValueChange={onCheckedChange} trueLabel="Yes" falseLabel="No" disabled={disabled} />
     </div>
   );
 }

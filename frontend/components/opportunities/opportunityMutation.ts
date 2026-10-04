@@ -9,6 +9,7 @@
 import type { OpportunityFormValue } from "@/components/opportunities/OpportunityFormFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
 const ALWAYS_SUBMITTED_FIELDS = ["opportunity_name", "contact_id", "custom_fields"];
@@ -63,24 +64,11 @@ export function buildOpportunityPayload(
   );
 }
 
-export class OpportunityMutationError extends Error {
-  readonly status: number;
-  readonly detail: string | null;
-
-  constructor(status: number, detail: string | null) {
-    super(detail ?? `Failed with ${status}`);
+export class OpportunityMutationError extends RecordMutationError {
+  constructor(status: number, body: unknown) {
+    super(status, body, "The deal could not be saved.");
     this.name = "OpportunityMutationError";
-    this.status = status;
-    this.detail = detail;
   }
-}
-
-function errorDetail(body: unknown) {
-  if (body && typeof body === "object" && "detail" in body) {
-    const detail = (body as { detail?: unknown }).detail;
-    if (typeof detail === "string") return detail;
-  }
-  return null;
 }
 
 /** Writes an Opportunity. `apiFetch` never replays writes; retry is the caller's decision. */
@@ -100,7 +88,7 @@ export async function saveOpportunity({
     body: JSON.stringify(payload),
   });
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new OpportunityMutationError(res.status, errorDetail(body));
+  if (!res.ok) throw new OpportunityMutationError(res.status, body);
   if (mode === "edit") return opportunityId === undefined ? null : Number(opportunityId);
   const createdId = body && typeof body === "object" && "opportunity_id" in body
     ? (body as { opportunity_id: unknown }).opportunity_id
