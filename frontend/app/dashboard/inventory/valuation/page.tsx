@@ -86,8 +86,8 @@ function StockValue({ canExport }: { canExport: boolean }) {
     { key: "sku", label: "SKU", render: (row) => row.sku || "—" },
     { key: "category", label: "Category", render: (row) => row.category_name || "—" },
     { key: "on_hand", label: "On hand", align: "right", sortable: true, render: (row) => <span className="tabular-nums">{quantity(row.on_hand)}</span> },
-    { key: "average_cost", label: "Average cost", align: "right", sortable: true, render: (row) => <Money amount={row.average_cost} currency={currency} maximumFractionDigits={4} /> },
-    { key: "stock_value", label: "Stock value", align: "right", sortable: true, render: (row) => row.cost_missing ? <StatusValue status={{ label: "Cost missing", tone: "attention" }} /> : <Money amount={row.stock_value} currency={currency} /> },
+    { key: "average_cost", label: "Average cost", align: "right", sortable: true, render: (row) => row.cost_partial ? <span title={`${quantity(row.uncosted_quantity ?? "0")} on hand have no cost`}><Money amount={row.average_cost} currency={currency} maximumFractionDigits={4} /> <span className="text-copy-muted">(partial)</span></span> : <Money amount={row.average_cost} currency={currency} maximumFractionDigits={4} /> },
+    { key: "stock_value", label: "Stock value", align: "right", sortable: true, render: (row) => row.cost_partial ? <StatusValue status={{ label: "Partly costed", tone: "attention" }} /> : row.cost_missing ? <StatusValue status={{ label: "Cost missing", tone: "attention" }} /> : <Money amount={row.stock_value} currency={currency} /> },
   ];
   const missing = summary.data?.cost_missing ?? 0;
   return <>
@@ -95,7 +95,7 @@ function StockValue({ canExport }: { canExport: boolean }) {
       <StatGroup label="Stock value">
         <StatTile label="Stock value" value={summary.isLoading ? "—" : <Money amount={summary.data?.total_value} currency={currency} />} context={asOf ? `At the end of ${formatDateOnly(asOf)}` : "Now"} />
         <StatTile label="Products in stock" value={summary.isLoading ? "—" : summary.data?.products_in_stock ?? 0} context={currency ? `Valued in ${currency}` : undefined} />
-        <StatTile label="Cost missing" value={summary.isLoading ? "—" : missing} context={missing ? "Valued at zero until revalued" : "Every product has a cost"} />
+        <StatTile label="Cost missing" value={summary.isLoading ? "—" : missing} context={missing ? "Some or all units have no cost until revalued" : "Every product has a cost"} />
       </StatGroup>
     </Card>
     {missing > 0 && costFilter !== "missing" ? <div className="flex flex-wrap items-center gap-3">

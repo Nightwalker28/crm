@@ -597,6 +597,10 @@ class ForecastSummaryResponse(BaseModel):
     actual_revenue_amount: Decimal
     open_opportunity_count: int
     won_opportunity_count: int
+    # Amounts are in this currency; deals in a currency with no known rate are left out.
+    currency: str | None = None
+    unconverted_count: int = 0
+    unconverted_currencies: list[str] = []
     by_stage: list[ForecastBucket]
     by_owner: list[ForecastBucket]
     by_team: list[ForecastBucket]

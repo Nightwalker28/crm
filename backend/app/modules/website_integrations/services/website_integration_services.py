@@ -567,37 +567,60 @@ def _apply_portal_status(db: Session, *, order: WebsiteIntegrationOrder, status_
 
 
 def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
+    """*Create invoice* on a website order (13a A3).
+
+    An order confirmed into a sales order is invoiced through that order, so the invoice is
+    linked to its lines, follows the invoicing policy and cannot bill the order twice. Only an
+    order with no sales order gets a stand-alone invoice. (F1 makes every website order a
+    sales order.)
+    """
+    from app.modules.finance.services.invoicing_services import draft_from_sources
+    from app.modules.sales.models import SalesOrder
+
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
     if order.pos_invoice_id:
         invoice = pos_invoice_services.get_invoice_or_404(db, current_user, order.pos_invoice_id)
         return invoice, True
-    payload = {
-        "customer_name": order.customer_name or order.customer_email or f"Website order {order.external_reference}",
-        "customer_email": order.customer_email,
-        "customer_address": None,
-        # Issued at once, as before E5; its number comes from the tenant's invoice series.
-        "issue": True,
-        "source": "website_order",
-        "payment_method": order.source_platform,
-        "template_id": "modern",
-        "accent_color": "#14b8a6",
-        "currency": order.currency,
-        "discount_amount": 0,
-        "tax_rate": 0,
-        "payment_terms": "Generated from website order.",
-        "notes": f"Source order: {order.external_reference}",
-        "lines": [
-            {
-                "catalog_product_id": line.catalog_product_id,
-                "catalog_service_id": line.catalog_service_id,
-                "description": line.name,
-                "quantity": line.quantity,
-                "unit_price": line.unit_price_snapshot,
-            }
-            for line in order.line_items
-        ],
-    }
-    invoice = pos_invoice_services.create_invoice(db, current_user, payload)
+    linked = (
+        db.query(SalesOrder).filter(SalesOrder.tenant_id == order.tenant_id, SalesOrder.id == order.sales_order_id).first()
+        if order.sales_order_id else None
+    )
+    if linked is not None:
+        invoice = draft_from_sources(db, current_user, sources=[{"order_id": linked.id}])
+        action, description = (
+            "website_order.invoiced_through_sales_order",
+            f"Drafted an invoice from sales order {linked.order_number} for website order {order.external_reference}",
+        )
+    else:
+        payload = {
+            "customer_name": order.customer_name or order.customer_email or f"Website order {order.external_reference}",
+            "customer_email": order.customer_email,
+            "customer_address": None,
+            # Issued at once, as before E5; its number comes from the tenant's invoice series.
+            "issue": True,
+            "source": "website_order",
+            "currency": order.currency,
+            "discount_amount": 0,
+            # The shop sends no tax, so none is invented here.
+            "tax_rate": 0,
+            "payment_terms": "Generated from website order.",
+            "notes": f"Source order: {order.external_reference}",
+            "lines": [
+                {
+                    "catalog_product_id": line.catalog_product_id,
+                    "catalog_service_id": line.catalog_service_id,
+                    "description": line.name,
+                    "quantity": line.quantity,
+                    "unit_price": line.unit_price_snapshot,
+                }
+                for line in order.line_items
+            ],
+        }
+        invoice = pos_invoice_services.create_invoice(db, current_user, payload)
+        action, description = (
+            "website_order.convert_to_pos_invoice",
+            f"Created invoice {invoice.invoice_number} from website order {order.external_reference}",
+        )
     order.pos_invoice_id = invoice.id
     db.add(order)
     db.commit()
@@ -609,8 +632,8 @@ def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
         module_key="website_integrations",
         entity_type="website_order",
         entity_id=order.id,
-        action="website_order.convert_to_pos_invoice",
-        description=f"Created POS invoice {invoice.invoice_number} from website order {order.external_reference}",
+        action=action,
+        description=description,
         after_state={"order_id": order.id, "pos_invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
     )
     return invoice, False

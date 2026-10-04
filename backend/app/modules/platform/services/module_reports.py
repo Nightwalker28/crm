@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_role_module_action_access
+from app.modules.inventory.services.costing import BaseCurrencyTotals
 from app.modules.platform.models import ForecastSnapshot, UserModuleReport
 from app.modules.platform.services import report_catalog, report_engine
 from app.modules.platform.services.activity_logs import log_activity
@@ -573,12 +574,14 @@ def generate_forecast_summary(
     owner_ids: set[int] = set()
     team_ids: set[int] = set()
     totals = _empty_forecast_bucket("total", "Total")
+    converter = BaseCurrencyTotals(db, tenant_id=current_user.tenant_id)
     open_count = 0
     won_count = 0
 
     for opportunity in opportunities:
         facts = pipelines_services.opportunity_stage_facts(opportunity)
-        amount = _parse_decimalish(opportunity.total_cost_of_project)
+        # Base currency; a deal with no known rate is counted but adds no amount (13a H5).
+        amount = converter.convert(_parse_decimalish(opportunity.total_cost_of_project), opportunity.currency_type) or Decimal("0")
         probability = _forecast_probability(opportunity, facts)
         if not facts.is_closed:
             open_count += 1
@@ -630,6 +633,9 @@ def generate_forecast_summary(
         "actual_revenue_amount": finalized_totals["actual_revenue_amount"],
         "open_opportunity_count": open_count,
         "won_opportunity_count": won_count,
+        "currency": converter.currency,
+        "unconverted_count": converter.summary()["unconverted_count"],
+        "unconverted_currencies": converter.summary()["unconverted_currencies"],
         "by_stage": [_finalize_forecast_bucket(bucket) for bucket in sorted(stage_buckets.values(), key=bucket_sort, reverse=True)],
         "by_owner": [_finalize_forecast_bucket(bucket) for bucket in sorted(owner_buckets.values(), key=bucket_sort, reverse=True)],
         "by_team": [_finalize_forecast_bucket(bucket) for bucket in sorted(team_buckets.values(), key=bucket_sort, reverse=True)],
@@ -710,6 +716,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
         new_leads_count = lead_base.filter(SalesLead.created_time >= period_start).count()
 
     deal_stage_rows: list[dict[str, Any]] = []
+    deal_totals = BaseCurrencyTotals(db, tenant_id=tenant_id)
     pipeline_value = Decimal("0")
     won_count = 0
     lost_count = 0
@@ -723,6 +730,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
             SalesOpportunity.sales_stage,
             SalesOpportunity.pipeline_stage_id,
             SalesOpportunity.total_cost_of_project,
+            SalesOpportunity.currency_type,
         ).all()
         stages_by_id = {
             stage.id: pipelines_services.stage_facts(stage)
@@ -732,13 +740,14 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
                 stage_ids={row.pipeline_stage_id for row in rows if row.pipeline_stage_id is not None},
             )
         }
-        for sales_stage, stage_id, value in rows:
+        for sales_stage, stage_id, value, currency in rows:
             facts = stages_by_id.get(stage_id) or pipelines_services.legacy_stage_facts(sales_stage)
             key = facts.key
             stage_labels[key] = facts.label
             stage_semantics[key] = facts.semantic_type
             stage_counts[key] = stage_counts.get(key, 0) + 1
-            numeric_value = _parse_decimalish(value)
+            # Base currency; a deal with no known rate is counted but adds no value (13a H5).
+            numeric_value = deal_totals.convert(_parse_decimalish(value), currency) or Decimal("0")
             stage_values[key] = stage_values.get(key, Decimal("0")) + numeric_value
             if facts.is_won:
                 won_count += 1
@@ -857,6 +866,10 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
         "new_leads": new_leads_count,
         "deal_stages": deal_stage_rows,
         "pipeline_value": float(pipeline_value),
+        # The currency of every deal value above, and the deals left out for want of a rate.
+        "currency": deal_totals.currency,
+        "unconverted_deals": deal_totals.summary()["unconverted_count"],
+        "unconverted_currencies": deal_totals.summary()["unconverted_currencies"],
         "forecast_summary": forecast_summary,
         "won_deals": won_count,
         "lost_deals": lost_count,

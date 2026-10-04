@@ -190,6 +190,7 @@ class FinancePosInvoiceLine(Base):
     )
 
     id = Column(BigInteger, primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     invoice_id = Column(BigInteger, ForeignKey("finance_pos_invoices.id", ondelete="CASCADE"), nullable=False, index=True)
     catalog_product_id = Column(BigInteger, ForeignKey("catalog_products.id", ondelete="SET NULL"), nullable=True)
     catalog_service_id = Column(BigInteger, ForeignKey("catalog_services.id", ondelete="SET NULL"), nullable=True)

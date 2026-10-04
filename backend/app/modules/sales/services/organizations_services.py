@@ -493,6 +493,7 @@ def import_organizations_from_csv(
         row.org_name
         for row in db.query(SalesOrganization.org_name)
         .filter(
+            SalesOrganization.tenant_id == current_user.tenant_id,
             SalesOrganization.org_name.in_(org_names),
             SalesOrganization.deleted_at.is_(None),
         )
@@ -518,6 +519,7 @@ def import_organizations_from_csv(
         row.org_name: row
         for row in db.query(SalesOrganization)
         .filter(
+            SalesOrganization.tenant_id == current_user.tenant_id,
             SalesOrganization.org_name.in_(org_names),
             SalesOrganization.deleted_at.is_(None),
         )

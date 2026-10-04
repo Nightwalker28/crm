@@ -232,9 +232,70 @@ def product_values(db: Session, *, tenant_id: int, as_of: date | None = None) ->
     return {product_id: (quantity, value) for product_id, (quantity, value) in totals.items()}, by_warehouse
 
 
+# Revaluations that set the average for everything on hand (`revalue`); a bill variance only
+# shifts value, so it leaves uncosted units uncosted.
+_FULL_REVALUE_KINDS = ("manual", "migration")
+
+
+def uncosted_quantities(db: Session, *, tenant_id: int, product_ids=None, as_of: date | None = None) -> dict[int, Decimal]:
+    """Units on hand that came in with no cost, per product (13a H8).
+
+    80 units opened with no cost and 3 received at 21 average 0.76: a number, but a wrong
+    one. Replays only products that ever received an uncosted unit: an uncosted receipt adds
+    its units, an outbound move takes its share, and a *Revalue* or an empty shelf clears them.
+    """
+    end = _as_of_end(as_of)
+    candidates = db.query(InventoryStockMove.product_id).filter(InventoryStockMove.tenant_id == tenant_id,
+        InventoryStockMove.cost_source == "missing", InventoryStockMove.quantity > 0)
+    if product_ids is not None:
+        candidates = candidates.filter(InventoryStockMove.product_id.in_(list(product_ids)))
+    if end is not None:
+        candidates = candidates.filter(InventoryStockMove.occurred_at < end)
+    product_set = {row[0] for row in candidates.distinct()}
+    if not product_set:
+        return {}
+    events: dict[int, list[tuple]] = defaultdict(list)
+    moves = db.query(InventoryStockMove.id, InventoryStockMove.product_id, InventoryStockMove.quantity, InventoryStockMove.cost_source,
+        InventoryStockMove.reverses_move_id, InventoryStockMove.occurred_at).filter(InventoryStockMove.tenant_id == tenant_id,
+        InventoryStockMove.product_id.in_(product_set))
+    revaluations = db.query(InventoryRevaluation.id, InventoryRevaluation.product_id, InventoryRevaluation.created_at).filter(
+        InventoryRevaluation.tenant_id == tenant_id, InventoryRevaluation.product_id.in_(product_set),
+        InventoryRevaluation.kind.in_(_FULL_REVALUE_KINDS), InventoryRevaluation.reverses_id.is_(None))
+    if end is not None:
+        moves = moves.filter(InventoryStockMove.occurred_at < end)
+        revaluations = revaluations.filter(InventoryRevaluation.created_at < end)
+    uncosted_moves: set[int] = set()
+    for move_id, product_id, quantity, cost_source, reverses_id, occurred_at in moves:
+        if cost_source == "missing" and Decimal(quantity) > 0:
+            uncosted_moves.add(move_id)
+        events[product_id].append((occurred_at, 0, move_id, Decimal(quantity), reverses_id))
+    for revaluation_id, product_id, created_at in revaluations:
+        events[product_id].append((created_at, 1, revaluation_id, None, None))
+    result: dict[int, Decimal] = {}
+    for product_id, rows in events.items():
+        on_hand = uncosted = Decimal(0)
+        for _at, kind, event_id, quantity, reverses_id in sorted(rows, key=lambda row: (row[0], row[1], row[2])):
+            if kind == 1:
+                uncosted = Decimal(0)
+                continue
+            if quantity > 0 and event_id in uncosted_moves:
+                uncosted += quantity
+            elif quantity < 0 and reverses_id in uncosted_moves:
+                uncosted = max(uncosted + quantity, Decimal(0))
+            elif quantity < 0 and on_hand > 0:
+                uncosted = uncosted * max(on_hand + quantity, Decimal(0)) / on_hand
+            on_hand += quantity
+            if on_hand <= 0:
+                uncosted = Decimal(0)
+        if uncosted > 0:
+            result[product_id] = uncosted.quantize(Decimal("0.0001"))
+    return result
+
+
 def valuation_rows(db: Session, *, tenant_id: int, as_of: date | None = None, warehouse_id: int | None = None,
                    category_id: int | None = None, search: str | None = None, cost_missing: bool | None = None) -> list[dict]:
     totals, by_warehouse = product_values(db, tenant_id=tenant_id, as_of=as_of)
+    uncosted = uncosted_quantities(db, tenant_id=tenant_id, as_of=as_of)
     query = db.query(CatalogProduct).filter(CatalogProduct.tenant_id == tenant_id, CatalogProduct.track_inventory == 1,
         CatalogProduct.deleted_at.is_(None))
     if category_id:
@@ -253,17 +314,21 @@ def valuation_rows(db: Session, *, tenant_id: int, as_of: date | None = None, wa
             shown_quantity, shown_value = quantity, value
         if shown_quantity <= 0:
             continue
-        missing = value <= 0
+        # Partly costed stock is still *Cost missing*; its average and value are partial.
+        partial = value > 0 and product.id in uncosted
+        missing = value <= 0 or partial
         if cost_missing is not None and missing != cost_missing:
             continue
         rows.append({"product_id": product.id, "product_name": product.name, "sku": product.sku, "unit": product.unit,
             "category_id": product.category_id, "category_name": product.category.full_name if product.category else None,
-            "on_hand": shown_quantity, "average_cost": average, "stock_value": shown_value, "cost_missing": missing})
+            "on_hand": shown_quantity, "average_cost": average, "stock_value": shown_value, "cost_missing": missing,
+            "cost_partial": partial, "uncosted_quantity": uncosted.get(product.id, Decimal(0))})
     return rows
 
 
 def valuation_summary(db: Session, *, tenant_id: int, as_of: date | None = None) -> dict:
     totals, by_warehouse = product_values(db, tenant_id=tenant_id, as_of=as_of)
+    uncosted = uncosted_quantities(db, tenant_id=tenant_id, as_of=as_of)
     products = {row.id: row for row in db.query(CatalogProduct).filter(CatalogProduct.tenant_id == tenant_id,
         CatalogProduct.track_inventory == 1, CatalogProduct.deleted_at.is_(None))}
     warehouses = {row.id: row.name for row in db.query(InventoryWarehouse).filter(InventoryWarehouse.tenant_id == tenant_id)}
@@ -275,7 +340,7 @@ def valuation_summary(db: Session, *, tenant_id: int, as_of: date | None = None)
         if product is None or quantity <= 0:
             continue
         in_stock += 1
-        missing += value <= 0
+        missing += value <= 0 or product_id in uncosted
         total_value += value
         per_category[product.category_id] += value
     for (product_id, warehouse_id), here in by_warehouse.items():
@@ -300,10 +365,13 @@ def product_valuation(db: Session, *, product: CatalogProduct) -> dict:
     levels = db.query(InventoryStockLevel).filter(InventoryStockLevel.tenant_id == product.tenant_id, InventoryStockLevel.product_id == product.id).all()
     quantity = sum((Decimal(level.on_hand) for level in levels), Decimal(0))
     value = Decimal(product.stock_value or 0)
+    uncosted = uncosted_quantities(db, tenant_id=product.tenant_id, product_ids=[product.id]).get(product.id, Decimal(0))
+    partial = quantity > 0 and value > 0 and uncosted > 0
     return {
         "base_currency": base_currency(db, tenant_id=product.tenant_id),
         "average_cost": Decimal(product.cost_price) if product.cost_price is not None else None,
-        "stock_value": value, "cost_missing": quantity > 0 and value <= 0,
+        "stock_value": value, "cost_missing": (quantity > 0 and value <= 0) or partial,
+        "cost_partial": partial, "uncosted_quantity": uncosted,
         "warehouse_values": {level.warehouse_id: (money(value * Decimal(level.on_hand) / quantity) if quantity > 0 else Decimal(0)) for level in levels},
     }
 

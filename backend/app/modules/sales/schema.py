@@ -1143,9 +1143,14 @@ class OpportunityPipelineStageSummary(BaseModel):
     probability: float
     is_active: bool = True
     count: int
+    # In the summary's base currency; deals that could not be converted are left out.
     total_value: float
+    unconverted_count: int = 0
 
 
 class OpportunityPipelineSummaryResponse(BaseModel):
     total_count: int
     stages: list[OpportunityPipelineStageSummary]
+    currency: str
+    unconverted_count: int = 0
+    unconverted_currencies: list[str] = []

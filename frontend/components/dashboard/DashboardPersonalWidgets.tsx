@@ -16,7 +16,7 @@ import { getModuleRoute } from "@/lib/module-registry";
 
 function moduleSummaryText(module: AccessibleModule, summary: CrmDashboardSummary | undefined, unreadCount: number) {
   if (module.name === "sales_leads" && summary) return `${summary.lead_status.reduce((total, row) => total + row.count, 0)} leads / ${summary.new_leads} new`;
-  if (module.name === "sales_opportunities" && summary) return `${formatDashboardCurrency(summary.pipeline_value)} pipeline`;
+  if (module.name === "sales_opportunities" && summary) return `${formatDashboardCurrency(summary.pipeline_value, summary.currency)} pipeline`;
   if (module.name === "sales_quotes" && summary) return `${summary.quote_status.reduce((total, row) => total + row.count, 0)} quotes`;
   if (module.name === "tasks" && summary) return `${summary.overdue_follow_ups} overdue / ${summary.upcoming_tasks} upcoming`;
   if (module.name === "mail") return `${unreadCount} unread updates`;
@@ -123,7 +123,7 @@ export function DashboardModuleSummary({
     value = summary.lead_status.reduce((total, row) => total + row.count, 0);
     helper = `${summary.new_leads} new in ${summary.period_days} days`;
   } else if (module.name === "sales_opportunities" && summary) {
-    value = formatDashboardCurrency(summary.pipeline_value);
+    value = formatDashboardCurrency(summary.pipeline_value, summary.currency);
     helper = `${summary.won_deals} won / ${summary.lost_deals} lost`;
   } else if (module.name === "sales_quotes" && summary) {
     value = summary.quote_status.reduce((total, row) => total + row.count, 0);

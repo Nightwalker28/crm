@@ -177,6 +177,46 @@ def rate_for(db: Session, *, tenant_id: int, currency: str, exchange_rate) -> De
     return Decimal(exchange_rate) if exchange_rate is not None else None
 
 
+class BaseCurrencyTotals:
+    """Adds amounts in mixed currencies as one base-currency total (13a H5).
+
+    A record with no currency, or the base one, counts as is. Another currency converts at
+    the tenant's last-used rate for it (`default_exchange_rate`); one with no rate is left out
+    of the total and counted in `unconverted`, so a total never adds LKR to USD.
+    """
+
+    def __init__(self, db: Session, *, tenant_id: int):
+        self.db = db
+        self.tenant_id = tenant_id
+        self.currency = base_currency(db, tenant_id=tenant_id)
+        self._rates: dict[str, Decimal | None] = {}
+        self.unconverted: dict[str, int] = {}
+
+    def rate(self, currency: str | None) -> Decimal | None:
+        code = (currency or "").strip().upper()
+        if not code or code == self.currency:
+            return Decimal(1)
+        if code not in self._rates:
+            self._rates[code] = default_exchange_rate(self.db, tenant_id=self.tenant_id, currency=code)
+        return self._rates[code]
+
+    def convert(self, amount, currency: str | None, *, count: int = 1) -> Decimal | None:
+        """`amount` in base currency, or None (and counted) when it cannot be converted."""
+        rate = self.rate(currency)
+        if rate is None:
+            code = (currency or "").strip().upper()
+            self.unconverted[code] = self.unconverted.get(code, 0) + count
+            return None
+        return Decimal(str(amount or 0)) * rate
+
+    def summary(self) -> dict:
+        return {
+            "currency": self.currency,
+            "unconverted_count": sum(self.unconverted.values()),
+            "unconverted_currencies": sorted(self.unconverted),
+        }
+
+
 def clean_rate(value) -> Decimal | None:
     from fastapi import HTTPException
 

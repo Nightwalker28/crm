@@ -196,7 +196,7 @@ def _apply_lines(db: Session, invoice: FinancePosInvoice, lines: list[dict[str, 
         line_id = line.get("id")
         invoice_line = existing_by_id.pop(int(line_id), None) if line_id is not None else None
         if invoice_line is None:
-            invoice_line = FinancePosInvoiceLine()
+            invoice_line = FinancePosInvoiceLine(tenant_id=invoice.tenant_id)
         invoice_line.catalog_product_id = catalog_links[index][PRODUCT_LINK_FIELD]
         invoice_line.catalog_service_id = catalog_links[index][SERVICE_LINK_FIELD]
         invoice_line.description = description
@@ -641,7 +641,7 @@ def void_and_copy(db: Session, current_user, invoice_id: int, *, reason: str) ->
         tax_rate=invoice.tax_rate, amount_paid=ZERO, amount_credited=ZERO, balance_due=ZERO,
     )
     copy.lines = [FinancePosInvoiceLine(
-        catalog_product_id=line.catalog_product_id, catalog_service_id=line.catalog_service_id,
+        tenant_id=invoice.tenant_id, catalog_product_id=line.catalog_product_id, catalog_service_id=line.catalog_service_id,
         sales_order_item_id=line.sales_order_item_id, delivery_line_id=line.delivery_line_id, description=line.description,
         quantity=line.quantity, unit_price=line.unit_price, discount_amount=line.discount_amount, tax_amount=line.tax_amount,
         line_total=line.line_total, sort_order=line.sort_order) for line in invoice.lines]

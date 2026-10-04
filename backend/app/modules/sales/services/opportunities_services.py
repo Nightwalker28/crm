@@ -19,6 +19,7 @@ from app.modules.platform.services.custom_fields import (
     save_custom_field_values,
     validate_custom_field_payload,
 )
+from app.modules.inventory.services.costing import BaseCurrencyTotals
 from app.modules.sales.models import SalesOpportunity, SalesContact, SalesOrganization
 from app.modules.sales.repositories import opportunities_repository, pipelines_repository
 from app.modules.sales.services import pipelines_services
@@ -264,6 +265,9 @@ def summarize_opportunity_pipeline(
 ) -> dict:
     """Counts and value per stage of the tenant's pipeline, over the filtered deals.
 
+    Values are in the base currency (`currency`); deals in a currency with no known rate are
+    counted but left out of the value (`unconverted_count`).
+
     Columns come from the pipeline, not a hardcoded list: every active stage in
     board order, an inactive stage only while deals still sit in it, then
     Unstaged. Buckets are keyed by stage row, so a renamed label moves nothing.
@@ -290,8 +294,9 @@ def summarize_opportunity_pipeline(
     }
     stage_keys_by_id = {bucket["facts"].stage_id: key for key, bucket in buckets.items() if bucket["facts"].stage_id is not None}
 
+    totals = BaseCurrencyTotals(db, tenant_id=tenant_id)
     total_count = 0
-    for stage_id, sales_stage, count, total_value in rows:
+    for stage_id, sales_stage, count, total_value, currency in rows:
         if stage_id in stage_keys_by_id:
             key = stage_keys_by_id[stage_id]
         elif stage_id in foreign_stages:
@@ -304,7 +309,11 @@ def summarize_opportunity_pipeline(
             if key not in buckets:
                 key = unstaged.key
         buckets[key]["count"] += int(count or 0)
-        buckets[key]["total_value"] += Decimal(str(total_value or 0))
+        converted = totals.convert(total_value, currency, count=int(count or 0))
+        if converted is None:
+            buckets[key]["unconverted_count"] = buckets[key].get("unconverted_count", 0) + int(count or 0)
+        else:
+            buckets[key]["total_value"] += converted
         total_count += int(count or 0)
 
     stages = [
@@ -317,6 +326,7 @@ def summarize_opportunity_pipeline(
             "is_active": bucket["is_active"],
             "count": bucket["count"],
             "total_value": float(bucket["total_value"]),
+            "unconverted_count": bucket.get("unconverted_count", 0),
         }
         for bucket in buckets.values()
         if bucket["is_active"] or bucket["count"]
@@ -324,6 +334,7 @@ def summarize_opportunity_pipeline(
     return {
         "total_count": total_count,
         "stages": stages,
+        **totals.summary(),
     }
 
 

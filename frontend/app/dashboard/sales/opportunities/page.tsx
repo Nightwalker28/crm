@@ -29,10 +29,13 @@ import { useOpportunities, type OpportunitySortState } from "@/hooks/sales/useOp
 import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
 import { useSavedViews, type SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiFetch } from "@/lib/api";
+import { formatMoneyCompact } from "@/lib/currency";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
 import { appendSavedViewFilterParams, buildSavedViewExportPayload, canonicalSavedViewFiltersKey } from "@/lib/savedViewQuery";
 
-type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string; stage_id: number | null; label: string; semantic_type: string; count: number; total_value: number }> };
+// Stage values are in `currency`, the company's base currency; deals in a currency with no
+// known rate to it are counted but not valued (`unconverted_count`, 13a H5).
+type PipelineSummary = { total_count: number; currency?: string; unconverted_count?: number; stages: Array<{ stage_key: string; stage_id: number | null; label: string; semantic_type: string; count: number; total_value: number; unconverted_count?: number }> };
 
 /**
  * A refused stage move names its reason — the server's own words for a known refusal (an
@@ -41,6 +44,12 @@ type PipelineSummary = { total_count: number; stages: Array<{ stage_key: string;
 function stageMoveErrorMessage(error: unknown) {
   const reason = error instanceof Error ? error.message : "";
   return reason && !/^Failed with \d+$/.test(reason) ? `Deal stage was not changed: ${reason}.` : "Deal stage could not be updated. Try again.";
+}
+
+function stageValueLabel(stage: PipelineSummary["stages"][number], currency: string | undefined) {
+  const value = stage.total_value ? formatMoneyCompact(stage.total_value, currency) : null;
+  const excluded = stage.unconverted_count ? `${stage.unconverted_count} not converted` : null;
+  return [value, excluded].filter(Boolean).join(" · ") || "No value";
 }
 
 async function fetchPipelineSummary(filters: SavedViewFilters) {
@@ -120,7 +129,7 @@ export default function OpportunitiesPage() {
     ) : (
       // 5.7 batch 2: seven bordered boxes at `text-xl` were a metric row under another name. One
       // panel, one group, the stat figure size (§4.7 archetype 5).
-      <Card><StatGroup label="Pipeline by stage">{stages.map((stage) => <StatTile key={stage.stage_key} label={stage.label} value={summaryQuery.isLoading ? "—" : stage.count} context={stage.total_value ? new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 }).format(stage.total_value) : "No value"} />)}</StatGroup></Card>
+      <Card><StatGroup label="Pipeline by stage">{stages.map((stage) => <StatTile key={stage.stage_key} label={stage.label} value={summaryQuery.isLoading ? "—" : stage.count} context={stageValueLabel(stage, summaryQuery.data?.currency)} />)}</StatGroup></Card>
     )}
     {displayMode === "table" ? <OpportunitiesTable opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} selectedIds={selectedIds} onToggleRow={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onToggleCurrentPage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null} onSortChange={(sort) => setDraftConfig((current) => ({ ...current, sort: sort ? { key: sort.column, direction: sort.direction } : null }))} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={refresh} onClearFilters={clearFilters} onCreateOpportunity={canCreate ? () => setQuickCreateOpen(true) : undefined} /> : <div className="space-y-3"><p className="text-sm text-copy-muted">Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. Drag a card to another stage, or use its stage menu for keyboard access.</p><OpportunitiesPipelineBoard opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={refresh} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={canCreate ? () => setQuickCreateOpen(true) : undefined} onStageChange={(opportunity, stage) => changeStage(opportunity.opportunity_id, opportunity.sales_stage, stage)} /></div>}
     <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />

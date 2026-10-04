@@ -8,7 +8,9 @@ export type Warehouse = { id: number; code: string; name: string; address: strin
 export type StockRow = { product_id: number; product_name: string; sku: string | null; category_name: string | null; warehouse_id: number; warehouse_name: string; on_hand: string; reserved: string; available: string; incoming?: string; reorder_point: string; reorder_quantity: string; stock_status: string };
 /** Cost fields are present only with access to Inventory → Valuation (12d §3.4). */
 export type StockMove = { id: number; product_id: number; product_name: string; warehouse_id: number; warehouse_name: string; quantity: string; on_hand_after: string; move_type: string; source_type: string; source_id: number; reason: string | null; note: string | null; created_by: number | null; actor_label: string; occurred_at: string; unit_cost?: string | null; value?: string | null; average_cost_after?: string | null; cost_source?: string | null };
-export type ProductValuation = { base_currency: string; average_cost: string | null; stock_value: string; cost_missing: boolean };
+// `cost_partial`: some units on hand came in with no cost, so the average and value are partial
+// and the product counts as *Cost missing* until revalued (13a H8).
+export type ProductValuation = { base_currency: string; average_cost: string | null; stock_value: string; cost_missing: boolean; cost_partial?: boolean; uncosted_quantity?: string };
 export type ProductStock = { product_id: number; track_inventory: boolean; needs_cost: boolean; valuation: ProductValuation | null; on_hand: string | null; reserved: string | null; available: string | null; incoming: string | null; backordered: string | null; projected: string | null; warehouses: Array<{ id: number; name: string; code: string; on_hand: string; reserved: string; available: string; incoming: string; stock_value: string | null }>; movements: StockMove[] };
 export type InventoryKind = "adjustments" | "transfers";
 export type InventoryDocumentLine = { id: number; product_id: number; product_name: string; sku: string | null; expected?: string; counted?: string | null; delta?: string | null; unit_cost?: string | null; needs_cost?: boolean; quantity?: string };
@@ -103,7 +105,7 @@ export function useInventoryActions() {
 
 // --- Valuation (ERP E6, 12d-erp-costing.md §3.5) -------------------------------------------
 
-export type ValuationRow = { product_id: number; product_name: string; sku: string | null; unit: string; category_id: number | null; category_name: string | null; on_hand: string; average_cost: string | null; stock_value: string; cost_missing: boolean };
+export type ValuationRow = { product_id: number; product_name: string; sku: string | null; unit: string; category_id: number | null; category_name: string | null; on_hand: string; average_cost: string | null; stock_value: string; cost_missing: boolean; cost_partial?: boolean; uncosted_quantity?: string };
 export type ValuationSummary = { base_currency: string; as_of: string | null; total_value: string; products_in_stock: number; cost_missing: number;
   by_warehouse: Array<{ warehouse_id: number; warehouse_name: string; on_hand: string; stock_value: string }>;
   by_category: Array<{ category_id: number | null; category_name: string | null; stock_value: string }> };

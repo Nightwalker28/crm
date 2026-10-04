@@ -853,6 +853,7 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
         for order, (item_type, item, quantity, price) in enumerate(line_items, start=1):
             db.add(
                 FinancePosInvoiceLine(
+                    tenant_id=invoice.tenant_id,
                     invoice_id=invoice.id,
                     catalog_product_id=item.id if item_type == "product" else None,
                     catalog_service_id=item.id if item_type == "service" else None,

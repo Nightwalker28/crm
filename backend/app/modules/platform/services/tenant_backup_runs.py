@@ -61,20 +61,23 @@ DESTINATION_PROVIDERS = {
     "onedrive": DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
 }
 
+# In restore order: a whole-tenant restore runs the sets in this order, so each set only
+# points at records the ones before it have restored (deals at accounts and contacts,
+# deliveries and invoices at orders).
 SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
-    "inventory_stock": ("inventory_warehouses.json", InventoryWarehouse),
-    "sales_leads": ("sales_leads.json", SalesLead),
-    "sales_contacts": ("sales_contacts.json", SalesContact),
     "sales_organizations": ("sales_organizations.json", SalesOrganization),
+    "sales_contacts": ("sales_contacts.json", SalesContact),
+    "sales_leads": ("sales_leads.json", SalesLead),
     "sales_opportunities": ("sales_opportunities.json", SalesOpportunity),
     "sales_quotes": ("sales_quotes.json", SalesQuote),
     "sales_orders": ("sales_orders.json", SalesOrder),
+    "inventory_stock": ("inventory_warehouses.json", InventoryWarehouse),
+    # E5: invoices with their lines, credit notes and payments (12c §3.6).
+    "finance_pos": ("finance_invoices.json", FinancePosInvoice),
     "tasks": ("tasks.json", Task),
     "documents": ("documents.json", Document),
     "support_cases": ("support_cases.json", SupportCase),
     "contracts": ("contracts.json", Contract),
-    # E5: invoices with their lines, credit notes and payments (12c §3.6).
-    "finance_pos": ("finance_invoices.json", FinancePosInvoice),
 }
 
 MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
@@ -101,10 +104,11 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("inventory_revaluations.json", InventoryRevaluation),
         ("inventory_stock_levels.json", InventoryStockLevel),
     ],
+    # Pipelines and stages are restored before the deals that point at them, participants after.
     "sales_opportunities": [
-        ("sales_opportunity_contacts.json", SalesOpportunityContact),
         ("sales_pipelines.json", SalesPipeline),
         ("sales_pipeline_stages.json", SalesPipelineStage),
+        ("sales_opportunity_contacts.json", SalesOpportunityContact),
     ],
     "sales_orders": [("sales_order_items.json", SalesOrderItem)],
     # Order matters on restore: each file only points at the ones before it.

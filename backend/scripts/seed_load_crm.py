@@ -235,6 +235,7 @@ def _seed_finance(db: Session, *, tenant: Tenant, user: User, io_count: int, inv
         for invoice in invoices:
             lines.append(
                 FinancePosInvoiceLine(
+                    tenant_id=invoice.tenant_id,
                     invoice_id=invoice.id,
                     description="Load item",
                     quantity=Decimal("1"),

@@ -15,7 +15,7 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
@@ -212,6 +212,29 @@ def _line_amounts_for(row: dict, item: SalesOrderItem, quantity: Decimal) -> tup
     return pro_rata(item.discount_amount or 0, quantity, ordered), pro_rata(item.tax_amount or 0, quantity, ordered)
 
 
+def _guard_website_invoice(db: Session, *, order: SalesOrder) -> None:
+    """A website order invoiced on its own before it became this sales order already billed
+    the customer; invoicing the order too would bill them twice (13a A3)."""
+    from app.modules.website_integrations.models import WebsiteIntegrationOrder
+
+    earlier = (
+        db.query(FinancePosInvoice.invoice_number)
+        .join(WebsiteIntegrationOrder, WebsiteIntegrationOrder.pos_invoice_id == FinancePosInvoice.id)
+        .filter(
+            WebsiteIntegrationOrder.tenant_id == order.tenant_id,
+            WebsiteIntegrationOrder.sales_order_id == order.id,
+            FinancePosInvoice.tenant_id == order.tenant_id,
+            or_(FinancePosInvoice.sales_order_id.is_(None), FinancePosInvoice.sales_order_id != order.id),
+            FinancePosInvoice.status != "void",
+            FinancePosInvoice.deleted_at.is_(None),
+        )
+        .first()
+    )
+    if earlier is not None:
+        raise HTTPException(status_code=409, detail=f"This order was already invoiced from its website order as "
+                            f"{earlier[0] or 'a draft invoice'}; void that invoice before invoicing the order")
+
+
 def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> FinancePosInvoice:
     """A draft invoice with what is left to invoice. Each source is an order, or an order's
     delivery. E5 takes one source; the lines already carry their own order lines."""
@@ -224,6 +247,7 @@ def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> Fin
     order = _order_or_404(db, tenant_id=tenant_id, order_id=int(source["order_id"]))
     if order.status not in INVOICEABLE_ORDER_STATUSES:
         raise HTTPException(status_code=409, detail="Only a confirmed or fulfilled order can be invoiced")
+    _guard_website_invoice(db, order=order)
     rows = {row["order_line_id"]: row for row in invoicing_lines(db, order=order)}
     items = {item.id: item for item in order.items}
     wanted: list[tuple[SalesOrderItem, Decimal, int | None]] = []

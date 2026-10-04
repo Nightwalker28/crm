@@ -215,7 +215,7 @@ def summarize_pipeline(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> list[tuple[str | None, int, Decimal | None]]:
+) -> list[tuple[int | None, str | None, int, Decimal | None, str]]:
     query = build_opportunity_query(
         db,
         tenant_id=tenant_id,
@@ -230,8 +230,14 @@ def summarize_pipeline(
             SalesOpportunity.sales_stage,
             func.count(SalesOpportunity.opportunity_id),
             func.coalesce(func.sum(opportunity_value_expression(db)), 0),
+            # Summed per currency, so the caller converts before adding (13a H5).
+            func.upper(func.trim(func.coalesce(SalesOpportunity.currency_type, ""))),
         )
-        .group_by(SalesOpportunity.pipeline_stage_id, SalesOpportunity.sales_stage)
+        .group_by(
+            SalesOpportunity.pipeline_stage_id,
+            SalesOpportunity.sales_stage,
+            func.upper(func.trim(func.coalesce(SalesOpportunity.currency_type, ""))),
+        )
         .all()
     )
 

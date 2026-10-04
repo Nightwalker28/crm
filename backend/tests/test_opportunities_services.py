@@ -240,7 +240,7 @@ class OpportunityListTests(unittest.TestCase):
         with patch.object(
             opportunities_repository,
             "summarize_pipeline",
-            return_value=[(None, "lead", 2, Decimal("15.50"))],
+            return_value=[(None, "lead", 2, Decimal("15.50"), "")],
         ) as summarize:
             summary = opportunities_services.summarize_opportunity_pipeline(self.db, tenant_id=10)
 

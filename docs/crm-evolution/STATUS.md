@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-03.
+Last updated 2026-10-04.
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -29,9 +29,62 @@ Last updated 2026-10-03.
 | ERP E3 follow-ups | **Implemented (2026-10-02): delivery notes, client-portal orders hold stock once confirmed, order priority.** `12a-erp-fulfilment.md` §6a. Verified and committed with E4 | `20260902_e3_followups`, `deliveries/[id]/print`, `_apply_portal_status`, `priority_rank`; `test_e3_followups.py` |
 | ERP E4 | **Implemented (2026-10-02): purchasing, all three phases.** Plan `12b-erp-purchasing.md`; §5 decisions taken as recommended (owner asked for all phases before testing). One test pass, all green; committed | `20260903_purchasing`, `modules/purchasing/`, `/dashboard/purchasing/*`; `test_purchasing.py`, `purchasing.spec.ts` |
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
-| ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; not committed yet. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
+| ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **Next: §7 Step 1** | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 implemented and verified (2026-10-04), not committed yet. Next: §7 Step 2** (make it safe to run: H3, H4, B2, B3/B4, observability, F0.5, H29). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+
+## Final fixes §7 Step 1 — data loss and wrong data, implemented (2026-10-04)
+
+Every Step 1 item of `13-final-fixes.md` §7, built first and tested once. E6 was already committed.
+
+- **I1:** `finance_pos_invoice_lines.tenant_id` (migration `20261004_invoice_line_tenant`, backfilled
+  from the invoice; FK and index). Set by `_apply_lines` and the *Correct* copy, and by both seed
+  scripts. It was the only backup child table without the column.
+- **A2:** restore writes child files, not only parents (`tenant_restore_runs.py`):
+  `_restore_opportunity_bundle` (pipelines and stages matched by id, else by name and stage key,
+  with deals remapped onto the matched ids; participants with one primary per deal) and
+  `_restore_with_children` (order lines, document versions and links). Children of a restored
+  record are always created when missing; existing ones are overwritten only when the mode lets
+  the backup win; extra order lines are never deleted (they may be delivered or invoiced). A
+  whole-tenant restore now runs sets in dependency order (`SUPPORTED_MODULE_EXPORTS` reordered:
+  accounts, contacts, leads, deals, quotes, orders, inventory, invoices, …).
+- **Found on the way:** the inventory restore compared movements with `str()`, so `20.0000` from
+  the database never matched `20.0` from the backup JSON: any whole-tenant restore with stock
+  movements failed on PostgreSQL. Compared by value now.
+- **G1:** `test_tenant_backup_round_trip.py`: every set backs up on its own; a whole-tenant round
+  trip after losing every child row and recreating the pipeline under new ids gives the same
+  counts and totals; module restores bring back order lines and respect the current primary.
+- **A1:** the account import's duplicate lookups filter by tenant; `test_organizations_import_tenancy.py`.
+  The other importers were already scoped (13a). G2's test for every importer stays in F0.7.
+- **B1:** the ten client-portal admin routes (accounts, setup links, status, pages, publish links)
+  also require the `client_portal` module and its view/create/edit action, on top of the linked
+  contact or account; `test_client_portal_admin_access.py`.
+- **H5:** `costing.BaseCurrencyTotals` converts deal amounts to the base currency at the tenant's
+  last-used rate for that currency (`default_exchange_rate`; deals have no rate of their own).
+  A deal in a currency with no known rate is counted but left out of the value. Used by the
+  pipeline summary (deal strip), the dashboard (pipeline value, stage values) and the forecast.
+  Responses carry `currency` and the unconverted count; the UI labels totals with the currency
+  and says "N deals in other currencies not included". Reports' deal sums (I7) stay with F11.
+- **H8:** `valuation_services.uncosted_quantities` replays only products that ever received an
+  uncosted unit (uncosted receipts add, outbound moves take their share, a *Revalue* or an empty
+  shelf clears). Such a product stays *Cost missing* (`cost_partial`, `uncosted_quantity`) in the
+  Valuation list and summary and on the Stock tab ("Partly costed", "(partial)").
+- **H1:** `lib/formValues.ts` `formValuesFromRecord` keeps the empty-form default where the record
+  has null; the deal payload builder and name check are null-safe. No other record form spreads a
+  record over its defaults; the wider sweep is H10 in FQ.
+- **A3:** *Create invoice* on a website order with a sales order drafts the invoice through that
+  order (`draft_from_sources`: linked lines, invoicing policy); only an order with no sales order
+  gets a stand-alone invoice, without the shop platform as payment method or a hardcoded colour.
+  Order invoicing refuses an order already invoiced from its website order. The UI shows the
+  server's reason. The lasting fix (website orders as sales orders) is F1.
+
+**Verification (one pass):** compileall clean; full backend suite 1497 tests: the 4 errors were
+in the new tests (a dict read as an object, a test order not yet shipped under the delivered
+policy, a missing company profile), fixed and rerun green; the 4 rate-limit failures pass with
+Redis up (61 tests OK). `verify_migrations` passes at head `20261004_invoice_line_tenant`. Frontend
+lint clean, build passes, `check-design.sh` 21/21. Not run: the rendered Playwright guards and a
+browser pass on the dashboard, deals strip, Valuation and website orders. The dev database
+migrates on the next backend start.
 
 ## ERP E6 — costing and valuation, implemented (2026-10-03)
 

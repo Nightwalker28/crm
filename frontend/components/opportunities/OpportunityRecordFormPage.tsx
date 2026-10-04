@@ -35,6 +35,7 @@ import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { formValuesFromRecord } from "@/lib/formValues";
 
 type OpportunitySummary = {
   opportunity: OpportunityFormValue & {
@@ -104,8 +105,7 @@ export default function OpportunityRecordFormPage({
       opportunity.client ||
       "";
     const next: OpportunityFormValue = {
-      ...EMPTY_OPPORTUNITY_FORM,
-      ...opportunity,
+      ...formValuesFromRecord(EMPTY_OPPORTUNITY_FORM, opportunity),
       contact_name: contactName,
       organization_name:
         opportunity.organization_name ||

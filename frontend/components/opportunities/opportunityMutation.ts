@@ -13,8 +13,8 @@ import { apiFetch } from "@/lib/api";
 /** Fields the backend requires regardless of tenant module-field configuration. */
 const ALWAYS_SUBMITTED_FIELDS = ["opportunity_name", "contact_id", "custom_fields"];
 
-export function validateOpportunityName(rawName: string): string | null {
-  return rawName.trim() ? null : "Deal name is required.";
+export function validateOpportunityName(rawName: string | null | undefined): string | null {
+  return (rawName ?? "").trim() ? null : "Deal name is required.";
 }
 
 export function validateOpportunityContact(contactId: number | null): string | null {
@@ -29,12 +29,14 @@ export function buildOpportunityPayload(
   /** The pipeline's default stage (`defaultStageKey`), used when the form left Stage empty. */
   defaultStage = "",
 ) {
-  const trim = (value: string) => value.trim() || null;
+  // Null-safe: a field the record left empty may still be null here (13a H1).
+  const text = (value: string | null | undefined) => (value ?? "").trim();
+  const trim = (value: string | null | undefined) => text(value) || null;
   return pickEnabledModulePayload(
     {
-      opportunity_name: form.opportunity_name.trim(),
+      opportunity_name: text(form.opportunity_name),
       // `client` is the denormalized contact name the domain keeps alongside the link.
-      client: form.contact_name.trim(),
+      client: text(form.contact_name),
       contact_id: form.contact_id,
       organization_id: form.organization_id,
       // An edit that clears the owner would otherwise reassign the deal to the editor.
@@ -42,7 +44,7 @@ export function buildOpportunityPayload(
       sales_stage: form.sales_stage || defaultStage || null,
       start_date: form.start_date || null,
       expected_close_date: form.expected_close_date || null,
-      probability_percent: form.probability_percent.trim() ? Number(form.probability_percent) : null,
+      probability_percent: text(form.probability_percent) ? Number(form.probability_percent) : null,
       total_cost_of_project: trim(form.total_cost_of_project),
       currency_type: form.currency_type || null,
       campaign_type: trim(form.campaign_type),

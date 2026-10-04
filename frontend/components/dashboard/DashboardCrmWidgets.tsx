@@ -46,6 +46,10 @@ export type CrmDashboardSummary = {
   new_leads: number;
   deal_stages: CrmBucket[];
   pipeline_value: number;
+  /** The currency of every deal value; deals with no known rate to it are left out. */
+  currency?: string;
+  unconverted_deals?: number;
+  unconverted_currencies?: string[];
   forecast_summary?: {
     weighted_pipeline_amount: number | string;
     gross_pipeline_amount: number | string;
@@ -54,6 +58,8 @@ export type CrmDashboardSummary = {
     actual_revenue_amount: number | string;
     open_opportunity_count: number;
     won_opportunity_count: number;
+    currency?: string | null;
+    unconverted_count?: number;
     by_stage: CrmForecastBucket[];
   } | null;
   won_deals: number;
@@ -89,10 +95,15 @@ export function isCrmSummaryWidget(type: string): type is CrmSummaryWidgetType {
 
 // Zero, not `Not set`: a dashboard figure with no rows is a zero total rather than an
 // absent field. Formatting is lib/currency.ts's (design.md 7.1).
-export function formatDashboardCurrency(value: number | string | null | undefined) {
+export function formatDashboardCurrency(value: number | string | null | undefined, currency?: string | null) {
   const amount = typeof value === "string" ? Number(value) : value;
   const safe = Number.isFinite(amount ?? NaN) ? (amount as number) : 0;
-  return formatMoney(safe, DEFAULT_CURRENCY, { maximumFractionDigits: 0 }) ?? "";
+  return formatMoney(safe, currency || DEFAULT_CURRENCY, { maximumFractionDigits: 0 }) ?? "";
+}
+
+/** Deal totals are in the base currency; say how many deals had no rate to it (13a H5). */
+export function unconvertedDealsNote(count: number | undefined) {
+  return count ? `${count} deal${count === 1 ? "" : "s"} in other currencies not included` : null;
 }
 
 /**
@@ -129,7 +140,7 @@ function BucketList({ rows, emptyLabel }: { rows: CrmBucket[]; emptyLabel: strin
  * encoded its count, and the two read as one quantity. A bar anchored to one baseline is the
  * only honest length comparison (dataviz: marks anchored to the baseline).
  */
-function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
+function PipelineFunnel({ rows, currency }: { rows: CrmBucket[]; currency?: string }) {
   const data = rows.filter((row) => row.semantic_type !== "lost").slice(0, 6);
   const max = Math.max(...data.map((row) => row.count), 1);
   if (!data.length) return <PanelEmpty icon={Filter} title="No pipeline stage data yet" />;
@@ -141,7 +152,7 @@ function PipelineFunnel({ rows }: { rows: CrmBucket[] }) {
           <div className="min-w-0">
             <div className="flex items-baseline justify-between gap-3 text-sm">
               <span className="font-medium tabular-nums text-copy-primary">{row.count}</span>
-              {row.value ? <span className="tabular-nums text-copy-secondary">{formatDashboardCurrency(row.value)}</span> : null}
+              {row.value ? <span className="tabular-nums text-copy-secondary">{formatDashboardCurrency(row.value, currency)}</span> : null}
             </div>
             <div className="mt-1 h-1.5 rounded-full bg-surface-raised" aria-hidden="true">
               <div
@@ -170,19 +181,21 @@ function AmountRow({ title, meta, amount }: { title: string; meta: string; amoun
 function WeightedForecast({ forecast }: { forecast: CrmDashboardSummary["forecast_summary"] | null }) {
   if (!forecast) return <div className="p-4"><PanelEmpty icon={BarChart3} title="No forecast data yet" /></div>;
   const rows = forecast.by_stage.slice(0, 5);
+  const money = (value: number | string) => formatDashboardCurrency(value, forecast.currency);
+  const excluded = unconvertedDealsNote(forecast.unconverted_count);
   return (
     <>
       <StatGroup label="Forecast totals" className="border-b border-line-subtle">
-        <StatTile label="Weighted" value={formatDashboardCurrency(forecast.weighted_pipeline_amount)} context={`${forecast.open_opportunity_count} open deals`} />
-        <StatTile label="Actual" value={formatDashboardCurrency(forecast.actual_revenue_amount)} context={`${forecast.won_opportunity_count} won this period`} />
-        <StatTile label="Commit" value={formatDashboardCurrency(forecast.commit_amount)} context="Expected commitment" />
-        <StatTile label="Best case" value={formatDashboardCurrency(forecast.best_case_amount)} context="Potential outcome" />
+        <StatTile label="Weighted" value={money(forecast.weighted_pipeline_amount)} context={excluded ?? `${forecast.open_opportunity_count} open deals`} />
+        <StatTile label="Actual" value={money(forecast.actual_revenue_amount)} context={`${forecast.won_opportunity_count} won this period`} />
+        <StatTile label="Commit" value={money(forecast.commit_amount)} context="Expected commitment" />
+        <StatTile label="Best case" value={money(forecast.best_case_amount)} context="Potential outcome" />
       </StatGroup>
       <div className="p-4">
         {rows.length ? (
           <RowList label="Weighted pipeline by stage">
             {rows.map((row) => (
-              <AmountRow key={row.key} title={formatSnakeCaseLabel(row.label)} meta={`${row.count} opportunities`} amount={formatDashboardCurrency(row.weighted_pipeline_amount)} />
+              <AmountRow key={row.key} title={formatSnakeCaseLabel(row.label)} meta={`${row.count} opportunities`} amount={money(row.weighted_pipeline_amount)} />
             ))}
           </RowList>
         ) : <PanelEmpty icon={BarChart3} title="No deals close in this period" />}
@@ -226,7 +239,7 @@ export function DashboardCrmWidget({
     return (
       <StatGroup label="CRM snapshot">
         <StatTile label="New leads" value={summary.new_leads} context={`Last ${summary.period_days} days`} />
-        <StatTile label="Pipeline value" value={formatDashboardCurrency(summary.pipeline_value)} context="Open deal stages" />
+        <StatTile label="Pipeline value" value={formatDashboardCurrency(summary.pipeline_value, summary.currency)} context={unconvertedDealsNote(summary.unconverted_deals) ?? "Open deal stages"} />
         <StatTile label="Won / lost" value={`${summary.won_deals} / ${summary.lost_deals}`} context="Closed deal outcomes" />
         <StatTile label="Overdue follow-ups" value={summary.overdue_follow_ups} context={`${summary.upcoming_tasks} upcoming this week`} />
       </StatGroup>
@@ -235,7 +248,7 @@ export function DashboardCrmWidget({
   if (type === "lead_status") return <BucketList rows={summary.lead_status} emptyLabel="No lead status data yet" />;
   if (type === "deal_stages") return <BucketList rows={summary.deal_stages} emptyLabel="No deal stage data yet" />;
   if (type === "quote_status") return <BucketList rows={summary.quote_status} emptyLabel="No quote status data yet" />;
-  if (type === "pipeline_funnel") return <PipelineFunnel rows={summary.deal_stages} />;
+  if (type === "pipeline_funnel") return <PipelineFunnel rows={summary.deal_stages} currency={summary.currency} />;
   if (type === "weighted_forecast") return <WeightedForecast forecast={summary.forecast_summary ?? null} />;
   if (!summary.owner_performance.length) return <PanelEmpty icon={Users} title="No owner activity yet" />;
   return (

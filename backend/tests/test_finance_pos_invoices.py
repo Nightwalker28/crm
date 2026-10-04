@@ -149,6 +149,7 @@ class FinancePosInvoiceTests(unittest.TestCase):
         )
         invoice.lines = [
             FinancePosInvoiceLine(
+                tenant_id=10,
                 id=10,
                 invoice_id=1,
                 description="Line",
@@ -238,6 +239,7 @@ class FinancePosInvoiceTests(unittest.TestCase):
     def test_apply_lines_preserves_existing_rows_by_id(self):
         invoice = FinancePosInvoice(id=1, tenant_id=10, invoice_number="POS-1")
         existing = FinancePosInvoiceLine(
+            tenant_id=10,
             id=7,
             invoice_id=1,
             description="Existing",

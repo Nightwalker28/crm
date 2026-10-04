@@ -236,7 +236,7 @@ class InvoicingTests(unittest.TestCase):
         # A second draft made by hand over the same order line.
         copy = FinancePosInvoice(id=999, tenant_id=10, user_id=1, status="draft", payment_status="unpaid", customer_name="Acme",
                                  currency="USD", sales_order_id=order.id, source="sales_order")
-        copy.lines = [FinancePosInvoiceLine(id=999, description="Camera", quantity=Decimal("5"), unit_price=Decimal("10"), line_total=Decimal("50"),
+        copy.lines = [FinancePosInvoiceLine(tenant_id=10, id=999, description="Camera", quantity=Decimal("5"), unit_price=Decimal("10"), line_total=Decimal("50"),
                                             sales_order_item_id=first.lines[0].sales_order_item_id, sort_order=0)]
         copy.subtotal_amount = copy.total_amount = Decimal("50")
         self.db.add(copy)

@@ -80,6 +80,12 @@ class E3FollowUpTests(unittest.TestCase):
 
     # Client-portal orders
 
+    def company(self):
+        from app.modules.user_management.models import CompanyProfile
+
+        self.db.add(CompanyProfile(id=1, tenant_id=10, name="Main", operating_currencies=["USD"]))
+        self.db.commit()
+
     def portal_order(self, quantity, reference):
         order = WebsiteIntegrationOrder(tenant_id=10, external_reference=reference, source_platform="client_portal", status="submitted",
             request_hash="x", currency="USD", subtotal_amount=Decimal(10) * quantity, metadata_json={"source": "client_portal", "details": "Blue please"})
@@ -115,6 +121,48 @@ class E3FollowUpTests(unittest.TestCase):
         self.assertEqual((linked.status, linked.delivery_status), ("fulfilled", "delivered"))
         self.assertEqual(self.on_hand(), Decimal(2))
         self.assertEqual(self.db.query(InventoryDelivery).filter_by(order_id=linked.id, status="posted").count(), 1)
+
+    def test_a_confirmed_portal_order_is_invoiced_through_its_sales_order_once(self):
+        # 13a A3: the website order's invoice used to have no link to the sales order, so the
+        # order's own invoicing could bill the customer again.
+        from app.modules.finance.models import FinancePosInvoice
+        from app.modules.finance.services.invoicing_services import draft_from_sources
+
+        self.company()
+        self.stock(5)
+        portal = self.portal_order(2, "portal-a3")
+        # Shipped, so the default policy (invoice what was delivered) has something to bill.
+        self.status(portal, "completed")
+        self.db.commit()
+        linked_id = self.db.get(WebsiteIntegrationOrder, portal.id).sales_order_id
+
+        invoice, existing = website.create_pos_invoice_for_order(self.db, current_user=self.user, order_id=portal.id)
+
+        self.assertFalse(existing)
+        self.assertEqual((invoice.sales_order_id, invoice.status, invoice.payment_method), (linked_id, "draft", None))
+        self.assertTrue(all(line.sales_order_item_id for line in invoice.lines))
+        with self.assertRaises(HTTPException) as error:
+            draft_from_sources(self.db, self.user, sources=[{"order_id": linked_id}])
+        self.assertEqual(error.exception.status_code, 409)
+        self.db.rollback()
+        self.assertEqual(self.db.query(FinancePosInvoice).count(), 1)
+
+    def test_an_order_invoiced_from_its_website_order_before_confirmation_is_not_invoiced_again(self):
+        from app.modules.finance.services.invoicing_services import draft_from_sources
+
+        self.company()
+        self.stock(5)
+        portal = self.portal_order(2, "portal-a3b")
+        invoice, _existing = website.create_pos_invoice_for_order(self.db, current_user=self.user, order_id=portal.id)
+        self.assertIsNone(invoice.sales_order_id)
+        self.status(portal, "completed")
+        self.db.commit()
+        linked_id = self.db.get(WebsiteIntegrationOrder, portal.id).sales_order_id
+
+        with self.assertRaises(HTTPException) as error:
+            draft_from_sources(self.db, self.user, sources=[{"order_id": linked_id}])
+        self.assertEqual(error.exception.status_code, 409)
+        self.assertIn(invoice.invoice_number, error.exception.detail)
 
     def test_rejecting_a_confirmed_portal_order_releases_its_holds(self):
         self.stock(5)

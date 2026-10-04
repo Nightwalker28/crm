@@ -102,9 +102,11 @@ export function CatalogItemStockPanel({ productId, canAdjust, canManageReservati
       ) : null}
       {data?.track_inventory && data.valuation ? (
         <FactList className="mt-4 grid-cols-2 sm:grid-cols-5">
-          <Fact label="Average cost">{data.valuation.average_cost == null ? <span className="text-copy-muted">Not set</span> : <Money amount={data.valuation.average_cost} currency={data.valuation.base_currency} maximumFractionDigits={4} />}</Fact>
+          <Fact label="Average cost">{data.valuation.average_cost == null ? <span className="text-copy-muted">Not set</span> : <><Money amount={data.valuation.average_cost} currency={data.valuation.base_currency} maximumFractionDigits={4} />{data.valuation.cost_partial ? <span className="text-copy-muted"> (partial)</span> : null}</>}</Fact>
           <Fact label="Stock value"><Money amount={data.valuation.stock_value} currency={data.valuation.base_currency} /></Fact>
-          {data.valuation.cost_missing ? <Fact label="Cost"><StatusValue status={{ label: "Cost missing", tone: "attention" }} /></Fact> : null}
+          {data.valuation.cost_partial ? (
+            <Fact label="Cost"><StatusValue status={{ label: `${quantity(data.valuation.uncosted_quantity ?? 0)} without cost`, tone: "attention" }} /></Fact>
+          ) : data.valuation.cost_missing ? <Fact label="Cost"><StatusValue status={{ label: "Cost missing", tone: "attention" }} /></Fact> : null}
         </FactList>
       ) : null}
       {data?.track_inventory ? null : data ? (

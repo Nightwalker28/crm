@@ -292,11 +292,17 @@ export function IntegrationWebsiteWorkspace() {
       setSaving(true);
       const res = await apiFetch(`/integrations/orders/${order.id}/create-pos-invoice`, { method: "POST" });
       const body = await readJson(res);
-      if (!res.ok) throw new Error("create-pos-invoice-failed");
+      if (!res.ok) {
+        // A 409 says why (already invoiced from its sales order, nothing left to invoice).
+        const detail = typeof body?.detail === "string" ? body.detail : null;
+        toast.error(detail ?? "The invoice could not be created. Try again.");
+        return;
+      }
       await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
-      toast.success(body?.already_existing ? "POS invoice already exists." : "POS invoice created from website order.");
+      // An order confirmed into a sales order is invoiced through it, as a draft to review.
+      toast.success(body?.already_existing ? "This order already has an invoice." : body?.invoice_number ? `Invoice ${body.invoice_number} created.` : "Draft invoice created from the sales order.");
     } catch {
-      toast.error("The POS invoice could not be created. Try again.");
+      toast.error("The invoice could not be created. Try again.");
     } finally {
       setSaving(false);
     }

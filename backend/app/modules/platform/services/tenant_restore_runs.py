@@ -16,6 +16,7 @@ from app.modules.platform.models import TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import rebuild_reservations
+from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_runs import (
     MODULE_CHILD_EXPORTS,
@@ -24,6 +25,15 @@ from app.modules.platform.services.tenant_backup_runs import (
     create_safety_tenant_backup_run,
     get_tenant_backup_artifact_path,
     get_tenant_backup_run_or_404,
+)
+from app.modules.sales.models import (
+    SalesContact,
+    SalesOpportunity,
+    SalesOpportunityContact,
+    SalesOrder,
+    SalesOrderItem,
+    SalesPipeline,
+    SalesPipelineStage,
 )
 from app.modules.user_management.models import Module, TenantModuleConfig
 
@@ -219,6 +229,200 @@ def _apply_restore_rows(
     return {"created": created, "updated": updated, "skipped": skipped, "soft_deleted": soft_deleted}
 
 
+def _sync_id_sequences(db: Session, models: list[Any]) -> None:
+    """Move each table's id sequence past the ids a restore wrote explicitly."""
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    for table in dict.fromkeys(model.__tablename__ for model in models):
+        db.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), GREATEST((SELECT COALESCE(MAX(id), 0) FROM {table}), 1))"))
+
+
+def _child_rows(zipf: zipfile.ZipFile, *, tenant_id: int, filename: str) -> list[dict[str, Any]]:
+    """A child file of a set; a backup taken before the file existed restores none."""
+    name = f"modules/{filename}"
+    rows = _read_json(zipf, name) if name in zipf.namelist() else []
+    if not isinstance(rows, list) or any(not isinstance(row, dict) or str(row.get("tenant_id")) != str(tenant_id) for row in rows):
+        raise HTTPException(status_code=UNPROCESSABLE_STATUS, detail=f"Backup rows are invalid: {filename}")
+    return rows
+
+
+def _tenant_ids(db: Session, *, tenant_id: int, column: Any) -> set[int]:
+    return {row[0] for row in db.query(column).filter(column.class_.tenant_id == tenant_id).all()}
+
+
+def _upsert_child(
+    db: Session,
+    *,
+    tenant_id: int,
+    model: Any,
+    row: dict[str, Any],
+    authoritative: bool,
+    natural_key: tuple[str, ...] = (),
+) -> tuple[Any, str]:
+    """Write one child row: matched by id, else by its natural key, else created with its id.
+
+    Children of a restored record are always created when missing, since a parent without
+    its lines is not the record that was backed up. Existing children are overwritten only
+    when the restore mode lets the backup win. Returns the row and created/updated/skipped.
+    """
+    pk_name = _primary_key_name(model)
+    pk_column = getattr(model, pk_name)
+    existing = db.query(model).filter(model.tenant_id == tenant_id, pk_column == row.get(pk_name)).first()
+    if existing is None and natural_key:
+        existing = db.query(model).filter(
+            model.tenant_id == tenant_id, *[getattr(model, key) == row.get(key) for key in natural_key]
+        ).first()
+    if existing is not None:
+        if not authoritative:
+            return existing, "skipped"
+        # A natural-key match keeps its own id; only the values come from the backup.
+        _assign_row_values(existing, {key: value for key, value in row.items() if key != pk_name}, tenant_id=tenant_id)
+        return existing, "updated"
+    instance = model()
+    _assign_row_values(instance, row, tenant_id=tenant_id)
+    db.add(instance)
+    return instance, "created"
+
+
+def _count(totals: dict[str, int], outcome: str) -> None:
+    totals[outcome] = totals.get(outcome, 0) + 1
+
+
+def _restore_opportunity_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, mode: str, deal_rows: list[dict[str, Any]]) -> dict[str, int]:
+    """Deals with their pipelines, stages and participants (13a A2).
+
+    Pipelines and stages are matched by id, else by name and stage key, because a tenant
+    that recreated its pipeline has the same stages under new ids. Deals are remapped onto
+    the ids that matched. Pipelines and stages are created in every mode: they are
+    configuration the deals cannot be restored without.
+    """
+    authoritative = mode in {"update_existing", "replace_module_data", WHOLE_TENANT_RESTORE_MODE}
+    totals = {"created": 0, "updated": 0, "skipped": 0, "soft_deleted": 0}
+    pipeline_ids: dict[Any, int] = {}
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="sales_pipelines.json"):
+        if row.get("is_default"):
+            current_default = db.query(SalesPipeline).filter(
+                SalesPipeline.tenant_id == tenant_id, SalesPipeline.module_key == row.get("module_key"),
+                SalesPipeline.is_default.is_(True), SalesPipeline.id != row.get("id"), SalesPipeline.name != row.get("name"),
+            ).first()
+            if current_default is not None:
+                if authoritative:
+                    current_default.is_default = False
+                    db.flush()
+                else:
+                    row = {**row, "is_default": False}
+        pipeline, outcome = _upsert_child(db, tenant_id=tenant_id, model=SalesPipeline, row=row, authoritative=authoritative, natural_key=("module_key", "name"))
+        db.flush()
+        pipeline_ids[row.get("id")] = pipeline.id
+        _count(totals, outcome)
+    stage_ids: dict[Any, int] = {}
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="sales_pipeline_stages.json"):
+        if row.get("pipeline_id") not in pipeline_ids:
+            _count(totals, "skipped")
+            continue
+        row = {**row, "pipeline_id": pipeline_ids[row["pipeline_id"]]}
+        stage, outcome = _upsert_child(db, tenant_id=tenant_id, model=SalesPipelineStage, row=row, authoritative=authoritative, natural_key=("pipeline_id", "key"))
+        db.flush()
+        stage_ids[row.get("id")] = stage.id
+        _count(totals, outcome)
+
+    remapped_deals = [
+        {
+            **row,
+            "pipeline_id": pipeline_ids.get(row.get("pipeline_id"), row.get("pipeline_id")),
+            "pipeline_stage_id": stage_ids.get(row.get("pipeline_stage_id"), row.get("pipeline_stage_id")),
+        }
+        for row in deal_rows
+    ]
+    result = _apply_restore_rows(db, tenant_id=tenant_id, model=SalesOpportunity, rows=remapped_deals, mode=mode)
+    db.flush()
+
+    deals = _tenant_ids(db, tenant_id=tenant_id, column=SalesOpportunity.opportunity_id)
+    contacts = _tenant_ids(db, tenant_id=tenant_id, column=SalesContact.contact_id)
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="sales_opportunity_contacts.json"):
+        if row.get("opportunity_id") not in deals or row.get("contact_id") not in contacts:
+            _count(totals, "skipped")
+            continue
+        if row.get("is_primary") and not row.get("deleted_at"):
+            # One primary per deal: the backup's primary wins only when the backup wins.
+            others = db.query(SalesOpportunityContact).filter(
+                SalesOpportunityContact.tenant_id == tenant_id, SalesOpportunityContact.opportunity_id == row["opportunity_id"],
+                SalesOpportunityContact.contact_id != row["contact_id"], SalesOpportunityContact.is_primary.is_(True),
+            ).all()
+            if others and authoritative:
+                for other in others:
+                    other.is_primary = False
+                db.flush()
+            elif others:
+                row = {**row, "is_primary": False}
+        _participant, outcome = _upsert_child(
+            db, tenant_id=tenant_id, model=SalesOpportunityContact, row=row, authoritative=authoritative,
+            natural_key=("opportunity_id", "contact_id"),
+        )
+        db.flush()
+        _count(totals, outcome)
+    _sync_id_sequences(db, [SalesPipeline, SalesPipelineStage, SalesOpportunityContact])
+    return {key: result[key] + totals[key] for key in result}
+
+
+# Sets whose children hang off the parent by one column, with the key that identifies a
+# child when its id has changed. Lines that exist beyond the backup are kept: an order line
+# may already be delivered or invoiced, so a restore never deletes one.
+CHILD_RESTORE_SPECS: dict[str, list[tuple[str, Any, str, Any, tuple[str, ...]]]] = {
+    "sales_orders": [("sales_order_items.json", SalesOrderItem, "order_id", SalesOrder.id, ())],
+    "documents": [
+        ("document_versions.json", DocumentVersion, "document_id", Document.id, ("document_id", "version_number")),
+        ("document_links.json", DocumentLink, "document_id", Document.id, ("document_id", "module_key", "entity_id")),
+    ],
+}
+
+
+def _restore_with_children(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, mode: str, rows: list[dict[str, Any]]) -> dict[str, int]:
+    result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
+    db.flush()
+    specs = CHILD_RESTORE_SPECS.get(module_key, [])
+    authoritative = mode in {"update_existing", "replace_module_data", WHOLE_TENANT_RESTORE_MODE}
+    for filename, child_model, parent_key, parent_column, natural_key in specs:
+        parents = _tenant_ids(db, tenant_id=tenant_id, column=parent_column)
+        for row in _child_rows(zipf, tenant_id=tenant_id, filename=filename):
+            if row.get(parent_key) not in parents:
+                _count(result, "skipped")
+                continue
+            _child, outcome = _upsert_child(db, tenant_id=tenant_id, model=child_model, row=row, authoritative=authoritative, natural_key=natural_key)
+            _count(result, outcome)
+        db.flush()
+    _sync_id_sequences(db, [spec[1] for spec in specs])
+    return result
+
+
+def _restore_module_rows(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, mode: str, rows: list[dict[str, Any]]) -> dict[str, int]:
+    """One set, parents and children, in the given mode."""
+    if module_key == "inventory_stock":
+        return _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows)
+    if module_key == "finance_pos":
+        # Issued documents are final, so a whole-tenant restore creates what is missing.
+        return _restore_finance_bundle(db, zipf, tenant_id=tenant_id, mode="create_missing" if mode == WHOLE_TENANT_RESTORE_MODE else mode, invoice_rows=rows)
+    if mode == WHOLE_TENANT_RESTORE_MODE:
+        mode = "replace_module_data"
+    if module_key == "sales_opportunities":
+        return _restore_opportunity_bundle(db, zipf, tenant_id=tenant_id, mode=mode, deal_rows=rows)
+    return _restore_with_children(db, zipf, tenant_id=tenant_id, module_key=module_key, model=model, mode=mode, rows=rows)
+
+
+def _preview_total(zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, rows: list[dict[str, Any]]) -> int:
+    """Parent rows plus every child file the restore will read."""
+    if module_key == "inventory_stock":
+        return _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
+    return len(rows) + sum(
+        len(_child_rows(zipf, tenant_id=tenant_id, filename=filename)) for filename, _model in MODULE_CHILD_EXPORTS.get(module_key, [])
+    )
+
+
+def _restore_order(module_keys: list[str]) -> list[str]:
+    """Backed-up sets in dependency order (see SUPPORTED_MODULE_EXPORTS)."""
+    return [key for key in SUPPORTED_MODULE_EXPORTS if key in module_keys]
+
+
 def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, mode: str, warehouse_rows: list[dict[str, Any]]) -> dict[str, int]:
     """Restore an inventory snapshot without mutating append-only movements.
 
@@ -243,7 +447,9 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
         existing = db.query(InventoryStockMove).filter(InventoryStockMove.tenant_id == tenant_id, InventoryStockMove.id == row["id"]).first()
         if existing:
             for key in ("product_id", "warehouse_id", "quantity", "on_hand_after", "move_type", "source_type", "source_id", "reverses_move_id"):
-                if str(getattr(existing, key)) != str(_coerce_column_value(InventoryStockMove.__table__.columns[key], row.get(key))):
+                # Compared as values: the backup's JSON writes 20.0000 as 20.0.
+                column = InventoryStockMove.__table__.columns[key]
+                if _coerce_column_value(column, getattr(existing, key)) != _coerce_column_value(column, row.get(key)):
                     raise HTTPException(status_code=409, detail=f"Movement {row['id']} differs from the immutable backup")
 
     created = updated = skipped = soft_deleted = 0
@@ -296,10 +502,7 @@ def _restore_inventory_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: 
             product.cost_price = (product.stock_value / total).quantize(Decimal("0.0001"))
     db.flush()
     rebuild_reservations(db, tenant_id=tenant_id)
-    if db.get_bind().dialect.name == "postgresql":
-        for _name, model, _rows in bundles:
-            table = model.__tablename__
-            db.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), GREATEST((SELECT COALESCE(MAX(id), 0) FROM {table}), 1))"))
+    _sync_id_sequences(db, [model for _name, model, _rows in bundles])
     return {"created": created, "updated": updated, "skipped": skipped, "soft_deleted": soft_deleted}
 
 
@@ -341,10 +544,7 @@ def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: in
         refresh_bill_balance(db, bill)
     recompute_tenant(db, tenant_id=tenant_id)
     db.flush()
-    if db.get_bind().dialect.name == "postgresql":
-        for _name, model, _rows in bundles:
-            table = model.__tablename__
-            db.execute(text(f"SELECT setval(pg_get_serial_sequence('{table}', 'id'), GREATEST((SELECT COALESCE(MAX(id), 0) FROM {table}), 1))"))
+    _sync_id_sequences(db, [model for _name, model, _rows in bundles])
     return {"created": created, "updated": 0, "skipped": skipped, "soft_deleted": 0}
 
 
@@ -401,10 +601,8 @@ def preview_tenant_module_restore(
     source_run, artifact_path = _artifact_from_run(db, tenant_id=tenant_id, source_backup_run_id=source_backup_run_id)
     with zipfile.ZipFile(artifact_path) as zipf:
         metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
-        inventory_total = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows) if module_key == "inventory_stock" else None
-    summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-    if inventory_total is not None:
-        summary["total_rows"] = inventory_total
+        total_rows = _preview_total(zipf, tenant_id=tenant_id, module_key=module_key, rows=rows)
+    summary = {**_restore_summary(db, tenant_id=tenant_id, model=model, rows=rows), "total_rows": total_rows}
     run = TenantRestoreRun(
         tenant_id=tenant_id,
         actor_user_id=actor_user_id,
@@ -480,15 +678,9 @@ def execute_tenant_module_restore(
         with zipfile.ZipFile(artifact_path) as zipf:
             _metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
             preview_summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-            if module_key == "inventory_stock":
-                preview_summary["total_rows"] = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
+            preview_summary["total_rows"] = _preview_total(zipf, tenant_id=tenant_id, module_key=module_key, rows=rows)
             with db.begin_nested():
-                if module_key == "inventory_stock":
-                    result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows)
-                elif module_key == "finance_pos":
-                    result = _restore_finance_bundle(db, zipf, tenant_id=tenant_id, mode=mode, invoice_rows=rows)
-                else:
-                    result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode=mode)
+                result = _restore_module_rows(db, zipf, tenant_id=tenant_id, module_key=module_key, model=model, mode=mode, rows=rows)
                 db.flush()
                 if module_key == "sales_orders":
                     # Restored statuses decide which orders may hold stock.
@@ -549,14 +741,11 @@ def preview_whole_tenant_restore(
     total_rows = 0
     with zipfile.ZipFile(artifact_path) as zipf:
         metadata = _backup_metadata(zipf, tenant_id=tenant_id)
-        for module_key in metadata.get("module_list") or []:
-            if module_key not in RESTORABLE_MODULES:
-                continue
+        for module_key in _restore_order(metadata.get("module_list") or []):
             _validate_module_enabled(db, tenant_id=tenant_id, module_key=module_key)
             _module_metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
             summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-            if module_key == "inventory_stock":
-                summary["total_rows"] = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
+            summary["total_rows"] = _preview_total(zipf, tenant_id=tenant_id, module_key=module_key, rows=rows)
             module_summaries[module_key] = summary
             total_rows += int(summary["total_rows"])
     summary = {"total_modules": len(module_summaries), "total_rows": total_rows, "modules": module_summaries}
@@ -640,21 +829,13 @@ def execute_whole_tenant_restore(
         total_skipped = 0
         total_soft_deleted = 0
         with zipfile.ZipFile(artifact_path) as zipf:
-            for module_key in metadata.get("module_list") or []:
-                if module_key not in RESTORABLE_MODULES:
-                    continue
+            for module_key in _restore_order(metadata.get("module_list") or []):
                 _validate_module_enabled(db, tenant_id=tenant_id, module_key=module_key)
                 _module_metadata, rows, model = _module_payload(zipf, tenant_id=tenant_id, module_key=module_key)
                 preview_summary = _restore_summary(db, tenant_id=tenant_id, model=model, rows=rows)
-                if module_key == "inventory_stock":
-                    preview_summary["total_rows"] = _inventory_preview_count(zipf, tenant_id=tenant_id, warehouse_rows=rows)
+                preview_summary["total_rows"] = _preview_total(zipf, tenant_id=tenant_id, module_key=module_key, rows=rows)
                 with db.begin_nested():
-                    if module_key == "inventory_stock":
-                        result = _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=WHOLE_TENANT_RESTORE_MODE, warehouse_rows=rows)
-                    elif module_key == "finance_pos":
-                        result = _restore_finance_bundle(db, zipf, tenant_id=tenant_id, mode="create_missing", invoice_rows=rows)
-                    else:
-                        result = _apply_restore_rows(db, tenant_id=tenant_id, model=model, rows=rows, mode="replace_module_data")
+                    result = _restore_module_rows(db, zipf, tenant_id=tenant_id, module_key=module_key, model=model, mode=WHOLE_TENANT_RESTORE_MODE, rows=rows)
                     db.flush()
                 if module_key == "sales_orders":
                     with db.begin_nested():

@@ -352,6 +352,8 @@ def get_client_accounts(
     limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -364,6 +366,8 @@ def get_client_accounts_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -386,6 +390,8 @@ def create_client_account_route(
     payload: ClientAccountCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "create")),
 ):
     _require_linked_customer_access(
         db,
@@ -408,6 +414,8 @@ def regenerate_client_setup_link_route(
     account_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     account = get_client_account_or_404(db, tenant_id=current_user.tenant_id, account_id=account_id)
     _require_linked_customer_access(
@@ -427,6 +435,8 @@ def update_client_account_status_route(
     payload: ClientAccountStatusRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     account = get_client_account_or_404(db, tenant_id=current_user.tenant_id, account_id=account_id)
     _require_linked_customer_access(
@@ -452,6 +462,8 @@ def get_client_pages(
     limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -465,6 +477,8 @@ def get_client_pages_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -490,6 +504,8 @@ def create_client_page_route(
     payload: ClientPageCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "create")),
 ):
     _require_linked_customer_access(
         db,
@@ -513,6 +529,8 @@ def update_client_page_route(
     payload: ClientPageUpdateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     page = get_client_page_or_404(db, tenant_id=current_user.tenant_id, page_id=page_id)
     _require_linked_customer_access(
@@ -537,6 +555,8 @@ def publish_client_page_link_route(
     payload: ClientPagePublishRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     page = get_client_page_or_404(db, tenant_id=current_user.tenant_id, page_id=page_id)
     _require_linked_customer_access(
