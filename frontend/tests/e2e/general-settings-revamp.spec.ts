@@ -40,20 +40,19 @@ test("saves responsive company settings with normalized currencies", async ({ pa
   await page.goto("/dashboard/settings/general");
 
   await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
-  const workspace = page.locator('[aria-label="Company settings workspace"]');
-  await expect(workspace.getByRole("heading", { name: "Company profile" })).toBeVisible();
-  await expect(workspace.getByRole("heading", { name: "Commercial defaults" })).toBeVisible();
-  await expect(workspace.getByRole("heading", { name: "Branding" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Company profile" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Commercial defaults" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Branding" })).toBeVisible();
   await expect(page.getByLabel("Company name")).toHaveValue("Lynk Holdings");
 
   await page.getByLabel("Company name").fill("Lynk International");
   await page.getByLabel("Operating currencies").fill("usd, lkr, usd");
-  await expect(page.getByText("You have unsaved company changes.")).toBeVisible();
+  await expect(page.getByText("Unsaved changes", { exact: true })).toBeVisible();
 
   const saveRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/users/company"),
   );
-  await workspace.getByRole("button", { name: "Save company" }).click();
+  await page.getByRole("button", { name: "Save company" }).click();
   const request = await saveRequest;
 
   expect(request.postDataJSON()).toMatchObject({
@@ -62,7 +61,8 @@ test("saves responsive company settings with normalized currencies", async ({ pa
   });
   expect(request.postDataJSON()).not.toHaveProperty("logo_url");
   await expect(page.getByLabel("Logo URL")).toHaveCount(0);
-  await expect(page.getByText("All company settings are saved.")).toBeVisible();
+  // Explicit save: the dirty line reads Unsaved changes, and nothing when clean (design.md 7.5).
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("uploads a bounded logo without marking persisted branding as unsaved", async ({ page }) => {
@@ -83,7 +83,8 @@ test("uploads a bounded logo without marking persisted branding as unsaved", asy
   });
 
   await expect(page.getByAltText("Company logo preview")).toBeVisible();
-  await expect(page.getByText("All company settings are saved.")).toBeVisible();
+  // Explicit save: the dirty line reads Unsaved changes, and nothing when clean (design.md 7.5).
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("removes a legacy external company logo through the dedicated operation", async ({ page }) => {
@@ -113,7 +114,8 @@ test("removes a legacy external company logo through the dedicated operation", a
 
   await expect.poll(() => removeRequests).toBe(1);
   await expect(page.getByAltText("Company logo preview")).toHaveCount(0);
-  await expect(page.getByText("All company settings are saved.")).toBeVisible();
+  // Explicit save: the dirty line reads Unsaved changes, and nothing when clean (design.md 7.5).
+  await expect(page.getByText("Unsaved changes", { exact: true })).toHaveCount(0);
 });
 
 test("redacts backend details and provides a retryable load state", async ({ page }) => {
@@ -126,7 +128,9 @@ test("redacts backend details and provides a retryable load state", async ({ pag
   );
   await page.goto("/dashboard/settings/general");
 
-  await expect(page.getByRole("heading", { name: "Company profile could not be loaded" })).toBeVisible();
+  // The whole-route state names the page; its title is a paragraph because the page's one
+  // heading is the surface title above it (design.md 8).
+  await expect(page.getByRole("alert").getByText("General could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/tenant_id=12|private-db/)).toHaveCount(0);
 });

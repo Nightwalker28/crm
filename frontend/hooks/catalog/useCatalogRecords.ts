@@ -11,6 +11,8 @@ export type CatalogKind = "products" | "services";
 export type CatalogSortState = PagedListSort;
 
 export type CatalogRecord = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number;
   name: string;
   slug?: string | null;
@@ -18,8 +20,34 @@ export type CatalogRecord = {
   sku?: string | null;
   currency: string;
   public_unit_price: number | string;
+  /** The standard selling price, apart from the website price; line editors default to it (13a C4). */
+  list_price?: number | string | null;
+  tax_category?: string | null;
+  /** Products only (13a C4). */
+  weight?: number | string | null;
+  weight_unit?: string | null;
+  length?: number | string | null;
+  width?: number | string | null;
+  height?: number | string | null;
+  dimension_unit?: string | null;
+  /** Pictures after the main image (13a C4). */
+  images?: CatalogImage[];
   stock_status?: "untracked" | "in_stock" | "out_of_stock" | "preorder";
   stock_quantity?: number | string | null;
+  reorder_point?: number | string;
+  reorder_quantity?: number | string;
+  track_inventory?: boolean;
+  /** Products only. */
+  barcode?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  cost_price?: number | string | null;
+  /** Products only (E4): who it is normally bought from, under which code, and how long it takes. */
+  preferred_vendor_id?: number | null;
+  preferred_vendor_name?: string | null;
+  vendor_sku?: string | null;
+  lead_time_days?: number | null;
+  unit?: string;
   is_public: boolean;
   is_active: boolean;
   media_url?: string | null;
@@ -29,15 +57,43 @@ export type CatalogRecord = {
   updated_at: string;
 };
 
+export type CatalogImage = {
+  id: number;
+  url: string | null;
+  content_type?: string | null;
+  original_filename?: string | null;
+  position: number;
+};
+
 export type CatalogRecordPayload = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   name: string;
   slug?: string | null;
   description?: string | null;
   sku?: string | null;
   currency: string;
   public_unit_price: number;
+  list_price?: number | null;
+  tax_category?: string | null;
+  weight?: number | null;
+  weight_unit?: string | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  dimension_unit?: string | null;
   stock_status?: string;
   stock_quantity?: number | null;
+  reorder_point?: number;
+  reorder_quantity?: number;
+  track_inventory?: boolean;
+  barcode?: string | null;
+  category_id?: number | null;
+  cost_price?: number | null;
+  preferred_vendor_id?: number | null;
+  vendor_sku?: string | null;
+  lead_time_days?: number | null;
+  unit?: string;
   is_public: boolean;
   is_active: boolean;
 };
@@ -114,7 +170,7 @@ async function createCatalogRecord(kind: CatalogKind, payload: CatalogRecordPayl
   return parseJsonResponse<CatalogRecord>(res, `Failed to create catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
 }
 
-async function updateCatalogRecord(kind: CatalogKind, id: number, payload: CatalogRecordPayload): Promise<CatalogRecord> {
+async function updateCatalogRecord(kind: CatalogKind, id: number, payload: Partial<CatalogRecordPayload>): Promise<CatalogRecord> {
   const res = await apiFetch(pathFor(kind, `/${id}`), {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -132,6 +188,18 @@ async function uploadCatalogRecordMedia(kind: CatalogKind, id: number, file: Fil
     body: form,
   });
   return parseJsonResponse<CatalogRecord>(res, `Failed to upload catalog media (${res.status})`);
+}
+
+async function addCatalogGalleryImage(kind: CatalogKind, id: number, file: File): Promise<CatalogImage[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(pathFor(kind, `/${id}/images`), { method: "POST", body: form });
+  return (await parseJsonResponse<{ results: CatalogImage[] }>(res, `Failed to add the picture (${res.status})`)).results;
+}
+
+async function removeCatalogGalleryImage(kind: CatalogKind, id: number, imageId: number): Promise<CatalogImage[]> {
+  const res = await apiFetch(pathFor(kind, `/${id}/images/${imageId}`), { method: "DELETE" });
+  return (await parseJsonResponse<{ results: CatalogImage[] }>(res, `Failed to remove the picture (${res.status})`)).results;
 }
 
 async function deleteCatalogRecord(kind: CatalogKind, id: number): Promise<CatalogRecord> {
@@ -172,7 +240,7 @@ export function useCatalogRecords(
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: CatalogRecordPayload }) => updateCatalogRecord(kind, id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<CatalogRecordPayload> }) => updateCatalogRecord(kind, id, payload),
     onSuccess: async (_record, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
@@ -217,6 +285,8 @@ export function useCatalogRecords(
     refresh: paged.refresh,
     createRecord: (payload: CatalogRecordPayload) => createMutation.mutateAsync(payload),
     updateRecord: (id: number, payload: CatalogRecordPayload) => updateMutation.mutateAsync({ id, payload }),
+    /** A partial write (the route is `exclude_unset`), for the list's Activate/Deactivate. */
+    patchRecord: (id: number, payload: Partial<CatalogRecordPayload>) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
     isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,
@@ -236,7 +306,7 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, payload }: { id: number; payload: CatalogRecordPayload }) => updateCatalogRecord(kind, id, payload),
+    mutationFn: ({ id, payload }: { id: number; payload: Partial<CatalogRecordPayload> }) => updateCatalogRecord(kind, id, payload),
     onSuccess: async (_record, variables) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey }),
@@ -268,7 +338,28 @@ export function useCatalogRecordActions(kind: CatalogKind) {
   return {
     createRecord: (payload: CatalogRecordPayload) => createMutation.mutateAsync(payload),
     updateRecord: (id: number, payload: CatalogRecordPayload) => updateMutation.mutateAsync({ id, payload }),
+    /**
+     * A single-field write, for the record rail's `InlineFieldEdit`s.
+     *
+     * Separate from `updateRecord` so the create/edit form keeps its whole-payload type: the
+     * route is `exclude_unset`, so a partial body is a partial write, and letting the form
+     * send one too would make an omitted field indistinguishable from an unchanged one.
+     */
+    patchRecord: (id: number, payload: Partial<CatalogRecordPayload>) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
+    /** Gallery writes land at once, apart from the form's Save: they are files, not fields. */
+    addGalleryImage: async (id: number, file: File) => {
+      const images = await addCatalogGalleryImage(kind, id, file);
+      // Stale, not refetched: the open form remounts on a new record and would drop its edits.
+      await queryClient.invalidateQueries({ queryKey: [...queryKey, id], refetchType: "none" });
+      return images;
+    },
+    removeGalleryImage: async (id: number, imageId: number) => {
+      const images = await removeCatalogGalleryImage(kind, id, imageId);
+      // Stale, not refetched: the open form remounts on a new record and would drop its edits.
+      await queryClient.invalidateQueries({ queryKey: [...queryKey, id], refetchType: "none" });
+      return images;
+    },
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
     isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,
     isDeleting: deleteMutation.isPending,
@@ -280,6 +371,41 @@ export function useCatalogRecord(kind: CatalogKind, id: number | null) {
     queryKey: ["catalog", kind, id],
     queryFn: () => fetchCatalogRecord(kind, id as number),
     enabled: id != null,
+    refetchOnWindowFocus: false,
+  });
+}
+
+export type CatalogItemSalesLine = {
+  document_type: "quote" | "order";
+  document_id: number;
+  document_number: string;
+  customer_name?: string | null;
+  status: string;
+  currency: string;
+  quantity: number | string;
+  unit_price: number | string;
+  line_total: number | string;
+  document_date?: string | null;
+};
+
+export type CatalogItemSales = {
+  results: CatalogItemSalesLine[];
+  quote_line_count: number;
+  order_line_count: number;
+  ordered_quantity: number | string;
+  can_view_quotes: boolean;
+  can_view_orders: boolean;
+};
+
+/** The quote and order lines that use one catalog item: the record's Sales tab. */
+export function useCatalogItemSales(kind: CatalogKind, id: number | null, enabled = true) {
+  return useQuery({
+    queryKey: ["catalog", kind, id, "sales"],
+    queryFn: async (): Promise<CatalogItemSales> => {
+      const res = await apiFetch(pathFor(kind, `/${id}/sales`));
+      return parseJsonResponse<CatalogItemSales>(res, `Failed to load sales (${res.status})`);
+    },
+    enabled: enabled && id != null,
     refetchOnWindowFocus: false,
   });
 }

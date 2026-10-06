@@ -8,8 +8,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from fastapi import HTTPException, Request, status
-from jose import jwt, JWTError
-from jose.exceptions import ExpiredSignatureError
+import jwt
+from jwt import PyJWTError as JWTError
+from jwt import ExpiredSignatureError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -128,7 +129,9 @@ def _profile_from_google_id_token(id_token: str | None) -> dict | None:
     if not id_token:
         return None
     try:
-        claims = jwt.get_unverified_claims(id_token)
+        # Profile fields only: Google's token endpoint returned this over TLS, so the
+        # signature is not what establishes trust here.
+        claims = jwt.decode(id_token, options={"verify_signature": False})
     except JWTError:
         return None
     return {
@@ -581,31 +584,42 @@ def handle_microsoft_callback(
     return {"status": "active", "user": user}
 
 
-def create_user_setup_link(
+SETUP_TOKEN_PURPOSE = "setup"
+RESET_TOKEN_PURPOSE = "reset"
+_TOKEN_LINK_PATHS = {SETUP_TOKEN_PURPOSE: "/auth/setup-password", RESET_TOKEN_PURPOSE: "/auth/reset-password"}
+_TOKEN_COPY = {
+    SETUP_TOKEN_PURPOSE: {"invalid": "Setup link is invalid or has already been used", "expired": "Setup link has expired"},
+    RESET_TOKEN_PURPOSE: {
+        "invalid": "This reset link is invalid or has already been used. Request a new one.",
+        "expired": "This reset link has expired. Request a new one.",
+    },
+}
+
+
+def _issue_user_token_link(
     db: Session,
     user: User,
     *,
-    frontend_origin: str | None = None,
-    commit: bool = True,
+    purpose: str,
+    expires_delta: timedelta,
+    frontend_origin: str | None,
+    commit: bool,
 ) -> str:
+    """One live link per user and purpose: issuing a new one voids the last."""
     _cleanup_stale_user_setup_tokens(db)
 
     raw_token = secrets.token_urlsafe(32)
-    token_hash = _hash_setup_token(raw_token)
-    expires_at = datetime.now(timezone.utc) + timedelta(
-        hours=settings.USER_SETUP_TOKEN_EXPIRE_HOURS
-    )
-
     db.query(UserSetupToken).filter(
         UserSetupToken.user_id == user.id,
+        UserSetupToken.purpose == purpose,
         UserSetupToken.consumed_at.is_(None),
-    ).delete()
-
+    ).delete(synchronize_session=False)
     db.add(
         UserSetupToken(
             user_id=user.id,
-            token_hash=token_hash,
-            expires_at=expires_at,
+            token_hash=_hash_setup_token(raw_token),
+            purpose=purpose,
+            expires_at=datetime.now(timezone.utc) + expires_delta,
         )
     )
     if commit:
@@ -615,7 +629,35 @@ def create_user_setup_link(
 
     token_query = urllib.parse.urlencode({"token": raw_token})
     base_origin = (frontend_origin or settings.FRONTEND_ORIGIN).rstrip("/")
-    return f"{base_origin}/auth/setup-password?{token_query}"
+    return f"{base_origin}{_TOKEN_LINK_PATHS[purpose]}?{token_query}"
+
+
+def create_user_setup_link(
+    db: Session,
+    user: User,
+    *,
+    frontend_origin: str | None = None,
+    commit: bool = True,
+) -> str:
+    return _issue_user_token_link(
+        db,
+        user,
+        purpose=SETUP_TOKEN_PURPOSE,
+        expires_delta=timedelta(hours=settings.USER_SETUP_TOKEN_EXPIRE_HOURS),
+        frontend_origin=frontend_origin,
+        commit=commit,
+    )
+
+
+def create_password_reset_link(db: Session, user: User, *, frontend_origin: str | None = None) -> str:
+    return _issue_user_token_link(
+        db,
+        user,
+        purpose=RESET_TOKEN_PURPOSE,
+        expires_delta=timedelta(minutes=settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES),
+        frontend_origin=frontend_origin,
+        commit=True,
+    )
 
 
 def _cleanup_stale_user_setup_tokens(db: Session) -> None:
@@ -634,50 +676,76 @@ def _cleanup_stale_user_setup_tokens(db: Session) -> None:
     )
 
 
-def set_initial_password(db: Session, *, token: str, password: str) -> User:
-    try:
-        validate_password_strength(password)
-    except ValueError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(exc),
-        ) from exc
-
-    token_hash = _hash_setup_token(token)
+def _consume_user_token(db: Session, *, token: str, purpose: str) -> User:
+    copy = _TOKEN_COPY[purpose]
     db_token = (
         db.query(UserSetupToken)
         .filter(
-            UserSetupToken.token_hash == token_hash,
+            UserSetupToken.token_hash == _hash_setup_token(token),
+            UserSetupToken.purpose == purpose,
             UserSetupToken.consumed_at.is_(None),
         )
         .first()
     )
-
     if not db_token:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Setup link is invalid or has already been used",
-        )
-
-    expires_at = _as_utc(db_token.expires_at)
-
-    if expires_at <= datetime.now(timezone.utc):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Setup link has expired",
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=copy["invalid"])
+    if _as_utc(db_token.expires_at) <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=copy["expired"])
 
     user = db.query(User).filter(User.id == db_token.user_id).first()
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found",
-        )
-
-    user.password_hash = hash_password(password)
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
     db_token.consumed_at = datetime.now(timezone.utc)
-    db.add(user)
     db.add(db_token)
+    return user
+
+
+def _validated_password_hash(password: str) -> str:
+    try:
+        validate_password_strength(password)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
+    return hash_password(password)
+
+
+def revoke_user_sessions(db: Session, user: User) -> None:
+    """Signs the user out everywhere: refresh tokens go, and older access tokens are refused."""
+    db.query(RefreshToken).filter(RefreshToken.user_id == user.id).delete(synchronize_session=False)
+    user.sessions_revoked_at = datetime.now(timezone.utc)
+    db.add(user)
+
+
+def set_initial_password(db: Session, *, token: str, password: str) -> User:
+    password_hash = _validated_password_hash(password)
+    user = _consume_user_token(db, token=token, purpose=SETUP_TOKEN_PURPOSE)
+    user.password_hash = password_hash
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def reset_password_with_token(db: Session, *, token: str, password: str) -> User:
+    password_hash = _validated_password_hash(password)
+    user = _consume_user_token(db, token=token, purpose=RESET_TOKEN_PURPOSE)
+    if user.is_active != UserStatus.active:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=_TOKEN_COPY[RESET_TOKEN_PURPOSE]["invalid"])
+    user.password_hash = password_hash
+    revoke_user_sessions(db, user)
+    db.commit()
+    db.refresh(user)
+    return user
+
+
+def change_password(db: Session, *, user: User, current_password: str | None, new_password: str) -> User:
+    """The signed-in user's own change. The caller issues this browser a fresh session."""
+    if user.password_hash:
+        if not current_password or not verify_password(current_password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail={"code": "current_password_invalid", "message": "Current password is incorrect"})
+        if verify_password(new_password, user.password_hash):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Choose a password you are not using now")
+    user.password_hash = _validated_password_hash(new_password)
+    revoke_user_sessions(db, user)
     db.commit()
     db.refresh(user)
     return user

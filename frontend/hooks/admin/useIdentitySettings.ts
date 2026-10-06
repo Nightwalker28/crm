@@ -3,14 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/lib/api";
+import { apiFetch, readJson } from "@/lib/api";
 import type { MfaPolicy, PasswordPolicy, SsoSettings, SsoSettingsUpdate, SsoTestResult, TenantDomain, UserOptionsData } from "./useUserManagement";
-
-async function readJson<T>(path: string, message: string): Promise<T> {
-  const response = await apiFetch(path);
-  if (!response.ok) throw new Error(message);
-  return response.json();
-}
 
 function useSsoSettingsQuery() {
   return useQuery<SsoSettings>({ queryKey: ["admin-sso-settings"], queryFn: () => readJson("/admin/users/sso-settings", "Failed to fetch SSO settings"), staleTime: 300_000, refetchOnWindowFocus: false });
@@ -42,8 +36,10 @@ export function useAuthenticationSettings() {
       if (!response.ok) throw new Error("MFA policy update failed");
       return response.json() as Promise<{ policy: MfaPolicy }>;
     },
-    onSuccess: (data) => { queryClient.setQueryData(["admin-mfa-policy"], data); void queryClient.invalidateQueries({ queryKey: ["users-paged"] }); toast.success("MFA policy updated."); },
-    onError: () => toast.error("MFA policy could not be updated. Please try again."),
+    // No toast either way. The MFA policy autosaves (R1) and reports through the
+    // `SaveStateIndicator` in its own `SettingsRow` — a toast for the same event is a
+    // second notice of one write, and at settings-wide autosave it would be constant.
+    onSuccess: (data) => { queryClient.setQueryData(["admin-mfa-policy"], data); void queryClient.invalidateQueries({ queryKey: ["users-paged"] }); },
   });
   const testSso = useMutation({
     mutationFn: async () => {
@@ -59,14 +55,14 @@ export function useAuthenticationSettings() {
     },
     onError: () => toast.error("SSO connection could not be tested. Review the provider settings and try again."),
   });
-  return { mfaPolicy: mfa.data?.policy ?? "off", passwordPolicy: password.data, ssoSettings: sso.data, isLoading: mfa.isLoading || sso.isLoading, isPasswordPolicyLoading: password.isLoading, isSaving: updateMfa.isPending || updateSso.isPending, isTesting: testSso.isPending, updateMfaPolicy: updateMfa.mutate, updateSsoSettings: updateSso.mutateAsync, testSsoSettings: testSso.mutateAsync };
+  return { mfaPolicy: mfa.data?.policy ?? "off", passwordPolicy: password.data, ssoSettings: sso.data, loadError: mfa.error ?? sso.error, isLoading: mfa.isLoading || sso.isLoading, isPasswordPolicyLoading: password.isLoading, isSaving: updateMfa.isPending || updateSso.isPending, isTesting: testSso.isPending, updateMfaPolicy: updateMfa.mutateAsync, updateSsoSettings: updateSso.mutateAsync, testSsoSettings: testSso.mutateAsync };
 }
 
 export function useProvisioningSettings() {
   const sso = useSsoSettingsQuery();
   const updateSso = useSsoUpdate();
   const options = useQuery<UserOptionsData>({ queryKey: ["user-options"], queryFn: () => readJson("/admin/users/options", "Failed to fetch user options"), staleTime: 600_000, refetchOnWindowFocus: false });
-  return { ssoSettings: sso.data, roles: options.data?.roles ?? [], teams: options.data?.teams ?? [], isLoading: sso.isLoading || options.isLoading, isSaving: updateSso.isPending, updateSsoSettings: updateSso.mutateAsync };
+  return { ssoSettings: sso.data, roles: options.data?.roles ?? [], teams: options.data?.teams ?? [], loadError: sso.error ?? options.error, isLoading: sso.isLoading || options.isLoading, isSaving: updateSso.isPending, updateSsoSettings: updateSso.mutateAsync };
 }
 
 export function useDomainSettings() {
@@ -75,7 +71,7 @@ export function useDomainSettings() {
   const create = useDomainMutation(queryClient, "POST", "Custom domain added.", "The custom domain could not be added. Please try again.");
   const verify = useDomainMutation(queryClient, "POST", "Custom domain verified.", "The custom domain could not be verified. Please try again.");
   const remove = useDomainMutation(queryClient, "DELETE", "Custom domain removed.", "The custom domain could not be removed. Please try again.");
-  return { tenantDomains: domains.data ?? [], isLoading: domains.isLoading, isSaving: create.isPending || verify.isPending || remove.isPending, createTenantDomain: (payload: { hostname: string; is_primary?: boolean }) => create.mutateAsync({ path: "/admin/users/domains", payload }), verifyTenantDomain: (id: number) => verify.mutateAsync({ path: `/admin/users/domains/${id}/verify` }), deleteTenantDomain: (id: number) => remove.mutateAsync({ path: `/admin/users/domains/${id}` }) };
+  return { tenantDomains: domains.data ?? [], loadError: domains.error, isLoading: domains.isLoading, isSaving: create.isPending || verify.isPending || remove.isPending, createTenantDomain: (payload: { hostname: string; is_primary?: boolean }) => create.mutateAsync({ path: "/admin/users/domains", payload }), verifyTenantDomain: (id: number) => verify.mutateAsync({ path: `/admin/users/domains/${id}/verify` }), deleteTenantDomain: (id: number) => remove.mutateAsync({ path: `/admin/users/domains/${id}` }) };
 }
 
 function useDomainMutation(queryClient: ReturnType<typeof useQueryClient>, method: "POST" | "DELETE", successMessage: string, errorMessage: string) {

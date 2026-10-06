@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 import hashlib
 import re
 import secrets
@@ -8,9 +9,9 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from urllib.parse import quote
 
-from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
-from jose import jwt, JWTError
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -22,14 +23,15 @@ from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPa
 from app.modules.client_portal.repositories import client_portal_repository
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.documents.models import Document
-from app.modules.platform.services.activity_logs import log_activity
-from app.modules.sales.models import SalesContact, SalesOrganization
-from app.modules.website_integrations.models import WebsiteIntegrationOrder, WebsiteIntegrationOrderLine
+from app.core.unit_of_work import unit_of_work
+from app.modules.platform.services.activity_logs import log_activity, safe_log_activity
+from app.modules.sales.models import SalesContact, SalesOrder, SalesOrganization
 
 
 CLIENT_ACCOUNT_STATUSES = {"pending", "active", "inactive"}
 CLIENT_PAGE_STATUSES = {"draft", "published", "archived"}
 DISCOUNT_TYPES = {"none", "percent", "fixed"}
+PORTAL_SOURCE = "client_portal"
 DEFAULT_CUSTOMER_GROUPS = [
     {"group_key": "default", "name": "Default", "discount_type": "none", "discount_value": None, "is_default": 1},
     {"group_key": "wholesale", "name": "Wholesale", "discount_type": "none", "discount_value": None, "is_default": 0},
@@ -372,30 +374,28 @@ def serialize_client_catalog_item(item: CatalogProduct | CatalogService, *, grou
     }
 
 
-def serialize_client_order(order: WebsiteIntegrationOrder) -> dict:
+def serialize_client_order(order: SalesOrder) -> dict:
+    """A portal order is a sales order (13 F1.3); the client sees its number, status and lines.
+    `draft` is an order the team has not confirmed yet."""
     return {
         "id": order.id,
-        "external_reference": order.external_reference,
+        "order_number": order.order_number,
         "status": order.status,
         "currency": order.currency,
-        "subtotal_amount": order.subtotal_amount,
-        "metadata": order.metadata_json,
+        "grand_total": order.grand_total,
+        "notes": order.notes,
         "created_at": order.created_at,
         "line_items": [
             {
                 "id": line.id,
                 "catalog_product_id": line.catalog_product_id,
                 "catalog_service_id": line.catalog_service_id,
-                "item_type": line.item_type,
-                "slug": line.slug,
-                "sku": line.sku,
                 "name": line.name,
                 "quantity": line.quantity,
-                "currency": line.currency,
-                "unit_price_snapshot": line.unit_price_snapshot,
+                "unit_price": line.unit_price,
                 "line_total": line.line_total,
             }
-            for line in getattr(order, "line_items", []) or []
+            for line in order.items
         ],
     }
 
@@ -404,25 +404,11 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
     from app.modules.calendar.services.booking_services import list_client_bookings
     from app.modules.documents.services.document_services import list_client_documents
     from app.modules.sales.services.quotes_services import list_client_quotes, serialize_client_quote
-    from app.modules.support.services.cases_services import list_client_support_cases
 
     group = resolve_client_customer_group(db, account=account)
     account_payload = serialize_client_account(account)
     catalog_items = list_client_catalog_items(db, account=account, limit=100)
     orders = list_client_orders(db, account=account)
-    support_cases = list_client_support_cases(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-    )
-    messages = list_client_support_cases(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        source="client_portal_message",
-    )
     documents = list_client_documents(
         db,
         tenant_id=account.tenant_id,
@@ -437,8 +423,7 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
     )
     bookings = list_client_bookings(db, tenant_id=account.tenant_id, email=account.email)
     quote_payloads = [serialize_client_quote(db, quote) for quote in quotes]
-    open_support_cases = [case for case in support_cases if case.status not in {"closed", "resolved"}]
-    pending_orders = [order for order in orders if order.status in {"submitted", "under_review", "confirmed", "in_progress"}]
+    pending_orders = [order for order in orders if order.status in {"draft", "confirmed"}]
 
     actions: list[dict] = []
     quote_to_review = next((quote for quote in quote_payloads if quote.get("can_respond")), None)
@@ -458,23 +443,11 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
         actions.append(
             {
                 "key": f"order-{order.id}",
-                "label": f"Track order {order.external_reference}",
-                "description": f"{order.currency} {_money(order.subtotal_amount)}",
+                "label": f"Track order {order.order_number}",
+                "description": f"{order.currency} {_money(order.grand_total)}",
                 "href": f"/client/orders/{order.id}",
                 "status": order.status,
                 "created_at": order.created_at,
-            }
-        )
-    if open_support_cases:
-        case = open_support_cases[0]
-        actions.append(
-            {
-                "key": f"support-{case.id}",
-                "label": f"Follow up on {case.case_number}",
-                "description": case.subject,
-                "href": f"/client/support/{case.id}",
-                "status": case.status,
-                "created_at": case.updated_at,
             }
         )
     if documents:
@@ -527,11 +500,9 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
         "metrics": [
             {"key": "quotes", "label": "Quotes", "value": len(quotes), "href": "/client/quotes"},
             {"key": "orders", "label": "Orders", "value": len(orders), "href": "/client/orders"},
-            {"key": "support", "label": "Open tickets", "value": len(open_support_cases), "href": "/client/support"},
             {"key": "documents", "label": "Shared documents", "value": len(documents), "href": "/client/documents"},
             {"key": "bookings", "label": "Bookings", "value": len(bookings), "href": "/client/bookings"},
             {"key": "catalog", "label": "Catalog items", "value": len(catalog_items), "href": "/client/catalog"},
-            {"key": "messages", "label": "Messages", "value": len(messages), "href": "/client/messages"},
         ],
         "next_actions": actions[:5],
     }
@@ -1080,6 +1051,11 @@ def record_client_catalog_request(
             "details": request_details,
         },
     )
+    # A catalogue request is a create, so it carries no before-state and can never be the
+    # single-field edit `log_activity` coalesces — but the write path is allowed to return
+    # None now, and a request the portal cannot reference is a failure, not a zero.
+    if entry is None:  # pragma: no cover - unreachable for a create
+        raise RuntimeError("The catalogue request could not be recorded.")
     return int(entry.id)
 
 
@@ -1105,91 +1081,63 @@ def create_client_catalog_order(
     account: ClientAccount,
     item: CatalogProduct | CatalogService,
     payload: dict,
-) -> WebsiteIntegrationOrder:
+) -> SalesOrder:
+    """A portal order is a draft sales order for the client's contact and account. It holds
+    no stock while the team reviews it; confirming it on the order page does (12a §5 decision 7)."""
+    from app.modules.sales.services.orders_services import create_sales_order
+
     quantity = _finite_decimal(payload.get("quantity") or "1", field_name="Quantity")
     if quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
     group = resolve_client_customer_group(db, account=account)
     serialized_item = serialize_client_catalog_item(item, group=group)
-    unit_price = _finite_decimal(serialized_item["resolved_unit_price"], field_name="Resolved unit price")
-    line_total = _money(unit_price * quantity)
+    unit_price = _money(_finite_decimal(serialized_item["resolved_unit_price"], field_name="Resolved unit price"))
     details = (payload.get("details") or "").strip() or None
-    reference = f"portal-{account.id}-{secrets.token_urlsafe(8)}"
-    raw_payload = {
-        "source": "client_portal",
-        "client_account_id": account.id,
-        "item": serialized_item,
-        "quantity": quantity,
-        "details": details,
-    }
-    order = WebsiteIntegrationOrder(
-        tenant_id=account.tenant_id,
-        api_key_id=None,
-        external_reference=reference,
-        source_platform="client_portal",
-        status="submitted",
-        request_hash=_hash_token(f"{reference}:{serialized_item['kind']}:{serialized_item['id']}:{quantity}:{details or ''}"),
-        customer_name=_client_customer_name(db, account),
-        customer_email=account.email.strip().lower(),
-        currency=serialized_item["currency"],
-        subtotal_amount=line_total,
-        metadata_json=jsonable_encoder({
-            "source": "client_portal",
-            "client_account_id": account.id,
-            "contact_id": account.contact_id,
-            "organization_id": account.organization_id,
-            "details": details,
-        }),
-        raw_payload=jsonable_encoder(raw_payload),
-    )
-    order.line_items = [
-        WebsiteIntegrationOrderLine(
-            tenant_id=account.tenant_id,
-            catalog_product_id=item.id if isinstance(item, CatalogProduct) else None,
-            catalog_service_id=item.id if isinstance(item, CatalogService) else None,
-            item_type=serialized_item["kind"],
-            slug=serialized_item["slug"],
-            sku=serialized_item["sku"],
-            name=serialized_item["name"],
-            quantity=quantity,
-            currency=serialized_item["currency"],
-            unit_price_snapshot=unit_price,
-            line_total=line_total,
-            stock_quantity_before=None,
-            stock_quantity_after=None,
+    with unit_of_work(db):
+        order = create_sales_order(
+            db,
+            {
+                "status": "draft",
+                "currency": serialized_item["currency"],
+                "contact_id": account.contact_id,
+                "organization_id": account.organization_id,
+                "source": PORTAL_SOURCE,
+                "client_account_id": account.id,
+                "notes": details,
+                "items": [
+                    {
+                        "catalog_product_id": item.id if isinstance(item, CatalogProduct) else None,
+                        "catalog_service_id": item.id if isinstance(item, CatalogService) else None,
+                        "name": serialized_item["name"],
+                        "quantity": quantity,
+                        "unit_price": unit_price,
+                    }
+                ],
+            },
+            SimpleNamespace(tenant_id=account.tenant_id, id=None),
         )
-    ]
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    order = get_client_order_or_404(db, account=account, order_id=order.id)
-    log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="client_portal",
-        entity_type="client_order",
-        entity_id=order.id,
-        action="portal.order.submitted",
-        description=f"Client submitted order {order.external_reference}",
-        after_state=serialize_client_order(order),
-    )
-    return order
+        safe_log_activity(
+            db,
+            tenant_id=account.tenant_id,
+            actor_user_id=None,
+            module_key="sales_orders",
+            entity_type="sales_order",
+            entity_id=order.id,
+            action="create",
+            description=f"Client {account.email} placed order {order.order_number} in the portal",
+        )
+    return get_client_order_or_404(db, account=account, order_id=order.id)
 
 
-def list_client_orders(db: Session, *, account: ClientAccount) -> list[WebsiteIntegrationOrder]:
-    return client_portal_repository.list_client_orders(
-        db,
-        tenant_id=account.tenant_id,
-        client_email=account.email,
-    )
+def list_client_orders(db: Session, *, account: ClientAccount) -> list[SalesOrder]:
+    return client_portal_repository.list_client_orders(db, tenant_id=account.tenant_id, client_account_id=account.id)
 
 
-def get_client_order_or_404(db: Session, *, account: ClientAccount, order_id: int) -> WebsiteIntegrationOrder:
+def get_client_order_or_404(db: Session, *, account: ClientAccount, order_id: int) -> SalesOrder:
     order = client_portal_repository.get_client_order(
         db,
         tenant_id=account.tenant_id,
-        client_email=account.email,
+        client_account_id=account.id,
         order_id=order_id,
     )
     if not order:

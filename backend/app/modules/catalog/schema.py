@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -13,6 +14,15 @@ class CatalogProductStockStatus(str, Enum):
 
 
 class CatalogProductBase(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    weight: Decimal | None = Field(default=None, ge=0)
+    weight_unit: str | None = None
+    length: Decimal | None = Field(default=None, ge=0)
+    width: Decimal | None = Field(default=None, ge=0)
+    height: Decimal | None = Field(default=None, ge=0)
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str = Field(min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -21,6 +31,16 @@ class CatalogProductBase(BaseModel):
     public_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     stock_status: CatalogProductStockStatus = CatalogProductStockStatus.untracked
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    track_inventory: bool | None = None
+    reorder_point: Decimal = Field(default=Decimal("0"), ge=0)
+    reorder_quantity: Decimal = Field(default=Decimal("0"), ge=0)
+    category_id: int | None = Field(default=None, gt=0)
+    cost_price: Decimal | None = Field(default=None, ge=0)
+    unit: str = Field(default="unit", min_length=1, max_length=40)
+    barcode: str | None = Field(default=None, max_length=100)
+    preferred_vendor_id: int | None = Field(default=None, gt=0)
+    vendor_sku: str | None = Field(default=None, max_length=100)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
     is_public: bool = False
     is_active: bool = True
 
@@ -62,6 +82,15 @@ class CatalogProductCreateRequest(CatalogProductBase):
 
 
 class CatalogProductUpdateRequest(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    weight: Decimal | None = Field(default=None, ge=0)
+    weight_unit: str | None = None
+    length: Decimal | None = Field(default=None, ge=0)
+    width: Decimal | None = Field(default=None, ge=0)
+    height: Decimal | None = Field(default=None, ge=0)
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -70,6 +99,16 @@ class CatalogProductUpdateRequest(BaseModel):
     public_unit_price: Decimal | None = Field(default=None, ge=0)
     stock_status: CatalogProductStockStatus | None = None
     stock_quantity: Decimal | None = Field(default=None, ge=0)
+    track_inventory: bool | None = None
+    reorder_point: Decimal | None = Field(default=None, ge=0)
+    reorder_quantity: Decimal | None = Field(default=None, ge=0)
+    category_id: int | None = Field(default=None, gt=0)
+    cost_price: Decimal | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, min_length=1, max_length=40)
+    barcode: str | None = Field(default=None, max_length=100)
+    preferred_vendor_id: int | None = Field(default=None, gt=0)
+    vendor_sku: str | None = Field(default=None, max_length=100)
+    lead_time_days: int | None = Field(default=None, ge=0, le=3650)
     is_public: bool | None = None
     is_active: bool | None = None
 
@@ -111,6 +150,16 @@ class CatalogProductUpdateRequest(BaseModel):
 
 
 class CatalogProductResponse(BaseModel):
+    list_price: Decimal | None = None
+    tax_category: str | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)
+    weight: Decimal | None = None
+    weight_unit: str | None = None
+    length: Decimal | None = None
+    width: Decimal | None = None
+    height: Decimal | None = None
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     id: int
     name: str
     slug: str | None = None
@@ -120,6 +169,18 @@ class CatalogProductResponse(BaseModel):
     public_unit_price: Decimal
     stock_status: CatalogProductStockStatus
     stock_quantity: Decimal | None = None
+    track_inventory: bool = False
+    reorder_point: Decimal = Decimal("0")
+    reorder_quantity: Decimal = Decimal("0")
+    category_id: int | None = None
+    category_name: str | None = None
+    cost_price: Decimal | None = None
+    unit: str = "unit"
+    barcode: str | None = None
+    preferred_vendor_id: int | None = None
+    preferred_vendor_name: str | None = None
+    vendor_sku: str | None = None
+    lead_time_days: int | None = None
     is_public: bool
     is_active: bool
     media_url: str | None = None
@@ -142,11 +203,18 @@ class CatalogProductListResponse(BaseModel):
 
 
 class CatalogServiceBase(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str = Field(min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
+    sku: str | None = Field(default=None, max_length=100)
     currency: str = Field(default="USD", min_length=3, max_length=3)
     public_unit_price: Decimal = Field(default=Decimal("0"), ge=0)
+    category_id: int | None = Field(default=None, gt=0)
+    cost_price: Decimal | None = Field(default=None, ge=0)
+    unit: str = Field(default="unit", min_length=1, max_length=40)
     is_public: bool = False
     is_active: bool = True
 
@@ -180,11 +248,18 @@ class CatalogServiceCreateRequest(CatalogServiceBase):
 
 
 class CatalogServiceUpdateRequest(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
+    sku: str | None = Field(default=None, max_length=100)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
     public_unit_price: Decimal | None = Field(default=None, ge=0)
+    category_id: int | None = Field(default=None, gt=0)
+    cost_price: Decimal | None = Field(default=None, ge=0)
+    unit: str | None = Field(default=None, min_length=1, max_length=40)
     is_public: bool | None = None
     is_active: bool | None = None
 
@@ -218,12 +293,21 @@ class CatalogServiceUpdateRequest(BaseModel):
 
 
 class CatalogServiceResponse(BaseModel):
+    list_price: Decimal | None = None
+    tax_category: str | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)
+    custom_fields: dict[str, Any] | None = None
     id: int
     name: str
     slug: str | None = None
     description: str | None = None
+    sku: str | None = None
     currency: str
     public_unit_price: Decimal
+    category_id: int | None = None
+    category_name: str | None = None
+    cost_price: Decimal | None = None
+    unit: str = "unit"
     is_public: bool
     is_active: bool
     media_url: str | None = None
@@ -243,3 +327,83 @@ class CatalogServiceListResponse(BaseModel):
     total_pages: int
     page: int
     page_size: int
+
+
+class CatalogCategoryRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    parent_id: int | None = Field(default=None, gt=0)
+    description: str | None = Field(default=None, max_length=2000)
+    sort_order: int = Field(default=0, ge=0, le=100000)
+
+    @field_validator("name", mode="after")
+    @classmethod
+    def strip_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name is required")
+        return normalized
+
+
+class CatalogCategoryResponse(BaseModel):
+    id: int
+    name: str
+    full_name: str
+    parent_id: int | None = None
+    description: str | None = None
+    sort_order: int
+    product_count: int = 0
+    service_count: int = 0
+    created_at: datetime
+    updated_at: datetime
+
+
+class CatalogCategoryListResponse(BaseModel):
+    results: list[CatalogCategoryResponse]
+
+
+class CatalogItemKind(str, Enum):
+    product = "product"
+    service = "service"
+
+
+class CatalogItemOption(BaseModel):
+    """One row of the line-item picker: a product or a service, ready to fill a line."""
+
+    kind: CatalogItemKind
+    id: int
+    name: str
+    description: str | None = None
+    sku: str | None = None
+    barcode: str | None = None
+    unit: str
+    currency: str
+    unit_price: Decimal
+    category_name: str | None = None
+
+
+class CatalogItemSearchResponse(BaseModel):
+    results: list[CatalogItemOption]
+
+
+class CatalogItemSalesLine(BaseModel):
+    """A quote or order line that uses a catalog item (the record's *Sales* tab)."""
+
+    document_type: str
+    document_id: int
+    document_number: str
+    customer_name: str | None = None
+    status: str
+    currency: str
+    quantity: Decimal
+    unit_price: Decimal
+    line_total: Decimal
+    document_date: datetime | None = None
+
+
+class CatalogItemSalesResponse(BaseModel):
+    results: list[CatalogItemSalesLine]
+    quote_line_count: int
+    order_line_count: int
+    ordered_quantity: Decimal
+    can_view_quotes: bool
+    can_view_orders: bool

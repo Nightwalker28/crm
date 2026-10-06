@@ -1,15 +1,26 @@
 "use client";
 
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import { PageShell } from "@/components/ui/PageShell";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { SettingsRow } from "@/components/ui/SettingsRow";
 import { useProvisioningSettings } from "@/hooks/admin/useIdentitySettings";
 import { useSsoDraft } from "@/hooks/admin/useSsoDraft";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { isForbiddenError } from "@/lib/api";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 
+/**
+ * A configuration record (archetype 4): the claim names and the provisioning defaults are
+ * validated together and applied by the same SSO write, so it keeps a manual save. The
+ * footer is no longer sticky (R3), and the auto-provision boolean is a `SegmentedBoolean`
+ * rather than a lone `Checkbox` — a checkbox means *many from a set*.
+ */
 export default function ProvisioningSettingsPage() {
   const settings = useProvisioningSettings();
   const draft = useSsoDraft(settings.ssoSettings);
@@ -25,24 +36,42 @@ export default function ProvisioningSettingsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 pb-20 text-copy-primary">
-      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-control border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
-      <Card className="px-4 py-4">
-        <div className="flex flex-col gap-4">
-          <div><h2 className="text-sm font-semibold">User provisioning</h2><p className="text-xs text-copy-muted">Choose how verified identities map to users, roles, and teams.</p></div>
-          <label className="flex items-center gap-2 text-sm"><Checkbox checked={draft.draft.auto_provision_users} disabled={settings.isLoading || settings.isSaving} onCheckedChange={(checked) => draft.update("auto_provision_users", checked === true)} />Auto-provision users</label>
+    <PageShell
+      variant="settings"
+      title="Provisioning"
+      description="Choose how verified identities map to users, roles, and teams."
+      isPermissionDenied={isForbiddenError(settings.loadError)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to settings"
+    >
+      {!settings.isLoading && !settings.ssoSettings?.enabled ? <div role="status" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-sm text-copy-secondary">SSO is disabled. You can prepare provisioning defaults now, but automatic provisioning starts only after SSO is enabled.</div> : null}
+      <FormSection title="User provisioning" description="These apply together on the next verified sign-in, so they save as a set.">
+        <div className="flex flex-col gap-6">
+          <SettingsRow label="Auto-provision users" description="Create a CRM user the first time a verified identity signs in.">
+            <SegmentedBoolean
+              aria-label="Auto-provision users"
+              value={draft.draft.auto_provision_users}
+              onValueChange={(checked) => draft.update("auto_provision_users", checked)}
+              trueLabel="On"
+              falseLabel="Off"
+              disabled={settings.isLoading || settings.isSaving}
+            />
+          </SettingsRow>
           <div className="grid gap-4 md:grid-cols-2">
-            <Field><FieldLabel>Default role</FieldLabel><Select value={draft.draft.default_role_id || "__none__"} onValueChange={(value) => draft.update("default_role_id", value === "__none__" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">None</SelectItem>{settings.roles.map((role) => <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>)}</SelectContent></Select><FieldDescription>Applied only to newly provisioned users.</FieldDescription></Field>
-            <Field><FieldLabel>Default team</FieldLabel><Select value={draft.draft.default_team_id || "__none__"} onValueChange={(value) => draft.update("default_team_id", value === "__none__" ? "" : value)}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">None</SelectItem>{settings.teams.map((team) => <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>)}</SelectContent></Select></Field>
+            <Field><FieldLabel htmlFor="provisioning-default-role">Default role</FieldLabel><Select value={draft.draft.default_role_id || "__none__"} onValueChange={(value) => draft.update("default_role_id", value === "__none__" ? "" : value)}><SelectTrigger id="provisioning-default-role"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">None</SelectItem>{settings.roles.map((role) => <SelectItem key={role.id} value={String(role.id)}>{role.name}</SelectItem>)}</SelectContent></Select><FieldDescription>Applied only to newly provisioned users.</FieldDescription></Field>
+            <Field><FieldLabel htmlFor="provisioning-default-team">Default team</FieldLabel><Select value={draft.draft.default_team_id || "__none__"} onValueChange={(value) => draft.update("default_team_id", value === "__none__" ? "" : value)}><SelectTrigger id="provisioning-default-team"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="__none__">None</SelectItem>{settings.teams.map((team) => <SelectItem key={team.id} value={String(team.id)}>{team.name}</SelectItem>)}</SelectContent></Select></Field>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
-            <Field><FieldLabel>Email claim</FieldLabel><Input value={draft.draft.email_claim} onChange={(event) => draft.update("email_claim", event.target.value)} /></Field>
-            <Field><FieldLabel>First name claim</FieldLabel><Input value={draft.draft.first_name_claim} onChange={(event) => draft.update("first_name_claim", event.target.value)} /></Field>
-            <Field><FieldLabel>Last name claim</FieldLabel><Input value={draft.draft.last_name_claim} onChange={(event) => draft.update("last_name_claim", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="provisioning-email-claim">Email claim</FieldLabel><Input id="provisioning-email-claim" value={draft.draft.email_claim} onChange={(event) => draft.update("email_claim", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="provisioning-first-name-claim">First name claim</FieldLabel><Input id="provisioning-first-name-claim" value={draft.draft.first_name_claim} onChange={(event) => draft.update("first_name_claim", event.target.value)} /></Field>
+            <Field><FieldLabel htmlFor="provisioning-last-name-claim">Last name claim</FieldLabel><Input id="provisioning-last-name-claim" value={draft.draft.last_name_claim} onChange={(event) => draft.update("last_name_claim", event.target.value)} /></Field>
           </div>
+          <FormFooter status={draft.isDirty ? "Unsaved changes" : null}>
+            <Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button>
+            <Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving}>{settings.isSaving ? "Saving…" : "Save provisioning"}</Button>
+          </FormFooter>
         </div>
-      </Card>
-      <div className="sticky bottom-0 z-10 flex flex-col gap-2 border-t border-line-default bg-surface/95 px-4 py-3 backdrop-blur sm:flex-row sm:justify-end"><Button variant="ghost" onClick={draft.reset} disabled={!draft.isDirty || settings.isSaving}>Discard changes</Button><Button onClick={() => void save()} disabled={!draft.isDirty || settings.isSaving}>{settings.isSaving ? "Saving…" : "Save provisioning"}</Button></div>
-    </div>
+      </FormSection>
+    </PageShell>
   );
 }

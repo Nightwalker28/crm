@@ -228,10 +228,7 @@ final class Lynk_CRM_Connector {
                 'item_type' => sanitize_key((string)($_POST['item_type'] ?? '')) ?: null,
                 'quantity' => $quantity,
             ]],
-            'metadata' => [
-                'site_url' => home_url('/'),
-                'source' => 'lynk_order_form',
-            ],
+            'notes' => 'Order form on ' . home_url('/'),
         ];
         $response = self::request('POST', '/integrations/public/orders', $payload);
         $redirect = wp_get_referer() ?: home_url('/');

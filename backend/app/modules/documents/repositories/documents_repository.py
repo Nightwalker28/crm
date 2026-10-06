@@ -38,6 +38,7 @@ def list_documents(
     entity_id: str | int | None = None,
     is_template: bool | None = None,
     limit: int = 50,
+    offset: int = 0,
     sort_by: str | None = None,
     sort_direction: str | None = None,
 ) -> tuple[list[Document], int]:
@@ -64,7 +65,12 @@ def list_documents(
             )
         )
     total = query.count()
-    documents = apply_document_sort(query, sort_by=sort_by, sort_direction=sort_direction).limit(limit).all()
+    documents = (
+        apply_document_sort(query, sort_by=sort_by, sort_direction=sort_direction)
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
     return documents, total
 
 

@@ -290,16 +290,16 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
     return (
       <Card role="alert" className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center">
         <CalendarDays className="h-9 w-9 text-state-danger" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+        <h1 className="mt-4 text-lg font-semibold text-copy-primary">
           {loadError === "unavailable" ? "This booking link is unavailable" : "The booking page could not be loaded"}
         </h1>
-        <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+        <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
           {loadError === "unavailable"
             ? "The link may be disabled or no longer available. Ask the organizer for an updated link."
             : "Check your connection and try again."}
         </p>
         {loadError === "temporary" ? (
-          <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+          <Button type="button" variant="outline" className="mt-4" onClick={() => setReloadKey((current) => current + 1)}>
             <RefreshCw />
             Try again
           </Button>
@@ -312,14 +312,14 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
     return (
       <Card className="px-6 py-10 text-center" role="status">
         <CheckCircle2 className="mx-auto h-11 w-11 text-state-success" aria-hidden="true" />
-        <h1 className="mt-4 text-xl font-semibold text-copy-primary">Meeting booked</h1>
+        <h1 className="mt-4 text-lg font-semibold text-copy-primary">Meeting booked</h1>
         <p className="mt-2 text-sm text-copy-secondary">Your time is confirmed with {bookingType.owner_name || "the team"}.</p>
         {selectedSlot ? (
           <p className="mt-3 font-medium text-copy-primary">
             <time dateTime={selectedSlot.start_at}>{formatSlotTime(selectedSlot.start_at, displayTimezone)}</time>
           </p>
         ) : null}
-        <div className="mx-auto mt-5 flex max-w-md items-center justify-center gap-2 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-secondary">
+        <div className="mx-auto mt-4 flex max-w-md items-center justify-center gap-2 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted px-4 py-3 text-sm text-copy-secondary">
           <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
           Confirmation details were sent to the meeting organizer.
         </div>
@@ -330,22 +330,22 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
   const timezoneOptions = Array.from(new Set([browserTimezone(), bookingType.timezone, ...DISPLAY_TIMEZONES]));
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[0.8fr_1.2fr]">
-      <Card className="p-5 sm:p-6">
+    <div className="grid gap-6 lg:grid-cols-[0.8fr_1.2fr]">
+      <Card className="p-4 sm:p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
             <CalendarDays className="h-5 w-5 text-copy-secondary" aria-hidden="true" />
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-copy-primary">{bookingType.name}</h1>
+            <h1 className="text-lg font-semibold text-copy-primary">{bookingType.name}</h1>
             <p className="mt-1 text-sm text-copy-muted">{bookingType.owner_name || "Lynk"}</p>
           </div>
         </div>
-        <div className="mt-5 flex items-center gap-2 text-sm text-copy-secondary">
+        <div className="mt-4 flex items-center gap-2 text-sm text-copy-secondary">
           <Clock3 className="h-4 w-4 text-copy-muted" aria-hidden="true" />
           {bookingType.duration_minutes} minutes
         </div>
-        <Field className="mt-5 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4">
+        <Field className="mt-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4">
           <FieldLabel htmlFor="booking-display-timezone">Display timezone</FieldLabel>
           <Select value={displayTimezone} onValueChange={setDisplayTimezone}>
             <SelectTrigger id="booking-display-timezone" className="w-full">
@@ -359,7 +359,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
         </Field>
       </Card>
 
-      <Card className="p-5 sm:p-6">
+      <Card className="p-4 sm:p-6">
         <div className="grid gap-6 xl:grid-cols-2">
           <section aria-labelledby="booking-times-heading">
             <div className="flex items-center justify-between gap-3">
@@ -380,7 +380,15 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
                 <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void refreshSlots()}>Try again</Button>
               </div>
             ) : slots.length ? (
-              <div className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1" role="radiogroup" aria-label="Available meeting times">
+              <div
+                // Bounded on purpose: a day can expose dozens of slots, and an uncapped
+                // list would make the page jump on every date change. This is a picker,
+                // not page content - see docs/design/design.md 4.5.
+                data-bounded-list
+                className="mt-3 grid max-h-[28rem] gap-2 overflow-y-auto pr-1"
+                role="radiogroup"
+                aria-label="Available meeting times"
+              >
                 {slots.map((slot) => {
                   const selected = selectedSlot?.start_at === slot.start_at;
                   return (
@@ -393,7 +401,7 @@ export default function BookingForm({ slug, ownerHandle }: { slug: string; owner
                         setSelectedSlot(slot);
                         setSubmitError(null);
                       }}
-                      className={`rounded-[var(--radius-control)] border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+                      className={`rounded-[var(--radius-control)] border px-3 py-3 text-left text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
                         selected
                           ? "border-state-success/60 bg-state-success-muted text-copy-primary"
                           : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface-raised"

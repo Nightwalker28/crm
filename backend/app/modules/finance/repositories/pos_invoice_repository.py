@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from sqlalchemy import func
+from datetime import date
+
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope
@@ -17,6 +19,7 @@ POS_INVOICE_SORT_FIELDS = {
     "payment_status": FinancePosInvoice.payment_status,
     "total_amount": FinancePosInvoice.total_amount,
     "amount_paid": FinancePosInvoice.amount_paid,
+    "balance_due": FinancePosInvoice.balance_due,
     "issue_date": FinancePosInvoice.issue_date,
     "due_date": FinancePosInvoice.due_date,
     "template_id": FinancePosInvoice.template_id,
@@ -63,6 +66,12 @@ def build_invoice_query(
         "currency": {"expression": FinancePosInvoice.currency, "type": "text"},
         "total_amount": {"expression": FinancePosInvoice.total_amount, "type": "number"},
         "amount_paid": {"expression": FinancePosInvoice.amount_paid, "type": "number"},
+        "amount_credited": {"expression": FinancePosInvoice.amount_credited, "type": "number"},
+        "balance_due": {"expression": FinancePosInvoice.balance_due, "type": "number"},
+        "source": {"expression": FinancePosInvoice.source, "type": "text"},
+        # Derived (12c §3.2): issued, something still due, and past its due date.
+        "overdue": {"expression": and_(FinancePosInvoice.status == "issued", FinancePosInvoice.balance_due > 0,
+                                       FinancePosInvoice.due_date < date.today()), "type": "boolean"},
         "issue_date": {"expression": FinancePosInvoice.issue_date, "type": "date"},
         "due_date": {"expression": FinancePosInvoice.due_date, "type": "date"},
         "updated_at": {"expression": FinancePosInvoice.updated_at, "type": "date"},

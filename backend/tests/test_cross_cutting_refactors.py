@@ -20,6 +20,7 @@ from app.modules.user_management.models import (
     RoleModulePermission,
     Tenant,
     Team,
+    TeamModulePermission,
     User,
     UserStatus,
 )
@@ -48,6 +49,7 @@ class PermissionPolicyTests(unittest.TestCase):
                 RoleModulePermission(id=99, role_id=99, module_id=10, can_view=1, can_create=1),
                 DepartmentModulePermission(id=10, department_id=10, module_id=10),
                 DepartmentModulePermission(id=99, department_id=99, module_id=10),
+                TeamModulePermission(id=10, team_id=10, module_id=10),
             ]
         )
         self.db.commit()
@@ -85,8 +87,8 @@ class SharedHelperTests(unittest.TestCase):
                 db,
                 tenant_id=10,
                 actor_user_id=1,
-                module_key="support_cases",
-                entity_type="support_case",
+                module_key="sales_orders",
+                entity_type="sales_order",
                 entity_id=7,
                 action="create",
             )
@@ -101,14 +103,14 @@ class SharedHelperTests(unittest.TestCase):
                 db,
                 tenant_id=10,
                 actor_user_id=1,
-                event_type="case.status_changed",
-                entity_type="support_case",
+                event_type="order.status_changed",
+                entity_type="sales_order",
                 entity_id=7,
-                payload={"to": "resolved"},
+                payload={"to": "fulfilled"},
             )
 
         self.assertEqual(event.id, 1)
-        self.assertEqual(emit.call_args.kwargs["payload"], {"entity_type": "support_case", "entity_id": "7", "to": "resolved"})
+        self.assertEqual(emit.call_args.kwargs["payload"], {"entity_type": "sales_order", "entity_id": "7", "to": "fulfilled"})
 
     def test_standard_event_publisher_rejects_unregistered_names(self):
         with self.assertRaises(ValueError):
@@ -116,8 +118,8 @@ class SharedHelperTests(unittest.TestCase):
                 Mock(),
                 tenant_id=10,
                 actor_user_id=1,
-                event_type="case.magic",
-                entity_type="support_case",
+                event_type="order.magic",
+                entity_type="sales_order",
                 entity_id=7,
             )
 
@@ -126,8 +128,7 @@ class ModuleRegistrationChecklistTests(unittest.TestCase):
     def test_recent_operational_modules_are_registered_end_to_end(self):
         expected = {
             "sales_orders": ("/api/v1/sales/orders", "/dashboard/sales/orders"),
-            "support_cases": ("/api/v1/support/cases", "/dashboard/support/cases"),
-            "contracts": ("/api/v1/contracts", "/dashboard/contracts"),
+            "finance_pos": ("/api/v1/finance/invoices", "/dashboard/finance/invoices"),
         }
         seeded_modules = {module["name"]: module["base_route"] for module in DEFAULT_MODULES}
         api_paths = {

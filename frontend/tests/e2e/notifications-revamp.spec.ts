@@ -50,7 +50,7 @@ test("notification center is mobile-safe, marks reads, and rejects external dest
   await page.getByRole("button", { name: "Open notifications, 1 unread" }).first().click();
   await expect(page.getByText("Renewal task assigned").first()).toBeVisible();
   const destination = page.getByRole("link", { name: /Renewal task assigned/ }).first();
-  await expect(destination).toHaveAttribute("href", "/dashboard/settings/activity-log");
+  await expect(destination).toHaveAttribute("href", "/dashboard");
   await expect(page.getByText("https://untrusted.example/redirect")).toBeHidden();
 
   const readRequest = page.waitForRequest(

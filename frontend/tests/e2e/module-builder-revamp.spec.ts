@@ -133,18 +133,20 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/module-builder");
 
-  await expect(page.getByRole("heading", { name: "Module Builder" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Module builder" })).toBeVisible();
   await expect(page.getByRole("combobox", { name: "Module" })).toContainText("Requests");
   await expect(page.getByRole("tab", { name: "Fields" })).toHaveAttribute("aria-selected", "true");
   await page.getByRole("button", { name: "Edit Priority" }).click();
   await expect(page.getByRole("dialog", { name: "Edit field" })).toBeVisible();
   const requiredSetting = page.getByRole("group", { name: "Required" });
   const listSetting = page.getByRole("group", { name: "Include in initial system default view" });
-  await expect(requiredSetting.getByRole("button", { name: "Off" })).toHaveAttribute("aria-pressed", "true");
-  await expect(listSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
-  await requiredSetting.getByRole("button", { name: "On" }).click();
-  await expect(requiredSetting.getByRole("button", { name: "On" })).toHaveAttribute("aria-pressed", "true");
-  await page.getByLabel("Label", { exact: true }).fill("Request Priority");
+  // A boolean property is a SegmentedBoolean: two radios, Yes and No (a state such as
+  // "Field enabled" reads On and Off).
+  await expect(requiredSetting.getByRole("radio", { name: "No" })).toHaveAttribute("aria-checked", "true");
+  await expect(listSetting.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "true");
+  await requiredSetting.getByRole("radio", { name: "Yes" }).click();
+  await expect(requiredSetting.getByRole("radio", { name: "Yes" })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Request Priority");
   await page.getByRole("button", { name: "Done editing field" }).click();
   await page.getByRole("button", { name: "Move Request Priority up" }).click();
   await expect(page.getByText("Unsaved changes")).toBeVisible();
@@ -157,14 +159,14 @@ test("edits and reorders fields from one module-level save on mobile", async ({ 
   const request = await fieldUpdate;
 
   expect(request.postDataJSON()).toMatchObject({ label: "Request Priority", is_required: true, sort_order: 0 });
-  await expect(page.getByText("All changes saved")).toBeVisible();
+  await expect(page.getByText("Unsaved changes")).toHaveCount(0);
 });
 
 test("uses the workspace module selector and guards dirty switching", async ({ page }) => {
   await page.goto("/dashboard/settings/module-builder");
 
   await page.getByRole("button", { name: "Edit Priority" }).click();
-  await page.getByLabel("Label", { exact: true }).fill("Urgency");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Urgency");
   await page.getByRole("button", { name: "Done editing field" }).click();
 
   await page.getByRole("combobox", { name: "Module" }).click();
@@ -183,10 +185,10 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.goto("/dashboard/settings/module-builder");
 
   await page.getByRole("button", { name: "Add field" }).click();
-  await page.getByLabel("Label", { exact: true }).fill("Status");
+  await page.getByRole("textbox", { name: "Label", exact: true }).fill("Status");
   await page.getByLabel("Field type").click();
-  await page.getByRole("option", { name: "single select" }).click();
-  await page.getByLabel("Options").fill("New\nResolved");
+  await page.getByRole("option", { name: "Picklist", exact: true }).click();
+  await page.getByLabel("Values", { exact: true }).fill("New\nResolved");
   await page.getByRole("button", { name: "Done editing field" }).click();
 
   const createRequest = page.waitForRequest((request) =>
@@ -196,13 +198,15 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.getByRole("button", { name: "Save changes" }).click();
   expect((await createRequest).postDataJSON()).toMatchObject({
     label: "Status",
-    field_type: "single_select",
-    validation_json: { options: ["New", "Resolved"] },
+    field_type: "picklist",
+    picklist_values: ["New", "Resolved"],
   });
 
   await expect(page.getByRole("tab", { name: "Permissions" })).toHaveCount(0);
   await expect(page.getByRole("tab", { name: "Automation" })).toHaveCount(0);
+  // Saved views is not a settings route, so it stays in the page header. Permissions and
+  // Automation are reached from the settings hub, through the header's back arrow (the rail
+  // that carried them was removed 2026-10-01).
   await expect(page.getByRole("link", { name: "Saved views" })).toHaveAttribute("href", "/dashboard/views/service_requests");
-  await expect(page.getByRole("link", { name: "Permissions" })).toHaveAttribute("href", "/dashboard/settings/permissions");
-  await expect(page.getByRole("link", { name: "Automation" })).toHaveAttribute("href", "/dashboard/settings/automation");
+  await expect(page.getByRole("link", { name: "Back to all settings" })).toHaveAttribute("href", "/dashboard/settings");
 });

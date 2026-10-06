@@ -33,7 +33,7 @@ class SalesOrderTests(unittest.TestCase):
                 User(id=2, tenant_id=99, email="other@example.com", first_name="Other", last_name="User", is_active=UserStatus.active),
                 SalesOrganization(org_id=20, tenant_id=10, org_name="Acme", primary_email="hello@acme.test"),
                 SalesContact(contact_id=30, tenant_id=10, first_name="Ada", primary_email="ada@acme.test", assigned_to=1, organization_id=20),
-                SalesOpportunity(opportunity_id=40, tenant_id=10, opportunity_name="Acme Pilot", client="Ada", contact_id=30, organization_id=20),
+                SalesOpportunity(opportunity_id=40, tenant_id=10, opportunity_name="Acme Pilot", contact_id=30, organization_id=20),
                 SalesQuote(
                     quote_id=50,
                     tenant_id=10,
@@ -169,7 +169,7 @@ class SalesOrderTests(unittest.TestCase):
                 "status": "draft",
                 "currency": "USD",
                 "delivery_date": date(2026, 8, 1),
-                "delivery_address": " 1 Customer Street ",
+                "shipping_address": " 1 Customer Street ",
                 "payment_terms": " Net 30 ",
                 "notes": " Handle with care ",
                 "subtotal": "99999",
@@ -188,7 +188,7 @@ class SalesOrderTests(unittest.TestCase):
         self.assertEqual(order.tax_total, Decimal("24.00"))
         self.assertEqual(order.grand_total, Decimal("264.00"))
         self.assertEqual(order.delivery_date.isoformat(), "2026-08-01")
-        self.assertEqual(order.delivery_address, "1 Customer Street")
+        self.assertEqual(order.shipping_address, "1 Customer Street")
         self.assertEqual(order.payment_terms, "Net 30")
         self.assertEqual(order.notes, "Handle with care")
         self.assertEqual(order.items[0].line_total, Decimal("209.00"))
@@ -221,7 +221,7 @@ class SalesOrderTests(unittest.TestCase):
                 "opportunity_id": 40,
                 "status": "fulfilled",
                 "currency": "lkr",
-                "delivery_address": "  Colombo  ",
+                "shipping_address": "  Colombo  ",
                 "items": [
                     {"name": "Implementation", "quantity": "2", "unit_price": "100", "discount_amount": "10", "tax_amount": "19"},
                     {"name": "Support", "quantity": "1", "unit_price": "50"},
@@ -232,7 +232,7 @@ class SalesOrderTests(unittest.TestCase):
         self.assertEqual(updated.order_number, "SO-EDITED")
         self.assertEqual(updated.status, "fulfilled")
         self.assertEqual(updated.currency, "LKR")
-        self.assertEqual(updated.delivery_address, "Colombo")
+        self.assertEqual(updated.shipping_address, "Colombo")
         self.assertEqual(updated.subtotal, Decimal("250.00"))
         self.assertEqual(updated.discount_total, Decimal("10.00"))
         self.assertEqual(updated.tax_total, Decimal("19.00"))

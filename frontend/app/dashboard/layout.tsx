@@ -1,9 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { Menu } from "lucide-react";
+import { useState } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ArrowLeft, Menu } from "lucide-react";
 import CalendarSyncBridge from "@/components/calendar/CalendarSyncBridge";
 import Sidebar from "@/components/sidebar/Sidebar";
 import BrowserNotificationsBridge from "@/components/notifications/BrowserNotificationsBridge";
@@ -12,13 +13,14 @@ import NotificationCenter from "@/components/notifications/NotificationCenter";
 import { ProfileMenu } from "@/components/header/ProfileMenu";
 import { HexagonBackground } from "@/components/ui/HexagonBackground";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
+import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getGuardedModuleRoutePrefixes, getModuleRegistryLabel, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -43,9 +45,28 @@ function registryModuleTitle(pathname: string) {
     ?.label;
 }
 
+// The sidebar carries a single flat "Settings" entry that opens the settings landing page.
+// Once a specific settings page is open, the header names that page, using the same label the
+// sidebar and landing page use so the name you click is the name you land on, and a back arrow
+// beside it returns to the landing page. Settings has no second nav rail: the landing page is
+// its one index, and the arrow is the way back to it.
+function settingsPageTitle(pathname: string) {
+  const segments = pathname.slice(SETTINGS_ROUTES.root.length).split("/").filter(Boolean);
+  const leaf = segments[segments.length - 1];
+  if (!leaf) return "Settings";
+  if (segments.length > 1 && segments[segments.length - 2] === "modules" && /^\d+$/.test(leaf)) {
+    return "Access settings";
+  }
+
+  const navItem = [...SETTINGS_NAV_ITEMS]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`));
+
+  return navItem?.label ?? getFriendlyRouteLabel(leaf);
+}
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const { isAdmin, isLoading } = useSidebarUser();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
@@ -61,32 +82,24 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const moduleTitle = pathname === DASHBOARD_ROUTES.home
     ? "Dashboard"
     : pathname === SETTINGS_ROUTES.root || pathname.startsWith(`${SETTINGS_ROUTES.root}/`)
-      ? "Settings"
+      ? settingsPageTitle(pathname)
       : pathname === "/dashboard/profile"
         ? "Profile"
         : viewModuleKey
-          ? getModuleRegistryLabel(viewModuleKey) ?? "View Manager"
+          ? getModuleRegistryLabel(viewModuleKey) ?? "View manager"
           : registryModuleTitle(pathname) ?? (customModule
             ? customModule.display_name?.trim() || getModuleDisplayName(customModule.name, customModule.description ?? undefined)
             : null);
+  const isSettingsSubpage = pathname.startsWith(`${SETTINGS_ROUTES.root}/`);
   const isCheckingAdminAccess = requiresAdmin && isLoading;
   const isCustomModulePath = pathname === "/dashboard/custom" || pathname.startsWith("/dashboard/custom/");
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
   const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
-  const canonicalPathname = canonicalizeDashboardHref(pathname);
-  const hasLegacyPathname = canonicalPathname !== pathname;
   const isModuleBlocked = Boolean(
     (moduleRoute && !modulesLoading && !allowedModuleNames.has(getRequiredModuleKeyForRoute(moduleRoute) ?? "")) ||
       (isCustomModulePath && !modulesLoading && !customModuleRoute),
   );
-
-  useEffect(() => {
-    if (hasLegacyPathname) {
-      router.replace(canonicalPathname);
-      return;
-    }
-  }, [canonicalPathname, hasLegacyPathname, router]);
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-app font-sans text-copy-secondary">
@@ -105,6 +118,9 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       </div>
 
       <Sidebar />
+      {/* The root wraps the header too, so "Open navigation" is the sheet's own trigger: Radix
+          returns focus to its trigger on close, and a plain button that only set state left
+          focus on <body> after Escape (design.md 8). The root renders no DOM. */}
       <Sheet open={mobileNavigationOpen} onOpenChange={setMobileNavigationOpen}>
         <SheetPortal>
           <SheetOverlay className="fixed inset-0 z-40 bg-overlay md:hidden" />
@@ -113,14 +129,22 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
             <Sidebar mobile onNavigate={() => setMobileNavigationOpen(false)} />
           </SheetContent>
         </SheetPortal>
-      </Sheet>
 
       <main className="relative z-10 flex min-w-0 flex-1 overflow-hidden">
         <div className="relative z-20 flex h-full w-full min-w-0 flex-col overflow-hidden bg-transparent">
           <header className="relative z-10 grid min-h-16 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-3 border-b border-line-subtle px-4 py-3 sm:px-6 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,34rem)_minmax(0,1fr)] xl:py-0">
             <div className="flex min-w-0 items-center gap-2">
-              <Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation" aria-expanded={mobileNavigationOpen} onClick={() => setMobileNavigationOpen(true)}><Menu /></Button>
-              {moduleTitle ? <h1 className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</h1> : null}
+              <SheetTrigger asChild><Button type="button" variant="ghost" size="icon-sm" className="md:hidden" aria-label="Open navigation"><Menu /></Button></SheetTrigger>
+              {/* Not an h1: this names the *module*, and `PageHeader` names the page (§8 —
+                  exactly one per page). It was an h1 until every route carried a `PageShell`,
+                  because demoting it sooner would have left the unmigrated pages with no
+                  heading at all. Phase 4 finished that migration. */}
+              {isSettingsSubpage ? (
+                <Button asChild variant="ghost" size="icon-sm">
+                  <Link href={SETTINGS_ROUTES.root} aria-label="Back to all settings" data-testid="settings-back"><ArrowLeft /></Link>
+                </Button>
+              ) : null}
+              {moduleTitle ? <div className="truncate text-sm font-semibold text-copy-primary">{moduleTitle}</div> : null}
             </div>
             <div className="min-w-0">
               <GlobalCommandPalette responsive />
@@ -130,11 +154,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <ProfileMenu />
             </div>
           </header>
-          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-5 sm:px-6 lg:px-8">
+          <div className="scrollbar-hide relative z-30 h-full w-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
+            {/* A recessed, bordered box reading *Checking access...* stood where the page would be,
+                then the page replaced it with a different shape. The route's own loading state is
+                the shape the page is about to take (rebuild 5.7 close-out). */}
             {isCheckingAccess ? (
-              <div className="rounded-[var(--radius-card)] border border-line-subtle bg-surface-muted px-4 py-6 text-sm text-copy-muted">
-                Checking access...
-              </div>
+              <RouteLoadingState />
             ) : isBlocked || isModuleBlocked ? (
               <PermissionDeniedState />
             ) : (
@@ -143,6 +168,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </main>
+      </Sheet>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { DialogLayerCoveredProvider } from "@/components/ui/dialog-layer";
 import {
   Dialog,
   DialogBackdrop,
@@ -56,7 +57,7 @@ export function ConfirmProvider({ children }: { children: ReactNode }) {
 
   return (
     <ConfirmContext.Provider value={confirm}>
-      {children}
+      <DialogLayerCoveredProvider covered={Boolean(pending)}>{children}</DialogLayerCoveredProvider>
       <Dialog open={Boolean(pending)} onClose={() => settle(false)} className="z-50">
         <DialogBackdrop />
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

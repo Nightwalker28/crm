@@ -6,19 +6,8 @@ import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
 import type { PagedListSort } from "@/hooks/usePagedList";
 import { apiFetch } from "@/lib/api";
 
-export type CustomFieldType =
-  | "text"
-  | "textarea"
-  | "number"
-  | "currency"
-  | "date"
-  | "datetime"
-  | "boolean"
-  | "email"
-  | "phone"
-  | "url"
-  | "single_select"
-  | "multi_select";
+/** A key of the one field type set (`lib/fieldTypes.ts`, 13b §3.4). */
+export type CustomFieldType = string;
 
 export type CustomModuleField = {
   id: number;
@@ -31,7 +20,9 @@ export type CustomModuleField = {
   is_unique: boolean;
   display_in_list: boolean;
   default_value?: unknown;
-  validation_json?: { options?: string[] } | null;
+  picklist_key?: string | null;
+  lookup_module_key?: string | null;
+  config?: Record<string, unknown> | null;
   sort_order: number;
   is_active: boolean;
   is_protected: boolean;
@@ -82,7 +73,10 @@ export type CustomModuleFieldPayload = {
   is_unique?: boolean;
   display_in_list?: boolean;
   default_value?: unknown;
-  validation_json?: { options?: string[] } | null;
+  picklist_key?: string | null;
+  picklist_values?: string[] | null;
+  lookup_module_key?: string | null;
+  config?: Record<string, unknown> | null;
   sort_order?: number;
   is_active?: boolean;
 };

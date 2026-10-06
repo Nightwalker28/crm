@@ -11,7 +11,23 @@ import {
 } from 'motion/react';
 
 import { getStrictContext } from '@/lib/get-strict-context';
+import { cn } from '@/lib/utils';
 import { useControlledState } from '@/hooks/use-controlled-state';
+
+/**
+ * The track and thumb, in the primitive (13a H11, H21).
+ *
+ * This was an unstyled animate-ui primitive: a bare `<Switch />` rendered at zero size, and
+ * every call site copied the same track classes, whose checked thumb was `copy-primary` on an
+ * `action-primary` track. In the dark theme both are near-white, so *on* could not be seen.
+ * The checked thumb now takes `action-primary-contrast`, which is the action colour's own
+ * foreground in both themes. Call sites pass only layout; the state is still written as text
+ * beside the switch (design.md §8).
+ */
+const SWITCH_TRACK =
+  'relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border border-line-control bg-surface-raised p-px transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-60 data-[state=checked]:border-action-primary data-[state=checked]:bg-action-primary';
+const SWITCH_THUMB =
+  'block size-5 rounded-full bg-copy-secondary data-[state=checked]:translate-x-5 data-[state=checked]:bg-action-primary-contrast';
 
 type SwitchContextType = {
   isChecked: boolean;
@@ -71,6 +87,7 @@ function Switch(props: SwitchProps) {
           onTapCancel={() => setIsPressed(false)}
           onTap={() => setIsPressed(false)}
           {...buttonProps}
+          className={cn(SWITCH_TRACK, buttonProps.className)}
         />
       </SwitchPrimitives.Root>
     </SwitchProvider>
@@ -105,6 +122,7 @@ function SwitchThumb({
         transition={transition}
         animate={isPressed ? pressedAnimation : undefined}
         {...props}
+        className={cn(SWITCH_THUMB, props.className)}
       />
     </SwitchPrimitives.Thumb>
   );

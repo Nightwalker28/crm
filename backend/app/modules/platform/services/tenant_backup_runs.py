@@ -15,15 +15,19 @@ from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination
 from app.core.uploads import UPLOADS_DIR
-from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
+from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
+    InventoryReturn, InventoryReturnLine, InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
+from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.finance.models import (FinanceCreditAllocation, FinanceCreditNote, FinanceCreditNoteLine, FinancePayment,
+    FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
     DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
     upload_document_storage_artifact,
 )
-from app.modules.platform.models import TenantBackupRun, TenantBackupSettings
+from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistValue, TenantBackupRun, TenantBackupSettings
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_settings import (
     _next_run_at,
@@ -33,12 +37,14 @@ from app.modules.sales.models import (
     SalesContact,
     SalesLead,
     SalesOpportunity,
+    SalesOpportunityContact,
     SalesOrder,
     SalesOrderItem,
     SalesOrganization,
+    SalesPipeline,
+    SalesPipelineStage,
     SalesQuote,
 )
-from app.modules.support.models import SupportCase
 from app.modules.tasks.models import Task
 from app.modules.user_management.models import Tenant, TenantModuleConfig, Module
 
@@ -53,23 +59,76 @@ DESTINATION_PROVIDERS = {
     "onedrive": DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
 }
 
+# In restore order: a whole-tenant restore runs the sets in this order, so each set only
+# points at records the ones before it have restored (deals at accounts and contacts,
+# deliveries and invoices at orders).
 SUPPORTED_MODULE_EXPORTS: dict[str, tuple[str, Any]] = {
-    "sales_leads": ("sales_leads.json", SalesLead),
-    "sales_contacts": ("sales_contacts.json", SalesContact),
     "sales_organizations": ("sales_organizations.json", SalesOrganization),
+    "sales_contacts": ("sales_contacts.json", SalesContact),
+    "sales_leads": ("sales_leads.json", SalesLead),
     "sales_opportunities": ("sales_opportunities.json", SalesOpportunity),
     "sales_quotes": ("sales_quotes.json", SalesQuote),
     "sales_orders": ("sales_orders.json", SalesOrder),
+    "inventory_stock": ("inventory_warehouses.json", InventoryWarehouse),
+    # E5: invoices with their lines, credit notes and payments (12c §3.6).
+    "finance_pos": ("finance_invoices.json", FinancePosInvoice),
     "tasks": ("tasks.json", Task),
     "documents": ("documents.json", Document),
-    "support_cases": ("support_cases.json", SupportCase),
-    "contracts": ("contracts.json", Contract),
 }
 
 MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
+    # Catalog rows are not part of the inventory set: restoring stock must never rewrite
+    # product names, prices or categories. Product stock caches are rebuilt from the ledger.
+    "inventory_stock": [
+        ("inventory_adjustments.json", InventoryAdjustment),
+        ("inventory_adjustment_lines.json", InventoryAdjustmentLine),
+        ("inventory_transfers.json", InventoryTransfer),
+        ("inventory_transfer_lines.json", InventoryTransferLine),
+        # Reservations are derived, so they are rebuilt after a restore, never backed up.
+        ("inventory_deliveries.json", InventoryDelivery),
+        ("inventory_delivery_lines.json", InventoryDeliveryLine),
+        ("inventory_returns.json", InventoryReturn),
+        ("inventory_return_lines.json", InventoryReturnLine),
+        ("purchase_orders.json", PurchaseOrder),
+        ("purchase_order_lines.json", PurchaseOrderLine),
+        ("purchase_receipts.json", PurchaseReceipt),
+        ("purchase_receipt_lines.json", PurchaseReceiptLine),
+        ("purchase_bills.json", PurchaseBill),
+        ("purchase_bill_lines.json", PurchaseBillLine),
+        ("inventory_stock_moves.json", InventoryStockMove),
+        # E6: value-only changes; stock value and average are rebuilt from moves and these.
+        ("inventory_revaluations.json", InventoryRevaluation),
+        ("inventory_stock_levels.json", InventoryStockLevel),
+    ],
+    # Pipelines and stages are restored before the deals that point at them, participants after.
+    "sales_opportunities": [
+        ("sales_pipelines.json", SalesPipeline),
+        ("sales_pipeline_stages.json", SalesPipelineStage),
+        ("sales_opportunity_contacts.json", SalesOpportunityContact),
+    ],
     "sales_orders": [("sales_order_items.json", SalesOrderItem)],
+    # Order matters on restore: each file only points at the ones before it.
+    "finance_pos": [
+        ("finance_invoice_lines.json", FinancePosInvoiceLine),
+        ("finance_credit_notes.json", FinanceCreditNote),
+        ("finance_credit_note_lines.json", FinanceCreditNoteLine),
+        ("finance_credit_allocations.json", FinanceCreditAllocation),
+        ("finance_payments.json", FinancePayment),
+        ("finance_payment_allocations.json", FinancePaymentAllocation),
+    ],
     "documents": [("document_versions.json", DocumentVersion), ("document_links.json", DocumentLink)],
 }
+
+
+# Written into every backup and restored before any set (13b §3.8).
+CONFIGURATION_EXPORTS: list[tuple[str, Any]] = [
+    ("picklists.json", Picklist),
+    ("picklist_values.json", PicklistValue),
+    # The one field system: definitions are configuration; values belong to the records of
+    # each set and are restored with that set.
+    ("field_definitions.json", FieldDefinition),
+    ("field_values.json", FieldValue),
+]
 
 
 def _utc_now() -> datetime:
@@ -426,6 +485,13 @@ def _execute_tenant_backup_run(db: Session, *, run: TenantBackupRun, skip_retent
                     child_rows = _export_model_rows(db, tenant_id=tenant_id, model=child_model)
                     record_counts[child_filename.removesuffix(".json")] = len(child_rows)
                     _write_json(zipf, f"modules/{child_filename}", child_rows)
+
+            # Picklists are configuration every set's records point into (13b §3.8), so every
+            # backup carries them, whatever sets it includes.
+            for config_filename, config_model in CONFIGURATION_EXPORTS:
+                config_rows = _export_model_rows(db, tenant_id=tenant_id, model=config_model)
+                record_counts[config_filename.removesuffix(".json")] = len(config_rows)
+                _write_json(zipf, f"modules/{config_filename}", config_rows)
 
             local_document_files = 0
             if settings.include_documents and "documents" in modules_included:

@@ -9,6 +9,31 @@ class AutomationTrigger:
     module_key: str
     label: str
     description: str
+    # False when nothing in the platform emits it yet. Such a trigger stays valid, so a rule
+    # saved on it still loads, but the builder does not offer it and it cannot be enabled.
+    available: bool = True
+
+
+@dataclass(frozen=True)
+class AutomationDerivedTrigger:
+    """A specific trigger read off a general event, instead of a second event row.
+
+    `quote.accepted` is `quote.status_changed` whose status became `accepted`. Deriving it
+    here covers every path that changes a quote's status (the edit form, the client
+    portal) without each one emitting a copy, and without the copy reaching webhook and
+    Slack consumers as a separate event.
+
+    `field_changes[field]` must exist on the source event (`to_values`, when set, bounds
+    its new value). With `from_payload`, the payload value itself must be set instead: a
+    lead created with an owner is a lead assigned.
+    """
+
+    key: str
+    source_event: str
+    field: str
+    to_values: tuple[str, ...] = ()
+    require_value: bool = False
+    from_payload: bool = False
 
 
 @dataclass(frozen=True)
@@ -19,6 +44,8 @@ class AutomationConditionField:
     field_type: str
     operators: tuple[str, ...]
     options: tuple[tuple[str, str], ...] = ()
+    # A picklist whose values are the options, resolved per tenant (13b §3.3).
+    picklist_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,9 +73,24 @@ TEXT_OPERATORS = ("equals", "not_equals", "contains", "not_contains", "is_empty"
 NUMBER_OPERATORS = ("equals", "not_equals", "gt", "gte", "lt", "lte", "is_empty", "is_not_empty", "in", "not_in", *CHANGE_OPERATORS)
 DATE_OPERATORS = NUMBER_OPERATORS
 SELECT_OPERATORS = ("equals", "not_equals", "is_empty", "is_not_empty", "in", "not_in", *CHANGE_OPERATORS)
+USER_OPERATORS = ("equals", "not_equals", "is_empty", "is_not_empty", *CHANGE_OPERATORS)
 
 
 AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
+    AutomationTrigger("inventory.stock_low", "inventory_stock", "Stock low", "Available stock crosses the reorder point."),
+    AutomationTrigger("inventory.adjustment_posted", "inventory_adjustments", "Adjustment posted", "A stock adjustment is posted."),
+    AutomationTrigger("inventory.delivery_posted", "inventory_deliveries", "Delivery posted", "A delivery for a sales order is posted."),
+    AutomationTrigger("inventory.return_received", "inventory_returns", "Return received", "A customer return is received."),
+    AutomationTrigger("purchase.receipt_posted", "purchase_receipts", "Receipt posted", "Stock is received against a purchase order."),
+    # E6 (12d-erp-costing.md §3.7).
+    AutomationTrigger("inventory.revalued", "inventory_valuation", "Stock revalued", "A product's average cost is revalued, by hand or by a bill's price difference."),
+    # E5 (12c-erp-invoicing.md §3.6).
+    AutomationTrigger("finance.invoice_issued", "finance_pos", "Invoice issued", "An invoice is issued to a customer."),
+    AutomationTrigger("finance.invoice_overdue", "finance_pos", "Invoice past due", "An issued invoice passes its due date with a balance."),
+    AutomationTrigger("finance.payment_recorded", "finance_payments", "Payment recorded", "A payment or refund is recorded."),
+    AutomationTrigger("finance.credit_note_issued", "finance_credit_notes", "Credit note issued", "A credit note is issued against an invoice."),
+    AutomationTrigger("purchase.bill_posted", "purchase_bills", "Bill posted", "A vendor bill is posted."),
+    AutomationTrigger("purchase.bill_overdue", "purchase_bills", "Bill past due", "A posted bill passes its due date unpaid."),
     AutomationTrigger("lead.created", "sales_leads", "Lead created", "A sales lead is created."),
     AutomationTrigger("lead.updated", "sales_leads", "Lead updated", "A sales lead is updated."),
     AutomationTrigger("lead.status_changed", "sales_leads", "Lead status changed", "A sales lead status changes."),
@@ -70,24 +112,34 @@ AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("order.completed", "sales_orders", "Order completed", "A sales order is completed."),
     AutomationTrigger("order.cancelled", "sales_orders", "Order cancelled", "A sales order is cancelled."),
     AutomationTrigger("booking.created", "calendar", "Booking created", "A calendar booking is created."),
-    AutomationTrigger("booking.cancelled", "calendar", "Booking cancelled", "A calendar booking is cancelled."),
-    AutomationTrigger("booking.rescheduled", "calendar", "Booking rescheduled", "A calendar booking is rescheduled."),
-    AutomationTrigger("ticket.created", "support_cases", "Ticket created", "A support ticket is created."),
-    AutomationTrigger("ticket.status_changed", "support_cases", "Ticket status changed", "A support ticket status changes."),
-    AutomationTrigger("ticket.priority_changed", "support_cases", "Ticket priority changed", "A support ticket priority changes."),
-    AutomationTrigger("ticket.replied", "support_cases", "Ticket replied", "A support ticket receives a reply."),
-    AutomationTrigger("case.created", "support_cases", "Support case created", "A support case is created."),
-    AutomationTrigger("case.status_changed", "support_cases", "Support case status changed", "A support case status changes."),
+    AutomationTrigger("booking.cancelled", "calendar", "Booking cancelled", "A calendar booking is cancelled.", available=False),
+    AutomationTrigger("booking.rescheduled", "calendar", "Booking rescheduled", "A calendar booking is rescheduled.", available=False),
     AutomationTrigger("document.uploaded", "documents", "Document uploaded", "A document is uploaded."),
     AutomationTrigger("document.shared", "documents", "Document shared", "A document is shared."),
     AutomationTrigger("task.due_today", "tasks", "Task due today", "A task becomes due today."),
     AutomationTrigger("task.overdue", "tasks", "Task overdue", "A task becomes overdue."),
     AutomationTrigger("task.assigned", "tasks", "Task assigned", "A task is assigned."),
-    AutomationTrigger("invoice.overdue", "finance_io", "Invoice overdue", "An invoice becomes overdue."),
 )
 
 AUTOMATION_TRIGGERS_BY_KEY = {trigger.key: trigger for trigger in AUTOMATION_TRIGGERS}
 SUPPORTED_AUTOMATION_TRIGGERS = frozenset(AUTOMATION_TRIGGERS_BY_KEY)
+AVAILABLE_AUTOMATION_TRIGGERS = frozenset(trigger.key for trigger in AUTOMATION_TRIGGERS if trigger.available)
+
+AUTOMATION_DERIVED_TRIGGERS: tuple[AutomationDerivedTrigger, ...] = (
+    AutomationDerivedTrigger("lead.status_changed", "lead.updated", "status"),
+    AutomationDerivedTrigger("lead.assigned", "lead.updated", "assigned_to", require_value=True),
+    AutomationDerivedTrigger("lead.assigned", "lead.created", "assigned_to", require_value=True, from_payload=True),
+    AutomationDerivedTrigger("quote.sent", "quote.status_changed", "status", ("sent",)),
+    AutomationDerivedTrigger("quote.accepted", "quote.status_changed", "status", ("accepted",)),
+    AutomationDerivedTrigger("quote.rejected", "quote.status_changed", "status", ("declined",)),
+    AutomationDerivedTrigger("quote.expired", "quote.status_changed", "status", ("expired",)),
+    AutomationDerivedTrigger("order.completed", "order.status_changed", "status", ("fulfilled",)),
+    AutomationDerivedTrigger("order.cancelled", "order.status_changed", "status", ("cancelled",)),
+)
+DERIVED_TRIGGERS_BY_SOURCE: dict[str, tuple[AutomationDerivedTrigger, ...]] = {
+    source: tuple(item for item in AUTOMATION_DERIVED_TRIGGERS if item.source_event == source)
+    for source in {item.source_event for item in AUTOMATION_DERIVED_TRIGGERS}
+}
 
 AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("first_name", "sales_leads", "First Name", "text", TEXT_OPERATORS),
@@ -96,7 +148,7 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("primary_email", "sales_leads", "Email", "text", TEXT_OPERATORS),
     AutomationConditionField("phone", "sales_leads", "Phone", "text", TEXT_OPERATORS),
     AutomationConditionField("title", "sales_leads", "Job Title", "text", TEXT_OPERATORS),
-    AutomationConditionField("source", "sales_leads", "Source", "text", TEXT_OPERATORS),
+    AutomationConditionField("source", "sales_leads", "Source", "select", SELECT_OPERATORS, picklist_key="lead_source"),
     AutomationConditionField("score", "sales_leads", "Score", "number", NUMBER_OPERATORS),
     AutomationConditionField(
         "score_grade",
@@ -112,11 +164,22 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
         "Status",
         "select",
         SELECT_OPERATORS,
-        (("new", "New"), ("contacted", "Contacted"), ("qualified", "Qualified"), ("unqualified", "Unqualified"), ("converted", "Converted")),
+        picklist_key="lead_status",
+    ),
+    AutomationConditionField(
+        "status_meaning",
+        "sales_leads",
+        "Status meaning",
+        "select",
+        SELECT_OPERATORS,
+        (("open", "Open"), ("working", "Working"), ("qualified", "Qualified"), ("unqualified", "Unqualified"), ("converted", "Converted")),
     ),
     AutomationConditionField("created_time", "sales_leads", "Created Time", "date", DATE_OPERATORS),
+    AutomationConditionField("assigned_to", "sales_leads", "Owner", "user", USER_OPERATORS),
     AutomationConditionField("opportunity_name", "sales_opportunities", "Deal", "text", TEXT_OPERATORS),
-    AutomationConditionField("client", "sales_opportunities", "Client", "text", TEXT_OPERATORS),
+    AutomationConditionField("deal_type", "sales_opportunities", "Type", "select", SELECT_OPERATORS, picklist_key="deal_type"),
+    AutomationConditionField("source", "sales_opportunities", "Source", "select", SELECT_OPERATORS, picklist_key="lead_source"),
+    AutomationConditionField("lost_reason", "sales_opportunities", "Lost reason", "select", SELECT_OPERATORS, picklist_key="lost_reason"),
     AutomationConditionField(
         "sales_stage",
         "sales_opportunities",
@@ -128,14 +191,23 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
             ("qualified", "Qualified"),
             ("proposal", "Proposal"),
             ("negotiation", "Negotiation"),
-            ("closed_won", "Closed Won"),
-            ("closed_lost", "Closed Lost"),
+            ("closed_won", "Closed won"),
+            ("closed_lost", "Closed lost"),
         ),
+    ),
+    AutomationConditionField(
+        "stage_semantic_type",
+        "sales_opportunities",
+        "Stage outcome",
+        "select",
+        SELECT_OPERATORS,
+        (("open", "Open"), ("ongoing", "In progress"), ("won", "Won"), ("lost", "Lost")),
     ),
     AutomationConditionField("expected_close_date", "sales_opportunities", "Expected Close", "date", DATE_OPERATORS),
     AutomationConditionField("probability_percent", "sales_opportunities", "Probability", "number", NUMBER_OPERATORS),
-    AutomationConditionField("total_cost_of_project", "sales_opportunities", "Project Cost", "number", NUMBER_OPERATORS),
+    AutomationConditionField("amount", "sales_opportunities", "Amount", "number", NUMBER_OPERATORS),
     AutomationConditionField("currency_type", "sales_opportunities", "Currency", "text", TEXT_OPERATORS),
+    AutomationConditionField("assigned_to", "sales_opportunities", "Owner", "user", USER_OPERATORS),
     AutomationConditionField("quote_number", "sales_quotes", "Quote Number", "text", TEXT_OPERATORS),
     AutomationConditionField("customer_name", "sales_quotes", "Customer", "text", TEXT_OPERATORS),
     AutomationConditionField("opportunity_id", "sales_quotes", "Deal ID", "number", NUMBER_OPERATORS),
@@ -151,6 +223,7 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("issue_date", "sales_quotes", "Issue Date", "date", DATE_OPERATORS),
     AutomationConditionField("expiry_date", "sales_quotes", "Expiry Date", "date", DATE_OPERATORS),
     AutomationConditionField("total_amount", "sales_quotes", "Total", "number", NUMBER_OPERATORS),
+    AutomationConditionField("assigned_to", "sales_quotes", "Owner", "user", USER_OPERATORS),
     AutomationConditionField("order_number", "sales_orders", "Order Number", "text", TEXT_OPERATORS),
     AutomationConditionField(
         "status",
@@ -162,28 +235,18 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     ),
     AutomationConditionField("grand_total", "sales_orders", "Total", "number", NUMBER_OPERATORS),
     AutomationConditionField("created_at", "sales_orders", "Created", "date", DATE_OPERATORS),
-    AutomationConditionField("subject", "support_cases", "Subject", "text", TEXT_OPERATORS),
+    AutomationConditionField("owner_id", "sales_orders", "Owner", "user", USER_OPERATORS),
     AutomationConditionField(
-        "status",
-        "support_cases",
-        "Status",
+        "source",
+        "sales_orders",
+        "Source",
         "select",
         SELECT_OPERATORS,
-        (("new", "New"), ("open", "Open"), ("pending", "Pending"), ("resolved", "Resolved"), ("closed", "Closed")),
+        (("crm", "CRM"), ("website", "Website"), ("client_portal", "Client portal")),
     ),
-    AutomationConditionField(
-        "priority",
-        "support_cases",
-        "Priority",
-        "select",
-        SELECT_OPERATORS,
-        (("low", "Low"), ("medium", "Medium"), ("high", "High"), ("urgent", "Urgent")),
-    ),
-    AutomationConditionField("source", "support_cases", "Source", "text", TEXT_OPERATORS),
-    AutomationConditionField("sla_due_at", "support_cases", "SLA Due", "date", DATE_OPERATORS),
     AutomationConditionField("title", "documents", "Title", "text", TEXT_OPERATORS),
-    AutomationConditionField("file_name", "documents", "File Name", "text", TEXT_OPERATORS),
-    AutomationConditionField("category", "documents", "Category", "text", TEXT_OPERATORS),
+    AutomationConditionField("original_filename", "documents", "File Name", "text", TEXT_OPERATORS),
+    AutomationConditionField("extension", "documents", "File Type", "text", TEXT_OPERATORS),
     AutomationConditionField("created_at", "documents", "Created", "date", DATE_OPERATORS),
     AutomationConditionField("title", "tasks", "Title", "text", TEXT_OPERATORS),
     AutomationConditionField(
@@ -203,6 +266,9 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
         (("high", "High"), ("medium", "Medium"), ("low", "Low")),
     ),
     AutomationConditionField("due_at", "tasks", "Due Date", "date", DATE_OPERATORS),
+    AutomationConditionField("guest_name", "calendar", "Guest Name", "text", TEXT_OPERATORS),
+    AutomationConditionField("guest_email", "calendar", "Guest Email", "text", TEXT_OPERATORS),
+    AutomationConditionField("start_at", "calendar", "Meeting Start", "date", DATE_OPERATORS),
 )
 
 AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
@@ -210,42 +276,47 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "documents", "tasks", "calendar", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills", "inventory_valuation")
+# Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
+# note on a task or a document had nowhere to render.
+NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders")
+
 AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
     AutomationAction(
         "create_task",
         "record",
         "Create task",
         "Create a follow-up task linked to the triggering record.",
-        ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io"),
+        RECORD_MODULE_KEYS,
         (
-            AutomationActionField("title", "Title", "text", True, "Follow up with {{payload.lead_name}}"),
+            AutomationActionField("title", "Title", "text", True, "Follow up on {{payload.record_label}}"),
             AutomationActionField("description", "Description", "textarea", False, "Optional task notes"),
             AutomationActionField("priority", "Priority", "select", False, options=(("high", "High"), ("medium", "Medium"), ("low", "Low"))),
             AutomationActionField("due_in_days", "Due in days", "number", False, "1"),
-            AutomationActionField("assignee_user_id", "Assignee", "actor_or_user_id", False, "actor"),
+            AutomationActionField("assignee_user_id", "Assign to", "user", False, "owner"),
         ),
     ),
     AutomationAction(
         "add_record_note",
         "record",
-        "Create note",
-        "Add a note/comment to the triggering record.",
-        ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io"),
+        "Add note",
+        "Add a note to the triggering record's timeline.",
+        NOTE_MODULE_KEYS,
         (
-            AutomationActionField("body", "Note", "textarea", True, "Automation note for {{entity_id}}"),
+            AutomationActionField("body", "Note", "textarea", True, "Automation note"),
         ),
     ),
     AutomationAction(
         "send_notification",
         "communication",
-        "Notify user",
-        "Create an internal notification for a user.",
-        ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io"),
+        "Notify someone",
+        "Send an in-app notification that links to the triggering record.",
+        RECORD_MODULE_KEYS,
         (
-            AutomationActionField("user_id", "User", "actor_or_user_id", True, "actor"),
-            AutomationActionField("title", "Title", "text", True, "Automation notification"),
+            AutomationActionField("user_id", "Notify", "user", True, "owner"),
+            AutomationActionField("title", "Title", "text", True, "Heads up: {{payload.record_label}}"),
             AutomationActionField("message", "Message", "textarea", True, "An automation rule ran."),
-            AutomationActionField("link_url", "Link URL", "text", False, "/dashboard"),
+            AutomationActionField("link_url", "Link", "text", False, "Leave blank to link the record"),
         ),
     ),
     AutomationAction(
@@ -254,15 +325,13 @@ AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
         "Recalculate lead score",
         "Refresh the lead score for the triggering lead.",
         ("sales_leads",),
-        (
-            AutomationActionField("lead_id", "Lead ID", "payload_or_number", False, "Uses triggering lead when blank"),
-        ),
+        (),
     ),
     AutomationAction(
         "convert_lead_to_opportunity",
         "workflow",
         "Convert lead",
-        "Convert the triggering lead into an account, contact, and opportunity.",
+        "Convert the triggering lead into an account, contact, and deal.",
         ("sales_leads",),
         (
             AutomationActionField("deal_stage", "Deal stage", "select", False, options=(("qualified", "Qualified"), ("proposal", "Proposal"), ("negotiation", "Negotiation"))),
@@ -273,23 +342,9 @@ AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
         "convert_quote_to_order",
         "workflow",
         "Create order from quote",
-        "Create a sales order from the triggering accepted quote.",
+        "Create a sales order from the triggering quote.",
         ("sales_quotes",),
-        (
-            AutomationActionField("quote_id", "Quote ID", "payload_or_number", False, "Uses triggering quote when blank"),
-        ),
-    ),
-    AutomationAction(
-        "assign_support_case",
-        "workflow",
-        "Assign support case",
-        "Assign the triggering support case and notify the assignee.",
-        ("support_cases",),
-        (
-            AutomationActionField("assignee_user_id", "Assignee", "actor_or_user_id", True, "actor"),
-            AutomationActionField("notification_title", "Notification title", "text", False, "Support case assigned"),
-            AutomationActionField("notification_message", "Notification message", "textarea", False, "{{payload.subject}} needs attention."),
-        ),
+        (),
     ),
 )
 
@@ -316,14 +371,47 @@ def serialize_trigger(trigger: AutomationTrigger) -> dict[str, str]:
 
 
 def grouped_trigger_registry() -> list[dict[str, object]]:
-    module_keys = sorted({trigger.module_key for trigger in AUTOMATION_TRIGGERS})
+    """The triggers the builder offers: only those something actually emits."""
+
+    offered = [trigger for trigger in AUTOMATION_TRIGGERS if trigger.available]
+    module_keys = sorted({trigger.module_key for trigger in offered})
     return [
         {
             "module_key": module_key,
-            "triggers": [serialize_trigger(trigger) for trigger in AUTOMATION_TRIGGERS if trigger.module_key == module_key],
+            "triggers": [serialize_trigger(trigger) for trigger in offered if trigger.module_key == module_key],
         }
         for module_key in module_keys
     ]
+
+
+def is_trigger_available(trigger_key: str) -> bool:
+    return (trigger_key or "").strip() in AVAILABLE_AUTOMATION_TRIGGERS
+
+
+def derived_trigger_keys(event_type: str, payload: dict[str, object] | None) -> list[str]:
+    """The specific triggers a general event also satisfies (see `AutomationDerivedTrigger`)."""
+
+    payload = payload or {}
+    changes = payload.get("field_changes")
+    changes = changes if isinstance(changes, dict) else {}
+    keys: list[str] = []
+    for derived in DERIVED_TRIGGERS_BY_SOURCE.get(event_type, ()):
+        if derived.from_payload:
+            new_value = payload.get(derived.field)
+        else:
+            change = changes.get(derived.field)
+            if not isinstance(change, dict):
+                continue
+            new_value = change.get("to")
+            if new_value == change.get("from"):
+                continue
+        if derived.require_value and new_value in {None, ""}:
+            continue
+        if derived.to_values and str(new_value) not in derived.to_values:
+            continue
+        if derived.key not in keys:
+            keys.append(derived.key)
+    return keys
 
 
 def condition_fields_for_module(module_key: str) -> tuple[AutomationConditionField, ...]:
@@ -344,6 +432,7 @@ def serialize_condition_field(field: AutomationConditionField) -> dict[str, obje
         "field_type": field.field_type,
         "operators": list(field.operators),
         "options": [{"value": value, "label": label} for value, label in field.options],
+        "picklist_key": field.picklist_key,
     }
 
 
@@ -379,4 +468,139 @@ def serialize_action(action: AutomationAction) -> dict[str, object]:
             }
             for field in action.fields
         ],
+    }
+
+
+@dataclass(frozen=True)
+class AutomationTemplate:
+    """A ready-made rule. Using one opens the builder prefilled; nothing runs until it is saved and enabled."""
+
+    key: str
+    name: str
+    description: str
+    category: str
+    trigger_event: str
+    actions: tuple[dict[str, object], ...]
+    conditions: tuple[dict[str, object], ...] = ()
+    condition_mode: str = "all"
+
+
+AUTOMATION_TEMPLATES: tuple[AutomationTemplate, ...] = (
+    AutomationTemplate(
+        "inventory_low_stock_task", "Review low stock", "Create a task when a product crosses its reorder point.",
+        "Inventory", "inventory.stock_low",
+        ({"type": "create_task", "title": "Reorder {{payload.record_label}}", "description": "Available: {{payload.available}} in {{payload.warehouse_name}}. Reorder quantity: {{payload.reorder_quantity}}.", "priority": "high", "due_in_days": 0, "assignee_user_id": "actor"},),
+    ),
+    AutomationTemplate(
+        "new_lead_follow_up",
+        "Follow up on every new lead",
+        "Give the lead's owner a task to reach out within a day.",
+        "Leads",
+        "lead.created",
+        ({"type": "create_task", "title": "Follow up with {{payload.record_label}}", "priority": "high", "due_in_days": 1, "assignee_user_id": "owner"},),
+    ),
+    AutomationTemplate(
+        "lead_assigned_notify",
+        "Tell a rep when a lead is assigned to them",
+        "Notify the new owner the moment a lead lands on their desk.",
+        "Leads",
+        "lead.assigned",
+        ({"type": "send_notification", "user_id": "owner", "title": "New lead: {{payload.record_label}}", "message": "You are now the owner of this lead."},),
+    ),
+    AutomationTemplate(
+        "qualified_lead_proposal",
+        "Prepare a proposal for qualified leads",
+        "When a lead becomes qualified, ask its owner to prepare a proposal.",
+        "Leads",
+        "lead.status_changed",
+        ({"type": "create_task", "title": "Prepare a proposal for {{payload.record_label}}", "priority": "medium", "due_in_days": 2, "assignee_user_id": "owner"},),
+        conditions=({"field": "payload.status", "operator": "changed_to", "value": "qualified"},),
+    ),
+    AutomationTemplate(
+        "unassigned_lead_alert",
+        "Flag new leads that have no owner",
+        "Notify whoever created a lead without an owner, so it is not left unworked.",
+        "Leads",
+        "lead.created",
+        ({"type": "send_notification", "user_id": "actor", "title": "Unassigned lead: {{payload.record_label}}", "message": "This lead has no owner yet. Assign it so someone follows up."},),
+        conditions=({"field": "payload.assigned_to", "operator": "is_empty", "value": None},),
+    ),
+    AutomationTemplate(
+        "deal_won_onboarding",
+        "Start onboarding when a deal is won",
+        "Create a kickoff task for the deal owner and log a note on the deal.",
+        "Deals",
+        "opportunity.won",
+        (
+            {"type": "create_task", "title": "Kick off onboarding for {{payload.record_label}}", "priority": "high", "due_in_days": 2, "assignee_user_id": "owner"},
+            {"type": "add_record_note", "body": "Deal won. Onboarding task created for the owner."},
+        ),
+    ),
+    AutomationTemplate(
+        "deal_lost_review",
+        "Review lost deals",
+        "Ask the owner to record why a deal was lost while it is fresh.",
+        "Deals",
+        "opportunity.lost",
+        ({"type": "create_task", "title": "Record the loss reason for {{payload.record_label}}", "priority": "low", "due_in_days": 3, "assignee_user_id": "owner"},),
+    ),
+    AutomationTemplate(
+        "quote_sent_follow_up",
+        "Chase quotes after they are sent",
+        "Remind the quote owner to check in three days after sending.",
+        "Quotes",
+        "quote.sent",
+        ({"type": "create_task", "title": "Check in on quote {{payload.record_label}}", "priority": "medium", "due_in_days": 3, "assignee_user_id": "owner"},),
+    ),
+    AutomationTemplate(
+        "quote_accepted_order",
+        "Turn accepted quotes into orders",
+        "Create the sales order automatically and tell the owner.",
+        "Quotes",
+        "quote.accepted",
+        (
+            {"type": "convert_quote_to_order"},
+            {"type": "send_notification", "user_id": "owner", "title": "Quote {{payload.record_label}} accepted", "message": "A sales order was created from this quote."},
+        ),
+    ),
+    AutomationTemplate(
+        "invoice_overdue_chase",
+        "Chase overdue invoices",
+        "Give the invoice owner a task to collect payment.",
+        "Finance",
+        "finance.invoice_overdue",
+        ({"type": "create_task", "title": "Collect payment for {{payload.record_label}}", "priority": "high", "due_in_days": 1, "assignee_user_id": "owner"},),
+    ),
+    AutomationTemplate(
+        "task_overdue_nudge",
+        "Nudge on overdue tasks",
+        "Notify the assignee when one of their tasks slips past its due date.",
+        "Tasks",
+        "task.overdue",
+        ({"type": "send_notification", "user_id": "owner", "title": "Overdue: {{payload.record_label}}", "message": "This task is past its due date."},),
+    ),
+    AutomationTemplate(
+        "booking_prep",
+        "Prepare for booked meetings",
+        "When someone books a meeting, give the host a prep task.",
+        "Calendar",
+        "booking.created",
+        ({"type": "create_task", "title": "Prepare for the meeting with {{payload.guest_name}}", "priority": "medium", "due_in_days": 0, "assignee_user_id": "owner"},),
+    ),
+)
+
+AUTOMATION_TEMPLATES_BY_KEY = {template.key: template for template in AUTOMATION_TEMPLATES}
+
+
+def serialize_template(template: AutomationTemplate) -> dict[str, object]:
+    return {
+        "key": template.key,
+        "name": template.name,
+        "description": template.description,
+        "category": template.category,
+        "module_key": module_key_for_trigger(template.trigger_event),
+        "trigger_event": template.trigger_event,
+        "condition_mode": template.condition_mode,
+        "conditions_json": [dict(condition) for condition in template.conditions],
+        "actions_json": [dict(action) for action in template.actions],
     }

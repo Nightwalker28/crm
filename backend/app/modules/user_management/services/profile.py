@@ -1,3 +1,4 @@
+import re
 import json
 
 from fastapi import HTTPException, UploadFile, status
@@ -18,20 +19,20 @@ TABLE_PREFERENCE_MODULES = {
     "sales_opportunities",
     "sales_quotes",
     "admin_users",
-    "finance_io",
 }
 
 SAVED_VIEW_MODULES = {
     *TABLE_PREFERENCE_MODULES,
     "sales_orders",
-    "contracts",
-    "support_cases",
     "finance_pos",
     "finance_payments",
     "catalog_products",
     "catalog_services",
+    "inventory_stock",
 }
-SYSTEM_DEFAULT_VIEW_NAME = "Default View"
+# Sentence case (design.md 3.5). Views stored under the old "Default View" are renamed by
+# _resync_system_saved_view on their next read, so no migration is needed.
+SYSTEM_DEFAULT_VIEW_NAME = "Default view"
 COMPANY_OPERATING_CURRENCIES_CACHE_TTL_SECONDS = 300
 SAVED_VIEW_MAX_CONFIG_BYTES = 64_000
 SAVED_VIEW_MAX_DEPTH = 8
@@ -188,8 +189,9 @@ def get_or_create_company_profile(db: Session, current_user: User) -> CompanyPro
         .first()
     )
     if profile:
-        if not getattr(profile, "operating_currencies", None):
-            profile.operating_currencies = ["USD"]
+        if not getattr(profile, "operating_currencies", None) or not profile.base_currency:
+            profile.operating_currencies = profile.operating_currencies or ["USD"]
+            profile.base_currency = profile.base_currency or str(profile.operating_currencies[0]).strip().upper()[:3] or "USD"
             db.add(profile)
             db.commit()
             db.refresh(profile)
@@ -199,6 +201,7 @@ def get_or_create_company_profile(db: Session, current_user: User) -> CompanyPro
         tenant_id=current_user.tenant_id,
         name="Your Company",
         operating_currencies=["USD"],
+        base_currency="USD",
     )
     db.add(profile)
     db.commit()
@@ -215,9 +218,31 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
             setattr(profile, field, _clean(payload[field]))
     if "operating_currencies" in payload:
         profile.operating_currencies = _clean_currency_list(payload["operating_currencies"])
+    policy_changed = False
+    if payload.get("invoicing_policy") in {"delivered", "ordered"} and payload["invoicing_policy"] != profile.invoicing_policy:
+        profile.invoicing_policy = payload["invoicing_policy"]
+        policy_changed = True
+    if "default_payment_terms_days" in payload:
+        profile.default_payment_terms_days = payload["default_payment_terms_days"]
+    if payload.get("base_currency"):
+        requested = str(payload["base_currency"]).strip().upper()
+        if not requested.isalpha() or len(requested) != 3:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Base currency must be a three-letter code")
+        if requested != (profile.base_currency or "").upper():
+            from app.modules.inventory.services.costing import valuation_started
+
+            # Changing it would need every stock value restated at a rate nobody has (12d §5 decision 10).
+            if valuation_started(db, tenant_id=current_user.tenant_id):
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="The base currency cannot change once stock has been valued")
+            profile.base_currency = requested
 
     profile.updated_by = current_user.id if current_user else None
     db.add(profile)
+    if policy_changed:
+        from app.modules.finance.services.invoicing_services import recompute_tenant
+
+        db.flush()
+        recompute_tenant(db, tenant_id=current_user.tenant_id)
     db.commit()
     db.refresh(profile)
     if should_invalidate_currencies:
@@ -462,6 +487,9 @@ def _assert_saved_view_config_size(config: dict) -> None:
         raise ValueError("Saved view config is too large")
 
 
+SAVED_VIEW_DISPLAY_PATTERN = re.compile(r"[a-z][a-z_]{0,19}")
+
+
 def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     if config is not None and not isinstance(config, dict):
         raise ValueError("Saved view config must be an object")
@@ -522,10 +550,16 @@ def _normalize_saved_view_config(module_key: str, config: dict | None) -> dict:
     normalized_filters["search"] = search.strip() if isinstance(search, str) else ""
     sort = config.get("sort")
     normalized_sort = sort if isinstance(sort, dict) else None
+    # How the list renders the same population (04-pipelines-kanban Phase 4): `table`,
+    # `pipeline`, … An identifier the client validates against the module's own modes;
+    # anything else is dropped rather than stored, so a view never carries free text here.
+    display = config.get("display")
+    normalized_display = display.strip() if isinstance(display, str) and SAVED_VIEW_DISPLAY_PATTERN.fullmatch(display.strip()) else None
     return {
         "visible_columns": normalized_columns,
         "filters": normalized_filters,
         "sort": normalized_sort,
+        "display": normalized_display,
     }
 
 
@@ -608,6 +642,46 @@ def _find_system_saved_view(db: Session, user: User, module_key: str) -> UserSav
     return next((view for view in saved_views if _is_system_saved_view(view)), None)
 
 
+def _resync_system_saved_view(
+    db: Session,
+    system_view: UserSavedView,
+    module_key: str,
+    visible_columns: list[str],
+) -> UserSavedView:
+    """Keeps a system default view tracking the columns the module currently defines.
+
+    A system view is only ever written by _build_system_default_config -- update_saved_view
+    rejects edits to it -- so its stored config is a materialised copy of the platform
+    defaults rather than anything the user chose. When those defaults change, an untouched
+    copy silently rots: keys the module has since renamed survive in the database, the client
+    drops them as unknown, and the list degrades to whatever happens to be left. Re-deriving
+    the copy is safe precisely because no user intent can be lost with it.
+
+    Skipped when the caller reports no defaults, so a client that omits the parameter cannot
+    blank out a stored view. The name is re-derived the same way and for the same reason: it
+    is the platform's label, not the user's, and it changed case in rebuild 5.10.
+    """
+    renamed = system_view.name != SYSTEM_DEFAULT_VIEW_NAME
+    if renamed:
+        system_view.name = SYSTEM_DEFAULT_VIEW_NAME
+
+    config = system_view.config if isinstance(system_view.config, dict) else {}
+    stored_columns = config.get("visible_columns")
+    columns_current = isinstance(stored_columns, list) and list(stored_columns) == list(visible_columns)
+    if not visible_columns or columns_current:
+        if renamed:
+            db.add(system_view)
+            db.commit()
+            db.refresh(system_view)
+        return system_view
+
+    system_view.config = _build_system_default_config(module_key, visible_columns)
+    db.add(system_view)
+    db.commit()
+    db.refresh(system_view)
+    return system_view
+
+
 def _get_or_create_system_saved_view(
     db: Session,
     user: User,
@@ -617,7 +691,7 @@ def _get_or_create_system_saved_view(
 ) -> UserSavedView:
     system_view = _find_system_saved_view(db, user, module_key)
     if system_view:
-        return system_view
+        return _resync_system_saved_view(db, system_view, module_key, visible_columns)
 
     system_view = UserSavedView(
         user_id=user.id,
@@ -638,6 +712,48 @@ def _get_or_create_system_saved_view(
     return system_view
 
 
+# Preset views a module ships with, as (name, all-conditions). Users who already had views
+# for the module when its presets arrived got them from that module's migration.
+PRESET_SAVED_VIEWS = {
+    "inventory_stock": (
+        ("Low stock", [{"field": "low_stock", "operator": "is", "value": True}]),
+        ("Out of stock", [{"field": "available", "operator": "lte", "value": 0}]),
+    ),
+    # E3 (12a-erp-fulfilment.md §3.5); the same two are in migration 20260831_inventory_deliveries.
+    "sales_orders": (
+        ("To deliver", [{"field": "status", "operator": "is", "value": "confirmed"},
+                        {"field": "delivery_status", "operator": "is_not", "value": "none"}]),
+        ("Waiting for stock", [{"field": "waiting_for_stock", "operator": "is", "value": True}]),
+        # E5; also in migration 20260904_invoicing.
+        ("To invoice", [{"field": "invoice_status", "operator": "is", "value": "to_invoice"}]),
+    ),
+    # E5 (12c-erp-invoicing.md §3.5); also in migration 20260904_invoicing.
+    "finance_pos": (
+        ("Overdue", [{"field": "overdue", "operator": "is", "value": True}]),
+    ),
+    # E4; the same preset is in migration 20260903_purchasing for users who had account views.
+    "sales_organizations": (
+        ("Vendors", [{"field": "is_vendor", "operator": "is", "value": True}]),
+    ),
+}
+
+
+def _seed_preset_views(db: Session, user: User, module_key: str, visible_columns: list[str]) -> None:
+    """Give a user a module's presets on their first visit only, so a preset they delete or
+    rename stays deleted or renamed."""
+    has_views = db.query(UserSavedView.id).filter(
+        UserSavedView.user_id == user.id, UserSavedView.module_key == module_key,
+    ).first() is not None
+    if has_views:
+        return
+    for name, conditions in PRESET_SAVED_VIEWS[module_key]:
+        slug = name.lower().replace(" ", "-")
+        db.add(UserSavedView(user_id=user.id, module_key=module_key, name=name, is_default=0,
+            config=_normalize_saved_view_config(module_key, {"visible_columns": visible_columns,
+                "filters": {"search": "", "all_conditions": [{"id": f"{slug}-{index}", **condition} for index, condition in enumerate(conditions)], "any_conditions": []}})))
+    db.commit()
+
+
 def list_saved_views(
     db: Session,
     user: User,
@@ -646,6 +762,8 @@ def list_saved_views(
     default_visible_columns: list[str],
 ) -> list[dict]:
     _ensure_supported_saved_view_module(db, user, module_key)
+    if module_key in PRESET_SAVED_VIEWS:
+        _seed_preset_views(db, user, module_key, default_visible_columns)
     legacy_preference = (
         get_user_table_preference(db, user, module_key)
         if module_key in TABLE_PREFERENCE_MODULES or module_key not in SAVED_VIEW_MODULES
@@ -663,7 +781,9 @@ def list_saved_views(
         .all()
     )
     system_view = next((view for view in saved_views if _is_system_saved_view(view)), None)
-    if not system_view:
+    if system_view:
+        _resync_system_saved_view(db, system_view, module_key, default_columns)
+    else:
         system_view = _get_or_create_system_saved_view(
             db,
             user,

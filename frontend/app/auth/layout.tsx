@@ -1,40 +1,14 @@
-"use client";
+import type { ReactNode } from "react";
 
-import { HexagonBackground } from "@/components/ui/HexagonBackground";
+import { AuthAtmosphere } from "@/components/auth/AuthAtmosphere";
 
-export default function AuthLayout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
-  return (
-    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-app text-copy-primary">
-      {/* hexagon background */}
-      <HexagonBackground
-        hexagonMargin={5}
-        hexagonSize={70}
-        className="absolute inset-0 z-0 text-copy-muted/40"
-      />
-
-      {/* noise-like grid shimmer */}
-      <div className="pointer-events-none absolute inset-0 z-1 mix-blend-soft-light opacity-[0.5] bg-[linear-gradient(90deg,rgba(255,255,255,0.06)_1px,transparent_1px),linear-gradient(rgba(255,255,255,0.06)_1px,transparent_1px)] bg-size-[2.5px_2.5px]" />
-      
-      {/* vignette */}
-      <div className="pointer-events-none absolute inset-0 z-2 bg-[radial-gradient(circle_at_center,transparent_55%,rgba(0,0,0,0.40))]" />
-
-      {/* card */}
-      <div className="relative z-20 w-full max-w-sm overflow-hidden rounded-[var(--radius-dialog)] border border-line-default bg-surface/80 px-8 py-8 shadow-[var(--shadow-panel)] backdrop-blur-xl">
-        {/* inner card gradients */}
-        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.15),transparent_60%),radial-gradient(circle_at_bottom_right,rgba(255,255,255,0.07),transparent_60%)] opacity-80" />
-
-        {/* card noise */}
-        <div
-          className="noise-overlay absolute inset-0 pointer-events-none rounded-md opacity-5"
-        ></div>
-
-        {/* actual page content */}
-        <div className="relative z-10 text-center">{children}</div>
-      </div>
-    </main>
-  );
+/**
+ * The atmosphere moved to `AuthAtmosphere` so `/client/login` and `/client/setup` can take
+ * the same door (rebuild 5.8, ruling 3) — they sit outside this route segment, so a layout
+ * cannot reach them. The raw `rgba()` this file carried is tokenised there, not deleted:
+ * §9 records that the auth surface's atmosphere is intent, and that a cleanup making a
+ * screen more correct and less itself has gone wrong.
+ */
+export default function AuthLayout({ children }: { children: ReactNode }) {
+  return <AuthAtmosphere>{children}</AuthAtmosphere>;
 }

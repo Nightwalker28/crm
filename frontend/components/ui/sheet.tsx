@@ -2,10 +2,17 @@
 
 import * as React from 'react';
 import { Dialog as SheetPrimitive } from 'radix-ui';
-import { AnimatePresence, motion, type HTMLMotionProps } from 'motion/react';
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type HTMLMotionProps,
+} from 'motion/react';
 
 import { getStrictContext } from '@/lib/get-strict-context';
+import { useDialogLayerCovered } from '@/components/ui/dialog-layer';
 import { useControlledState } from '@/hooks/use-controlled-state';
+import { cn } from '@/lib/utils';
 
 type SheetContextType = {
   isOpen: boolean;
@@ -23,12 +30,16 @@ function Sheet(props: SheetProps) {
     defaultValue: props.defaultOpen,
     onChange: props.onOpenChange,
   });
+  const covered = useDialogLayerCovered();
 
   return (
     <SheetProvider value={{ isOpen, setIsOpen }}>
       <SheetPrimitive.Root
         data-slot="sheet"
         {...props}
+        // While a confirmation sits on top, the sheet releases its focus trap and body
+        // pointer lock so the dialog above it can be reached.
+        modal={covered ? false : props.modal}
         onOpenChange={setIsOpen}
       />
     </SheetProvider>
@@ -71,15 +82,18 @@ function SheetOverlay({
   transition = { duration: 0.2, ease: 'easeInOut' },
   ...props
 }: SheetOverlayProps) {
+  const shouldReduceMotion = useReducedMotion();
+
   return (
     <SheetPrimitive.Overlay asChild forceMount>
       <motion.div
         key="sheet-overlay"
         data-slot="sheet-overlay"
-        initial={{ opacity: 0, filter: 'blur(4px)' }}
+        data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
+        initial={shouldReduceMotion ? false : { opacity: 0, filter: 'blur(4px)' }}
         animate={{ opacity: 1, filter: 'blur(0px)' }}
-        exit={{ opacity: 0, filter: 'blur(4px)' }}
-        transition={transition}
+        exit={shouldReduceMotion ? undefined : { opacity: 0, filter: 'blur(4px)' }}
+        transition={shouldReduceMotion ? { duration: 0 } : transition}
         {...props}
       />
     </SheetPrimitive.Overlay>
@@ -97,10 +111,28 @@ function SheetContent({
   side = 'right',
   transition = { type: 'spring', stiffness: 150, damping: 22 },
   style,
+  className,
   children,
+  onInteractOutside,
+  onEscapeKeyDown,
   ...props
 }: SheetContentProps) {
+  const shouldReduceMotion = useReducedMotion();
+  const covered = useDialogLayerCovered();
   const axis = side === 'left' || side === 'right' ? 'x' : 'y';
+
+  // Releasing `modal` also hands dismissal back to Radix, which would treat a click on the
+  // confirmation above as an outside interaction and close the sheet underneath it. While
+  // covered, the sheet ignores outside interaction and Escape; the dialog on top owns both.
+  const guardWhileCovered = <TEvent extends { preventDefault: () => void }>(
+    handler: ((event: TEvent) => void) | undefined,
+  ) => (event: TEvent) => {
+    if (covered) {
+      event.preventDefault();
+      return;
+    }
+    handler?.(event);
+  };
 
   const offscreen: Record<Side, { x?: string; y?: string; opacity: number }> = {
     right: { x: '100%', opacity: 0 },
@@ -117,20 +149,33 @@ function SheetContent({
   };
 
   return (
-    <SheetPrimitive.Content asChild forceMount {...props}>
+    <SheetPrimitive.Content
+      asChild
+      forceMount
+      onInteractOutside={guardWhileCovered(onInteractOutside)}
+      onEscapeKeyDown={guardWhileCovered(onEscapeKeyDown)}
+      {...props}
+    >
       <motion.div
         key="sheet-content"
         data-slot="sheet-content"
         data-side={side}
-        initial={offscreen[side]}
+        aria-hidden={covered || undefined}
+        inert={covered}
+        data-reduced-motion={shouldReduceMotion ? 'true' : 'false'}
+        // A sheet genuinely floats, so it is one of the things 4.6 gives a
+        // shadow to - and the shadow belongs here, not retyped as `shadow-2xl`
+        // at each of the twelve call sites.
+        className={cn('shadow-[var(--shadow-panel)]', className)}
+        initial={shouldReduceMotion ? false : offscreen[side]}
         animate={{ [axis]: 0, opacity: 1 }}
-        exit={offscreen[side]}
+        exit={shouldReduceMotion ? undefined : offscreen[side]}
         style={{
           position: 'fixed',
           ...positionStyle[side],
           ...style,
         }}
-        transition={transition}
+        transition={shouldReduceMotion ? { duration: 0 } : transition}
       >
         {children}
       </motion.div>

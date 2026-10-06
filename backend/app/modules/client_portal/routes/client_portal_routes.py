@@ -25,11 +25,6 @@ from app.modules.client_portal.schema import (
     ClientCatalogItemResponse,
     ClientCatalogListResponse,
     ClientCatalogRequestCreate,
-    ClientSupportCaseCommentCreate,
-    ClientSupportCaseCommentResponse,
-    ClientSupportCaseCreate,
-    ClientSupportCaseListResponse,
-    ClientSupportCaseResponse,
     ClientPageActionRequest,
     ClientPageActionResponse,
     ClientPageCreateRequest,
@@ -39,7 +34,6 @@ from app.modules.client_portal.schema import (
     ClientPageUpdateRequest,
     ClientPortalOrderListResponse,
     ClientPortalOrderResponse,
-    ClientQuickQuestionCreate,
     ClientLoginRequest,
     ClientLoginResponse,
     ClientMeResponse,
@@ -114,14 +108,6 @@ from app.modules.sales.services.quotes_services import (
     respond_to_client_quote,
     serialize_client_quote,
 )
-from app.modules.support.services.cases_services import (
-    add_client_support_case_comment,
-    create_client_support_case,
-    get_client_support_case_or_404,
-    list_client_support_cases,
-    serialize_client_support_case,
-    update_client_support_case_status,
-)
 from app.modules.user_management.models import Tenant
 
 
@@ -130,8 +116,6 @@ client_auth_router = APIRouter(prefix="/client-auth", tags=["Client Auth"])
 public_client_pages_router = APIRouter(prefix="/client-pages", tags=["Client Pages"])
 client_catalog_router = APIRouter(prefix="/client-catalog", tags=["Client Catalog"])
 client_orders_router = APIRouter(prefix="/client-orders", tags=["Client Orders"])
-client_support_router = APIRouter(prefix="/client-support", tags=["Client Support"])
-client_messages_router = APIRouter(prefix="/client-messages", tags=["Client Messages"])
 client_documents_router = APIRouter(prefix="/client-documents", tags=["Client Documents"])
 client_quotes_router = APIRouter(prefix="/client-quotes", tags=["Client Quotes"])
 client_bookings_router = APIRouter(prefix="/client-bookings", tags=["Client Bookings"])
@@ -352,6 +336,8 @@ def get_client_accounts(
     limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -364,6 +350,8 @@ def get_client_accounts_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -386,6 +374,8 @@ def create_client_account_route(
     payload: ClientAccountCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "create")),
 ):
     _require_linked_customer_access(
         db,
@@ -408,6 +398,8 @@ def regenerate_client_setup_link_route(
     account_id: int,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     account = get_client_account_or_404(db, tenant_id=current_user.tenant_id, account_id=account_id)
     _require_linked_customer_access(
@@ -427,6 +419,8 @@ def update_client_account_status_route(
     payload: ClientAccountStatusRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     account = get_client_account_or_404(db, tenant_id=current_user.tenant_id, account_id=account_id)
     _require_linked_customer_access(
@@ -452,6 +446,8 @@ def get_client_pages(
     limit: int = Query(default=100, ge=1, le=200),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -465,6 +461,8 @@ def get_client_pages_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "view")),
     require_module=Depends(require_module_access("sales_contacts")),
     require_permission=Depends(require_action_access("sales_contacts", "view")),
 ):
@@ -490,6 +488,8 @@ def create_client_page_route(
     payload: ClientPageCreateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "create")),
 ):
     _require_linked_customer_access(
         db,
@@ -513,6 +513,8 @@ def update_client_page_route(
     payload: ClientPageUpdateRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     page = get_client_page_or_404(db, tenant_id=current_user.tenant_id, page_id=page_id)
     _require_linked_customer_access(
@@ -537,6 +539,8 @@ def publish_client_page_link_route(
     payload: ClientPagePublishRequest,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
+    require_portal_module=Depends(require_module_access("client_portal")),
+    require_portal_permission=Depends(require_action_access("client_portal", "edit")),
 ):
     page = get_client_page_or_404(db, tenant_id=current_user.tenant_id, page_id=page_id)
     _require_linked_customer_access(
@@ -729,253 +733,6 @@ def get_client_order_route(
     return ClientPortalOrderResponse.model_validate(serialize_client_order(order))
 
 
-@client_support_router.get("/cases", response_model=ClientSupportCaseListResponse)
-def list_client_support_cases_route(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    cases = list_client_support_cases(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-    )
-    return {"results": [ClientSupportCaseResponse.model_validate(serialize_client_support_case(case)) for case in cases]}
-
-
-@client_support_router.post("/cases", response_model=ClientSupportCaseResponse, status_code=status.HTTP_201_CREATED)
-def create_client_support_case_route(
-    payload: ClientSupportCaseCreate,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    case = create_client_support_case(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        payload=payload.model_dump(),
-    )
-    safe_log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=case.id,
-        action="portal.ticket.created",
-        description=f"Client created support case {case.case_number}",
-        after_state=serialize_client_support_case(case),
-    )
-    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(case))
-
-
-@client_support_router.get("/cases/{case_id}", response_model=ClientSupportCaseResponse)
-def get_client_support_case_route(
-    case_id: int,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    case = get_client_support_case_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        case_id=case_id,
-    )
-    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(case))
-
-
-@client_support_router.post("/cases/{case_id}/comments", response_model=ClientSupportCaseCommentResponse, status_code=status.HTTP_201_CREATED)
-def create_client_support_case_comment_route(
-    case_id: int,
-    payload: ClientSupportCaseCommentCreate,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    case = get_client_support_case_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        case_id=case_id,
-    )
-    comment = add_client_support_case_comment(db, case=case, payload=payload.model_dump())
-    safe_log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=case.id,
-        action="portal.ticket.replied",
-        description=f"Client replied to support case {case.case_number}",
-    )
-    return ClientSupportCaseCommentResponse.model_validate(
-        {
-            "id": comment.id,
-            "case_id": comment.case_id,
-            "body": comment.body,
-            "is_internal": comment.is_internal,
-            "author_type": "client",
-            "author_display_name": "Client",
-            "created_at": comment.created_at,
-        }
-    )
-
-
-@client_support_router.post("/cases/{case_id}/{action}", response_model=ClientSupportCaseResponse)
-def update_client_support_case_status_route(
-    case_id: int,
-    action: str,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    case = get_client_support_case_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        case_id=case_id,
-    )
-    updated = update_client_support_case_status(db, case=case, action=action)
-    safe_log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=case.id,
-        action=f"client_{action}",
-        description=f"Client updated support case {case.case_number}",
-        after_state=serialize_client_support_case(updated),
-    )
-    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(updated))
-
-
-@client_messages_router.get("", response_model=ClientSupportCaseListResponse)
-def list_client_messages_route(
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    messages = list_client_support_cases(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        source="client_portal_message",
-    )
-    return {"results": [ClientSupportCaseResponse.model_validate(serialize_client_support_case(message)) for message in messages]}
-
-
-@client_messages_router.post("", response_model=ClientSupportCaseResponse, status_code=status.HTTP_201_CREATED)
-def create_client_message_route(
-    payload: ClientQuickQuestionCreate,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    message = create_client_support_case(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        payload={
-            "subject": payload.subject,
-            "description": payload.message,
-            "category": "question",
-            "priority": "medium",
-        },
-        source="client_portal_message",
-        event_type="client_message_created",
-    )
-    safe_log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=message.id,
-        action="portal.message.sent",
-        description=f"Client asked quick question {message.case_number}",
-        after_state=serialize_client_support_case(message),
-    )
-    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(message))
-
-
-@client_messages_router.get("/{message_id}", response_model=ClientSupportCaseResponse)
-def get_client_message_route(
-    message_id: int,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    message = get_client_support_case_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        case_id=message_id,
-        source="client_portal_message",
-    )
-    return ClientSupportCaseResponse.model_validate(serialize_client_support_case(message))
-
-
-@client_messages_router.post("/{message_id}/comments", response_model=ClientSupportCaseCommentResponse, status_code=status.HTTP_201_CREATED)
-def create_client_message_comment_route(
-    message_id: int,
-    payload: ClientSupportCaseCommentCreate,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    message = get_client_support_case_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        case_id=message_id,
-        source="client_portal_message",
-    )
-    comment = add_client_support_case_comment(db, case=message, payload=payload.model_dump())
-    safe_log_activity(
-        db,
-        tenant_id=account.tenant_id,
-        actor_user_id=None,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=message.id,
-        action="portal.message.sent",
-        description=f"Client replied to quick question {message.case_number}",
-    )
-    return ClientSupportCaseCommentResponse.model_validate(
-        {
-            "id": comment.id,
-            "case_id": comment.case_id,
-            "body": comment.body,
-            "is_internal": comment.is_internal,
-            "author_type": "client",
-            "author_display_name": "Client",
-            "created_at": comment.created_at,
-        }
-    )
-
-
 @client_documents_router.get("", response_model=ClientDocumentListResponse)
 def list_client_documents_route(
     request: Request,
@@ -1137,6 +894,7 @@ def respond_to_client_quote_route(
             "client_account_id": account.id,
             "previous_status": previous_status,
             "status": updated.status,
+            "field_changes": {"status": {"from": previous_status, "to": updated.status}},
             "message": (payload.message or "").strip() or None,
             "href": f"/dashboard/sales/quotes/{updated.quote_id}",
         },

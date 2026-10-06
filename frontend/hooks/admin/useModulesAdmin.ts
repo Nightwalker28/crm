@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { invalidateModuleCache } from "@/hooks/useAccessibleModules";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type AdminModule = {
   id: number;
@@ -52,7 +52,7 @@ export type ModuleAccess = {
 
 async function fetchModules(): Promise<AdminModule[]> {
   const res = await apiFetch("/admin/users/modules");
-  if (!res.ok) throw new Error("Module settings could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Module settings could not be loaded.");
   return res.json();
 }
 
@@ -68,7 +68,7 @@ async function updateModule(moduleId: number, payload: Partial<AdminModule>) {
 
 async function fetchSidebarTabs(): Promise<SidebarTab[]> {
   const res = await apiFetch("/admin/users/sidebar-tabs");
-  if (!res.ok) throw new Error("Sidebar groups could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Sidebar groups could not be loaded.");
   return res.json();
 }
 
@@ -94,7 +94,7 @@ async function updateSidebarTab(tabKey: string, payload: { label?: string; sort_
 
 async function fetchModuleAccess(moduleId: number): Promise<ModuleAccess> {
   const res = await apiFetch(`/admin/users/modules/${moduleId}/access`);
-  if (!res.ok) throw new Error("Module access could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Module access could not be loaded.");
   return res.json();
 }
 

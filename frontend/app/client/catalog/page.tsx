@@ -1,20 +1,24 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRight, PackageSearch, Search } from "lucide-react";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { useState } from "react";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Card } from "@/components/ui/Card";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { ListRow, RowList } from "@/components/ui/ListRow";
+import { Money } from "@/components/ui/Money";
+import { PageShell } from "@/components/ui/PageShell";
+import SearchBar from "@/components/ui/SearchBar";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientCatalog, type ClientCatalogItem } from "@/hooks/useClientPortal";
+import { getCatalogStockStatus, getGenericStatus } from "@/lib/statusStyles";
 
-function money(value: string | number, currency: string) {
-  const amount = Number(value);
-  return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
-}
-
-function availabilityLabel(item: ClientCatalogItem) {
-  return item.kind === "service" ? "Available" : item.availability_status.replaceAll("_", " ");
+/**
+ * A service is always orderable, so it has no stock state to report — `getGenericStatus`
+ * carries the flat "Available" without claiming a stock tone it does not have.
+ */
+function availability(item: ClientCatalogItem) {
+  return item.kind === "service" ? getGenericStatus("available") : getCatalogStockStatus(item.availability_status);
 }
 
 export default function ClientCatalogPage() {
@@ -23,58 +27,48 @@ export default function ClientCatalogPage() {
   const items = catalogQuery.data?.results ?? [];
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-6xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client">Overview</Link>
-          </Button>
-        </header>
-
-        <section className="mb-5 flex flex-wrap items-end justify-between gap-3">
-          <div>
-            <div className="flex items-center gap-2 text-sm text-copy-secondary">
-              <PackageSearch className="h-4 w-4" />
-              Client catalog
-            </div>
-            <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">Products and services</h1>
-          </div>
-          <div className="relative w-full sm:w-80">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-copy-muted" />
-            <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search catalog" className="pl-9" />
-          </div>
-        </section>
-
-        {catalogQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading catalog...</div>
-        ) : catalogQuery.error ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {catalogQuery.error instanceof Error ? catalogQuery.error.message : "Failed to load catalog."}
-          </div>
-        ) : items.length === 0 ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">No published catalog items are available.</div>
-        ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <PageShell
+      title="Products and services"
+      actions={<SearchBar value={search} onChange={setSearch} placeholder="Search catalog" className="w-full sm:w-80" />}
+      isLoading={catalogQuery.isLoading}
+      hasError={Boolean(catalogQuery.error)}
+      backHref="/client"
+      backLabel="Return to the portal"
+      onRetry={() => catalogQuery.refetch()}
+    >
+      {items.length === 0 ? (
+        <EmptyState
+          title={search ? "No catalog items match that search" : "No catalog items published"}
+          description={
+            search
+              ? "Try a shorter search, or clear it to see everything published to your account."
+              : "Products and services published to your account will appear here, at your account's pricing."
+          }
+        />
+      ) : (
+        // A row over a card (§1.5). This was a three-column card grid, which spent a box per
+        // product to say what a row says in one line.
+        <Card className="p-0">
+          <RowList label="Catalog" inset>
             {items.map((item) => (
-              <Link key={`${item.kind}-${item.id}`} href={`/client/catalog/${item.kind}/${item.id}`} className="group rounded-md border border-line-default bg-surface p-4 transition-colors hover:border-line-strong hover:bg-surface-raised">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="text-xs uppercase text-copy-muted">{item.kind}</div>
-                    <h2 className="mt-1 truncate font-semibold text-copy-primary">{item.name}</h2>
-                  </div>
-                  <ArrowRight className="h-4 w-4 text-copy-muted transition-transform group-hover:translate-x-0.5" />
-                </div>
-                {item.description ? <p className="mt-2 line-clamp-2 text-sm leading-6 text-copy-secondary">{item.description}</p> : null}
-                <div className="mt-4 flex items-center justify-between gap-3 text-sm">
-                  <span className="capitalize text-copy-secondary">{availabilityLabel(item)}</span>
-                  <span className="font-semibold text-copy-primary">{money(item.resolved_unit_price, item.currency)}</span>
-                </div>
-              </Link>
+              <ListRow
+                key={`${item.kind}-${item.id}`}
+                title={item.name}
+                href={`/client/catalog/${item.kind}/${item.id}`}
+                meta={<span>{formatSnakeCaseLabel(item.kind)}</span>}
+                trailing={
+                  <span className="flex items-center gap-3">
+                    <StatusValue status={availability(item)} />
+                    <Money amount={item.resolved_unit_price} currency={item.currency} className="font-medium text-copy-primary" />
+                  </span>
+                }
+              >
+                {item.description ?? null}
+              </ListRow>
             ))}
-          </div>
-        )}
-      </div>
-    </main>
+          </RowList>
+        </Card>
+      )}
+    </PageShell>
   );
 }

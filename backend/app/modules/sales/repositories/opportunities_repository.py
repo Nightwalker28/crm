@@ -14,11 +14,10 @@ from app.modules.user_management.models import User
 
 OPPORTUNITY_SORT_FIELDS = {
     "opportunity_name": SalesOpportunity.opportunity_name,
-    "client": SalesOpportunity.client,
     "sales_stage": SalesOpportunity.sales_stage,
     "expected_close_date": SalesOpportunity.expected_close_date,
     "probability_percent": SalesOpportunity.probability_percent,
-    "total_cost_of_project": SalesOpportunity.total_cost_of_project,
+    "amount": SalesOpportunity.amount,
     "currency_type": SalesOpportunity.currency_type,
     "created_time": SalesOpportunity.created_time,
 }
@@ -55,12 +54,8 @@ def organization_exists(db: Session, *, tenant_id: int, organization_id: int) ->
 def apply_search_filter(query, search: str | None):
     document = searchable_text(
         SalesOpportunity.opportunity_name,
-        SalesOpportunity.client,
         SalesOpportunity.sales_stage,
-        SalesOpportunity.campaign_type,
-        SalesOpportunity.target_geography,
-        SalesOpportunity.target_audience,
-        SalesOpportunity.tactics,
+        SalesOpportunity.next_step,
     )
     return apply_ranked_search(
         query,
@@ -84,16 +79,17 @@ def build_opportunity_query(
     )
     field_map = {
         "opportunity_name": {"expression": SalesOpportunity.opportunity_name, "type": "text"},
-        "client": {"expression": SalesOpportunity.client, "type": "text"},
         "sales_stage": {"expression": SalesOpportunity.sales_stage, "type": "text"},
         "contact_id": {"expression": SalesOpportunity.contact_id, "type": "number"},
         "organization_id": {"expression": SalesOpportunity.organization_id, "type": "number"},
         "assigned_to": {"expression": SalesOpportunity.assigned_to, "type": "number"},
         "expected_close_date": {"expression": SalesOpportunity.expected_close_date, "type": "date"},
         "probability_percent": {"expression": SalesOpportunity.probability_percent, "type": "number"},
-        "total_cost_of_project": {"expression": SalesOpportunity.total_cost_of_project, "type": "text"},
+        "amount": {"expression": SalesOpportunity.amount, "type": "number"},
         "currency_type": {"expression": SalesOpportunity.currency_type, "type": "text"},
-        "target_geography": {"expression": SalesOpportunity.target_geography, "type": "text"},
+        "deal_type": {"expression": SalesOpportunity.deal_type, "type": "text"},
+        "source": {"expression": SalesOpportunity.source, "type": "text"},
+        "lost_reason": {"expression": SalesOpportunity.lost_reason, "type": "text"},
         "created_time": {"expression": SalesOpportunity.created_time, "type": "date"},
         **build_custom_field_filter_map(
             db,
@@ -191,19 +187,9 @@ def list_cursor(
     return query.order_by(None).order_by(SalesOpportunity.opportunity_id.desc()).limit(limit + 1).all()
 
 
-def _opportunity_value_expression(db: Session):
-    value = func.coalesce(SalesOpportunity.total_cost_of_project, "")
-    if db.bind is not None and db.bind.dialect.name == "postgresql":
-        trimmed = func.trim(value)
-        numeric_text = func.replace(trimmed, ",", "")
-        return case(
-            (
-                trimmed.op("~")(r"^\s*-?[0-9][0-9,]*(\.[0-9]+)?\s*$"),
-                cast(numeric_text, Numeric(18, 2)),
-            ),
-            else_=literal(0),
-        )
-    return cast(func.replace(value, ",", ""), Numeric(18, 2))
+def opportunity_value_expression(db: Session):
+    """The deal amount, a number since 13b Phase 3 (13a A4); an empty amount counts as zero."""
+    return func.coalesce(SalesOpportunity.amount, 0)
 
 
 def summarize_pipeline(
@@ -213,7 +199,7 @@ def summarize_pipeline(
     search: str | None = None,
     all_filter_conditions: list[dict] | None = None,
     any_filter_conditions: list[dict] | None = None,
-) -> list[tuple[str | None, int, Decimal | None]]:
+) -> list[tuple[int | None, str | None, int, Decimal | None, str]]:
     query = build_opportunity_query(
         db,
         tenant_id=tenant_id,
@@ -224,11 +210,18 @@ def summarize_pipeline(
     return (
         query.order_by(None)
         .with_entities(
+            SalesOpportunity.pipeline_stage_id,
             SalesOpportunity.sales_stage,
             func.count(SalesOpportunity.opportunity_id),
-            func.coalesce(func.sum(_opportunity_value_expression(db)), 0),
+            func.coalesce(func.sum(opportunity_value_expression(db)), 0),
+            # Summed per currency, so the caller converts before adding (13a H5).
+            func.upper(func.trim(func.coalesce(SalesOpportunity.currency_type, ""))),
         )
-        .group_by(SalesOpportunity.sales_stage)
+        .group_by(
+            SalesOpportunity.pipeline_stage_id,
+            SalesOpportunity.sales_stage,
+            func.upper(func.trim(func.coalesce(SalesOpportunity.currency_type, ""))),
+        )
         .all()
     )
 
@@ -262,6 +255,37 @@ def get_opportunity(
     if not include_deleted:
         query = query.filter(SalesOpportunity.deleted_at.is_(None))
     return query.first()
+
+
+def lock_opportunity(
+    db: Session,
+    *,
+    tenant_id: int,
+    opportunity_id: int,
+) -> SalesOpportunity | None:
+    """Take a row lock on a deal so its relationship writes serialize.
+
+    Participant operations read the current association set, decide, and then
+    write; without a lock two concurrent operations can both read the same "before"
+    and produce a state neither caller asked for — for example two promotions
+    racing on the single-primary invariant, or an add racing a removal of the same
+    contact. Locking the parent, not the association rows, is what makes the whole
+    decision atomic, including the case where no association row exists yet.
+
+    Read-only participant listing does not take this lock. `FOR UPDATE` is a no-op
+    on SQLite, so the unit-test session relies on the database constraints instead,
+    which are the same ones that back this up in PostgreSQL.
+    """
+
+    return (
+        db.query(SalesOpportunity)
+        .filter(
+            SalesOpportunity.opportunity_id == opportunity_id,
+            SalesOpportunity.tenant_id == tenant_id,
+        )
+        .with_for_update()
+        .first()
+    )
 
 
 def get_deleted_opportunity(

@@ -1,17 +1,13 @@
 "use client";
-import { RouteErrorState } from "@/components/ui/RouteStates";
 
-export default function PaymentsError({
-  reset,
-}: {
-  error: Error & { digest?: string };
-  reset: () => void;
-}) {
+import { RouteErrorState, type RouteErrorBoundaryProps } from "@/components/ui/RouteStates";
+
+export default function PaymentsError({ reset }: RouteErrorBoundaryProps) {
   return (
     <RouteErrorState
-      title="Unable to load payments"
+      title="Payments could not be loaded"
       reset={reset}
-      backHref="/dashboard/finance/pos"
+      backHref="/dashboard/finance/invoices"
       backLabel="Return to invoices"
     />
   );

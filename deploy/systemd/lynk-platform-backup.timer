@@ -1,0 +1,12 @@
+[Unit]
+Description=Run the Lynk platform backup every night
+
+[Timer]
+# 02:30 local time; the script files it as monthly (1st), weekly (Sunday) or daily.
+OnCalendar=*-*-* 02:30:00
+RandomizedDelaySec=15m
+# A backup missed while the host was off runs at the next boot.
+Persistent=true
+
+[Install]
+WantedBy=timers.target

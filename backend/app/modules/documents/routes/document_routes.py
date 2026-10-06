@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
+from app.core.pagination import build_paged_response, create_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.documents.schema import (
@@ -50,6 +51,8 @@ from app.modules.documents.services.document_services import (
     update_document_template_status,
     upload_document_version,
 )
+from app.modules.platform.models import CrmEvent
+from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
 
 
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -163,6 +166,11 @@ def get_documents(
     module_key: str | None = Query(default=None, max_length=100),
     entity_id: str | None = Query(default=None, max_length=100),
     is_template: bool | None = Query(default=None),
+    page: int = Query(default=1, ge=1),
+    page_size: int | None = Query(default=None, ge=1, le=100),
+    # The library list had no paging at all and asked for one window of `limit` rows. The
+    # scoped panels that mount this route inside a record still do, so `limit` stays as the
+    # alias for `page_size` rather than becoming a second concept.
     limit: int = Query(default=50, ge=1, le=100),
     sort_by: str | None = Query(default=None, max_length=80),
     sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
@@ -171,6 +179,7 @@ def get_documents(
     require_module=Depends(require_module_access("documents")),
     require_permission=Depends(require_action_access("documents", "view")),
 ):
+    pagination = create_pagination(page, page_size or limit)
     documents, total = list_documents(
         db,
         tenant_id=current_user.tenant_id,
@@ -178,12 +187,16 @@ def get_documents(
         module_key=module_key,
         entity_id=entity_id,
         is_template=is_template,
-        limit=limit,
+        limit=pagination.limit,
+        offset=pagination.offset,
         sort_by=sort_by,
         sort_direction=sort_direction,
         current_user=current_user,
     )
-    return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
+    results = [DocumentResponse.model_validate(document) for document in documents]
+    # `total` is kept beside the shared envelope: the record panels and the mail composer
+    # read it, and a paged list is an addition to this route rather than a replacement.
+    return {**build_paged_response(results, total, pagination), "total": total}
 
 
 @router.get("/cursor")
@@ -236,6 +249,37 @@ def get_document_templates(
     return {"results": [DocumentResponse.model_validate(document) for document in documents], "total": total}
 
 
+def _emit_document_event(db: Session, *, current_user, document, event_type: str, once: bool = False, extra: dict | None = None) -> None:
+    """Automation triggers for documents. Emitted after the write, best-effort.
+
+    `once` guards the upload: a retried request with the same idempotency key returns the
+    document it already created, and that is not a second upload.
+    """
+
+    if once and db.query(CrmEvent.id).filter(
+        CrmEvent.tenant_id == current_user.tenant_id,
+        CrmEvent.event_type == event_type,
+        CrmEvent.entity_type == "document",
+        CrmEvent.entity_id == str(document.id),
+    ).first():
+        return
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id,
+        event_type=event_type,
+        entity_type="document",
+        entity_id=document.id,
+        payload={
+            **actor_payload(current_user),
+            "document_id": document.id,
+            "title": document.title,
+            "original_filename": document.original_filename,
+            **(extra or {}),
+        },
+    )
+
+
 @router.post("", response_model=DocumentResponse)
 def upload_document(
     file: UploadFile = File(...),
@@ -280,6 +324,7 @@ def upload_document(
         storage_provider=storage_provider,
         current_user=current_user,
     )
+    _emit_document_event(db, current_user=current_user, document=document, event_type="document.uploaded", once=True)
     return DocumentResponse.model_validate(document)
 
 
@@ -338,6 +383,8 @@ def create_document_client_share(
         payload=payload.model_dump(),
         current_user=current_user,
     )
+    document = get_document_or_404(db, tenant_id=current_user.tenant_id, document_id=document_id)
+    _emit_document_event(db, current_user=current_user, document=document, event_type="document.shared", extra={"share_id": share.id})
     return DocumentClientShareResponse.model_validate(share)
 
 

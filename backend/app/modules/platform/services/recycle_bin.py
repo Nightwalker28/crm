@@ -14,14 +14,12 @@ from app.modules.catalog.services.service_services import (
     restore_service,
     serialize_service,
 )
-from app.modules.finance.services.io_search_services import (
-    _finance_record_customer_name,
-    _serialize_finance_record_state,
-    get_deleted_insertion_order_or_404,
-    get_finance_module_id,
-    list_deleted_insertion_orders,
-    restore_insertion_order,
-)
+from fastapi.encoders import jsonable_encoder
+
+from app.modules.inventory.repositories import document_repository as inventory_documents
+from app.modules.inventory.services.document_services import restore_draft as restore_inventory_draft, serialize_document as serialize_inventory_document
+from app.modules.inventory.models import InventoryDelivery, InventoryReturn
+from app.modules.inventory.services import delivery_services, return_services
 from app.modules.documents.schema import DocumentResponse
 from app.modules.documents.services.document_services import list_deleted_documents, restore_document
 from app.modules.platform.services.activity_logs import log_activity
@@ -53,6 +51,7 @@ from app.modules.sales.services.quotes_services import (
 )
 from app.modules.sales.schema import SalesContactResponse, SalesLeadResponse, SalesOrganizationResponse, SalesQuoteResponse
 from app.modules.sales.schema import SalesOpportunityResponse
+from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.calendar.services.calendar_services import (
     get_calendar_event_or_404,
     list_deleted_calendar_events,
@@ -68,7 +67,6 @@ from app.modules.tasks.services.tasks_services import (
 
 
 SUPPORTED_RECYCLE_MODULES = {
-    "finance_insertion_orders",
     "sales_leads",
     "sales_contacts",
     "sales_organizations",
@@ -79,7 +77,18 @@ SUPPORTED_RECYCLE_MODULES = {
     "documents",
     "catalog_products",
     "catalog_services",
+    "inventory_adjustments",
+    "inventory_transfers",
+    "inventory_deliveries",
+    "inventory_returns",
+    "purchase_orders",
+    "purchase_receipts",
+    # E5: drafts only; issued invoices, credit notes and posted bills are voided, never removed.
+    "finance_pos",
+    "finance_credit_notes",
+    "purchase_bills",
 }
+INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
 
 def list_recycle_items(
@@ -89,27 +98,6 @@ def list_recycle_items(
     module_key: str,
     tenant_id: int,
 ):
-    if module_key == "finance_insertion_orders":
-        module_id = get_finance_module_id(db)
-        items, total = list_deleted_insertion_orders(
-            db,
-            tenant_id=tenant_id,
-            module_id=module_id,
-            pagination=pagination,
-        )
-        serialized = [
-            {
-                "module_key": module_key,
-                "record_id": item.id,
-                "title": item.io_number,
-                "subtitle": _finance_record_customer_name(item),
-                "deleted_at": item.deleted_at,
-                "details": _serialize_finance_record_state(item),
-            }
-            for item in items
-        ]
-        return build_paged_response(serialized, total_count=total, pagination=pagination)
-
     if module_key == "sales_contacts":
         items, total = list_deleted_sales_contacts(db, tenant_id, pagination)
         serialized = [
@@ -167,7 +155,7 @@ def list_recycle_items(
                 "module_key": module_key,
                 "record_id": item.opportunity_id,
                 "title": item.opportunity_name,
-                "subtitle": item.client or item.sales_stage or "Opportunity",
+                "subtitle": item.organization_name or (item.sales_stage and opportunity_stage_facts(item).label) or "Opportunity",
                 "deleted_at": item.deleted_at,
                 "details": SalesOpportunityResponse.model_validate(item).model_dump(mode="json"),
             }
@@ -287,6 +275,85 @@ def list_recycle_items(
         ]
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
+    if module_key == "inventory_deliveries":
+        query = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == tenant_id, InventoryDelivery.deleted_at.isnot(None)).order_by(
+            InventoryDelivery.deleted_at.desc(), InventoryDelivery.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = delivery_services.serialize_delivery(db, tenant_id=tenant_id, doc=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details["order_number"], "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in {"purchase_orders", "purchase_receipts"}:
+        from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+        from app.modules.purchasing.services.purchase_order_services import serialize_order
+        from app.modules.purchasing.services.receipt_services import serialize_receipt
+
+        model = PurchaseOrder if module_key == "purchase_orders" else PurchaseReceipt
+        query = db.query(model).filter(model.tenant_id == tenant_id, model.deleted_at.isnot(None)).order_by(model.deleted_at.desc(), model.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = serialize_order(db, tenant_id=tenant_id, order=item, include_lines=False) if module_key == "purchase_orders" \
+                else serialize_receipt(db, tenant_id=tenant_id, receipt=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details.get("vendor_name"), "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in {"finance_pos", "finance_credit_notes", "purchase_bills"}:
+        from app.modules.finance.models import FinanceCreditNote, FinancePosInvoice
+        from app.modules.finance.services import credit_note_services
+        from app.modules.finance.services.pos_invoice_services import serialize_invoice
+        from app.modules.purchasing.models import PurchaseBill
+        from app.modules.purchasing.services.bill_services import serialize_bill
+
+        model = {"finance_pos": FinancePosInvoice, "finance_credit_notes": FinanceCreditNote, "purchase_bills": PurchaseBill}[module_key]
+        query = db.query(model).filter(model.tenant_id == tenant_id, model.deleted_at.isnot(None)).order_by(model.deleted_at.desc(), model.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            if module_key == "finance_pos":
+                details, title, subtitle = serialize_invoice(item, include_lines=False), item.invoice_number or "Draft invoice", item.customer_name
+            elif module_key == "finance_credit_notes":
+                details = credit_note_services.serialize(db, item, include_lines=False)
+                title, subtitle = item.number or "Draft credit note", details.get("invoice_number")
+            else:
+                details = serialize_bill(db, tenant_id=tenant_id, bill=item, include_lines=False)
+                title, subtitle = item.number, details.get("vendor_name")
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": title, "subtitle": subtitle,
+                "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key == "inventory_returns":
+        query = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == tenant_id, InventoryReturn.deleted_at.isnot(None)).order_by(
+            InventoryReturn.deleted_at.desc(), InventoryReturn.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = return_services.serialize_return(db, tenant_id=tenant_id, doc=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number,
+                "subtitle": details["delivery_number"], "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in INVENTORY_DOCUMENT_KINDS:
+        kind = INVENTORY_DOCUMENT_KINDS[module_key]
+        query = inventory_documents.deleted_list(db, tenant_id=tenant_id, kind=kind)
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = serialize_inventory_document(db, tenant_id=tenant_id, kind=kind, doc=item, include_lines=False)
+            serialized.append({
+                "module_key": module_key,
+                "record_id": item.id,
+                "title": item.number,
+                "subtitle": details["warehouse_name"] if kind == "adjustments" else f"{details['from_warehouse_name']} → {details['to_warehouse_name']}",
+                "deleted_at": item.deleted_at,
+                "details": jsonable_encoder(details),
+            })
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
     if custom_modules.is_custom_module_key(db, tenant_id=tenant_id, module_key=module_key):
         return custom_modules.list_deleted_records_for_recycle(
             db,
@@ -305,29 +372,6 @@ def restore_recycle_item(
     record_id: int,
     current_user,
 ):
-    if module_key == "finance_insertion_orders":
-        module_id = get_finance_module_id(db)
-        record = get_deleted_insertion_order_or_404(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_id=module_id,
-            io_id=record_id,
-        )
-        restored = restore_insertion_order(db, record=record)
-        serialized = _serialize_finance_record_state(restored, current_user=current_user)
-        log_activity(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            module_key=module_key,
-            entity_type="finance_insertion_order",
-            entity_id=restored.id,
-            action="restore",
-            description=f"Restored insertion order {restored.io_number} from recycle bin",
-            after_state=serialized,
-        )
-        return serialized
-
     if module_key == "sales_contacts":
         contact = get_contact_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
         restored = restore_sales_contact(db, contact)
@@ -497,6 +541,53 @@ def restore_recycle_item(
             actor_user_id=current_user.id if current_user else None,
         )
         return CatalogServiceResponse.model_validate(serialize_service(restored)).model_dump(mode="json")
+
+    if module_key in {"purchase_orders", "purchase_receipts"}:
+        from app.modules.purchasing.services import purchase_order_services, receipt_services
+
+        if module_key == "purchase_orders":
+            restored = purchase_order_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, order_id=record_id)
+            db.commit()
+            return jsonable_encoder(purchase_order_services.serialize_order(db, tenant_id=current_user.tenant_id, order=restored))
+        restored = receipt_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, receipt_id=record_id)
+        db.commit()
+        return jsonable_encoder(receipt_services.serialize_receipt(db, tenant_id=current_user.tenant_id, receipt=restored))
+
+    if module_key == "finance_pos":
+        from app.modules.finance.services import pos_invoice_services
+
+        restored = pos_invoice_services.restore_draft(db, current_user, record_id)
+        db.commit()
+        return jsonable_encoder(pos_invoice_services.serialize_invoice(restored, current_user=current_user))
+
+    if module_key == "finance_credit_notes":
+        from app.modules.finance.services import credit_note_services
+
+        restored = credit_note_services.restore_draft(db, current_user, record_id)
+        db.commit()
+        return jsonable_encoder(credit_note_services.serialize(db, restored, include_lines=False))
+
+    if module_key == "purchase_bills":
+        from app.modules.purchasing.services import bill_services
+
+        restored = bill_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, bill_id=record_id)
+        db.commit()
+        return jsonable_encoder(bill_services.serialize_bill(db, tenant_id=current_user.tenant_id, bill=restored, include_lines=False))
+
+    if module_key == "inventory_returns":
+        restored = return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)
+        db.commit()
+        return jsonable_encoder(return_services.serialize_return(db, tenant_id=current_user.tenant_id, doc=restored))
+
+    if module_key == "inventory_deliveries":
+        restored = delivery_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, delivery_id=record_id)
+        db.commit()
+        return jsonable_encoder(delivery_services.serialize_delivery(db, tenant_id=current_user.tenant_id, doc=restored))
+
+    if module_key in INVENTORY_DOCUMENT_KINDS:
+        kind = INVENTORY_DOCUMENT_KINDS[module_key]
+        restored = restore_inventory_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, kind=kind, document_id=record_id)
+        return jsonable_encoder(serialize_inventory_document(db, tenant_id=current_user.tenant_id, kind=kind, doc=restored))
 
     if custom_modules.is_custom_module_key(db, tenant_id=current_user.tenant_id, module_key=module_key):
         return custom_modules.restore_record(

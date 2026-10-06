@@ -3,6 +3,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { usePagedList } from "@/hooks/usePagedList";
+import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { apiUrl } from "@/lib/runtime-config";
 
 export type DocumentSortState = { key: string; direction: "asc" | "desc" } | null;
@@ -83,6 +85,18 @@ export type DocumentList = {
   total: number;
 };
 
+/**
+ * The library list's shape. `/documents` serves both this and the record panels, so it
+ * carries the shared paged envelope *and* the panels' `total` (rebuild.md 5.5).
+ */
+export type PagedDocumentList = DocumentList & {
+  range_start: number;
+  range_end: number;
+  total_count: number;
+  total_pages: number;
+  page: number;
+};
+
 export type DocumentStorageUsage = {
   used_bytes: number;
   tenant_storage_limit_bytes: number;
@@ -159,9 +173,13 @@ export async function fetchDocuments(params: {
   entityId?: string | number;
   isTemplate?: boolean;
   limit?: number;
+  page?: number;
+  pageSize?: number;
   sort?: DocumentSortState;
 } = {}): Promise<DocumentList> {
   const query = new URLSearchParams();
+  if (params.page) query.set("page", String(params.page));
+  if (params.pageSize) query.set("page_size", String(params.pageSize));
   if (params.search?.trim()) query.set("search", params.search.trim());
   if (params.moduleKey) query.set("module_key", params.moduleKey);
   if (params.entityId !== undefined && params.entityId !== null) query.set("entity_id", String(params.entityId));
@@ -339,6 +357,39 @@ export function useDocuments(params: { search?: string; moduleKey?: string; enti
       params.sort?.direction ?? "",
     ],
     queryFn: () => fetchDocuments(params),
+    staleTime: 30_000,
+  });
+}
+
+/**
+ * The document library, paged (rebuild.md 5.5).
+ *
+ * Documents was the migration straggler: no toolbar and **no pagination at all** — it asked
+ * for one window of 100 rows and drew whatever came back, so a tenant past that number had
+ * documents it could not reach from its own library. It goes through `usePagedList` like
+ * every other list now, which is also where its page number, its page size and its search
+ * debounce come from.
+ *
+ * There are no saved views for documents, so the type filter travels inside `filters` as a
+ * plain key rather than as a saved-view condition. `canonicalSavedViewFiltersKey` covers
+ * arbitrary keys, so it takes part in the query key and in the debounce comparison without
+ * any special handling.
+ */
+export function usePagedDocuments(filters: SavedViewFilters, sort: DocumentSortState) {
+  return usePagedList<DocumentItem, PagedDocumentList>({
+    queryKey: ["documents", "list", "paged"],
+    fetcher: (page, pageSize, activeFilters, _visibleColumns, activeSort) =>
+      fetchDocuments({
+        page,
+        pageSize,
+        search: typeof activeFilters.search === "string" ? activeFilters.search : undefined,
+        isTemplate: typeof activeFilters.is_template === "boolean" ? activeFilters.is_template : undefined,
+        sort: activeSort as DocumentSortState,
+      }) as Promise<PagedDocumentList>,
+    visibleColumns: [],
+    filters,
+    sort,
+    fallbackErrorMessage: "Documents could not be loaded.",
     staleTime: 30_000,
   });
 }

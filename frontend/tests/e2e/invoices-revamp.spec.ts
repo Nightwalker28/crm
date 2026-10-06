@@ -1,8 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 import { loginAsAdmin } from "./helpers/auth";
+import { stubDefaultSavedViews } from "./helpers/savedViews";
 
-const moduleCacheKey = "lynk_modules:v3";
+const moduleCacheKey = "lynk_modules:v4";
 
 async function cachePosPermissions(
   page: Parameters<typeof loginAsAdmin>[0],
@@ -24,6 +25,27 @@ async function cachePosPermissions(
       }]));
     },
     { cacheKey: moduleCacheKey, moduleActions: actions },
+  );
+
+  // useAccessibleModules revalidates from the API and overwrites the seeded cache, so the
+  // stub has to agree with it or the real admin permissions win.
+  await page.route("**/api/v1/users/me/modules", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 91,
+        name: "finance_pos",
+        is_enabled: true,
+        actions: {
+          can_view: true,
+          ...actions,
+          can_restore: false,
+          can_export: false,
+          can_configure: false,
+        },
+      }]),
+    }),
   );
 }
 
@@ -73,22 +95,26 @@ function invoiceFixture(invoiceId: number) {
 
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
+  await stubDefaultSavedViews(page);
 });
 
 test("Invoice creation uses the dedicated itemized transaction workflow", async ({
   page,
 }) => {
-  await page.goto("/dashboard/finance/pos/new");
+  await page.goto("/dashboard/finance/invoices/new");
   await expect(
-    page.getByRole("heading", { name: "Create invoice" }),
+    page.getByRole("heading", { name: "Create invoice", level: 2 }),
   ).toBeVisible();
   await expect(page.getByText("Customer and billing details")).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pricing, discounts, and taxes")).toBeVisible();
-  await expect(page.getByText("Delivery and payment details")).toBeVisible();
-  await expect(page.getByText("Review summary")).toBeVisible();
+  await expect(page.getByText("Pricing and tax")).toBeVisible();
+  await expect(page.getByText("Payment", { exact: true })).toBeVisible();
+  await expect(page.getByText("Invoice details")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Create invoice" }).click();
+  // E5: a new invoice is saved as a draft or issued; it has no status field of its own.
+  await expect(page.getByRole("button", { name: "Save draft" })).toBeVisible();
+  await page.getByRole("button", { name: "Issue invoice" }).click();
   await expect(page.getByText("Customer name is required.")).toBeVisible();
   await expect(page.getByText(/Each line needs a description/)).toBeVisible();
   await expect(page.getByLabel("Customer name")).toBeFocused();
@@ -97,9 +123,11 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await page.getByLabel("name line 1").fill("Implementation");
   await page.getByLabel("quantity line 1").fill("2");
   await page.getByLabel("unit price line 1").fill("100");
-  await page.getByLabel("Discount amount").fill("10");
+  // Exact: each line now has its own discount as well (E5).
+  await page.getByLabel("Discount amount", { exact: true }).fill("10");
   await page.getByLabel("Tax rate (%)").fill("10");
-  await expect(page.getByText("$209.00", { exact: true })).toBeVisible();
+  // Once: payments are recorded on the issued invoice (E5), so the form draws no balance.
+  await expect(page.getByText("$209.00", { exact: true })).toHaveCount(1);
   await page.getByLabel("name line 1").press("Enter");
   await expect(page.getByLabel("name line 2")).toBeFocused();
 });
@@ -107,11 +135,11 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
 test("Invoices list routes creation to the dedicated page", async ({
   page,
 }) => {
-  await page.goto("/dashboard/finance/pos");
+  await page.goto("/dashboard/finance/invoices");
   const createLink = page.getByRole("link", { name: "Create invoice" });
   await expect(createLink).toBeVisible();
   await createLink.click();
-  await expect(page).toHaveURL(/\/dashboard\/finance\/pos\/new$/);
+  await expect(page).toHaveURL(/\/dashboard\/finance\/invoices\/new$/);
 });
 
 test("Invoice detail and edit use routed record workflows", async ({
@@ -120,7 +148,7 @@ test("Invoice detail and edit use routed record workflows", async ({
   const invoiceId = 987654343;
   const invoice = invoiceFixture(invoiceId);
   await cachePosPermissions(page, { can_create: true, can_edit: true, can_delete: true });
-  await page.route(`**/finance/pos-invoices/${invoiceId}`, async (route) =>
+  await page.route(`**/api/v1/finance/invoices/${invoiceId}`, async (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -128,22 +156,26 @@ test("Invoice detail and edit use routed record workflows", async ({
     }),
   );
 
-  await page.goto(`/dashboard/finance/pos/${invoiceId}`);
+  await page.goto(`/dashboard/finance/invoices/${invoiceId}`);
   await expect(
-    page.getByRole("heading", { name: "INV-BROWSER-1" }),
+    page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toBeVisible();
   await expect(
     page.getByText("Acme Operations", { exact: true }).first(),
   ).toBeVisible();
 
-  await page.goto(`/dashboard/finance/pos/${invoiceId}/edit`);
+  await page.goto(`/dashboard/finance/invoices/${invoiceId}/edit`);
   await expect(
     page.getByRole("heading", { name: "Edit INV-BROWSER-1" }),
   ).toBeVisible();
   await expect(page.getByText(/Last modified/)).toBeVisible();
+  // Issued is final (E5): the customer and lines are fixed; terms, notes and dates are not.
   await expect(page.getByLabel("Customer name")).toHaveValue("Acme Operations");
-  await expect(page.getByLabel("name line 1")).toHaveValue("Implementation");
+  await expect(page.getByLabel("Customer name")).toBeDisabled();
+  await expect(page.getByText("Implementation").first()).toBeVisible();
+  await expect(page.getByLabel("name line 1")).toHaveCount(0);
+  await expect(page.getByLabel("Notes")).toBeEnabled();
   await expect(
     page.getByRole("button", { name: "Save changes" }),
   ).toBeVisible();
@@ -152,7 +184,7 @@ test("Invoice detail and edit use routed record workflows", async ({
 test("Invoice actions and routed forms respect role permissions", async ({ page }) => {
   const invoiceId = 987654344;
   await cachePosPermissions(page, { can_create: false, can_edit: false, can_delete: false });
-  await page.route(`**/finance/pos-invoices/${invoiceId}`, (route) =>
+  await page.route(`**/api/v1/finance/invoices/${invoiceId}`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -160,20 +192,23 @@ test("Invoice actions and routed forms respect role permissions", async ({ page 
     }),
   );
 
-  await page.goto(`/dashboard/finance/pos/${invoiceId}`);
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Edit invoice" })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: "Delete" })).toHaveCount(0);
-  await expect(page.getByRole("link", { name: "Print" })).toBeVisible();
+  await page.goto(`/dashboard/finance/invoices/${invoiceId}`);
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Edit", exact: true })).toHaveCount(0);
+  // Print and Delete live in the record's overflow menu (design.md 4.7, archetype 2).
+  await page.getByRole("button", { name: "More INV-BROWSER-1 actions" }).click();
+  await expect(page.getByRole("menuitem", { name: "Print" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: /Delete|Move to recycle bin/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
 
-  await page.goto("/dashboard/finance/pos/new");
+  await page.goto("/dashboard/finance/invoices/new");
   await expect(page.getByRole("heading", { name: "You do not have permission to view this page" })).toBeVisible();
 });
 
 test("Printable invoice uses accessible responsive document semantics", async ({ page }) => {
   const invoiceId = 987654345;
   await cachePosPermissions(page, { can_create: true, can_edit: true, can_delete: true });
-  await page.route(`**/finance/pos-invoices/${invoiceId}`, (route) =>
+  await page.route(`**/api/v1/finance/invoices/${invoiceId}`, (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -196,12 +231,12 @@ test("Printable invoice uses accessible responsive document semantics", async ({
   );
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto(`/dashboard/finance/pos/${invoiceId}/print`);
+  await page.goto(`/dashboard/finance/invoices/${invoiceId}/print`);
 
   await expect(page.getByRole("heading", { name: "Print invoice" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "INV-BROWSER-1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "INV-BROWSER-1", level: 2 })).toBeVisible();
   await expect(page.getByRole("button", { name: "Print invoice INV-BROWSER-1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Back to invoice" })).toHaveAttribute("href", `/dashboard/finance/pos/${invoiceId}`);
+  await expect(page.getByRole("link", { name: "Back to invoice" })).toHaveAttribute("href", `/dashboard/finance/invoices/${invoiceId}`);
   await expect(page.getByText("Partially paid", { exact: true })).toBeVisible();
   await expect(page.getByRole("table", { name: "Line items for invoice INV-BROWSER-1" })).toContainText("Implementation");
   await expect(page.getByText("Balance due", { exact: true })).toBeVisible();
@@ -209,7 +244,7 @@ test("Printable invoice uses accessible responsive document semantics", async ({
 
 test("Printable invoice failures redact backend details and provide retry", async ({ page }) => {
   const invoiceId = 987654346;
-  await page.route(`**/finance/pos-invoices/${invoiceId}`, (route) =>
+  await page.route(`**/api/v1/finance/invoices/${invoiceId}`, (route) =>
     route.fulfill({
       status: 500,
       contentType: "application/json",
@@ -220,7 +255,7 @@ test("Printable invoice failures redact backend details and provide retry", asyn
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ name: "Lynk Test Company" }) }),
   );
 
-  await page.goto(`/dashboard/finance/pos/${invoiceId}/print`);
+  await page.goto(`/dashboard/finance/invoices/${invoiceId}/print`);
   await expect(page.getByRole("heading", { name: "Unable to load printable invoice" })).toBeVisible();
   await expect(page.getByText("database_password=secret")).toBeHidden();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();

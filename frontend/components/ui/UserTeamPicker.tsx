@@ -1,11 +1,12 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { Check, ChevronsUpDown, Search, UserRound, Users, X } from "lucide-react";
+import { Check, ChevronsUpDown, Search, UserRound, Users } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { RemovableChip } from "@/components/ui/RemovableChip";
 
 export type UserTeamPickerUser = {
   id: number;
@@ -102,7 +103,7 @@ export function UserTeamPicker({
         </PopoverTrigger>
         <PopoverContent
           align="start"
-          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] border-line-default bg-surface-raised p-0 text-copy-primary shadow-xl sm:w-[440px]"
+          className="w-[var(--radix-popover-trigger-width)] max-w-[calc(100vw-2rem)] border-line-default bg-surface-raised p-0 text-copy-primary shadow-[var(--shadow-panel)] sm:w-[440px]"
         >
           <div className="border-b border-line-default p-3">
             <label htmlFor={searchId} className="sr-only">{searchLabel}</label>
@@ -128,7 +129,7 @@ export function UserTeamPicker({
               <div className="space-y-3">
                 {filteredUsers.length ? (
                   <div className="overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface p-1">
-                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       <UserRound className="h-3.5 w-3.5" />
                       {userGroupLabel}
                     </div>
@@ -140,7 +141,7 @@ export function UserTeamPicker({
                           type="button"
                           onClick={() => onToggle("user", user.id)}
                           aria-pressed={selected}
-                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           <div className="min-w-0">
                             <div className="truncate font-medium text-copy-primary">{user.name}</div>
@@ -149,7 +150,7 @@ export function UserTeamPicker({
                               {user.email || "No email"}
                             </div>
                           </div>
-                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-primary" /> : null}
+                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-copy-primary" /> : null}
                         </button>
                       );
                     })}
@@ -158,7 +159,7 @@ export function UserTeamPicker({
 
                 {filteredTeams.length ? (
                   <div className="overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface p-1">
-                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-copy-muted">
+                    <div className="flex items-center gap-2 px-2 pb-2 pt-1 text-2xs font-semibold text-copy-label">
                       <Users className="h-3.5 w-3.5" />
                       {teamGroupLabel}
                     </div>
@@ -170,13 +171,13 @@ export function UserTeamPicker({
                           type="button"
                           onClick={() => onToggle("team", team.id)}
                           aria-pressed={selected}
-                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                          className="flex w-full items-center justify-between rounded-[var(--radius-control)] px-3 py-2 text-left text-sm text-copy-secondary transition-colors hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus"
                         >
                           <div className="min-w-0">
                             <div className="truncate font-medium text-copy-primary">{team.name}</div>
                             <div className="truncate text-xs text-copy-muted">{teamDescription}</div>
                           </div>
-                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-primary" /> : null}
+                          {selected ? <Check className="ml-3 h-4 w-4 shrink-0 text-copy-primary" /> : null}
                         </button>
                       );
                     })}
@@ -191,19 +192,14 @@ export function UserTeamPicker({
       {selectedEntries.length ? (
         <div className="flex flex-wrap gap-2">
           {selectedEntries.map((entry) => (
-            <div key={entry.key} className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-3 py-1.5 text-xs text-copy-secondary">
-              <span className="font-medium">{entry.label}</span>
-              <span className="text-copy-muted">{entry.typeLabel}</span>
-              <button
-                type="button"
-                disabled={disabled}
-                onClick={() => onToggle(entry.type, entry.id)}
-                className="rounded-full p-0.5 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                aria-label={`Remove ${entry.label}`}
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
+            <RemovableChip
+              key={entry.key}
+              label={entry.label}
+              meta={entry.typeLabel}
+              disabled={disabled}
+              removeLabel={`Remove ${entry.label}`}
+              onRemove={() => onToggle(entry.type, entry.id)}
+            />
           ))}
         </div>
       ) : (

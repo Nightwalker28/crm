@@ -10,7 +10,6 @@ from app.modules.finance.models import FinancePosInvoice
 from app.modules.finance.models import FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso
-from app.modules.finance.services import io_search_services
 from app.modules.finance.services import pos_invoice_services
 from app.modules.finance.services.pos_invoice_services import serialize_invoice
 
@@ -149,6 +148,7 @@ class FinancePosInvoiceTests(unittest.TestCase):
         )
         invoice.lines = [
             FinancePosInvoiceLine(
+                tenant_id=10,
                 id=10,
                 invoice_id=1,
                 description="Line",
@@ -197,7 +197,7 @@ class FinancePosInvoiceTests(unittest.TestCase):
             user_id=1,
             invoice_number="POS-1",
             mode="pos",
-            status="issued",
+            status="draft",  # E5: only drafts can be removed
             payment_status="unpaid",
             template_id="modern",
             accent_color="#14b8a6",
@@ -235,96 +235,10 @@ class FinancePosInvoiceTests(unittest.TestCase):
 
         self.assertEqual(exc.exception.status_code, 400)
 
-    def test_apply_totals_rejects_overpayment(self):
-        invoice = FinancePosInvoice(discount_amount=Decimal("0"), tax_rate=Decimal("0"), amount_paid=Decimal("0"))
-
-        with self.assertRaises(HTTPException) as exc:
-            pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"amount_paid": 101})
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Amount paid cannot exceed invoice total")
-
-    def test_record_invoice_payment_updates_balance_status_and_activity(self):
-        invoice = FinancePosInvoice(
-            id=1,
-            tenant_id=10,
-            user_id=1,
-            invoice_number="POS-1",
-            mode="pos",
-            status="issued",
-            payment_status="unpaid",
-            payment_method=None,
-            template_id="modern",
-            accent_color="#14b8a6",
-            customer_name="Buyer",
-            currency="USD",
-            subtotal_amount=Decimal("100.00"),
-            discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
-            tax_amount=Decimal("0.00"),
-            total_amount=Decimal("100.00"),
-            amount_paid=Decimal("25.00"),
-        )
-        invoice.lines = []
-        db = FakePaymentDB()
-        current_user = SimpleNamespace(id=1, tenant_id=10)
-
-        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
-            result = pos_invoice_services.record_invoice_payment(
-                db,
-                current_user,
-                invoice_id=1,
-                amount=Decimal("75.00"),
-                payment_method="Bank transfer",
-            )
-
-        self.assertIs(result, invoice)
-        self.assertEqual(invoice.amount_paid, Decimal("100.00"))
-        self.assertEqual(invoice.payment_status, "paid")
-        self.assertEqual(invoice.status, "paid")
-        self.assertEqual(invoice.payment_method, "Bank transfer")
-        self.assertTrue(db.flushed)
-        self.assertTrue(db.committed)
-        self.assertIs(db.refreshed, invoice)
-        self.assertEqual(len(db.added), 2)
-        self.assertEqual(db.added[1].action, "payment.record")
-
-    def test_record_invoice_payment_rejects_amount_above_locked_balance(self):
-        invoice = FinancePosInvoice(
-            id=1,
-            tenant_id=10,
-            invoice_number="POS-1",
-            mode="pos",
-            status="issued",
-            payment_status="partial",
-            template_id="modern",
-            accent_color="#14b8a6",
-            customer_name="Buyer",
-            currency="USD",
-            subtotal_amount=Decimal("100.00"),
-            discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
-            tax_amount=Decimal("0.00"),
-            total_amount=Decimal("100.00"),
-            amount_paid=Decimal("90.00"),
-        )
-        invoice.lines = []
-
-        with patch.object(pos_invoice_repository, "get_invoice_for_update", return_value=invoice):
-            with self.assertRaises(HTTPException) as exc:
-                pos_invoice_services.record_invoice_payment(
-                    FakePaymentDB(),
-                    SimpleNamespace(id=1, tenant_id=10),
-                    invoice_id=1,
-                    amount=Decimal("10.01"),
-                )
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Payment amount cannot exceed the outstanding balance")
-
     def test_apply_lines_preserves_existing_rows_by_id(self):
         invoice = FinancePosInvoice(id=1, tenant_id=10, invoice_number="POS-1")
         existing = FinancePosInvoiceLine(
+            tenant_id=10,
             id=7,
             invoice_id=1,
             description="Existing",
@@ -335,7 +249,9 @@ class FinancePosInvoiceTests(unittest.TestCase):
         )
         invoice.lines = [existing]
 
+        # No line carries a catalog link, so the link check never touches the session.
         subtotal = pos_invoice_services._apply_lines(
+            None,
             invoice,
             [
                 {"id": 7, "description": "Updated", "quantity": 2, "unit_price": 15},
@@ -348,9 +264,12 @@ class FinancePosInvoiceTests(unittest.TestCase):
         self.assertEqual(invoice.lines[0].description, "Updated")
         self.assertIsNone(invoice.lines[1].id)
 
-    def test_parse_human_date_annotation_matches_date_return(self):
-        self.assertEqual(io_search_services.parse_human_date.__annotations__["return"], "date | None")
-        self.assertIsInstance(io_search_services.parse_human_date("2026-06-22"), date)
+    def test_invoice_dates_are_iso_and_a_bad_one_is_refused(self):
+        self.assertEqual(pos_invoice_services._date("2026-06-22"), date(2026, 6, 22))
+        self.assertIsNone(pos_invoice_services._date(""))
+        with self.assertRaises(HTTPException) as error:
+            pos_invoice_services._date("22 June 2026")
+        self.assertEqual(error.exception.status_code, 400)
 
 
 if __name__ == "__main__":

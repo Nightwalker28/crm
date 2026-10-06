@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from fastapi import HTTPException, status
@@ -10,6 +10,7 @@ from fastapi.encoders import jsonable_encoder
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.core.unit_of_work import deferred_commits, savepoint
 from app.core.config import settings
 from app.core.pagination import Pagination
 from app.modules.platform.models import (
@@ -21,21 +22,27 @@ from app.modules.platform.models import (
     RecordComment,
     UserNotification,
 )
+from app.modules.platform.services.automation_records import (
+    load_record_snapshot,
+    module_key_for_entity,
+    record_path_for,
+)
 from app.modules.platform.services.automation_registry import (
     SUPPORTED_AUTOMATION_ACTIONS,
     SUPPORTED_AUTOMATION_TRIGGERS,
     actions_for_trigger,
     condition_fields_for_trigger,
+    derived_trigger_keys,
     get_action_or_none,
     get_trigger_or_none,
+    is_trigger_available,
     module_key_for_trigger,
 )
 from app.modules.sales.models import SalesLead, SalesQuote
 from app.modules.sales.services.leads_services import convert_sales_lead, recalculate_lead_score
 from app.modules.sales.services.orders_services import convert_quote_to_order
-from app.modules.support.models import SupportCase, SupportCaseEvent
 from app.modules.tasks.models import Task, TaskAssignee
-from app.modules.user_management.models import Team, User
+from app.modules.user_management.models import Module, Team, User
 
 
 CONDITION_OPERATOR_ALIASES = {
@@ -50,6 +57,11 @@ CONDITION_OPERATOR_ALIASES = {
 AUTOMATION_CONTEXT_KEY = "_automation"
 SENSITIVE_DEBUG_KEYS = ("authorization", "cookie", "password", "secret", "token", "api_key", "webhook", "credential")
 TEMPLATE_TOKEN_PATTERN = re.compile(r"{{\s*([A-Za-z0-9_.]+)\s*}}")
+# The user an action targets: the record's owner, the person whose change fired the
+# event, or a specific user id.
+USER_TARGET_OWNER = "owner"
+USER_TARGET_ACTOR = "actor"
+UNAVAILABLE_TRIGGER_DETAIL = "This trigger is not emitted yet, so a rule on it would never run"
 
 
 @dataclass(frozen=True)
@@ -67,6 +79,11 @@ def _normalize_trigger(value: str) -> str:
     if trigger not in SUPPORTED_AUTOMATION_TRIGGERS:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported automation trigger")
     return trigger
+
+
+def _require_available_trigger(trigger_event: str, *, enabled: bool) -> None:
+    if enabled and not is_trigger_available(trigger_event):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=UNAVAILABLE_TRIGGER_DETAIL)
 
 
 def _normalize_module_key(value: Any, *, trigger_event: str) -> str | None:
@@ -195,8 +212,18 @@ def _serialize_rule(rule: AutomationRule) -> dict[str, Any]:
     }
 
 
-def _event_input(event: CrmEvent) -> dict[str, Any]:
-    payload = dict(event.payload or {})
+def _event_input(event: CrmEvent, snapshot: dict[str, Any] | None = None) -> dict[str, Any]:
+    """What a rule reads: the event, with the record's current fields under its payload.
+
+    The payload wins where both have a key, because it was captured when the event
+    happened; the snapshot supplies everything the emitting route left out.
+    """
+
+    payload = {**(snapshot or {}), **dict(event.payload or {})}
+    if "record_url" not in payload:
+        path = record_path_for(event.entity_type, event.entity_id)
+        if path:
+            payload["record_url"] = path
     return {
         "event_id": event.id,
         "event_type": event.event_type,
@@ -226,6 +253,51 @@ def _coerce_number(value: Any) -> float | None:
         return None
 
 
+def _coerce_moment(value: Any) -> datetime | date | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, date):
+        return value
+    if not isinstance(value, str) or len(value) < 10 or value[4:5] != "-":
+        return None
+    text = value.strip().replace("Z", "+00:00")
+    try:
+        if len(text) == 10:
+            return date.fromisoformat(text)
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _comparable_pair(actual: Any, expected: Any) -> tuple[Any, Any] | None:
+    """Both sides as numbers, or both as dates, or None when they are neither.
+
+    Dates were compared through `float()`, so every *before*/*after* condition on a date
+    field was false. A date-only side compares against the other side's calendar day.
+    """
+
+    left_number, right_number = _coerce_number(actual), _coerce_number(expected)
+    if left_number is not None and right_number is not None:
+        return left_number, right_number
+    left_moment, right_moment = _coerce_moment(actual), _coerce_moment(expected)
+    if left_moment is None or right_moment is None:
+        return None
+    if isinstance(left_moment, datetime) != isinstance(right_moment, datetime):
+        left_moment = left_moment.date() if isinstance(left_moment, datetime) else left_moment
+        right_moment = right_moment.date() if isinstance(right_moment, datetime) else right_moment
+    return left_moment, right_moment
+
+
+def _values_equal(actual: Any, expected: Any) -> bool:
+    if actual in {None, ""} or expected in {None, ""}:
+        return actual in {None, ""} and expected in {None, ""}
+    pair = _comparable_pair(actual, expected)
+    if pair is not None:
+        return pair[0] == pair[1]
+    return str(actual).strip().casefold() == str(expected).strip().casefold()
+
+
 def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
     actual = _lookup_path(data, condition["field"])
     expected = condition.get("value")
@@ -236,16 +308,16 @@ def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
     if operator == "is_empty":
         return actual in {None, ""}
     if operator == "equals":
-        return str(actual) == str(expected)
+        return _values_equal(actual, expected)
     if operator == "not_equals":
-        return str(actual) != str(expected)
+        return not _values_equal(actual, expected)
     if operator == "contains":
         return str(expected).lower() in str(actual or "").lower()
     if operator == "not_contains":
         return str(expected).lower() not in str(actual or "").lower()
     if operator in {"in", "not_in"}:
         values = expected_values if isinstance(expected_values, list) else []
-        matched = str(actual) in {str(value) for value in values}
+        matched = any(_values_equal(actual, value) for value in values)
         return matched if operator == "in" else not matched
     if operator in {"changed", "changed_to", "changed_from"}:
         payload_key = _condition_payload_key(condition["field"])
@@ -261,13 +333,13 @@ def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
         if not isinstance(change_record, dict):
             return False
         if operator == "changed_to":
-            return str(change_record.get("to")) == str(expected)
-        return str(change_record.get("from")) == str(expected)
+            return _values_equal(change_record.get("to"), expected)
+        return _values_equal(change_record.get("from"), expected)
     if operator in {"gt", "gte", "lt", "lte"}:
-        left = _coerce_number(actual)
-        right = _coerce_number(expected)
-        if left is None or right is None:
+        pair = _comparable_pair(actual, expected)
+        if pair is None:
             return False
+        left, right = pair
         if operator == "gt":
             return left > right
         if operator == "gte":
@@ -278,8 +350,8 @@ def _condition_matches(data: dict[str, Any], condition: dict[str, Any]) -> bool:
     return False
 
 
-def _conditions_match(rule: AutomationRule, event: CrmEvent) -> bool:
-    data = _event_input(event)
+def _conditions_match(rule: AutomationRule, event: CrmEvent, data: dict[str, Any] | None = None) -> bool:
+    data = data if data is not None else _event_input(event)
     conditions = rule.conditions_json or []
     if not conditions:
         return True
@@ -319,7 +391,7 @@ def _record_skipped_run(db: Session, *, rule: AutomationRule, event: CrmEvent, r
         tenant_id=event.tenant_id,
         rule_id=rule.id,
         event_id=event.id,
-        trigger_event_key=event.event_type,
+        trigger_event_key=rule.trigger_event,
         source_module_key=event.entity_type,
         source_record_id=str(event.entity_id),
         status="skipped",
@@ -387,6 +459,7 @@ def get_automation_rule_or_404(db: Session, *, tenant_id: int, rule_id: int) -> 
 def create_automation_rule(db: Session, *, tenant_id: int, actor_user_id: int | None, payload: dict[str, Any]) -> AutomationRule:
     trigger_event = _normalize_trigger(payload.get("trigger_event"))
     enabled = bool(payload.get("enabled", True))
+    _require_available_trigger(trigger_event, enabled=enabled)
     rule = AutomationRule(
         tenant_id=tenant_id,
         name=payload["name"].strip(),
@@ -430,6 +503,7 @@ def update_automation_rule(db: Session, *, rule: AutomationRule, actor_user_id: 
         rule.actions_json = _normalize_actions(payload["actions_json"], trigger_event=rule.trigger_event, require_complete=next_enabled)
     elif ("trigger_event" in payload and payload["trigger_event"] is not None) or next_enabled:
         rule.actions_json = _normalize_actions(rule.actions_json or [], trigger_event=rule.trigger_event, require_complete=next_enabled)
+    _require_available_trigger(rule.trigger_event, enabled=bool(rule.enabled))
     rule.updated_by_id = actor_user_id
     db.add(rule)
     db.commit()
@@ -453,6 +527,9 @@ def preview_automation_rule(payload: dict[str, Any]) -> dict[str, Any]:
     conditions = _normalize_conditions(payload.get("conditions_json"), trigger_event=trigger_event)
     actions = _normalize_actions(payload.get("actions_json"), trigger_event=trigger_event, require_complete=enabled)
     warnings: list[str] = []
+    trigger_available = is_trigger_available(trigger_event)
+    if not trigger_available:
+        warnings.append(f"{UNAVAILABLE_TRIGGER_DETAIL}. Choose another trigger.")
     if not enabled and not actions:
         warnings.append("Draft is disabled and has no actions yet.")
     if not conditions:
@@ -470,7 +547,7 @@ def preview_automation_rule(payload: dict[str, Any]) -> dict[str, Any]:
         )
     return {
         "valid": True,
-        "can_enable": bool(actions),
+        "can_enable": bool(actions) and trigger_available,
         "module_key": module_key,
         "trigger_event": trigger_event,
         "condition_mode": condition_mode,
@@ -555,8 +632,10 @@ def _template(value: Any, data: dict[str, Any]) -> Any:
 
 def _resolve_user_id(action: dict[str, Any], data: dict[str, Any]) -> int | None:
     raw_value = action.get("user_id")
-    if raw_value == "actor":
+    if raw_value == USER_TARGET_ACTOR:
         raw_value = data.get("actor_user_id")
+    elif raw_value == USER_TARGET_OWNER:
+        raw_value = _lookup_path(data, "payload.owner_user_id")
     elif isinstance(raw_value, str) and raw_value.startswith("payload."):
         raw_value = _lookup_path(data, raw_value)
     try:
@@ -616,7 +695,10 @@ def _create_task_action(db: Session, *, tenant_id: int, actor_user_id: int | Non
     due_in_days = action.get("due_in_days")
     due_at = None
     if due_in_days not in {None, ""}:
-        due_at = _utcnow() + timedelta(days=int(due_in_days))
+        try:
+            due_at = _utcnow() + timedelta(days=int(due_in_days))
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError("Due in days must be a whole number") from exc
     task = Task(
         tenant_id=tenant_id,
         title=title[:255],
@@ -624,15 +706,19 @@ def _create_task_action(db: Session, *, tenant_id: int, actor_user_id: int | Non
         status="todo",
         priority=action.get("priority") if action.get("priority") in {"high", "medium", "low"} else "medium",
         due_at=due_at,
-        source_module_key=str(action.get("source_module_key") or data.get("entity_type") or "").strip() or None,
+        # The module key, not the entity type: `Task.source_module_key` is what links the
+        # task back to its record, and `sales_lead` linked nowhere.
+        source_module_key=module_key_for_entity(action.get("source_module_key") or data.get("entity_type")),
         source_entity_id=str(action.get("source_entity_id") or data.get("entity_id") or "").strip() or None,
-        source_label=str(_template(action.get("source_label") or data.get("event_type") or "Automation", data)).strip()[:255],
+        source_label=str(_template(action.get("source_label") or _lookup_path(data, "payload.record_label") or data.get("event_type") or "Automation", data)).strip()[:255],
         created_by_user_id=actor_user_id,
         updated_by_user_id=actor_user_id,
     )
     db.add(task)
     db.flush()
     assignee_user_id = _resolve_user_id({"user_id": action.get("assignee_user_id")}, data)
+    if action.get("assignee_user_id") not in {None, ""} and assignee_user_id is not None and not _ensure_user(db, tenant_id=tenant_id, user_id=assignee_user_id):
+        raise RuntimeError("Task assignee not found")
     if _ensure_user(db, tenant_id=tenant_id, user_id=assignee_user_id):
         db.add(
             TaskAssignee(
@@ -651,6 +737,8 @@ def _create_task_action(db: Session, *, tenant_id: int, actor_user_id: int | Non
 def _send_notification_action(db: Session, *, tenant_id: int, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     user_id = _resolve_user_id(action, data)
     if not _ensure_user(db, tenant_id=tenant_id, user_id=user_id):
+        if action.get("user_id") == USER_TARGET_OWNER:
+            raise RuntimeError("The record has no owner to notify")
         raise RuntimeError("Notification user not found")
     notification = UserNotification(
         tenant_id=tenant_id,
@@ -658,7 +746,7 @@ def _send_notification_action(db: Session, *, tenant_id: int, action: dict[str, 
         category="automation",
         title=str(_template(action.get("title") or "Automation notification", data)).strip()[:255],
         message=str(_template(action.get("message") or "An automation rule ran.", data)).strip(),
-        link_url=(str(_template(action.get("link_url"), data)).strip() or None) if action.get("link_url") is not None else None,
+        link_url=(str(_template(action.get("link_url") or "", data)).strip() or _lookup_path(data, "payload.record_url") or None),
         payload={"automation": True, "event_id": data.get("event_id")},
     )
     db.add(notification)
@@ -681,7 +769,9 @@ def _recalculate_lead_score_action(db: Session, *, tenant_id: int, action: dict[
 
 
 def _add_record_note_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-    module_key = str(action.get("module_key") or data.get("entity_type") or "").strip()
+    # Comments are keyed by module (`sales_leads`); the event names the entity (`sales_lead`).
+    # Writing the entity type here is why automation notes never showed on the record.
+    module_key = module_key_for_entity(action.get("module_key") or data.get("entity_type")) or ""
     entity_id = str(action.get("entity_id") or data.get("entity_id") or "").strip()
     body = str(_template(action.get("body") or "Automation note", data)).strip()
     if not module_key or not entity_id or not body:
@@ -700,7 +790,7 @@ def _add_record_note_action(db: Session, *, tenant_id: int, actor_user_id: int |
             tenant_id=tenant_id,
             actor_user_id=actor_user_id,
             module_key=module_key,
-            entity_type=module_key.rstrip("s"),
+            entity_type=str(data.get("entity_type") or module_key),
             entity_id=entity_id,
             action="automation.note",
             description="Added automation note",
@@ -779,54 +869,6 @@ def _convert_quote_to_order_action(db: Session, *, tenant_id: int, actor_user_id
     return {"type": "convert_quote_to_order", "quote_id": quote_id, "order_id": order.id, "order_number": order.order_number}
 
 
-def _assign_support_case_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-    case_id = _resolve_record_id(action, data, "case_id")
-    if case_id is None:
-        raise RuntimeError("Support case id is required")
-    assignee_user_id = _resolve_action_user_id(action, data, "assignee_user_id")
-    assignee = _ensure_user(db, tenant_id=tenant_id, user_id=assignee_user_id)
-    if not assignee:
-        raise RuntimeError("Support case assignee not found")
-    case = db.query(SupportCase).filter(SupportCase.tenant_id == tenant_id, SupportCase.id == case_id).first()
-    if not case:
-        raise RuntimeError("Support case not found")
-    previous_assignee_id = case.assigned_to_id
-    case.assigned_to_id = assignee.id
-    db.add(case)
-    db.add(
-        SupportCaseEvent(
-            tenant_id=tenant_id,
-            case_id=case.id,
-            event_type="automation.assigned",
-            payload_json={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
-            created_by_id=actor_user_id,
-        )
-    )
-    notification = UserNotification(
-        tenant_id=tenant_id,
-        user_id=assignee.id,
-        category="automation",
-        title=str(_template(action.get("notification_title") or "Support case assigned", data)).strip()[:255],
-        message=str(_template(action.get("notification_message") or "{{payload.subject}} needs attention.", data)).strip(),
-        link_url=f"/dashboard/support/cases/{case.id}",
-        payload={"automation": True, "case_id": case.id},
-    )
-    db.add(notification)
-    _add_automation_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=actor_user_id,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=case.id,
-        action="automation.assign_case",
-        description="Assigned support case through automation",
-        after_state={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
-    )
-    db.flush()
-    return {"type": "assign_support_case", "case_id": case.id, "assignee_user_id": assignee.id, "notification_id": notification.id}
-
-
 def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     action_type = action.get("type")
     if action_type == "create_task":
@@ -841,28 +883,58 @@ def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, a
         return _convert_lead_to_opportunity_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
     if action_type == "convert_quote_to_order":
         return _convert_quote_to_order_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
-    if action_type == "assign_support_case":
-        return _assign_support_case_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
     raise RuntimeError(f"Unsupported action {action_type}")
 
 
-def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent) -> AutomationRuleRun | None:
-    if not rule.enabled or rule.tenant_id != event.tenant_id or rule.trigger_event != event.event_type:
+def event_trigger_keys(event: CrmEvent) -> list[str]:
+    """The event's own type, plus every specific trigger it satisfies."""
+
+    keys = [event.event_type] if event.event_type in SUPPORTED_AUTOMATION_TRIGGERS else []
+    for key in derived_trigger_keys(event.event_type, event.payload or {}):
+        if key not in keys:
+            keys.append(key)
+    return keys
+
+
+def build_event_data(db: Session, event: CrmEvent) -> dict[str, Any]:
+    snapshot = load_record_snapshot(db, tenant_id=event.tenant_id, entity_type=event.entity_type, entity_id=event.entity_id)
+    return _event_input(event, snapshot)
+
+
+def _trigger_module_enabled(db: Session, *, tenant_id: int, trigger_event: str) -> bool:
+    """False when the trigger's module is switched off for the tenant.
+
+    A module with no row (older installs, tests) does not gate anything.
+    """
+
+    from app.modules.user_management.services.admin_modules import is_module_enabled_for_tenant
+
+    module_key = module_key_for_trigger(trigger_event)
+    if not module_key:
+        return True
+    module = db.query(Module).filter(Module.name == module_key).first()
+    if module is None:
+        return True
+    return is_module_enabled_for_tenant(db, tenant_id=tenant_id, module=module)
+
+
+def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent, data: dict[str, Any] | None = None) -> AutomationRuleRun | None:
+    if not rule.enabled or rule.tenant_id != event.tenant_id or rule.trigger_event not in event_trigger_keys(event):
         return None
     rule_id = rule.id
     event_id = event.id
     existing = _existing_run_for_rule_event(db, rule_id=rule_id, event_id=event_id)
     if existing is not None:
         return existing
-    if not _conditions_match(rule, event):
+    data = data if data is not None else build_event_data(db, event)
+    if not _conditions_match(rule, event, data):
         return None
 
-    data = _event_input(event)
     run = AutomationRuleRun(
         tenant_id=event.tenant_id,
         rule_id=rule.id,
         event_id=event.id,
-        trigger_event_key=event.event_type,
+        trigger_event_key=rule.trigger_event,
         source_module_key=event.entity_type,
         source_record_id=str(event.entity_id),
         status="running",
@@ -877,20 +949,24 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
         return _existing_run_for_rule_event(db, rule_id=rule_id, event_id=event_id)
     action_results = []
     try:
-        for index, action in enumerate(rule.actions_json or []):
-            try:
-                result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
-            except Exception as action_exc:
-                action_results.append(
-                    {
-                        "index": index,
-                        "type": action.get("type"),
-                        "status": "failed",
-                        "error": str(action_exc)[:1000],
-                    }
-                )
-                raise
-            action_results.append({"index": index, "type": action.get("type"), "status": "success", "result": result})
+        # A rule's actions land together or not at all (13a E5): a failing third action must
+        # not leave the first two committed beside a run that says it failed. Services the
+        # actions call may still commit; inside here that is a flush.
+        with deferred_commits(db), savepoint(db):
+            for index, action in enumerate(rule.actions_json or []):
+                try:
+                    result = _execute_action(db, tenant_id=event.tenant_id, actor_user_id=event.actor_user_id, action=action, data=data)
+                except Exception as action_exc:
+                    action_results.append(
+                        {
+                            "index": index,
+                            "type": action.get("type"),
+                            "status": "failed",
+                            "error": str(action_exc)[:1000],
+                        }
+                    )
+                    raise
+                action_results.append({"index": index, "type": action.get("type"), "status": "success", "result": result})
     except Exception as exc:
         run.status = "failed"
         run.error_message = str(exc)[:1000]
@@ -925,18 +1001,23 @@ def execute_rule_for_event(db: Session, *, rule: AutomationRule, event: CrmEvent
 
 def process_crm_event_automations(db: Session, *, event_id: int) -> list[AutomationRuleRun]:
     event = db.query(CrmEvent).filter(CrmEvent.id == event_id).first()
-    if not event or event.event_type not in SUPPORTED_AUTOMATION_TRIGGERS:
+    if not event:
+        return []
+    trigger_keys = event_trigger_keys(event)
+    if not trigger_keys:
         return []
     rules = (
         db.query(AutomationRule)
         .filter(
             AutomationRule.tenant_id == event.tenant_id,
-            AutomationRule.trigger_event == event.event_type,
+            AutomationRule.trigger_event.in_(trigger_keys),
             AutomationRule.enabled.is_(True),
         )
         .order_by(AutomationRule.id.asc())
         .all()
     )
+    if not rules:
+        return []
     if _automation_depth(event) >= settings.AUTOMATION_MAX_EVENT_DEPTH:
         return [
             _record_skipped_run(
@@ -947,9 +1028,16 @@ def process_crm_event_automations(db: Session, *, event_id: int) -> list[Automat
             )
             for rule in rules
         ]
+    data = build_event_data(db, event)
+    enabled_by_trigger: dict[str, bool] = {}
     runs: list[AutomationRuleRun] = []
     for rule in rules:
-        run = execute_rule_for_event(db, rule=rule, event=event)
+        if rule.trigger_event not in enabled_by_trigger:
+            enabled_by_trigger[rule.trigger_event] = _trigger_module_enabled(db, tenant_id=event.tenant_id, trigger_event=rule.trigger_event)
+        if not enabled_by_trigger[rule.trigger_event]:
+            runs.append(_record_skipped_run(db, rule=rule, event=event, reason="Automation skipped because the trigger's module is disabled"))
+            continue
+        run = execute_rule_for_event(db, rule=rule, event=event, data=data)
         if run is not None:
             runs.append(run)
     return runs
@@ -957,3 +1045,40 @@ def process_crm_event_automations(db: Session, *, event_id: int) -> list[Automat
 
 def automation_actor(user_id: int | None, tenant_id: int) -> AutomationActor:
     return AutomationActor(id=user_id, tenant_id=tenant_id)
+
+
+def serialize_condition_fields_for_tenant(db: Session, *, tenant_id: int, fields) -> list[dict[str, Any]]:
+    """The condition fields, with options that depend on the tenant resolved.
+
+    *Stage* offered the six seeded keys, so a stage the tenant added could not be picked.
+    It now lists the tenant's own pipeline, including deactivated stages, since a rule may
+    still need to match a deal sitting in one.
+    """
+
+    from app.modules.platform.services.automation_registry import serialize_condition_field
+    from app.modules.sales.services.pipelines_services import get_default_opportunity_pipeline
+
+    from app.modules.platform.services.picklists import PicklistResolver
+
+    serialized = [serialize_condition_field(field) for field in fields]
+    picklists = PicklistResolver(db, tenant_id)
+    for item in serialized:
+        if item.get("picklist_key"):
+            # Every value, deactivated ones included: a rule may still need to match a record
+            # that holds one.
+            item["options"] = [
+                {"value": value.key, "label": value.label if value.is_active else f"{value.label} (inactive)"}
+                for value in picklists.picklist(item["picklist_key"]).values
+            ]
+        if item["module_key"] == "sales_opportunities" and item["payload_key"] == "sales_stage":
+            pipeline = get_default_opportunity_pipeline(db, tenant_id)
+            stages = sorted(pipeline.stages, key=lambda stage: (stage.position, stage.id)) if pipeline else []
+            if stages:
+                item["options"] = [{"value": stage.key, "label": stage.label} for stage in stages]
+    return serialized
+
+
+def list_automation_templates() -> list[dict[str, Any]]:
+    from app.modules.platform.services.automation_registry import AUTOMATION_TEMPLATES, serialize_template
+
+    return [serialize_template(template) for template in AUTOMATION_TEMPLATES if is_trigger_available(template.trigger_event)]

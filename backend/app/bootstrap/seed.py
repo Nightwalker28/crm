@@ -5,6 +5,8 @@ from sqlalchemy import func
 from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 from app.core.tenancy import get_or_create_single_tenant
+from app.modules.platform.services.picklists import ensure_system_picklists
+from app.modules.sales.services.pipelines_services import ensure_default_opportunity_pipeline
 from app.modules.user_management.models import (
     Department,
     DepartmentModulePermission,
@@ -28,23 +30,33 @@ DEFAULT_ROLES = [
 DEFAULT_MODULES = [
     {"name": "catalog_products", "base_route": "/dashboard/catalog/products", "description": "Catalog products"},
     {"name": "catalog_services", "base_route": "/dashboard/catalog/services", "description": "Catalog services"},
+    {"name": "inventory_stock", "base_route": "/dashboard/inventory/stock", "description": "Stock and movements"},
+    {"name": "inventory_valuation", "base_route": "/dashboard/inventory/valuation", "description": "Stock value, revaluations and margin"},
+    {"name": "inventory_adjustments", "base_route": "/dashboard/inventory/adjustments", "description": "Stock adjustments"},
+    {"name": "inventory_transfers", "base_route": "/dashboard/inventory/transfers", "description": "Warehouse transfers"},
+    {"name": "inventory_deliveries", "base_route": "/dashboard/inventory/deliveries", "description": "Deliveries for sales orders"},
+    {"name": "inventory_returns", "base_route": "/dashboard/inventory/returns", "description": "Customer returns"},
+    {"name": "purchase_orders", "base_route": "/dashboard/purchasing/orders", "description": "Purchase orders and reorder suggestions"},
+    {"name": "purchase_receipts", "base_route": "/dashboard/purchasing/receipts", "description": "Stock received from vendors"},
+    {"name": "purchase_bills", "base_route": "/dashboard/purchasing/bills", "description": "Vendor bills"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},
-    {"name": "contracts", "base_route": "/dashboard/contracts", "description": "Contract lifecycle and e-sign tracking"},
     {"name": "tasks", "base_route": "/dashboard/tasks", "description": "Collaborative task management and assignment"},
     {"name": "reports", "base_route": "/dashboard/reports", "description": "CRM reports and saved report views"},
     {"name": "client_portal", "base_route": "/dashboard/client-portal", "description": "Client-facing portal records and settings"},
+    # No page of its own (Settings > Integrations); listed so departments and teams get it (13a B7).
+    {"name": "website_integrations", "base_route": None, "description": "Public website and WordPress catalog integration APIs"},
     {"name": "message_templates", "base_route": "/dashboard/settings/message-templates", "description": "Reusable CRM message templates for communication channels"},
-    {"name": "finance_io", "base_route": "/dashboard/finance/insertion-orders", "description": "Finance insertion orders"},
-    {"name": "finance_pos", "base_route": "/dashboard/finance/pos", "description": "POS mode invoices and walk-in sales"},
+    {"name": "finance_pos", "base_route": "/dashboard/finance/invoices", "description": "Invoices, including POS and walk-in sales"},
+    {"name": "finance_credit_notes", "base_route": "/dashboard/finance/credit-notes", "description": "Credit notes against invoices"},
+    {"name": "finance_payments", "base_route": "/dashboard/finance/payments", "description": "Payments received and made"},
     {"name": "sales_leads", "base_route": "/dashboard/sales/leads", "description": "Sales leads"},
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},
     {"name": "sales_organizations", "base_route": "/dashboard/sales/organizations", "description": "Sales organizations"},
     {"name": "sales_opportunities", "base_route": "/dashboard/sales/opportunities", "description": "Sales opportunities"},
     {"name": "sales_quotes", "base_route": "/dashboard/sales/quotes", "description": "Sales quotes"},
     {"name": "sales_orders", "base_route": "/dashboard/sales/orders", "description": "Sales orders"},
-    {"name": "support_cases", "base_route": "/dashboard/support/cases", "description": "Customer support cases"},
 ]
 
 DEFAULT_DEPARTMENT = {"name": "Administration", "description": "Initial system administration department"}
@@ -195,6 +207,9 @@ def seed_initial_data(
                 admin_user.first_name = admin_first_name.strip() or None
             if not admin_user.last_name:
                 admin_user.last_name = admin_last_name.strip() or None
+
+        ensure_default_opportunity_pipeline(db, tenant.id)
+        ensure_system_picklists(db, tenant.id)
 
         db.commit()
         return {"seeded": True, "reason": "ok"}

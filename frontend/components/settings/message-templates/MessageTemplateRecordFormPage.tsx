@@ -6,11 +6,13 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
+import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
@@ -122,11 +124,14 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
   }
 
   return (
-    <div className="grid gap-6">
-      <PageToolbar><Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button></PageToolbar>
+    <PageShell
+      title={isEdit ? "Edit template" : "Create template"}
+      description="A reusable message body for mail and WhatsApp."
+      actions={<Button type="button" variant="outline" onClick={() => void returnToTemplates()}><ArrowLeft />Back to templates</Button>}
+    >
       <Card className="overflow-hidden">
         {!isEdit ? (
-          <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-presets-heading">
+          <section className="border-b border-line-subtle p-4 md:p-6" aria-labelledby="template-presets-heading">
             <h2 id="template-presets-heading" className="text-base font-semibold text-copy-primary">Start from a preset</h2>
             <p className="mt-1 text-sm text-copy-muted">Presets are editable starting points and do not send messages.</p>
             <div className="mt-4 flex flex-wrap gap-2">
@@ -135,10 +140,10 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
           </section>
         ) : null}
 
-        <section className="border-b border-line-subtle px-5 py-5 md:px-6" aria-labelledby="template-details-heading">
+        <section className="border-b border-line-subtle p-4 md:p-6" aria-labelledby="template-details-heading">
           <h2 id="template-details-heading" className="text-base font-semibold text-copy-primary">Template details</h2>
           <p className="mt-1 text-sm text-copy-muted">Name the template and choose where it is available.</p>
-          <FieldGroup className="mt-5">
+          <FieldGroup className="mt-4">
             <Field data-invalid={error?.field === "name"}>
               <FieldLabel htmlFor="template-name">Name <RequiredMark /></FieldLabel>
               <Input ref={nameRef} id="template-name" value={draft.name} maxLength={180} onChange={(event) => { setDraft((current) => ({ ...current, name: event.target.value })); setError(null); }} aria-invalid={error?.field === "name"} placeholder="Quote follow-up" />
@@ -148,7 +153,7 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
               <FieldLabel htmlFor="template-description">Description</FieldLabel>
               <Input id="template-description" value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} />
             </Field>
-            <div className="grid gap-4 sm:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2">
               <Field>
                 <FieldLabel>Channel <RequiredMark /></FieldLabel>
                 <Select value={draft.channel} onValueChange={(value) => setDraft((current) => ({ ...current, channel: value }))}><SelectTrigger aria-label="Channel"><SelectValue /></SelectTrigger><SelectContent>{CHANNEL_OPTIONS.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent></Select>
@@ -160,19 +165,22 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
             </div>
             <Field>
               <FieldLabel>Template status</FieldLabel>
-              <div className="grid grid-cols-2 gap-2" role="group" aria-label="Template status">
-                <Button type="button" variant={draft.is_active ? "secondary" : "outline"} aria-pressed={draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: true }))}>Active</Button>
-                <Button type="button" variant={!draft.is_active ? "secondary" : "outline"} aria-pressed={!draft.is_active} onClick={() => setDraft((current) => ({ ...current, is_active: false }))}>Inactive</Button>
-              </div>
+              <SegmentedBoolean
+                aria-label="Template status"
+                value={draft.is_active}
+                onValueChange={(is_active) => setDraft((current) => ({ ...current, is_active }))}
+                trueLabel="Active"
+                falseLabel="Inactive"
+              />
               <FieldDescription>Inactive templates remain saved but cannot be selected for new messages.</FieldDescription>
             </Field>
           </FieldGroup>
         </section>
 
-        <section className="px-5 py-5 md:px-6" aria-labelledby="template-content-heading">
+        <section className="p-4 md:p-6" aria-labelledby="template-content-heading">
           <h2 id="template-content-heading" className="text-base font-semibold text-copy-primary">Message content</h2>
           <p className="mt-1 text-sm text-copy-muted">Variables wrapped in braces are detected and saved automatically.</p>
-          <FieldGroup className="mt-5">
+          <FieldGroup className="mt-4">
             <Field data-invalid={error?.field === "body" || error?.field === "form"}>
               <FieldLabel htmlFor="template-body">Body <RequiredMark /></FieldLabel>
               <Textarea ref={bodyRef} id="template-body" value={draft.body} onChange={(event) => { setDraft((current) => ({ ...current, body: event.target.value })); setError(null); }} className="min-h-48" aria-invalid={error?.field === "body" || error?.field === "form"} />
@@ -199,18 +207,16 @@ function TemplateEditor({ template }: { template: MessageTemplate | null }) {
         </section>
       </Card>
 
-      <div className="sticky bottom-0 z-20 -mx-4 border-t border-line-default bg-app/95 px-4 py-3 backdrop-blur md:-mx-6 md:px-6">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <span className={`text-sm font-medium ${isDirty ? "text-state-warning" : "text-state-success"}`}>{isDirty ? "Unsaved changes" : "All changes saved"}</span>
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
-            <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
-              <Save />{isSaving ? "Saving..." : isEdit ? "Save template" : "Create template"}
-            </Button>
-          </div>
-        </div>
-      </div>
-    </div>
+      {/* R3: this was a verbatim copy of `RecordFormLayout`'s sticky bar, which is exactly
+          what a layout detail with no primitive behind it costs. R5: the dirty line is not
+          coloured — unsaved work is the normal state of an open form, not an exception. */}
+      <FormFooter status={isDirty ? "Unsaved changes" : null}>
+        <Button type="button" variant="outline" onClick={() => void returnToTemplates()}>Cancel</Button>
+        <Button type="button" onClick={() => void saveTemplate()} disabled={isSaving || !isDirty}>
+          <Save />{isSaving ? "Saving…" : isEdit ? "Save template" : "Create template"}
+        </Button>
+      </FormFooter>
+    </PageShell>
   );
 }
 
@@ -222,7 +228,7 @@ export default function MessageTemplateRecordFormPage({ templateId = null }: { t
 
   if (modulesLoading || (templateId !== null && templatesQuery.isLoading)) return <RouteLoadingState label="message template" />;
   if (!permitted) return <PermissionDeniedState />;
-  if (templatesQuery.error) return <RouteErrorState title="Unable to load this template" reset={() => void templatesQuery.refetch()} backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
+  if (templatesQuery.error) return <RouteErrorState title="This template could not be loaded" reset={() => void templatesQuery.refetch()} backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
   const template = templateId === null ? null : templatesQuery.data?.find((item) => item.id === templateId) ?? null;
   if (templateId !== null && !template) return <RouteNotFoundState recordLabel="Message template" backHref="/dashboard/settings/message-templates" backLabel="Back to templates" />;
   return <TemplateEditor key={template?.id ?? "new"} template={template} />;

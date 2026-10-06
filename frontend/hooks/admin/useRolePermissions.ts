@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type RoleSummary = {
   id: number;
@@ -48,13 +48,13 @@ type OverviewResponse = {
 
 async function fetchOverview(): Promise<OverviewResponse> {
   const res = await apiFetch("/admin/users/roles/permissions");
-  if (!res.ok) throw new Error("Failed to load roles and permissions");
+  if (!res.ok) throw new ApiError(res.status, "Failed to load roles and permissions");
   return res.json();
 }
 
 async function fetchRolePermissions(roleId: number): Promise<ModulePermission[]> {
   const res = await apiFetch(`/admin/users/roles/${roleId}/permissions`);
-  if (!res.ok) throw new Error("Failed to load role permissions");
+  if (!res.ok) throw new ApiError(res.status, "Failed to load role permissions");
   return res.json();
 }
 

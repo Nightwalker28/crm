@@ -1,0 +1,144 @@
+// Guards the single-scroll rule across every static route.
+//
+// Module list pages are full-height columns: the toolbar and pagination stay pinned and
+// only the rows scroll. Everywhere else the page scrolls as one document. What must never
+// happen is both at once - two scrollbars, with the inner region stealing the wheel.
+//
+// Exempt, because they are bounded controls rather than page content: dialogs, sheets,
+// popovers, listboxes, and anything marked `data-bounded-list`.
+//
+// See docs/design/design.md 11.1 and 4.5.
+import { expect, test } from "@playwright/test";
+import { loginAsAdmin } from "./helpers/auth";
+import { describeRouteScope, inRouteScope, ROUTE_SCOPE } from "./helpers/routeScope";
+
+const ROUTES = [
+  "/client",
+  "/client/bookings",
+  "/client/catalog",
+  "/client/documents",
+  "/client/login",
+  "/client/orders",
+  "/client/quotes",
+  "/client/setup",
+  "/dashboard",
+  "/dashboard/calendar",
+  "/dashboard/catalog/products",
+  "/dashboard/inventory/stock",
+  "/dashboard/inventory/movements",
+  "/dashboard/inventory/adjustments",
+  "/dashboard/inventory/adjustments/new",
+  "/dashboard/inventory/transfers",
+  "/dashboard/inventory/transfers/new",
+  "/dashboard/inventory/deliveries",
+  "/dashboard/inventory/returns",
+  "/dashboard/inventory/valuation",
+  "/dashboard/inventory/valuation?tab=revaluations",
+  "/dashboard/purchasing/orders",
+  "/dashboard/purchasing/orders/new",
+  "/dashboard/purchasing/receipts",
+  "/dashboard/purchasing/reorder",
+  "/dashboard/purchasing/bills",
+  "/dashboard/purchasing/bills/new",
+  "/dashboard/catalog/products/new",
+  "/dashboard/catalog/services",
+  "/dashboard/catalog/services/new",
+  "/dashboard/client-portal",
+  "/dashboard/client-portal/pages/new",
+  "/dashboard/documents",
+  "/dashboard/documents/upload",
+  "/dashboard/finance/payments",
+  "/dashboard/finance/payments/record",
+  "/dashboard/finance/credit-notes",
+  "/dashboard/finance/invoices",
+  "/dashboard/finance/invoices/new",
+  "/dashboard/mail",
+  "/dashboard/mail/compose",
+  "/dashboard/profile",
+  "/dashboard/reports",
+  "/dashboard/reports/dashboards",
+  "/dashboard/reports/forecast",
+  "/dashboard/reports/new",
+  "/dashboard/sales/contacts",
+  "/dashboard/sales/contacts/new",
+  "/dashboard/sales/leads",
+  "/dashboard/sales/leads/new",
+  "/dashboard/sales/opportunities",
+  "/dashboard/sales/opportunities/new",
+  "/dashboard/sales/orders",
+  "/dashboard/sales/orders/new",
+  "/dashboard/sales/organizations",
+  "/dashboard/sales/organizations/new",
+  "/dashboard/sales/quotes",
+  "/dashboard/sales/quotes/new",
+  "/dashboard/settings",
+  "/dashboard/settings/activity-log",
+  "/dashboard/settings/authentication",
+  "/dashboard/settings/automation",
+  "/dashboard/settings/backups",
+  "/dashboard/settings/calendar-booking",
+  "/dashboard/settings/customer-groups",
+  "/dashboard/settings/catalog-categories",
+  "/dashboard/settings/picklists",
+  "/dashboard/settings/picklists/lead_status",
+  "/dashboard/settings/picklists/country",
+  "/dashboard/settings/warehouses",
+  "/dashboard/settings/domains",
+  "/dashboard/settings/fields",
+  "/dashboard/settings/record-layouts",
+  "/dashboard/settings/pipeline",
+  "/dashboard/settings/general",
+  "/dashboard/settings/integrations",
+  "/dashboard/settings/message-templates",
+  "/dashboard/settings/message-templates/new",
+  "/dashboard/settings/module-builder",
+  "/dashboard/settings/modules",
+  "/dashboard/settings/permissions",
+  "/dashboard/settings/provisioning",
+  "/dashboard/settings/recycle-bin",
+  "/dashboard/settings/teams",
+  "/dashboard/settings/users",
+  "/dashboard/tasks"
+];
+
+test("no page has both a page scroll and a nested content scroll", async ({ page }) => {
+  test.setTimeout(25 * 60 * 1000);
+  await loginAsAdmin(page);
+  await page.setViewportSize({ width: 1280, height: 620 });
+
+  const findings: string[] = [];
+  const routes = ROUTES.filter(inRouteScope);
+  console.log(`Scroll guard over ${routes.length} routes, ${describeRouteScope()}.`);
+  if (ROUTE_SCOPE.length) expect(routes.length, `E2E_ROUTES matched no route: ${ROUTE_SCOPE.join(", ")}`).toBeGreaterThan(0);
+  for (const route of routes) {
+    try {
+      await page.goto(route, { waitUntil: "domcontentloaded", timeout: 45000 });
+      await page.waitForTimeout(1600);
+    } catch { findings.push(`${route}  NAV-FAILED`); continue; }
+
+    const r = await page.evaluate(() => {
+      const pageScroller = document.querySelector<HTMLElement>("main div.overflow-y-auto");
+      const nav = document.querySelector<HTMLElement>("nav");
+      const nested: string[] = [];
+      document.querySelectorAll<HTMLElement>("*").forEach((el) => {
+        const oy = getComputedStyle(el).overflowY;
+        if (!(oy === "auto" || oy === "scroll")) return;
+        if (el.scrollHeight <= el.clientHeight + 2) return;
+        if (el === pageScroller || el === nav || nav?.contains(el)) return;
+        // allowed bounded regions: overlays and option lists
+        if (el.closest('[role="dialog"], [data-slot="sheet-content"], [role="listbox"], [data-radix-popper-content-wrapper], [data-bounded-list]')) return;
+        nested.push(`<${el.tagName.toLowerCase()} class="${typeof el.className === "string" ? el.className : ""}">`);
+      });
+      return { nested, pageScrolls: pageScroller ? pageScroller.scrollHeight > pageScroller.clientHeight + 2 : false };
+    });
+    if (r.pageScrolls && r.nested.length) findings.push(`${route}\n     ${r.nested.join("\n     ")}`);
+  }
+  expect(
+    findings,
+    `Routes with both a page scroll and a nested content scroll:\n${findings.join("\n")}\n\n` +
+      "A page's primary content must not carry its own height cap. Either make the page a " +
+      "full-height column (flex h-full min-h-0 flex-col) so one region scrolls, or remove the " +
+      "cap so the page scrolls as one document. Genuinely bounded controls - overlays, option " +
+      "lists, code blocks - are exempt via role/data-bounded-list. See docs/design/design.md 11.1.",
+  ).toEqual([]);
+});

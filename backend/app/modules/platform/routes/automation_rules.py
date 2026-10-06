@@ -17,6 +17,7 @@ from app.modules.platform.schema import (
     AutomationTriggerRegistryResponse,
     AutomationRuleTriggerResponse,
     AutomationRuleUpdateRequest,
+    AutomationTemplateListResponse,
 )
 from app.modules.platform.services.automation_registry import (
     actions_for_module,
@@ -25,7 +26,6 @@ from app.modules.platform.services.automation_registry import (
     condition_fields_for_trigger,
     grouped_trigger_registry,
     serialize_action,
-    serialize_condition_field,
 )
 from app.modules.platform.services.automation_rules import (
     SUPPORTED_AUTOMATION_TRIGGERS,
@@ -34,7 +34,9 @@ from app.modules.platform.services.automation_rules import (
     get_automation_rule_or_404,
     list_automation_rule_runs,
     list_automation_rules,
+    list_automation_templates,
     preview_automation_rule,
+    serialize_condition_fields_for_tenant,
     serialize_automation_rule_run,
     serialize_automation_rule,
     update_automation_rule,
@@ -58,10 +60,16 @@ def get_automation_trigger_registry(admin=Depends(require_admin)):
 def get_automation_condition_fields(
     trigger_event: str | None = Query(default=None, max_length=100),
     module_key: str | None = Query(default=None, max_length=100),
+    db: Session = Depends(get_db),
     admin=Depends(require_admin),
 ):
     fields = condition_fields_for_trigger(trigger_event) if trigger_event else condition_fields_for_module(module_key or "")
-    return {"results": [serialize_condition_field(field) for field in fields]}
+    return {"results": serialize_condition_fields_for_tenant(db, tenant_id=admin.tenant_id, fields=fields)}
+
+
+@router.get("/templates", response_model=AutomationTemplateListResponse)
+def get_automation_templates(admin=Depends(require_admin)):
+    return {"results": list_automation_templates()}
 
 
 @router.get("/action-registry", response_model=AutomationActionRegistryResponse)

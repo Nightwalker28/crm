@@ -1,56 +1,81 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
-import { CheckSquare, MessageCircle, Pencil, StickyNote } from "lucide-react";
-import { toast } from "sonner";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Pencil, Plus } from "lucide-react";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQuickCreate";
 import CommunicationActions from "@/components/recordActivity/CommunicationActions";
-import FollowUpPanel from "@/components/recordActivity/FollowUpPanel";
-import RecordActivityTimeline from "@/components/recordActivity/RecordActivityTimeline";
-import RecordCommentsPanel from "@/components/recordActivity/RecordCommentsPanel";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
 import RecordDeleteButton from "@/components/recordActivity/RecordDeleteButton";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
 import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import {
+  RecordRelatedCard,
+  RecordRelatedLink,
+  RecordRelatedList,
+} from "@/components/recordWorkspace/RecordRelatedList";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
+import {
+  RecordWorkspace,
+  useRecordTabHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Checkbox } from "@/components/ui/checkbox";
-import { FieldDescription } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { RecordTabs } from "@/components/ui/RecordTabs";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
-  RouteErrorState,
-  RouteLoadingState,
-} from "@/components/ui/RouteStates";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineCollection,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { useOpportunityStageLabel } from "@/hooks/sales/useOpportunityPipeline";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import {
   isModuleFieldEnabled,
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import {
   useClientPortalActions,
   useCustomerGroups,
   type CustomerGroup,
 } from "@/hooks/useClientPortal";
 import { apiFetch } from "@/lib/api";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
 
 type RelatedOpportunity = {
   opportunity_id: number;
   opportunity_name: string;
   sales_stage?: string | null;
   expected_close_date?: string | null;
-  total_cost_of_project?: string | null;
+  amount?: number | string | null;
   currency_type?: string | null;
+  /** The role this contact plays on the deal; null for a legacy primary with no role. */
+  contact_role_label?: string | null;
+  is_primary_contact?: boolean | null;
+};
+type RelatedOrder = {
+  id: number;
+  order_number: string;
+  status: string;
+  currency: string;
+  grand_total: number | string;
 };
 type RelatedQuote = {
   quote_id: number;
@@ -73,6 +98,8 @@ type ContactSummary = {
     current_title?: string | null;
     region?: string | null;
     country?: string | null;
+    organization_id?: number | null;
+    assigned_to?: number | null;
     assigned_to_name?: string | null;
     last_contacted_at?: string | null;
     last_contacted_channel?: string | null;
@@ -88,708 +115,585 @@ type ContactSummary = {
     primary_email?: string | null;
     website?: string | null;
   } | null;
+  related_access?: RelatedRecordAccess;
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
-  inferred_services: string[];
+  related_orders?: RelatedOrder[];
+  // Totals; the lists above hold the most recent few.
   opportunity_count: number;
   quote_count: number;
-};
-type MessageTemplate = {
-  id: number;
-  name: string;
-  body: string;
-  variables: string[];
+  order_count?: number;
 };
 
-const EMPTY_MESSAGE_TEMPLATES: MessageTemplate[] = [];
+/**
+ * Fields the spine owns, which `Details` must not draw a second time (design.md §4.7).
+ *
+ * `customer_group_id` is the one that would otherwise read as two controls: the rail
+ * autosaves it, and the configured layout would render a stale read-only copy beside.
+ */
+const SPINE_OWNED_FIELDS = ["assigned_to", "organization_id", "customer_group_id"] as const;
+
+const NO_GROUP = "none";
+
+class ContactSummaryRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
 
 async function fetchContactSummary(contactId: string) {
   const res = await apiFetch(`/sales/contacts/${contactId}/summary`);
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
+  if (!res.ok) throw new ContactSummaryRequestError(body?.detail ?? `Failed with ${res.status}`, res.status);
   return body as ContactSummary;
-}
-
-async function fetchWhatsAppTemplates() {
-  const res = await apiFetch(
-    "/message-templates?channel=whatsapp&module_key=sales_contacts",
-  );
-  const body = await res.json().catch(() => null);
-  if (!res.ok)
-    throw new Error(body?.detail ?? "Failed to load WhatsApp templates.");
-  return (body?.results ?? []) as MessageTemplate[];
-}
-
-function openPendingWhatsAppWindow() {
-  if (typeof window === "undefined" || typeof window.open !== "function")
-    return null;
-  const popup = window.open("about:blank", "_blank");
-  if (popup) popup.opener = null;
-  return popup;
 }
 
 export default function ContactDetailPage() {
   const params = useParams<{ contactId: string }>();
-  const [whatsAppSending, setWhatsAppSending] = useState(false);
-  const [selectedWhatsAppTemplateId, setSelectedWhatsAppTemplateId] =
-    useState("");
-  const [createWhatsAppReminder, setCreateWhatsAppReminder] = useState(true);
-  const [whatsAppReminderDueAt, setWhatsAppReminderDueAt] = useState("");
-  const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
+  const queryClient = useQueryClient();
+  const [dealQuickCreateOpen, setDealQuickCreateOpen] = useState(false);
+  const dealQuickCreateTriggerRef = useRef<HTMLButtonElement>(null);
+
+  const { modules } = useAccessibleModules();
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const contactActions = moduleActions("sales_contacts");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const opportunityActions = moduleActions("sales_opportunities");
+  const organizationActions = moduleActions("sales_organizations");
+  const canEditContact = Boolean(contactActions?.can_edit);
+  const canDeleteContact = Boolean(contactActions?.can_delete);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canCreateTasks = Boolean(taskActions?.can_create);
+  const canEditTasks = Boolean(taskActions?.can_edit);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+  const canCreateDocuments = Boolean(documentActions?.can_create);
+  const canEditDocuments = Boolean(documentActions?.can_edit);
+  const canDeleteDocuments = Boolean(documentActions?.can_delete);
+  const canViewOpportunities = Boolean(opportunityActions?.can_view);
+  // Contextual deal creation links the deal to this contact, so it needs both rights. The
+  // create endpoint enforces exactly the same pair.
+  const canCreateOpportunityHere = Boolean(opportunityActions?.can_create) && Boolean(contactActions?.can_view);
+  const canViewOrganizations = Boolean(organizationActions?.can_view);
+
+  const {
+    fields: moduleFields,
+    isLoading: moduleFieldsLoading,
+    error: moduleFieldsError,
+  } = useModuleFieldConfigs("sales_contacts");
+  const fieldConfigsReady = !moduleFieldsLoading && !moduleFieldsError;
   const fieldEnabled = (fieldKey: string) =>
-    isModuleFieldEnabled(moduleFields, fieldKey);
+    fieldKey === "primary_email" || (fieldConfigsReady && isModuleFieldEnabled(moduleFields, fieldKey));
+
   const customerGroupsQuery = useCustomerGroups();
-  const { assignContactGroup, isAssigningCustomerGroup } =
-    useClientPortalActions();
+  const { assignContactGroup } = useClientPortalActions();
   const summaryQuery = useQuery({
     queryKey: ["sales-contact-summary", params.contactId],
     queryFn: () => fetchContactSummary(params.contactId),
     enabled: Boolean(params.contactId),
     refetchOnWindowFocus: false,
   });
-  const whatsAppTemplatesQuery = useQuery({
-    queryKey: ["message-templates", "whatsapp", "sales_contacts"],
-    queryFn: fetchWhatsAppTemplates,
-    staleTime: 5 * 60_000,
-  });
-  const summary = summaryQuery.data ?? null;
-  const whatsAppTemplates =
-    whatsAppTemplatesQuery.data ?? EMPTY_MESSAGE_TEMPLATES;
-  const selectedWhatsAppTemplate = useMemo(
-    () =>
-      whatsAppTemplates.find(
-        (template) => String(template.id) === selectedWhatsAppTemplateId,
-      ) ??
-      whatsAppTemplates[0] ??
-      null,
-    [selectedWhatsAppTemplateId, whatsAppTemplates],
-  );
-  const activeWhatsAppTemplateId = selectedWhatsAppTemplate
-    ? String(selectedWhatsAppTemplate.id)
-    : "";
-  const contactName = summary
-    ? [summary.contact.first_name, summary.contact.last_name]
-        .filter(Boolean)
-        .join(" ") || summary.contact.primary_email
-    : "Contact";
+  const detailLayoutQuery = useResolvedRecordLayout("sales_contacts", "detail");
 
-  async function handleWhatsAppClick() {
-    if (!summary?.contact.contact_telephone)
-      return toast.error("Add a phone number before starting WhatsApp chat.");
-    const pendingPopup = openPendingWhatsAppWindow();
+  const summary = summaryQuery.data ?? null;
+  const contact = summary?.contact;
+  const summaryError = summaryQuery.error;
+  const notFound = summaryError instanceof ContactSummaryRequestError && summaryError.status === 404;
+  const contactName = summary
+    ? [summary.contact.first_name, summary.contact.last_name].filter(Boolean).join(" ")
+      || summary.contact.primary_email
+    : "Contact";
+  const recordHref = `/dashboard/sales/contacts/${params.contactId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
+  const relatedHref = `${recordHref}?tab=related`;
+
+  /**
+   * The one state field a contact has. Same shape as the lead's status commit: optimistic,
+   * rolled back on failure, and `InlineFieldEdit` reads the moved cache rather than holding
+   * a copy of its own.
+   */
+  async function updateCustomerGroup(next: string) {
+    if (!summary) return;
+    const groupId = next === NO_GROUP ? null : Number(next);
+    if (groupId !== null && !Number.isInteger(groupId)) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-contact-summary", params.contactId], {
+      ...summary,
+      contact: { ...summary.contact, customer_group_id: groupId },
+    });
     try {
-      setWhatsAppSending(true);
-      const res = await apiFetch(
-        `/whatsapp/contacts/${summary.contact.contact_id}/click`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            template_id: activeWhatsAppTemplateId
-              ? Number(activeWhatsAppTemplateId)
-              : null,
-            create_follow_up_task: createWhatsAppReminder,
-            follow_up_due_at:
-              createWhatsAppReminder && whatsAppReminderDueAt
-                ? new Date(whatsAppReminderDueAt).toISOString()
-                : null,
-          }),
-        },
-      );
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      if (pendingPopup) pendingPopup.location.href = body.whatsapp_url;
-      else window.open(body.whatsapp_url, "_blank", "noopener,noreferrer");
-      toast.success(
-        body.follow_up_task
-          ? "WhatsApp chat opened and follow-up task created."
-          : "WhatsApp chat opened.",
-      );
-      await summaryQuery.refetch();
-    } catch {
-      pendingPopup?.close();
-      toast.error(
-        "WhatsApp chat could not be started. Check the contact details and try again.",
-      );
-    } finally {
-      setWhatsAppSending(false);
+      await assignContactGroup({ contactId: summary.contact.contact_id, customerGroupId: groupId });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_contacts", params.contactId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-contact-summary", params.contactId], previous);
+      throw error;
     }
   }
 
-  async function handleAssignCustomerGroup(value: string) {
+  /** The second state field, same optimistic shape as the group above it. */
+  async function updateOwner(nextOwnerId: number | null) {
     if (!summary) return;
+    const previous = summary;
+    queryClient.setQueryData(["sales-contact-summary", params.contactId], {
+      ...summary,
+      contact: { ...summary.contact, assigned_to: nextOwnerId },
+    });
     try {
-      const groupId = value === "none" ? null : Number(value);
-      await assignContactGroup({
-        contactId: summary.contact.contact_id,
-        customerGroupId: Number.isInteger(groupId) ? groupId : null,
+      const res = await apiFetch(`/sales/contacts/${params.contactId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assigned_to: nextOwnerId }),
       });
+      if (!res.ok) throw new Error("The contact owner could not be saved.");
       await summaryQuery.refetch();
-      toast.success("Customer group updated.");
-    } catch {
-      toast.error("Customer group could not be updated. Try again.");
+      await queryClient.invalidateQueries({ queryKey: ["sales-contacts"] });
+      await queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_contacts", params.contactId],
+      });
+    } catch (error) {
+      queryClient.setQueryData(["sales-contact-summary", params.contactId], previous);
+      throw error;
     }
+  }
+
+  const customerGroups = customerGroupsQuery.data ?? [];
+  const currentGroupId = contact?.customer_group_id ?? null;
+  // An archived group stays selectable only where it is the current value — otherwise the
+  // rail would render a group the operator cannot see the name of.
+  const customerGroupOptions: InlineFieldEditOption[] = [
+    { value: NO_GROUP, tone: null, label: "No group" },
+    ...customerGroups
+      .filter((group) => group.is_active || group.id === currentGroupId)
+      .map((group) => ({ value: String(group.id), tone: null, label: group.name })),
+  ];
+  // The group list is a second request, and the record arrives first. Without this the rail
+  // shows the raw id for as long as that request is in flight, because `InlineFieldEdit`
+  // falls back to the value when no option matches it.
+  if (currentGroupId && !customerGroupOptions.some((option) => option.value === String(currentGroupId))) {
+    customerGroupOptions.push({
+      value: String(currentGroupId),
+      tone: null,
+      label: contact?.customer_group?.name ?? "Assigned group",
+    });
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      <RecordPageHeader
-        backHref="/dashboard/sales/contacts"
-        backLabel="Back to Contacts"
+    <>
+      <RecordWorkspace
         title={contactName}
         description="Review contact details, account context, communications, and related sales records."
-        primaryAction={
+        backHref="/dashboard/sales/contacts"
+        backLabel="Contacts"
+        isPermissionDenied={summaryError instanceof ContactSummaryRequestError && summaryError.status === 403}
+        isLoading={summaryQuery.isLoading || (!summary && !summaryError)}
+        hasError={Boolean(summaryError)}
+        onRetry={() => void summaryQuery.refetch()}
+        errorState={notFound ? (
+          <RouteNotFoundState
+            titleAs="p"
+            recordLabel="Contact"
+            backHref="/dashboard/sales/contacts"
+            backLabel="Back to contacts"
+          />
+        ) : undefined}
+        subtitle={summary ? (
           <>
-            <RecordDeleteButton
-              endpoint={`/sales/contacts/${params.contactId}`}
-              label="Contact"
-              recordName={contactName}
-              redirectHref="/dashboard/sales/contacts"
-              queryKeys={["sales-contacts"]}
-            />
-            <Button asChild>
-              <Link href={`/dashboard/sales/contacts/${params.contactId}/edit`}>
-                <Pencil />
-                Edit
-              </Link>
-            </Button>
+            {summary.organization ? (
+              canViewOrganizations ? (
+                <TextLink href={`/dashboard/sales/organizations/${summary.organization.org_id}`}>
+                  {summary.organization.org_name}
+                </TextLink>
+              ) : (
+                <span>{summary.organization.org_name}</span>
+              )
+            ) : null}
+            <span>{summary.contact.primary_email}</span>
+            {fieldEnabled("contact_telephone") && summary.contact.contact_telephone ? (
+              <span>{summary.contact.contact_telephone}</span>
+            ) : null}
           </>
+        ) : null}
+        actions={contact ? (
+          <>
+            {canCreateOpportunityHere ? (
+              <Button
+                ref={dealQuickCreateTriggerRef}
+                type="button"
+                onClick={() => setDealQuickCreateOpen(true)}
+              >
+                <Plus />
+                Deal
+              </Button>
+            ) : null}
+            <CommunicationActions
+              email={contact.primary_email}
+              phone={fieldEnabled("contact_telephone") ? contact.contact_telephone : null}
+              emailOptOut={Boolean(contact.email_opt_out)}
+              // Wave 3A: the contextual composer, as on a Lead. The mail domain decides the
+              // mailbox and files the message against this contact; the page only names it.
+              emailContext={{
+                moduleKey: "sales_contacts",
+                entityId: contact.contact_id,
+                recordLabel: contactName,
+              }}
+              // WhatsApp is the tracked click-to-chat in the Timeline composer (§4.7), so the
+              // header must not also offer the untracked `wa.me` fallback.
+              showWhatsApp={false}
+            />
+            {canEditContact ? (
+              <Button asChild variant="outline">
+                <Link href={editHref}>
+                  <Pencil />
+                  Edit
+                </Link>
+              </Button>
+            ) : null}
+          </>
+        ) : null}
+        overflowActions={contact && canDeleteContact ? (
+          <RecordDeleteButton
+            as="menuItem"
+            endpoint={`/sales/contacts/${params.contactId}`}
+            label="Contact"
+            recordName={contactName}
+            redirectHref="/dashboard/sales/contacts"
+            queryKeys={["sales-contacts"]}
+          />
+        ) : null}
+        spine={
+          <RecordSpine>
+            {summary && contact ? (
+              <>
+                <RecordSpineBlock title="State">
+                  {fieldEnabled("assigned_to") ? (
+                    <RecordOwnerField
+                      moduleKey="sales_contacts"
+                      ownerId={contact.assigned_to}
+                      ownerName={contact.assigned_to_name}
+                      canEdit={canEditContact}
+                      onCommit={updateOwner}
+                    />
+                  ) : null}
+                  <RecordSpineField label="Customer group">
+                    {canEditContact ? (
+                      <InlineFieldEdit
+                        fieldLabel="Customer group"
+                        value={currentGroupId ? String(currentGroupId) : NO_GROUP}
+                        options={customerGroupOptions}
+                        disabled={customerGroupsQuery.isLoading}
+                        onCommit={(next) => updateCustomerGroup(next.value)}
+                      />
+                    ) : (
+                      contact.customer_group?.name ?? "No group"
+                    )}
+                  </RecordSpineField>
+                </RecordSpineBlock>
+  
+                <RecordSpineBlock title="Connected">
+                  {fieldEnabled("organization_id") ? (
+                    <RecordSpineLink
+                      label="Account"
+                      value={summary.organization?.org_name}
+                      href={
+                        summary.organization && canViewOrganizations
+                          ? `/dashboard/sales/organizations/${summary.organization.org_id}`
+                          : null
+                      }
+                    />
+                  ) : null}
+                  {canViewOpportunities && canViewRelated(summary.related_access, "opportunities") ? (
+                    <RecordSpineCollection
+                      label="Deals"
+                      count={summary.opportunity_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "quotes") ? (
+                    <RecordSpineCollection
+                      label="Quotes"
+                      count={summary.quote_count}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                  {canViewRelated(summary.related_access, "orders") ? (
+                    <RecordSpineCollection
+                      label="Orders"
+                      count={summary.order_count ?? 0}
+                      href={relatedHref}
+                    />
+                  ) : null}
+                </RecordSpineBlock>
+  
+  
+                <RecordSpineMeta
+                  updatedLabel={
+                    contact.updated_at ? `Updated ${formatDateTime(contact.updated_at)}` : undefined
+                  }
+                  history={
+                    <RecordAuditHistory moduleKey="sales_contacts" entityId={contact.contact_id} />
+                  }
+                />
+              </>
+            ) : null}
+          </RecordSpine>
         }
+        details={summary ? (
+          <ContactOverview
+            summary={summary}
+            layout={detailLayoutQuery.data}
+            isLayoutLoading={detailLayoutQuery.isLoading}
+            layoutError={detailLayoutQuery.error}
+            onRetryLayout={() => void detailLayoutQuery.refetch()}
+          />
+        ) : null}
+        timeline={contact ? (
+          <RecordTimeline
+            moduleKey="sales_contacts"
+            entityId={contact.contact_id}
+            canEdit={canEditContact}
+            composer={{
+              followUp: canEditContact
+                ? {
+                    endpoint: `/sales/contacts/${contact.contact_id}/follow-up`,
+                    email: contact.primary_email,
+                    phone: fieldEnabled("contact_telephone") ? contact.contact_telephone : null,
+                    canCreateTask: canViewTasks && canCreateTasks,
+                    onLogged: async () => {
+                      await summaryQuery.refetch();
+                    },
+                  }
+                : undefined,
+              call: canEditContact
+                ? {
+                    phone: fieldEnabled("contact_telephone") ? contact.contact_telephone : null,
+                    canCreateTask: canViewTasks && canCreateTasks,
+                    onLogged: async () => {
+                      await summaryQuery.refetch();
+                    },
+                  }
+                : undefined,
+              // The pre-5.3 WhatsApp panel. Tracked click-to-chat, so it replaces the generic
+              // channel mode rather than sitting beside it (§4.7).
+              whatsApp: canEditContact && fieldEnabled("contact_telephone")
+                ? {
+                    endpoint: `/whatsapp/contacts/${contact.contact_id}/click`,
+                    phone: contact.contact_telephone,
+                    canCreateTask: canViewTasks && canCreateTasks,
+                    onLogged: async () => {
+                      await summaryQuery.refetch();
+                    },
+                  }
+                : undefined,
+            }}
+          />
+        ) : undefined}
+        tasks={contact && canViewTasks ? (
+          <RecordTasksPanel
+            moduleKey="sales_contacts"
+            entityId={contact.contact_id}
+            sourceLabel={contactName}
+            canCreate={canCreateTasks}
+            canEdit={canEditTasks}
+            createActionVariant="outline"
+          />
+        ) : undefined}
+        files={contact && canViewDocuments ? (
+          <RecordDocumentsPanel
+            moduleKey="sales_contacts"
+            entityId={contact.contact_id}
+            canUpload={canCreateDocuments && canEditContact}
+            canEdit={canEditDocuments && canEditContact}
+            canDelete={canDeleteDocuments && canEditContact}
+          />
+        ) : undefined}
+        extraTabs={summary ? [
+          {
+            id: "related",
+            label: "Related records",
+            content: (
+              <RelatedRecords
+                summary={summary}
+                canViewOpportunities={canViewOpportunities}
+                canCreateOpportunity={canCreateOpportunityHere}
+                onCreateOpportunity={() => setDealQuickCreateOpen(true)}
+              />
+            ),
+          },
+        ] : []}
       />
-
-      {summaryQuery.error ? (
-        <RouteErrorState
-          title="Unable to load this contact"
-          reset={() => void summaryQuery.refetch()}
-          backHref="/dashboard/sales/contacts"
-          backLabel="Back to contacts"
+      {summary && canCreateOpportunityHere ? (
+        <OpportunityQuickCreate
+          open={dealQuickCreateOpen}
+          onOpenChange={setDealQuickCreateOpen}
+          returnFocusRef={dealQuickCreateTriggerRef}
+          onCreated={() => void summaryQuery.refetch()}
+          context={{
+            sourceModuleKey: "sales_contacts",
+            sourceEntityId: summary.contact.contact_id,
+            relationshipIntent: "contact_deal",
+            defaults: {
+              contact_id: summary.contact.contact_id,
+              contact_name: contactName,
+              organization_id: summary.organization?.org_id ?? null,
+              organization_name: summary.organization?.org_name ?? "",
+              opportunity_name: summary.organization?.org_name
+                ? `${summary.organization.org_name} — new deal`
+                : "",
+            },
+          }}
         />
       ) : null}
-      {summaryQuery.isLoading || (!summary && !summaryQuery.error) ? (
-        <RouteLoadingState label="contact" />
-      ) : null}
-
-      {summary ? (
-        <>
-          <Card className="px-4 py-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <CommunicationActions
-                email={summary.contact.primary_email}
-                phone={
-                  fieldEnabled("contact_telephone")
-                    ? summary.contact.contact_telephone
-                    : null
-                }
-                emailOptOut={Boolean(summary.contact.email_opt_out)}
-                whatsAppBusy={whatsAppSending}
-                whatsAppDisabled={
-                  !whatsAppTemplates.length || whatsAppTemplatesQuery.isLoading
-                }
-                onWhatsAppClick={() => void handleWhatsAppClick()}
-              />
-              <Button asChild type="button" size="sm" variant="ghost">
-                <Link href="?tab=notes" scroll={false}>
-                  <StickyNote />
-                  Note
-                </Link>
-              </Button>
-              <Button asChild type="button" size="sm" variant="ghost">
-                <Link href="?tab=related" scroll={false}>
-                  <CheckSquare />
-                  Task
-                </Link>
-              </Button>
-              <div className="ml-auto text-xs text-copy-muted">
-                Updated:{" "}
-                {summary.contact.updated_at
-                  ? formatDateTime(summary.contact.updated_at)
-                  : "Not recorded"}
-              </div>
-            </div>
-          </Card>
-          <RecordTabs
-            urlParam="tab"
-            defaultTabId="overview"
-            tabs={[
-              {
-                id: "overview",
-                label: "Overview",
-                content: (
-                  <ContactOverview
-                    summary={summary}
-                    fieldEnabled={fieldEnabled}
-                    activeWhatsAppTemplateId={activeWhatsAppTemplateId}
-                    setSelectedWhatsAppTemplateId={
-                      setSelectedWhatsAppTemplateId
-                    }
-                    whatsAppTemplates={whatsAppTemplates}
-                    whatsAppTemplatesLoading={whatsAppTemplatesQuery.isLoading}
-                    createWhatsAppReminder={createWhatsAppReminder}
-                    setCreateWhatsAppReminder={setCreateWhatsAppReminder}
-                    whatsAppReminderDueAt={whatsAppReminderDueAt}
-                    setWhatsAppReminderDueAt={setWhatsAppReminderDueAt}
-                    whatsAppSending={whatsAppSending}
-                    onWhatsAppClick={() => void handleWhatsAppClick()}
-                    customerGroups={customerGroupsQuery.data ?? []}
-                    customerGroupsLoading={customerGroupsQuery.isLoading}
-                    customerGroupSaving={isAssigningCustomerGroup}
-                    onAssignCustomerGroup={(value) =>
-                      void handleAssignCustomerGroup(value)
-                    }
-                  />
-                ),
-              },
-              {
-                id: "activity",
-                label: "Activity",
-                content: (
-                  <FollowUpPanel
-                    endpoint={`/sales/contacts/${summary.contact.contact_id}/follow-up`}
-                    lastContactedAt={summary.contact.last_contacted_at}
-                    lastContactedChannel={
-                      summary.contact.last_contacted_channel
-                    }
-                    email={summary.contact.primary_email}
-                    phone={summary.contact.contact_telephone}
-                    onLogged={async () => {
-                      await summaryQuery.refetch();
-                    }}
-                  />
-                ),
-              },
-              {
-                id: "related",
-                label: "Related records",
-                content: (
-                  <RelatedRecords summary={summary} contactName={contactName} />
-                ),
-              },
-              {
-                id: "notes",
-                label: "Notes",
-                content: (
-                  <RecordCommentsPanel
-                    moduleKey="sales_contacts"
-                    entityId={summary.contact.contact_id}
-                  />
-                ),
-              },
-              {
-                id: "files",
-                label: "Files",
-                content: (
-                  <RecordDocumentsPanel
-                    moduleKey="sales_contacts"
-                    entityId={summary.contact.contact_id}
-                  />
-                ),
-              },
-              {
-                id: "audit",
-                label: "Audit history",
-                content: (
-                  <RecordActivityTimeline
-                    moduleKey="sales_contacts"
-                    entityId={summary.contact.contact_id}
-                    title="Audit history"
-                    description="Chronological record changes and collaboration events for this contact."
-                  />
-                ),
-              },
-            ]}
-          />
-        </>
-      ) : null}
-    </div>
+    </>
   );
 }
 
-type OverviewProps = {
+function ContactOverview({
+  summary,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
+}: {
   summary: ContactSummary;
-  fieldEnabled: (key: string) => boolean;
-  activeWhatsAppTemplateId: string;
-  setSelectedWhatsAppTemplateId: (value: string) => void;
-  whatsAppTemplates: MessageTemplate[];
-  whatsAppTemplatesLoading: boolean;
-  createWhatsAppReminder: boolean;
-  setCreateWhatsAppReminder: (value: boolean) => void;
-  whatsAppReminderDueAt: string;
-  setWhatsAppReminderDueAt: (value: string) => void;
-  whatsAppSending: boolean;
-  onWhatsAppClick: () => void;
-  customerGroups: CustomerGroup[];
-  customerGroupsLoading: boolean;
-  customerGroupSaving: boolean;
-  onAssignCustomerGroup: (value: string) => void;
-};
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
+}) {
+  const layoutValues: Record<string, unknown> = {
+    ...summary.contact,
+    organization_id: summary.organization?.org_name,
+    assigned_to: summary.contact.assigned_to_name,
+  };
 
-function ContactOverview(props: OverviewProps) {
-  const { summary, fieldEnabled } = props;
-  return (
-    <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-      <Card className="px-5 py-5">
-        <h2 className="text-lg font-semibold text-copy-primary">
-          Contact details
-        </h2>
-        <p className="mt-1 text-sm text-copy-muted">
-          Core contact, account, and ownership information.
-        </p>
-        <div className="mt-5 grid gap-x-6 gap-y-4 md:grid-cols-2">
-          {fieldEnabled("primary_email") ? (
-            <DetailField label="Email" value={summary.contact.primary_email} />
-          ) : null}
-          {fieldEnabled("contact_telephone") ? (
-            <DetailField
-              label="Phone"
-              value={summary.contact.contact_telephone}
-            />
-          ) : null}
-          {fieldEnabled("current_title") ? (
-            <DetailField
-              label="Job title"
-              value={summary.contact.current_title}
-            />
-          ) : null}
-          {fieldEnabled("organization_id") ? (
-            <DetailField
-              label="Account"
-              value={summary.organization?.org_name}
-              href={
-                summary.organization
-                  ? `/dashboard/sales/organizations/${summary.organization.org_id}`
-                  : undefined
-              }
-            />
-          ) : null}
-          {fieldEnabled("assigned_to") ? (
-            <DetailField
-              label="Owner"
-              value={summary.contact.assigned_to_name}
-            />
-          ) : null}
-          {fieldEnabled("region") ? (
-            <DetailField label="Region" value={summary.contact.region} />
-          ) : null}
-          {fieldEnabled("country") ? (
-            <DetailField label="Country" value={summary.contact.country} />
-          ) : null}
-          {fieldEnabled("linkedin_url") ? (
-            <DetailField
-              label="LinkedIn"
-              value={summary.contact.linkedin_url}
-              href={safeExternalUrl(summary.contact.linkedin_url)}
-              external
-            />
-          ) : null}
-          {fieldEnabled("email_opt_out") ? (
-            <DetailField
-              label="Email preference"
-              value={
-                summary.contact.email_opt_out ? "Opted out" : "Email allowed"
-              }
-            />
-          ) : null}
-        </div>
-        {Object.keys(summary.contact.custom_fields ?? {}).length ? (
-          <details className="mt-5 border-t border-line-subtle pt-5">
-            <summary className="cursor-pointer text-sm font-medium text-copy-primary">
-              Custom fields
-            </summary>
-            <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
-              {Object.entries(summary.contact.custom_fields ?? {}).map(
-                ([key, value]) => (
-                  <DetailField
-                    key={key}
-                    label={key.replace(/_/g, " ")}
-                    value={String(value ?? "")}
-                  />
-                ),
-              )}
-            </div>
-          </details>
-        ) : null}
+  if (isLayoutLoading || !layout) {
+    return (
+      <Card className="p-6">
+        {layoutError ? (
+          <PanelError message="The contact details layout could not be loaded." onRetry={onRetryLayout} />
+        ) : (
+          <PanelLoading label="Loading contact details…" />
+        )}
       </Card>
-      <div className="grid gap-4">
-        <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-copy-primary">
-            Sales context
-          </h2>
-          <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <SummaryTile
-              label="Open deals"
-              value={String(summary.opportunity_count)}
-            />
-            <SummaryTile label="Quotes" value={String(summary.quote_count)} />
-          </div>
-          <div className="mt-3">
-            <SummaryTile
-              label="Services"
-              value={
-                summary.inferred_services.length
-                  ? summary.inferred_services.join(", ")
-                  : "No service history yet"
-              }
-            />
-          </div>
-        </Card>
-        <Card className="px-5 py-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
-            Customer group
-          </h2>
-          <Select
-            value={
-              summary.contact.customer_group_id
-                ? String(summary.contact.customer_group_id)
-                : "none"
-            }
-            onValueChange={props.onAssignCustomerGroup}
-            disabled={props.customerGroupsLoading || props.customerGroupSaving}
-          >
-            <SelectTrigger className="mt-3 w-full">
-              <SelectValue placeholder="Select customer group" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">No group</SelectItem>
-              {props.customerGroups.map((group) => (
-                <SelectItem
-                  key={group.id}
-                  value={String(group.id)}
-                  disabled={!group.is_active}
-                >
-                  {group.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <FieldDescription className="mt-2">
-            Client portal pricing uses this group where pricing rules are
-            configured.
-          </FieldDescription>
-        </Card>
-        <Card className="px-5 py-5">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-copy-secondary">
-                WhatsApp
-              </h2>
-              <p className="mt-2 text-sm text-copy-muted">
-                {summary.contact.whatsapp_last_contacted_at
-                  ? `Last contacted ${formatDateTime(summary.contact.whatsapp_last_contacted_at)}`
-                  : "No WhatsApp contact logged yet"}
-              </p>
-            </div>
-            <MessageCircle className="h-5 w-5 text-state-success" />
-          </div>
-          <div className="mt-4 grid gap-3">
-            <Select
-              value={props.activeWhatsAppTemplateId}
-              onValueChange={props.setSelectedWhatsAppTemplateId}
-              disabled={
-                !props.whatsAppTemplates.length ||
-                props.whatsAppTemplatesLoading
-              }
-            >
-              <SelectTrigger>
-                <SelectValue
-                  placeholder={
-                    props.whatsAppTemplatesLoading
-                      ? "Loading templates"
-                      : props.whatsAppTemplates.length
-                        ? "Select template"
-                        : "No templates available"
-                  }
-                />
-              </SelectTrigger>
-              <SelectContent>
-                {props.whatsAppTemplates.map((template) => (
-                  <SelectItem key={template.id} value={String(template.id)}>
-                    {template.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <label className="flex items-center gap-2 text-sm text-copy-secondary">
-              <Checkbox
-                checked={props.createWhatsAppReminder}
-                onCheckedChange={(checked) =>
-                  props.setCreateWhatsAppReminder(checked === true)
-                }
-                aria-label="Create follow-up task"
-              />
-              Create follow-up task
-            </label>
-            {props.createWhatsAppReminder ? (
-              <Input
-                type="datetime-local"
-                value={props.whatsAppReminderDueAt}
-                onChange={(event) =>
-                  props.setWhatsAppReminderDueAt(event.target.value)
-                }
-              />
-            ) : null}
-            <Button
-              type="button"
-              onClick={props.onWhatsAppClick}
-              disabled={
-                props.whatsAppSending ||
-                !summary.contact.contact_telephone ||
-                !props.whatsAppTemplates.length ||
-                props.whatsAppTemplatesLoading
-              }
-            >
-              <MessageCircle />
-              {props.whatsAppSending ? "Opening…" : "Open WhatsApp"}
-            </Button>
-          </div>
-        </Card>
-      </div>
-    </div>
+    );
+  }
+
+  return (
+    <ReadOnlyRecordLayout
+      layout={layout}
+      values={layoutValues}
+      customValues={summary.contact.custom_fields ?? {}}
+      omitFieldKeys={SPINE_OWNED_FIELDS}
+      renderValue={(field, value) => {
+        if (field.field_key === "linkedin_url") {
+          const href = safeExternalUrl(typeof value === "string" ? value : null);
+          if (!href) return undefined;
+          return (
+            <TextLink href={href} external>
+              {String(value)}
+            </TextLink>
+          );
+        }
+        if (field.field_key === "email_opt_out") {
+          return value === true ? "Opted out" : "Email allowed";
+        }
+        return undefined;
+      }}
+    />
   );
 }
 
 function RelatedRecords({
   summary,
-  contactName,
+  canViewOpportunities,
+  canCreateOpportunity,
+  onCreateOpportunity,
 }: {
   summary: ContactSummary;
-  contactName: string;
+  canViewOpportunities: boolean;
+  canCreateOpportunity: boolean;
+  onCreateOpportunity: () => void;
 }) {
+  const showDeals = canViewOpportunities && canViewRelated(summary.related_access, "opportunities");
+  const stageLabel = useOpportunityStageLabel(showDeals);
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <Card className="px-5 py-5">
-        <h2 className="text-lg font-semibold text-copy-primary">
-          Related deals
-        </h2>
-        <div className="mt-4 space-y-3">
-          {summary.related_opportunities.length ? (
-            summary.related_opportunities.map((opportunity) => (
-              <Link
-                key={opportunity.opportunity_id}
-                href={`/dashboard/sales/opportunities/${opportunity.opportunity_id}`}
-                className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
-              >
-                <div className="text-sm font-semibold text-copy-primary">
-                  {opportunity.opportunity_name}
-                </div>
-                <div className="mt-1 text-sm text-copy-muted">
-                  {opportunity.sales_stage || "Unstaged"}
-                  {opportunity.expected_close_date
-                    ? ` · closes ${opportunity.expected_close_date}`
-                    : ""}
-                </div>
-              </Link>
-            ))
-          ) : (
-            <p className="text-sm text-copy-muted">No related deals yet.</p>
-          )}
-        </div>
-      </Card>
-      <Card className="px-5 py-5">
-        <h2 className="text-lg font-semibold text-copy-primary">
-          Related quotes
-        </h2>
-        <div className="mt-4 space-y-3">
-          {summary.related_quotes.length ? (
-            summary.related_quotes.map((quote) => (
-              <Link
-                key={quote.quote_id}
-                href={`/dashboard/sales/quotes/${quote.quote_id}`}
-                className="block rounded-md border border-line-subtle bg-surface-muted px-4 py-4 hover:border-line-strong"
-              >
-                <div className="text-sm font-semibold text-copy-primary">
-                  {quote.quote_number}
-                </div>
-                <div className="mt-1 text-sm text-copy-muted">
-                  {quote.title || quote.customer_name} ·{" "}
-                  {quote.status || "Unknown status"}
-                </div>
-                <div className="mt-2 text-sm text-copy-secondary">
-                  {formatMoney(quote.total_amount, quote.currency)}
-                </div>
-              </Link>
-            ))
-          ) : (
-            <p className="text-sm text-copy-muted">No related quotes yet.</p>
-          )}
-        </div>
-      </Card>
-      <div className="lg:col-span-2">
-        <RecordTasksPanel
-          moduleKey="sales_contacts"
-          entityId={summary.contact.contact_id}
-          sourceLabel={contactName}
-        />
-      </div>
-    </div>
-  );
-}
-
-function DetailField({
-  label,
-  value,
-  href,
-  external = false,
-}: {
-  label: string;
-  value?: string | null;
-  href?: string;
-  external?: boolean;
-}) {
-  const content = value || "Not recorded";
-  return (
-    <div>
-      <div className="text-xs font-medium uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-1 text-sm text-copy-primary">
-        {href ? (
-          <Link
-            href={href}
-            target={external ? "_blank" : undefined}
-            rel={external ? "noopener noreferrer" : undefined}
-            className="text-action-primary hover:underline"
-          >
-            {content}
-          </Link>
-        ) : (
-          content
-        )}
-      </div>
-    </div>
-  );
-}
-
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-md border border-line-subtle bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-2 text-sm font-medium text-copy-primary">{value}</div>
-    </div>
+    <RecordRelatedList>
+      {showDeals ? (
+        <RecordRelatedCard
+          title="Deals"
+          total={summary.opportunity_count}
+          empty={
+            canCreateOpportunity
+              ? "This contact is on no deals yet. Add the first one — the contact is filled in for you."
+              : "This contact is on no deals yet."
+          }
+          action={
+            canCreateOpportunity ? (
+              <Button type="button" size="sm" variant="outline" onClick={onCreateOpportunity}>
+                <Plus />
+                Deal
+              </Button>
+            ) : null
+          }
+        >
+          {summary.related_opportunities.map((deal) => (
+            <RecordRelatedLink
+              key={deal.opportunity_id}
+              href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
+              title={deal.opportunity_name}
+              // The contact's part in the deal comes first: it is what this page adds that
+              // the deal list does not. Same wording as the deal's own participant list.
+              detail={[
+                deal.contact_role_label,
+                deal.is_primary_contact ? "Primary contact" : null,
+                stageLabel(deal.sales_stage),
+                formatMoney(deal.amount, deal.currency_type),
+                deal.expected_close_date ? `closes ${formatDateOnly(deal.expected_close_date)}` : null,
+              ].filter(Boolean).join(" · ")}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "quotes") ? (
+        <RecordRelatedCard title="Quotes" total={summary.quote_count} empty="No quotes for this contact yet.">
+          {summary.related_quotes.map((quote) => (
+            <RecordRelatedLink
+              key={quote.quote_id}
+              href={`/dashboard/sales/quotes/${quote.quote_id}`}
+              title={quote.quote_number}
+              detail={`${quote.title || quote.customer_name} · ${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+      {canViewRelated(summary.related_access, "orders") ? (
+        <RecordRelatedCard title="Orders" total={summary.order_count} empty="No orders for this contact yet.">
+          {(summary.related_orders ?? []).map((order) => (
+            <RecordRelatedLink
+              key={order.id}
+              href={`/dashboard/sales/orders/${order.id}`}
+              title={order.order_number}
+              detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
+            />
+          ))}
+        </RecordRelatedCard>
+      ) : null}
+    </RecordRelatedList>
   );
 }
 
 function safeExternalUrl(value?: string | null) {
   if (!value) return undefined;
   try {
-    const url = new URL(
-      /^https?:\/\//i.test(value) ? value : `https://${value}`,
-    );
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.toString()
-      : undefined;
+    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : undefined;
   } catch {
     return undefined;
   }
-}
-
-function formatMoney(value?: number | string | null, currency?: string | null) {
-  const amount = typeof value === "string" ? Number(value) : value;
-  if (typeof amount !== "number" || Number.isNaN(amount)) return "Unspecified";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-    maximumFractionDigits: 2,
-  }).format(amount);
 }

@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -22,6 +22,51 @@ class ActivityLogResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+class RecordActivityActor(BaseModel):
+    user_id: int | None = None
+    name: str | None = None
+
+
+class RecordActivitySourceRef(BaseModel):
+    module_key: str
+    record_id: str
+
+
+class RecordActivityRecordRef(BaseModel):
+    module_key: str
+    entity_id: str
+
+
+class RecordActivityItemResponse(BaseModel):
+    """Normalized envelope over one source-domain row.
+
+    ``meta`` carries small, type-specific display detail only. Provider
+    secrets, tokens, and raw provider payloads are never projected here.
+    """
+
+    id: str
+    type: str
+    occurred_at: datetime
+    title: str
+    summary: str | None = None
+    direction: str | None = None
+    status: str | None = None
+    actor: RecordActivityActor | None = None
+    source: RecordActivitySourceRef
+    record: RecordActivityRecordRef
+    capabilities: list[str] = Field(default_factory=list)
+    meta: dict[str, Any] = Field(default_factory=dict)
+
+
+class RecordActivityListResponse(BaseModel):
+    items: list[RecordActivityItemResponse]
+    next_cursor: str | None = None
+    has_more: bool
+    limit: int
+    available_types: list[str]
+    omitted_types: list[str] = Field(default_factory=list)
+
+
 class ActivityLogListResponse(BaseModel):
     results: list[ActivityLogResponse]
     range_start: int
@@ -32,14 +77,20 @@ class ActivityLogListResponse(BaseModel):
 
 
 class CustomFieldDefinitionResponse(BaseModel):
+    """A field of the one field system (13b §3.4)."""
+
     id: int
     module_key: str
     field_key: str
     label: str
     field_type: str
+    picklist_key: str | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool
+    is_unique: bool = False
     is_active: bool
     sort_order: int
     created_at: datetime
@@ -49,22 +100,29 @@ class CustomFieldDefinitionResponse(BaseModel):
 
 
 class CustomFieldDefinitionCreateRequest(BaseModel):
-    field_key: str
-    label: str
+    field_key: str | None = None
+    label: str = Field(min_length=1, max_length=150)
     field_type: str
+    # A picklist field uses an existing list, or gets its own list from these values.
+    picklist_key: str | None = None
+    picklist_values: list[str] | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool = False
+    is_unique: bool = False
     is_active: bool = True
     sort_order: int = 0
 
 
 class CustomFieldDefinitionUpdateRequest(BaseModel):
-    label: str | None = None
-    field_type: str | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool | None = None
+    is_unique: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
 
@@ -295,9 +353,31 @@ class ModuleReportField(BaseModel):
     field_type: str
 
 
+class ReportFieldOption(BaseModel):
+    value: str
+    label: str
+
+
+class ReportCatalogField(BaseModel):
+    key: str
+    label: str
+    field_type: str
+    groupable: bool
+    measurable: bool
+    filter_type: str
+    # The label resolver: `user`, `team`, `organization`, `contact`, `pipeline`, `stage`…
+    reference: str | None = None
+    options: list[ReportFieldOption] | None = None
+
+
 class ModuleReportModule(BaseModel):
     module_key: str
     label: str
+    fields: list[ReportCatalogField] = []
+    default_date_field: str | None = None
+    default_columns: list[str] = []
+    supports_scope: bool = False
+    has_record_pages: bool = False
     dimensions: list[ModuleReportField]
     metrics: list[ModuleReportField]
     filter_fields: list[ModuleReportField]
@@ -324,21 +404,117 @@ class ModuleReportResponse(BaseModel):
     rows: list[ModuleReportRow]
 
 
+class ReportRunRequest(BaseModel):
+    module_key: str = Field(min_length=1, max_length=100)
+    config: dict[str, Any]
+
+
+class ReportRecordsRequest(ReportRunRequest):
+    # One key per grouping, outermost first; fewer keys select a whole outer group.
+    group_keys: list[str | None] | None = Field(default=None, max_length=2)
+    offset: int = Field(default=0, ge=0)
+    limit: int = Field(default=25, ge=1, le=100)
+
+
+class ReportGroupRef(BaseModel):
+    key: str
+    label: str
+
+
+class ReportGrouping(ReportCatalogField):
+    granularity: str | None = None
+
+
+class ReportMeasure(BaseModel):
+    key: str
+    aggregate: str
+    field: str | None = None
+    label: str
+    field_type: str
+
+
+class ReportResultRow(BaseModel):
+    keys: list[str]
+    labels: list[str]
+    count: int
+    values: list[float | None]
+
+
+class ReportTotals(BaseModel):
+    count: int
+    values: list[float | None]
+
+
+class ReportRecord(BaseModel):
+    id: int
+    label: str
+    path: str | None = None
+    values: dict[str, Any]
+
+
+class ReportRecordsResponse(BaseModel):
+    columns: list[ReportCatalogField]
+    records: list[ReportRecord]
+    total: int
+    offset: int
+    limit: int
+
+
+class ReportRunResponse(BaseModel):
+    module_key: str
+    label: str
+    config: dict[str, Any]
+    groupings: list[ReportGrouping]
+    measures: list[ReportMeasure]
+    rows: list[ReportResultRow]
+    subtotals: list[ReportResultRow]
+    totals: ReportTotals
+    row_groups: list[ReportGroupRef]
+    column_groups: list[ReportGroupRef]
+    truncated: bool
+    records: ReportRecordsResponse | None = None
+    generated_at: datetime
+
+
+class ReportTemplateResponse(BaseModel):
+    key: str
+    category: str
+    name: str
+    description: str
+    module_key: str
+    module_label: str
+    config: dict[str, Any]
+
+
+class ReportTemplateListResponse(BaseModel):
+    results: list[ReportTemplateResponse]
+
+
 class SavedModuleReportCreateRequest(BaseModel):
     module_key: str = Field(min_length=1, max_length=100)
     name: str = Field(min_length=1, max_length=150)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: Literal["private", "everyone"] = "private"
     config: dict[str, Any]
 
 
 class SavedModuleReportUpdateRequest(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=150)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: Literal["private", "everyone"] | None = None
     config: dict[str, Any] | None = None
 
 
 class SavedModuleReportResponse(BaseModel):
     id: int
     module_key: str
+    module_label: str | None = None
     name: str
+    description: str | None = None
+    visibility: str = "private"
+    owner_id: int | None = None
+    owner_name: str | None = None
+    can_edit: bool = False
     config: dict[str, Any]
     created_at: datetime
     updated_at: datetime
@@ -348,6 +524,66 @@ class SavedModuleReportResponse(BaseModel):
 
 class SavedModuleReportListResponse(BaseModel):
     results: list[SavedModuleReportResponse]
+
+
+class ReportDashboardFilters(BaseModel):
+    # "report" keeps each report's own setting.
+    date_range: str = "report"
+    scope: str = "report"
+
+
+class ReportDashboardWidgetInput(BaseModel):
+    id: str = Field(min_length=1, max_length=64)
+    type: Literal["chart", "table", "kpi"] = "chart"
+    size: Literal["small", "medium", "large", "wide"] = "medium"
+    report_id: int
+    title: str | None = Field(default=None, max_length=150)
+    chart_type: str | None = None
+    target: float | None = None
+
+
+class ReportDashboardWidget(ReportDashboardWidgetInput):
+    report: SavedModuleReportResponse | None = None
+    # `missing`, `not_shared` or `no_access` when `report` is null.
+    unavailable_reason: str | None = None
+
+
+class ReportDashboardCreateRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=150)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: Literal["private", "everyone"] = "private"
+    widgets: list[ReportDashboardWidgetInput] = Field(default_factory=list, max_length=24)
+    filters: ReportDashboardFilters | None = None
+
+
+class ReportDashboardUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=150)
+    description: str | None = Field(default=None, max_length=1000)
+    visibility: Literal["private", "everyone"] | None = None
+    widgets: list[ReportDashboardWidgetInput] | None = Field(default=None, max_length=24)
+    filters: ReportDashboardFilters | None = None
+
+
+class ReportDashboardSummary(BaseModel):
+    id: int
+    name: str
+    description: str | None = None
+    visibility: str
+    owner_id: int | None = None
+    owner_name: str | None = None
+    can_edit: bool
+    widget_count: int
+    filters: ReportDashboardFilters
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReportDashboardResponse(ReportDashboardSummary):
+    widgets: list[ReportDashboardWidget]
+
+
+class ReportDashboardListResponse(BaseModel):
+    results: list[ReportDashboardSummary]
 
 
 class ForecastBucket(BaseModel):
@@ -374,6 +610,10 @@ class ForecastSummaryResponse(BaseModel):
     actual_revenue_amount: Decimal
     open_opportunity_count: int
     won_opportunity_count: int
+    # Amounts are in this currency; deals in a currency with no known rate are left out.
+    currency: str | None = None
+    unconverted_count: int = 0
+    unconverted_currencies: list[str] = []
     by_stage: list[ForecastBucket]
     by_owner: list[ForecastBucket]
     by_team: list[ForecastBucket]
@@ -482,6 +722,7 @@ class CrmEventDeliveryResponse(BaseModel):
 
 class CrmEventResponse(BaseModel):
     id: int
+    public_id: str | None = None
     actor_user_id: int | None = None
     event_type: str
     entity_type: str
@@ -489,6 +730,24 @@ class CrmEventResponse(BaseModel):
     payload: dict[str, Any] | None = None
     created_at: datetime
     deliveries: list[CrmEventDeliveryResponse] = Field(default_factory=list)
+
+
+class WebhookEventFieldResponse(BaseModel):
+    name: str
+    kind: Literal["id", "string", "integer", "decimal", "boolean", "date", "datetime", "string_list"]
+
+
+class WebhookEventTypeResponse(BaseModel):
+    type: str
+    version: int
+    record_type: str
+    module_key: str
+    description: str
+    fields: list[WebhookEventFieldResponse]
+
+
+class WebhookEventTypeListResponse(BaseModel):
+    results: list[WebhookEventTypeResponse]
 
 
 class CrmEventListResponse(BaseModel):
@@ -664,6 +923,22 @@ class AutomationActionRegistryResponse(BaseModel):
     results: list[AutomationActionResponse]
 
 
+class AutomationTemplateResponse(BaseModel):
+    key: str
+    name: str
+    description: str
+    category: str
+    module_key: str | None = None
+    trigger_event: str
+    condition_mode: str = "all"
+    conditions_json: list[dict[str, Any]]
+    actions_json: list[dict[str, Any]]
+
+
+class AutomationTemplateListResponse(BaseModel):
+    results: list[AutomationTemplateResponse]
+
+
 class RecordCommentResponse(BaseModel):
     id: int
     actor_user_id: int | None = None
@@ -709,6 +984,10 @@ class LinkedRecordUserResponse(BaseModel):
 
 class LinkedRecordUserListResponse(BaseModel):
     results: list[LinkedRecordUserResponse]
+    #: True when the tenant has more active users than `limit` returned. A client that holds
+    #: its options in memory has to be able to tell a complete set from a capped one
+    #: (design.md 7.9) — the alternative is a picker that quietly cannot reach half the staff.
+    has_more: bool = False
 
 
 class LinkedRecordTeamResponse(BaseModel):
@@ -826,6 +1105,10 @@ class IntegrationConnectionResponse(BaseModel):
     help_text: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # Per-user providers (mail, calendar): the signed-in user's own connection. None for
+    # tenant-wide providers.
+    viewer_status: str | None = None
+    viewer_account_label: str | None = None
 
 
 class IntegrationConnectionListResponse(BaseModel):

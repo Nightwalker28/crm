@@ -1,5 +1,7 @@
 "use client";
 
+import { TextLink } from "@/components/ui/TextLink";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useMemo, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
 import {
@@ -7,7 +9,6 @@ import {
   CheckCircle2,
   ChevronDown,
   Cloud,
-  ExternalLink,
   FileText,
   FileUp,
   HardDrive,
@@ -20,12 +21,15 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { DocumentReferenceActions } from "@/components/documents/DocumentReferenceActions";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Pill } from "@/components/ui/Pill";
+import { FormFooter } from "@/components/ui/ActionBar";
+import { PageShell } from "@/components/ui/PageShell";
+import { RemovableChip } from "@/components/ui/RemovableChip";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { type DocumentItem, useDocumentActions, useDocumentStorageConnections, useDocumentUploadLimits } from "@/hooks/useDocuments";
@@ -35,7 +39,7 @@ const ACCEPTED_DOCUMENT_TYPES = ".pdf,.doc,.docx,.txt,.rtf,.odt";
 const DEFAULT_EXTENSIONS = ["pdf", "doc", "docx", "txt", "rtf", "odt"];
 const LINKABLE_MODULES = [
   "sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "sales_orders",
-  "support_cases", "finance_io", "finance_pos", "catalog_products", "catalog_services",
+  "finance_pos", "catalog_products", "catalog_services",
 ];
 const UPLOAD_CONCURRENCY = 2;
 
@@ -90,20 +94,14 @@ function ProviderIcon({ provider }: { provider: string }) {
 
 function statusLabel(status: QueueStatus) {
   if (status === "invalid") return "Needs attention";
-  return status.charAt(0).toUpperCase() + status.slice(1);
+  return formatSnakeCaseLabel(status);
 }
 
-function StatusPill({ status }: { status: QueueStatus }) {
+function QueueStatusValue({ status }: { status: QueueStatus }) {
   const failed = status === "failed" || status === "invalid";
   const complete = status === "complete";
   return (
-    <Pill
-      bg={complete ? "bg-state-success-muted" : failed ? "bg-state-danger-muted" : "bg-surface-muted"}
-      text={complete ? "text-state-success" : failed ? "text-state-danger" : "text-copy-secondary"}
-      border="border-line-default"
-    >
-      {statusLabel(status)}
-    </Pill>
+    <StatusValue status={{ tone: complete ? "success" : failed ? "critical" : "neutral", label: statusLabel(status) }} />
   );
 }
 
@@ -140,6 +138,7 @@ function AssociationPicker({
   return (
     <div className="space-y-3">
       <LinkedRecordPicker
+        ariaLabel="Search CRM records to associate"
         recordType="global"
         valueId={null}
         displayValue={search}
@@ -200,10 +199,13 @@ function TagsInput({ value, onChange, disabled = false, inputId }: { value: stri
   return (
     <div className="space-y-2">
       {value.length ? <div className="flex flex-wrap gap-2" aria-label="Document tags">{value.map((tag) => (
-        <span key={tag.toLocaleLowerCase()} className="inline-flex items-center gap-1 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-xs text-copy-primary">
-          {tag}
-          <button type="button" disabled={disabled} className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => onChange(value.filter((item) => item !== tag))} aria-label={`Remove ${tag} tag`}><X className="h-3 w-3" /></button>
-        </span>
+        <RemovableChip
+          key={tag.toLocaleLowerCase()}
+          label={tag}
+          disabled={disabled}
+          removeLabel={`Remove ${tag} tag`}
+          onRemove={() => onChange(value.filter((item) => item !== tag))}
+        />
       ))}</div> : null}
       <Input id={inputId} value={draft} disabled={disabled || value.length >= 20} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} onBlur={addTag} placeholder="Type a tag and press Enter" />
     </div>
@@ -351,7 +353,7 @@ export default function DocumentUploadFormPage() {
       role="button"
       tabIndex={0}
       aria-label={queue.length ? "Add more document files" : "Choose document files or drag and drop them here"}
-      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-strong bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary`}
+      className={`${queue.length ? "flex min-h-16 items-center justify-between gap-4 px-4 py-3 text-left" : "flex min-h-44 flex-col items-center justify-center px-6 py-6 text-center"} rounded-[var(--radius-card)] border border-dashed ${isDragging ? "border-primary bg-action-primary-muted" : "border-line-control bg-surface-muted"} cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus`}
       onClick={() => fileInputRef.current?.click()}
       onKeyDown={(event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -372,40 +374,37 @@ export default function DocumentUploadFormPage() {
         </div>
       </div>
       <span className={queue.length ? "text-sm font-medium text-action-primary" : "mt-4 inline-flex h-[38px] items-center rounded-[var(--radius-control)] border border-line-default bg-surface px-4 text-sm font-semibold text-copy-secondary"}>Choose files</span>
-      <input ref={fileInputRef} className="sr-only" type="file" multiple accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
+      <input ref={fileInputRef} className="sr-only" type="file" aria-label="Choose files" multiple accept={ACCEPTED_DOCUMENT_TYPES} onChange={(event) => { addFiles(Array.from(event.target.files ?? [])); event.target.value = ""; }} />
     </div>
   );
 
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title="Upload documents"
-        description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
-        actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
-      />
-
-      <Card className="mx-auto w-full max-w-6xl overflow-visible">
+    <PageShell
+      title="Upload documents"
+      description="Upload a batch to CRM storage or a connected cloud account and link it to the records that use it."
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/dashboard/documents"><ArrowLeft />Back to documents</Link></Button>}
+    >
+      <Card className="mx-auto w-full max-w-6xl">
         <section>
-          <div className="border-b border-line-subtle px-4 py-4 md:px-5">
-            <h2 className="font-semibold text-copy-primary">Choose files</h2>
-            <p className="mt-1 text-sm text-copy-muted">Add one document or a batch. You can review every file before uploading.</p>
+          <div className="border-b border-line-subtle px-4 py-4 md:px-6">
+            <SectionHeading description="Add one document or a batch. You can review every file before uploading.">Choose files</SectionHeading>
           </div>
-          <div className="p-4 md:p-5">
+          <div className="p-4 md:p-6">
             {dropZone}
             <div ref={selectionStatusRef} tabIndex={-1} className="sr-only" aria-live="polite">{queue.length ? `${queue.length} files in the upload queue.` : "No files selected."}</div>
 
           {queue.length ? (
-            <div className="mt-4 overflow-hidden rounded-[var(--radius-card)] border border-line-default" aria-label="Upload queue">
-              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-default bg-surface-muted px-4 py-2 text-xs font-medium uppercase tracking-wide text-copy-muted md:grid">
+            <div className="mt-4 border-t border-line-subtle pt-4" aria-label="Upload queue">
+              <div className="hidden grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem] gap-3 border-b border-line-subtle pb-2 text-xs font-medium text-copy-label md:grid">
                 <span>File</span><span>Destination</span><span>Links</span><span className="text-right">Status</span>
               </div>
-              <div className="divide-y divide-line-default">
+              <div className="divide-y divide-line-subtle">
                 {queue.map((item) => {
                   const canEdit = item.status === "queued" || item.status === "failed" || item.status === "invalid";
                   const itemAssociations = item.overrides?.associations ?? associations;
                   const resolvedProvider = item.document?.storage_provider ?? storageProvider;
                   return (
-                    <div key={item.id} className="px-4 py-3">
+                    <div key={item.id} className="py-3">
                       <div className="grid items-start gap-3 md:grid-cols-[minmax(0,1fr)_8rem_5.5rem_7rem]">
                         <div className="flex min-w-0 items-start gap-3">
                           {item.status === "complete" ? <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-state-success" aria-hidden="true" /> : <FileText className="mt-0.5 h-5 w-5 shrink-0 text-copy-muted" aria-hidden="true" />}
@@ -416,7 +415,7 @@ export default function DocumentUploadFormPage() {
                         </div>
                         <div className="flex items-center gap-1.5 text-xs text-copy-secondary"><ProviderIcon provider={resolvedProvider} />{providerLabel(resolvedProvider)}</div>
                         <div className="text-xs text-copy-secondary">{itemAssociations.length} {itemAssociations.length === 1 ? "record" : "records"}</div>
-                        <div className="flex justify-start md:justify-end"><StatusPill status={item.status} /></div>
+                        <div className="flex justify-start md:justify-end"><QueueStatusValue status={item.status} /></div>
                       </div>
 
                       {item.status === "uploading" ? <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-muted" role="progressbar" aria-label={`Uploading ${item.file.name}`} aria-valuenow={item.progress} aria-valuemin={0} aria-valuemax={100}><div className="h-full bg-primary motion-safe:transition-[width] motion-reduce:transition-none" style={{ width: `${item.progress}%` }} /></div> : null}
@@ -430,14 +429,14 @@ export default function DocumentUploadFormPage() {
                         {item.document && itemAssociations[0]?.href ? <Button asChild variant="outline" size="sm"><Link href={itemAssociations[0].href}>Open related record</Link></Button> : null}
                         {canEdit && item.status !== "invalid" ? (
                           <details className="group w-full">
-                            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-xs font-medium text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                            <summary className="inline-flex cursor-pointer list-none items-center gap-1 rounded-[var(--radius-control)] px-2 py-1 text-xs font-medium text-action-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus">
                               {item.overrides ? "Edit file overrides" : "Add file overrides"}<ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180 motion-reduce:transition-none" />
                             </summary>
                             <div className="mt-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-4">
                               {!item.overrides ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm text-copy-secondary">This file currently inherits shared metadata and associations.</p><Button type="button" variant="outline" size="sm" onClick={() => enableOverrides(item)}>Customize this file</Button></div> : (
                                 <div className="grid gap-4">
-                                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium uppercase tracking-wide text-copy-muted">Per-file override</p><Button type="button" variant="ghost" size="sm" onClick={() => updateQueueItem(item.id, { overrides: undefined })}>Use shared values</Button></div>
-                                  <div className="grid gap-4 sm:grid-cols-2">
+                                  <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs font-medium text-copy-label">Per-file override</p><Button type="button" variant="ghost" size="sm" onClick={() => updateQueueItem(item.id, { overrides: undefined })}>Use shared values</Button></div>
+                                  <div className="grid gap-4 md:grid-cols-2">
                                     <Field><FieldLabel htmlFor={`title-${item.id}`}>Display title</FieldLabel><Input id={`title-${item.id}`} value={item.overrides.displayName} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, displayName: event.target.value } })} /></Field>
                                     <Field><FieldLabel htmlFor={`category-${item.id}`}>Category</FieldLabel><Input id={`category-${item.id}`} value={item.overrides.category} onChange={(event) => updateQueueItem(item.id, { overrides: { ...item.overrides!, category: event.target.value } })} /></Field>
                                   </div>
@@ -460,10 +459,9 @@ export default function DocumentUploadFormPage() {
         </section>
 
         <section className="border-t border-line-subtle">
-          <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-start md:p-5">
+          <div className="grid gap-4 p-4 md:grid-cols-[minmax(0,1fr)_minmax(16rem,22rem)] md:items-start md:p-6">
             <div>
-              <h2 className="font-semibold text-copy-primary">Upload destination</h2>
-              <p className="mt-1 text-sm text-copy-muted">Files stay private and require authenticated document access.</p>
+              <SectionHeading description="Files stay private and require authenticated document access.">Upload destination</SectionHeading>
               <div className="mt-3 flex items-start gap-3 text-sm">
                 <ProviderIcon provider={storageProvider} />
                 <div className="min-w-0">
@@ -487,24 +485,23 @@ export default function DocumentUploadFormPage() {
               {destinationLocked ? <FieldDescription>Finish or clear uploaded and failed rows before changing destination.</FieldDescription> : null}
             </Field>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-4 py-3 text-xs md:px-5">
-            <Link className="text-action-primary hover:underline" href="/dashboard/settings/integrations">Manage cloud connections <ExternalLink className="inline h-3 w-3" /></Link>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line-subtle px-4 py-3 text-xs md:px-6">
+            <TextLink href="/dashboard/settings/integrations">Manage cloud connections</TextLink>
             {connectionsQuery.isError ? <Button variant="ghost" size="sm" onClick={() => void connectionsQuery.refetch()}><RefreshCw />Retry connection check</Button> : null}
           </div>
-          {connectionsQuery.isError ? <p role="alert" className="border-t border-line-subtle px-4 py-3 text-xs text-state-warning md:px-5">Cloud connections could not be checked. Local storage remains available.</p> : null}
+          {connectionsQuery.isError ? <p role="alert" className="border-t border-line-subtle px-4 py-3 text-xs text-state-warning md:px-6">Cloud connections could not be checked. Local storage remains available.</p> : null}
         </section>
 
         <section className="border-t border-line-subtle">
           <details className="group">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary md:px-5">
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus md:px-6">
               <div>
-                <h2 className="font-semibold text-copy-primary">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></h2>
-                <p className="mt-1 text-sm text-copy-muted">Apply the same category, tags, description, and related records to every pending file.</p>
+                <SectionHeading description="Apply the same category, tags, description, and related records to every pending file.">Details and CRM links <span className="font-normal text-copy-muted">(optional)</span></SectionHeading>
               </div>
               <ChevronDown className="h-5 w-5 shrink-0 text-copy-muted transition-transform group-open:rotate-180 motion-reduce:transition-none" aria-hidden="true" />
             </summary>
-            <div className="border-t border-line-subtle p-4 md:p-5">
-              <div className="grid max-w-3xl gap-5">
+            <div className="border-t border-line-subtle p-4 md:p-6">
+              <div className="grid max-w-3xl gap-4">
                 <Field><FieldLabel>CRM associations</FieldLabel><FieldDescription className="mb-2">Link these files to the records that use them.</FieldDescription><AssociationPicker value={associations} onChange={(value) => { setAssociations(value); touchShared(); }} disabled={isBusy} queryKeyPrefix="document-upload-associations" /></Field>
                 <Field><FieldLabel htmlFor="document-category">Category</FieldLabel><Input id="document-category" value={category} disabled={isBusy} onChange={(event) => { setCategory(event.target.value); touchShared(); }} placeholder="Contract, proposal, specification…" /></Field>
                 <Field><FieldLabel htmlFor="document-tags">Tags</FieldLabel><TagsInput inputId="document-tags" value={tags} disabled={isBusy} onChange={(value) => { setTags(value); touchShared(); }} /></Field>
@@ -514,19 +511,22 @@ export default function DocumentUploadFormPage() {
           </details>
         </section>
 
-        <div className="border-t border-line-subtle p-4 md:p-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between" aria-live="polite">
-            <span className="text-sm text-copy-muted">{footerSummary}</span>
-            <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+        {/* The one form footer that is not `RecordFormLayout`'s: this is a batch upload
+            queue, not a record, so it has no spine and no single title. It still wears
+            `FormFooter`, so R4's one control height holds here too. `aria-live` sits on the
+            summary rather than the whole row — otherwise every button appearing or
+            disappearing is announced. */}
+        <FormFooter
+          className="border-line-subtle p-4 md:p-6"
+          status={<span aria-live="polite">{footerSummary}</span>}
+        >
               {complete.length ? <Button variant="ghost" onClick={() => setQueue((current) => current.filter((item) => item.status !== "complete"))} disabled={isBusy}>Clear completed</Button> : null}
               <Button asChild variant="outline"><Link href="/dashboard/documents">{queue.some((item) => item.status !== "complete") ? "Cancel" : "Back to documents"}</Link></Button>
               {failed.length ? <Button variant="outline" onClick={() => void uploadItems(["failed"])} disabled={isBusy}><RotateCcw />Retry failed</Button> : null}
               {pending.length ? <Button onClick={() => void uploadItems(["queued"])} disabled={isBusy}><Upload />{isBusy ? "Uploading…" : "Upload files"}</Button> : null}
-            </div>
-          </div>
-        </div>
+        </FormFooter>
       </Card>
-    </div>
+    </PageShell>
   );
 
   async function uploadItemsForRow(item: QueueItem) {

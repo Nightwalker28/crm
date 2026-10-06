@@ -10,7 +10,7 @@ from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import (
-    get_finance_user_scope,
+    PermissionPolicy,
     require_department_module_access,
     require_role_module_action_access,
 )
@@ -19,6 +19,8 @@ from app.core.database import SessionLocal
 from app.core.job_errors import safe_data_transfer_error, technical_job_error
 from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
+from app.modules.platform.services.picklists import PicklistResolver
+from app.modules.platform.services.document_exports import DOCUMENT_EXPORT_MODULES, document_export_rows
 from app.modules.platform.models import DataTransferJob
 from app.modules.user_management.models import User
 
@@ -34,7 +36,17 @@ MODULE_DISPLAY_NAMES = {
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
     "sales_quotes": "Quotes",
-    "finance_io": "Insertion Orders",
+    "reports": "Reports",
+    "inventory_stock": "Inventory stock",
+    "inventory_valuation": "Stock valuation",
+    "inventory_deliveries": "Deliveries",
+    "inventory_returns": "Returns",
+    "purchase_orders": "Purchase orders",
+    "purchase_receipts": "Receipts",
+    "purchase_bills": "Bills",
+    "finance_pos": "Invoices",
+    "finance_credit_notes": "Credit notes",
+    "finance_payments": "Payments",
 }
 TRANSIENT_JOB_ERRORS = (OSError, ConnectionError, TimeoutError, OperationalError)
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
@@ -48,12 +60,27 @@ MODULE_LINKS = {
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
     "sales_quotes": "/dashboard/sales/quotes",
-    "finance_io": "/dashboard/finance/insertion-orders",
+    "reports": "/dashboard/reports",
+    "inventory_stock": "/dashboard/inventory/stock",
+    "inventory_valuation": "/dashboard/inventory/valuation",
+    "inventory_deliveries": "/dashboard/inventory/deliveries",
+    "inventory_returns": "/dashboard/inventory/returns",
+    "purchase_orders": "/dashboard/purchasing/orders",
+    "purchase_receipts": "/dashboard/purchasing/receipts",
+    "purchase_bills": "/dashboard/purchasing/bills",
+    "finance_pos": "/dashboard/finance/invoices",
+    "finance_credit_notes": "/dashboard/finance/credit-notes",
+    "finance_payments": "/dashboard/finance/payments",
 }
 DOWNLOAD_ACTION_BY_OPERATION = {
     "export": "export",
+    "report_export": "export",
     "import": "create",
 }
+
+
+def _operation_label(operation_type: str) -> str:
+    return "Report export" if operation_type == "report_export" else operation_type.title()
 
 
 def require_data_transfer_module_access(
@@ -79,12 +106,18 @@ def require_data_transfer_job_access(
     job: DataTransferJob,
     action: str = "view",
 ) -> None:
-    require_data_transfer_module_access(
-        db,
-        current_user=current_user,
-        module_key=job.module_key,
-        action=action,
-    )
+    access_module = "inventory_adjustments" if job.module_key == "inventory_stock" and job.operation_type == "import" and action == "create" else job.module_key
+    require_data_transfer_module_access(db, current_user=current_user, module_key=access_module, action=action)
+    if job.operation_type == "report_export":
+        source_key = (job.payload or {}).get("source_module_key")
+        if not isinstance(source_key, str):
+            raise HTTPException(status_code=404, detail="Report export source is unavailable")
+        # Report sources that are not modules of their own answer to the module they read.
+        from app.modules.platform.services.report_catalog import BUILT_IN_SOURCES
+
+        source = BUILT_IN_SOURCES.get(source_key)
+        permission_key = (source.permission_module_key if source is not None else None) or source_key
+        require_data_transfer_module_access(db, current_user=current_user, module_key=permission_key, action="view")
 
 
 def data_transfer_download_action(job: DataTransferJob) -> str:
@@ -188,8 +221,8 @@ def create_data_transfer_job(
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{operation_type.title()} queued",
-        message=f"{operation_type.title()} for {module_name} has been queued in the background.",
+        title=f"{_operation_label(operation_type)} queued",
+        message=f"{_operation_label(operation_type)} for {module_name} has been queued in the background.",
     )
     return job
 
@@ -278,8 +311,8 @@ def mark_job_completed(
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{job.operation_type.title()} completed",
-        message=f"{job.operation_type.title()} for {module_name} completed successfully.",
+        title=f"{_operation_label(job.operation_type)} completed",
+        message=f"{_operation_label(job.operation_type)} for {module_name} completed successfully.",
     )
     return job
 
@@ -301,7 +334,7 @@ def mark_job_failed(db: Session, job: DataTransferJob, *, error_message: str, su
     _notify_job_state_safely(
         db,
         job=job,
-        title=f"{job.operation_type.title()} failed",
+        title=f"{_operation_label(job.operation_type)} failed",
         message=safe_data_transfer_error(module_key=job.module_key, operation_type=job.operation_type),
     )
     return job
@@ -436,7 +469,7 @@ def cleanup_expired_data_transfer_results(db: Session) -> int:
     jobs = (
         db.query(DataTransferJob.id, DataTransferJob.result_file_path)
         .filter(
-            DataTransferJob.operation_type == "export",
+            DataTransferJob.operation_type.in_(["export", "report_export"]),
             DataTransferJob.status == "completed",
             DataTransferJob.result_file_path.isnot(None),
             DataTransferJob.completed_at.isnot(None),
@@ -508,6 +541,7 @@ def process_import_job(*, job_id: int) -> None:
                     default_assigned_to=actor_user_id,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_contacts":
                 from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
@@ -521,6 +555,7 @@ def process_import_job(*, job_id: int) -> None:
                     default_assigned_to=actor_user_id or 0,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_organizations":
                 from app.modules.sales.services.organizations_services import import_organizations_from_csv
@@ -533,6 +568,7 @@ def process_import_job(*, job_id: int) -> None:
                     current_user=current_user,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_opportunities":
                 from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
@@ -559,21 +595,15 @@ def process_import_job(*, job_id: int) -> None:
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
                 )
-            elif module_key == "finance_io":
-                from app.modules.finance.services import io_search_api
-                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
+            elif module_key == "inventory_stock":
+                from app.modules.inventory.services.opening_import import import_opening_stock
 
-                update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
-                summary = io_search_api.import_insertion_orders_csv_bytes(
-                    db=db,
-                    current_user=current_user,
-                    file_bytes=file_bytes,
-                    duplicate_mode=duplicate_mode,
-                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-                    replace_duplicates=False,
-                    skip_duplicates=False,
-                    create_new_records=False,
-                )
+                if current_user is None:
+                    raise ValueError("Opening stock import has no actor")
+                for action in ("create", "edit"):
+                    require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_adjustments", action=action)
+                update_job_progress(db, job, progress_percent=65, progress_message="Posting opening stock.")
+                summary = import_opening_stock(db, tenant_id=job.tenant_id, actor_user_id=current_user.id, file_bytes=file_bytes, job_id=job.id)
             else:
                 raise ValueError(f"Unsupported import module '{module_key}'.")
 
@@ -604,13 +634,37 @@ def process_export_job(*, job_id: int) -> None:
         current_page_ids = list(payload.get("current_page_ids") or [])
         export_ids = selected_ids if mode == "selected" else current_page_ids if mode == "current" else None
         search = (payload.get("search") or "").strip() or None
-        status_filter = (payload.get("status") or "").strip() or None
         all_filter_conditions = payload.get("filters_all") or None
         any_filter_conditions = payload.get("filters_any") or None
         actor_user_id = job.actor_user_id
         current_user = _get_job_actor(db, job=job)
         if actor_user_id is not None and current_user is None:
             raise ValueError("Job actor was not found in the job tenant.")
+        if job.operation_type == "report_export":
+            from app.modules.platform.services import report_engine
+
+            if current_user is None:
+                raise ValueError("Report export has no subscriber")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="reports", action="export")
+            source_key = payload["source_module_key"]
+            require_data_transfer_module_access(db, current_user=current_user, module_key=source_key, action="view")
+            if payload["config"].get("format") == "tabular":
+                total = report_engine.run_records(db, current_user, module_key=source_key, config=payload["config"], group_keys=None, offset=0, limit=1)["total"]
+                if total > 100_000:
+                    raise ValueError("Report has more than 100,000 records; narrow its filters before exporting")
+            file_format = payload["format"]
+            if file_format == "xlsx":
+                content = report_engine.report_xlsx_bytes(db, current_user, module_key=source_key, config=payload["config"], max_records=100_000)
+                media_type = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            elif file_format == "csv":
+                content = report_engine.report_csv_bytes(db, current_user, module_key=source_key, config=payload["config"], max_records=100_000)
+                media_type = "text/csv"
+            else:
+                raise ValueError("Unsupported report export format")
+            file_name = f"report-{job.id}.{file_format}"
+            result_path = persist_job_result(job_id=job.id, filename=file_name, content=content)
+            mark_job_completed(db, job, summary={"file_name": file_name}, result_file_path=result_path, result_file_name=file_name, result_media_type=media_type)
+            return
         update_job_progress(db, job, progress_percent=35, progress_message="Collecting records for export.")
         exported_rows = 0
 
@@ -636,7 +690,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing leads export.")
-            content = export_leads_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_leads_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_leads.csv"
             media_type = "text/csv"
         elif module_key == "sales_contacts":
@@ -661,7 +715,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing contacts export.")
-            content = export_contacts_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_contacts_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_contacts.csv"
             media_type = "text/csv"
         elif module_key == "sales_organizations":
@@ -710,7 +764,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
-            content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_opportunities.csv"
             media_type = "text/csv"
         elif module_key == "sales_quotes":
@@ -737,51 +791,78 @@ def process_export_job(*, job_id: int) -> None:
             content = export_quotes_to_csv(records, field_keys=payload.get("field_keys"))
             file_name = "sales_quotes.csv"
             media_type = "text/csv"
-        elif module_key == "finance_io":
-            from app.modules.finance.models import FinanceIO
-            from app.modules.finance.services.io_search_api import (
-                INSERTION_ORDER_EXPORT_HEADERS,
-                export_generic_insertion_orders,
-                serialize_insertion_order_export_row,
-            )
-            from app.modules.finance.services.io_search_services import get_finance_module_id
+        elif module_key == "inventory_stock":
+            from app.modules.inventory.models import InventoryStockLevel, InventoryStockMove, InventoryWarehouse
+            from app.modules.catalog.models import CatalogProduct
+            from app.core.module_export import dict_rows_to_csv_bytes
 
-            if export_ids:
-                module_id = get_finance_module_id(db)
-                user_scope = get_finance_user_scope(db, current_user)
-                query = db.query(FinanceIO).filter(
-                    FinanceIO.tenant_id == job.tenant_id,
-                    FinanceIO.module_id == module_id,
-                    FinanceIO.deleted_at.is_(None),
-                )
-                if user_scope.user_id_filter is not None:
-                    query = query.filter(FinanceIO.user_id == user_scope.user_id_filter)
-                query = query.filter(FinanceIO.id.in_(export_ids))
-                records = query.order_by(FinanceIO.updated_at.desc()).all()
-                exported_rows = len(records)
-                from app.core.module_export import dict_rows_to_csv_bytes
-                field_keys = [
-                    field for field in (payload.get("field_keys") or INSERTION_ORDER_EXPORT_HEADERS)
-                    if field in INSERTION_ORDER_EXPORT_HEADERS
-                ] or ["id", "io_number"]
-
-                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
-                content = dict_rows_to_csv_bytes(
-                    headers=field_keys,
-                    rows=(serialize_insertion_order_export_row(record) for record in records),
-                )
+            if current_user is None:
+                raise ValueError("Inventory export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_stock", action="export")
+            export_kind = payload.get("kind")
+            if export_kind == "levels":
+                rows = db.query(InventoryStockLevel, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockLevel.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockLevel.warehouse_id).filter(InventoryStockLevel.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockLevel.id).all()
+                headers = ("sku", "product", "warehouse_code", "on_hand", "reserved", "available", "reorder_point")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"sku": product.sku, "product": product.name, "warehouse_code": warehouse.code,
+                    "on_hand": level.on_hand, "reserved": level.reserved, "available": level.on_hand - level.reserved,
+                    "reorder_point": product.reorder_point} for level, product, warehouse in rows))
+            elif export_kind == "movements":
+                rows = db.query(InventoryStockMove, CatalogProduct, InventoryWarehouse).join(CatalogProduct, CatalogProduct.id == InventoryStockMove.product_id).join(InventoryWarehouse, InventoryWarehouse.id == InventoryStockMove.warehouse_id).filter(InventoryStockMove.tenant_id == job.tenant_id, CatalogProduct.tenant_id == job.tenant_id, InventoryWarehouse.tenant_id == job.tenant_id).order_by(InventoryStockMove.id).all()
+                # Cost and value need access to valuation (12d §3.4).
+                with_cost = PermissionPolicy(db, current_user).can("inventory_valuation")
+                headers = ("id", "occurred_at", "sku", "product", "warehouse_code", "move_type", "quantity", "on_hand_after", "source_type", "source_id") \
+                    + (("unit_cost", "value", "average_cost_after", "cost_source") if with_cost else ())
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"id": move.id, "occurred_at": move.occurred_at,
+                    "sku": product.sku, "product": product.name, "warehouse_code": warehouse.code,
+                    "move_type": move.move_type, "quantity": move.quantity, "on_hand_after": move.on_hand_after,
+                    "source_type": move.source_type, "source_id": move.source_id, "unit_cost": move.unit_cost, "value": move.value,
+                    "average_cost_after": move.average_cost_after, "cost_source": move.cost_source} for move, product, warehouse in rows))
             else:
-                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
-                content, exported_rows = export_generic_insertion_orders(
-                    db,
-                    current_user,
-                    search=search,
-                    status_filter=status_filter,
-                    all_filter_conditions=all_filter_conditions,
-                    any_filter_conditions=any_filter_conditions,
-                    field_keys=payload.get("field_keys"),
-                )
-            file_name = "insertion_orders.csv"
+                raise ValueError("Inventory export kind must be levels or movements")
+            exported_rows = len(rows)
+            file_name = f"inventory_{export_kind}.csv"
+            media_type = "text/csv"
+        elif module_key == "inventory_valuation":
+            from datetime import date as _date
+
+            from app.core.module_export import dict_rows_to_csv_bytes
+            from app.modules.inventory.services import valuation_services
+
+            if current_user is None:
+                raise ValueError("Valuation export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key="inventory_valuation", action="export")
+            export_kind = payload.get("kind") or "valuation"
+            if export_kind == "valuation":
+                as_of = _date.fromisoformat(payload["as_of"]) if payload.get("as_of") else None
+                rows = valuation_services.valuation_rows(db, tenant_id=job.tenant_id, as_of=as_of, warehouse_id=payload.get("warehouse_id"),
+                    category_id=payload.get("category_id"), cost_missing=payload.get("cost_missing"))
+                headers = ("sku", "product", "category", "on_hand", "unit", "average_cost", "stock_value", "cost_missing")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"sku": row["sku"], "product": row["product_name"], "category": row["category_name"],
+                    "on_hand": row["on_hand"], "unit": row["unit"], "average_cost": row["average_cost"], "stock_value": row["stock_value"],
+                    "cost_missing": "yes" if row["cost_missing"] else "no"} for row in rows))
+            elif export_kind == "revaluations":
+                rows, _total = valuation_services.list_revaluations(db, tenant_id=job.tenant_id, product_id=None, offset=0, limit=100_000)
+                headers = ("number", "created_at", "sku", "product", "kind", "on_hand", "average_before", "average_after", "stock_change", "cogs_change", "reason", "by")
+                content = dict_rows_to_csv_bytes(headers=headers, rows=({"number": row["number"], "created_at": row["created_at"], "sku": row["sku"],
+                    "product": row["product_name"], "kind": row["kind"], "on_hand": row["on_hand"], "average_before": row["average_before"],
+                    "average_after": row["average_after"], "stock_change": row["stock_change"], "cogs_change": row["cogs_change"],
+                    "reason": row["reason"], "by": row["actor_name"]} for row in rows))
+            else:
+                raise ValueError("Valuation export kind must be valuation or revaluations")
+            exported_rows = len(rows)
+            file_name = f"inventory_{export_kind}.csv"
+            media_type = "text/csv"
+        elif module_key in DOCUMENT_EXPORT_MODULES:
+            # The list's own query and serializer, under the list's own filters (13a A5).
+            from app.core.module_export import dict_rows_to_csv_bytes
+
+            if current_user is None:
+                raise ValueError("Document export has no actor")
+            require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="export")
+            rows, headers = document_export_rows(db, current_user, module_key=module_key, filters=payload.get("filters"))
+            content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
+            exported_rows = len(rows)
+            file_name = f"{module_key}.csv"
             media_type = "text/csv"
         else:
             raise ValueError(f"Unsupported export module '{module_key}'.")

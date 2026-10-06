@@ -12,43 +12,50 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { usePaymentInvoices, type PosInvoice } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { formatDateOnly } from "@/lib/datetime";
+import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
+import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import { formatMoney } from "@/lib/currency";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
+// The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
+// the empty spelling this surface wants (3.6).
 function money(amount: number, currency: string) {
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(amount);
-  } catch {
-    return `${currency} ${amount.toFixed(2)}`;
-  }
+  return formatMoney(amount, currency) ?? EMPTY_CELL_VALUE;
 }
 
+/** Payments are recorded against issued invoices with something still due (12c §3.3). */
 function isEligible(invoice: PosInvoice) {
-  return invoice.balance_due > 0 && invoice.status !== "void" && invoice.payment_status !== "refunded";
+  return invoice.status === "issued" && invoice.balance_due > 0;
 }
 
 export default function RecordPaymentPage() {
   const router = useRouter();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
-  const canRecordPayment = Boolean(modules.find((module) => module.name === "finance_pos")?.actions?.can_edit);
+  const canRecordPayment = Boolean(modules.find((module) => module.name === "finance_payments")?.actions?.can_create);
   const amountRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [invoice, setInvoice] = useState<PosInvoice | null>(null);
   const [amount, setAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("");
+  const [paidOn, setPaidOn] = useState(() => todayIsoDate());
+  const [reference, setReference] = useState("");
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [saveComplete, setSaveComplete] = useState(false);
   const filters = useMemo<SavedViewFilters>(() => ({
     search: deferredSearch,
-    status: "all",
+    status: "issued",
     payment_status: "all",
     logic: "all",
     conditions: [],
@@ -86,7 +93,10 @@ export default function RecordPaymentPage() {
     try {
       await payments.recordPayment(invoice.id, {
         amount: parsedAmount,
-        payment_method: paymentMethod.trim() || null,
+        payment_method: paymentMethod || null,
+        paid_on: paidOn || null,
+        reference: reference.trim() || null,
+        custom_fields: customValues,
       });
       setSaveComplete(true);
       toast.success("Payment recorded.");
@@ -100,41 +110,38 @@ export default function RecordPaymentPage() {
   if (!canRecordPayment) return <PermissionDeniedState />;
 
   return (
-    <div className="grid gap-6">
-      <PageHeader
-        title="Record payment"
-        description="Select an outstanding invoice and apply a customer payment."
-        actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
-      />
-
+    <PageShell
+      title="Record payment"
+      description="Select an outstanding invoice and apply a customer payment."
+      actions={<Button asChild variant="outline"><Link href="/dashboard/finance/payments"><ArrowLeft />Back to payments</Link></Button>}
+    >
       <RecordFormLayout
+        title="Record payment"
         sidebar={
-          <Card className="p-5">
-            <h2 className="text-sm font-semibold text-copy-primary">Selected invoice</h2>
+          <Card className="p-6">
+            <SectionHeading>Selected invoice</SectionHeading>
             {invoice ? (
               <dl className="mt-4 grid gap-3 text-sm">
-                <div><dt className="text-copy-muted">Invoice</dt><dd className="mt-1 font-medium text-copy-primary">{invoice.invoice_number}</dd></div>
+                <div><dt className="text-copy-muted">Invoice</dt><dd className="mt-1 font-medium text-copy-primary">{invoice.invoice_number ?? "Draft invoice"}</dd></div>
                 <div><dt className="text-copy-muted">Customer</dt><dd className="mt-1 text-copy-secondary">{invoice.customer_name}</dd></div>
                 <div className="flex justify-between gap-3"><dt className="text-copy-muted">Already paid</dt><dd className="text-copy-primary">{money(invoice.amount_paid, invoice.currency)}</dd></div>
                 <div className="flex justify-between gap-3 border-t border-line-subtle pt-3"><dt className="text-copy-muted">Outstanding</dt><dd className="font-semibold text-state-warning">{money(invoice.balance_due, invoice.currency)}</dd></div>
               </dl>
             ) : (
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
+              <p className="mt-2 text-p-sm text-copy-secondary">Choose an invoice from the outstanding receivables list.</p>
             )}
           </Card>
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">{invoice ? `Recording against ${invoice.invoice_number}` : "Select an invoice to continue"}</span>
-            <div className="flex gap-2">
-              <Button asChild variant="outline"><Link href="/dashboard/finance/payments">Cancel</Link></Button>
-              <Button type="button" onClick={() => void submitPayment()} disabled={!invoice || payments.isRecordingPayment}>
-                <CreditCard />
-                {payments.isRecordingPayment ? "Recording..." : "Record payment"}
-              </Button>
-            </div>
-          </div>
-        }
+        status={invoice ? `Recording against ${invoice.invoice_number}` : "Select an invoice to continue"}
+        actions={(
+          <>
+            <Button asChild variant="outline"><Link href="/dashboard/finance/payments">Cancel</Link></Button>
+            <Button type="button" onClick={() => void submitPayment()} disabled={!invoice || payments.isRecordingPayment}>
+              <CreditCard />
+              {payments.isRecordingPayment ? "Recording…" : "Record payment"}
+            </Button>
+          </>
+        )}
       >
         <FormSection title="Outstanding invoice" description="Search by invoice number, customer, method, or payment status.">
           <Field>
@@ -157,7 +164,7 @@ export default function RecordPaymentPage() {
                   type="button"
                   onClick={() => selectInvoice(item)}
                   aria-pressed={invoice?.id === item.id}
-                  className="grid gap-2 rounded-[var(--radius-card)] border border-line-default bg-surface p-4 text-left transition-colors hover:border-line-strong aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
+                  className="grid gap-2 rounded-[var(--radius-control)] border border-line-subtle p-4 text-left transition-colors hover:border-line-strong hover:bg-surface-muted aria-pressed:border-primary aria-pressed:bg-action-primary-muted sm:grid-cols-[1fr_auto]"
                 >
                   <span>
                     <span className="block font-medium text-copy-primary">{item.invoice_number} · {item.customer_name}</span>
@@ -199,13 +206,19 @@ export default function RecordPaymentPage() {
               {invoice ? <FieldDescription>Maximum outstanding balance: {money(invoice.balance_due, invoice.currency)}.</FieldDescription> : null}
               <FieldError>{error}</FieldError>
             </Field>
+            <PicklistField id="record-payment-method" listKey="payment_method" label="Payment method" value={paymentMethod} onChange={setPaymentMethod} disabled={!invoice} />
             <Field>
-              <FieldLabel htmlFor="record-payment-method">Payment method</FieldLabel>
-              <Input id="record-payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={!invoice} maxLength={100} placeholder="Bank transfer, card, cash…" />
+              <FieldLabel htmlFor="record-payment-date">Paid on</FieldLabel>
+              <Input id="record-payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} disabled={!invoice} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="record-payment-reference">Reference</FieldLabel>
+              <Input id="record-payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} disabled={!invoice} maxLength={200} placeholder="Transfer or cheque number" />
             </Field>
           </FieldGroup>
         </FormSection>
+        <RecordCustomFieldsSection moduleKey="finance_payments" values={customValues} onChange={setCustomValues} disabled={!invoice} />
       </RecordFormLayout>
-    </div>
+    </PageShell>
   );
 }

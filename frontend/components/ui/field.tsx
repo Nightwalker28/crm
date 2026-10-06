@@ -41,12 +41,37 @@ function FieldLegend({
   )
 }
 
-function FieldGroup({ className, ...props }: React.ComponentProps<"div">) {
+/**
+ * The field stack, and — at `columns={2}` — the responsive field grid archetype 3 specifies
+ * (design.md 4.7).
+ *
+ * The grid is a variant rather than a second component because the class string it emits was
+ * already being written at the call site: `<FieldGroup className="grid gap-4 md:grid-cols-2">`
+ * appeared 26 times across the form routes, overriding this component's own `flex-col` to get
+ * it. That is the missing variant, spelled out by hand.
+ *
+ * `md` is the breakpoint, not `sm`: the aside spends ~320px of a 1280px viewport, so the
+ * content column is about 700px and two columns of inputs are only comfortable above it. A
+ * field that spans both writes `md:col-span-2` on its own `Field`.
+ *
+ * `columns={3}` exists for one case and is not a general option: a row of **short values of
+ * the same kind** — three dates, three amounts. Anything with a normal-length label wraps at
+ * ~215px. If a section needs three columns for prose-length fields, it needs two.
+ */
+function FieldGroup({
+  className,
+  columns = 1,
+  ...props
+}: React.ComponentProps<"div"> & { columns?: 1 | 2 | 3 }) {
   return (
     <div
       data-slot="field-group"
+      data-columns={columns}
       className={cn(
-        "group/field-group @container/field-group flex w-full flex-col gap-4 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+        "group/field-group @container/field-group w-full gap-4 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
+        columns === 1 && "flex flex-col",
+        columns === 2 && "grid md:grid-cols-2",
+        columns === 3 && "grid md:grid-cols-3",
         className
       )}
       {...props}
@@ -116,7 +141,7 @@ function FieldLabel({
       data-slot="field-label"
       className={cn(
         "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 text-sm",
-        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border *:data-[slot=field]:p-4",
+        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col has-[>[data-slot=field]]:rounded-[var(--radius-control)] has-[>[data-slot=field]]:border *:data-[slot=field]:p-4",
         "has-data-[state=checked]:bg-primary/5 has-data-[state=checked]:border-primary dark:has-data-[state=checked]:bg-primary/10",
         className
       )}
@@ -145,7 +170,7 @@ function FieldDescription({ className, ...props }: React.ComponentProps<"p">) {
       className={cn(
         "text-muted-foreground text-sm leading-normal font-normal group-has-data-[orientation=horizontal]/field:text-balance",
         "last:mt-0 nth-last-2:-mt-1 [[data-variant=legend]+&]:-mt-1.5",
-        "[&>a:hover]:text-primary [&>a]:underline [&>a]:underline-offset-4",
+        "[&>a]:text-copy-primary [&>a]:underline [&>a]:underline-offset-4",
         className
       )}
       {...props}

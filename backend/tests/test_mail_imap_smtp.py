@@ -13,7 +13,7 @@ from app.core.secrets import decrypt_application_secret, encrypt_secret
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.mail.models import MailMessage, UserMailConnection
 from app.modules.mail.schema import MailProvider
-from app.modules.mail.services import mail_services
+from app.modules.mail.services import mail_errors, mail_services
 from app.modules.mail.services.mail_services import (
     _serialize_connection,
     _send_imap_smtp_message,
@@ -328,7 +328,7 @@ class MailImapSmtpTests(unittest.TestCase):
 
         with patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
              patch.object(mail_services, "_connect_imap", return_value=fake_imap):
-            provider_message_id = _send_imap_smtp_message(
+            identity = _send_imap_smtp_message(
                 db=self.db,
                 connection=connection,
                 sender_email="ava@example.com",
@@ -339,9 +339,13 @@ class MailImapSmtpTests(unittest.TestCase):
                     "subject": "Quote",
                     "body_text": "Quote body",
                 },
+                attachments=[],
             )
 
-        self.assertTrue(provider_message_id)
+        # SMTP has no server-assigned id, so the generated Message-ID is both
+        # the provider identity and the thread key replies arrive under.
+        self.assertTrue(identity["provider_message_id"])
+        self.assertEqual(identity["provider_thread_id"], identity["provider_message_id"])
         self.assertEqual(fake_smtp.username, "ava@example.com")
         self.assertEqual(fake_smtp.sent_message["Subject"], "Quote")
         self.assertEqual(fake_imap.appended_folder, "Sent")
@@ -375,7 +379,7 @@ class MailImapSmtpTests(unittest.TestCase):
         with patch.object(mail_services, "_connect_smtp", return_value=fake_smtp), \
              patch.object(mail_services, "_connect_imap", return_value=fake_imap), \
              patch.object(mail_services.logger, "warning") as warning_mock:
-            provider_message_id = _send_imap_smtp_message(
+            identity = _send_imap_smtp_message(
                 db=self.db,
                 connection=connection,
                 sender_email="ava@example.com",
@@ -386,9 +390,10 @@ class MailImapSmtpTests(unittest.TestCase):
                     "subject": "Quote",
                     "body_text": "Quote body",
                 },
+                attachments=[],
             )
 
-        self.assertTrue(provider_message_id)
+        self.assertTrue(identity["provider_message_id"])
         self.assertIn("IMAP sent-folder append failed", connection.last_error)
         warning_mock.assert_called_once()
         self.assertEqual(warning_mock.call_args.kwargs["extra"]["tenant_id"], 10)
@@ -404,7 +409,14 @@ class MailImapSmtpTests(unittest.TestCase):
 
         self.assertEqual(
             context,
-            {"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"},
+            {
+                "module_key": "sales_contacts",
+                "entity_type": "sales_contact",
+                "entity_id": "7",
+                # Resolved from the record, so sending with context and linking
+                # afterwards store the same label.
+                "label": "lead@example.com",
+            },
         )
 
     def test_mail_source_context_rejects_partial_source(self):
@@ -415,8 +427,11 @@ class MailImapSmtpTests(unittest.TestCase):
                 payload={"source_module_key": "sales_contacts"},
             )
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Mail source requires both module and record.")
+        # A malformed source is a validation failure, distinct from a
+        # disconnected mailbox or a provider refusal.
+        self.assertEqual(exc.exception.status_code, 422)
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        self.assertEqual(exc.exception.message, "Mail source requires both module and record.")
 
     def test_mail_source_context_rejects_cross_tenant_record(self):
         with self.assertRaises(HTTPException) as exc:
@@ -426,8 +441,9 @@ class MailImapSmtpTests(unittest.TestCase):
                 payload={"source_module_key": "sales_contacts", "source_entity_id": "8"},
             )
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Mail source is not available.")
+        self.assertEqual(exc.exception.status_code, 422)
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        self.assertEqual(exc.exception.message, "Mail source is not available.")
 
     def test_mail_source_context_masks_invalid_record_identifier(self):
         with self.assertRaises(HTTPException) as exc:
@@ -437,8 +453,9 @@ class MailImapSmtpTests(unittest.TestCase):
                 payload={"source_module_key": "sales_contacts", "source_entity_id": "not-a-number"},
             )
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Mail source is not available.")
+        self.assertEqual(exc.exception.status_code, 422)
+        self.assertEqual(exc.exception.code, mail_errors.VALIDATION)
+        self.assertEqual(exc.exception.message, "Mail source is not available.")
 
     def test_mail_source_activity_logs_to_record_timeline(self):
         message = MailMessage(
@@ -540,9 +557,9 @@ class MailImapSmtpTests(unittest.TestCase):
         def mail_message_factory(**kwargs):
             return MailMessage(id=77, **kwargs)
 
-        with patch.object(mail_services, "_resolve_mail_source_context", return_value={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7"}), \
+        with patch.object(mail_services, "_resolve_mail_source_context", return_value={"module_key": "sales_contacts", "entity_type": "sales_contact", "entity_id": "7", "label": "lead@example.com"}), \
              patch.object(mail_services, "_mail_connection_for_user", return_value=connection), \
-             patch.object(mail_services, "_send_imap_smtp_message", return_value="smtp-id"), \
+             patch.object(mail_services, "_send_imap_smtp_message", return_value={"provider_message_id": "smtp-id", "provider_thread_id": "smtp-id"}), \
              patch.object(mail_services, "MailMessage", side_effect=mail_message_factory), \
              patch.object(mail_services, "_log_mail_source_activity", side_effect=RuntimeError("timeline failed")), \
              patch.object(mail_services.logger, "exception") as exception_mock:
@@ -586,7 +603,7 @@ class MailImapSmtpTests(unittest.TestCase):
             return MailMessage(id=78, **kwargs)
 
         with patch.object(mail_services, "_mail_connection_for_user", return_value=connection), \
-             patch.object(mail_services, "_send_imap_smtp_message", return_value="smtp-id") as send_mock, \
+             patch.object(mail_services, "_send_imap_smtp_message", return_value={"provider_message_id": "smtp-id", "provider_thread_id": "smtp-id"}) as send_mock, \
              patch.object(mail_services, "MailMessage", side_effect=mail_message_factory):
             message = mail_services.send_mail_message(
                 self.db,
@@ -905,6 +922,7 @@ class MailImapSmtpTests(unittest.TestCase):
                     "subject": "Quote",
                     "body_text": "Quote body",
                 },
+                attachments=[],
             )
 
         connection = self.db.query(UserMailConnection).first()

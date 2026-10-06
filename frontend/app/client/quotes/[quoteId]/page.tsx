@@ -1,12 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useParams } from "next/navigation";
-import { Download, ScrollText, ThumbsDown, ThumbsUp } from "lucide-react";
 import { useState } from "react";
+import { useParams } from "next/navigation";
+import { Download, ThumbsDown, ThumbsUp } from "lucide-react";
 import { toast } from "sonner";
 
+import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { Fact, FactList } from "@/components/ui/Fact";
+import { Money } from "@/components/ui/Money";
+import { PanelHeader } from "@/components/ui/PanelStates";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
 import {
   downloadClientQuoteProposal,
@@ -15,15 +21,7 @@ import {
   type ClientQuote,
 } from "@/hooks/useClientPortal";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-
-function money(value: string | number, currency: string) {
-  const amount = Number(value);
-  return `${currency} ${Number.isFinite(amount) ? amount.toFixed(2) : "0.00"}`;
-}
-
-function statusLabel(status: string) {
-  return status.replaceAll("_", " ");
-}
+import { getQuoteStatus } from "@/lib/statusStyles";
 
 function quoteTitle(quote: ClientQuote) {
   return quote.title || quote.quote_number;
@@ -41,7 +39,7 @@ export default function ClientQuoteDetailPage() {
     try {
       await downloadClientQuoteProposal(quote);
     } catch {
-      toast.error("Failed to download quote proposal.");
+      toast.error("The proposal could not be downloaded. Check your connection and try again.");
     }
   }
 
@@ -52,103 +50,110 @@ export default function ClientQuoteDetailPage() {
       setMessage("");
       toast.success(action === "approve" ? "Quote approved." : "Quote rejected.");
     } catch {
-      toast.error("Failed to update quote.");
+      toast.error("The response could not be sent. Check your connection and try again.");
     }
   }
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client/quotes">Quotes</Link>
+    // Archetype 2, read-only (§4.7): no `spine`. Approve, Reject and Download are actions,
+    // not fields — §4.7's test is whether anything edits in place, and nothing here does.
+    <RecordWorkspace
+      title={quote ? quoteTitle(quote) : "Quote"}
+      description="Review the quote and send your response."
+      backHref="/client/quotes"
+      backLabel="Quotes"
+      isLoading={quoteQuery.isLoading}
+      hasError={Boolean(quoteQuery.error) || (!quoteQuery.isLoading && !quote)}
+      onRetry={() => void quoteQuery.refetch()}
+      status={quote ? <StatusValue status={getQuoteStatus(quote.status)} context="record" /> : null}
+      subtitle={
+        quote ? (
+          <>
+            <span>{quote.quote_number}</span>
+            <Money amount={quote.total_amount} currency={quote.currency} />
+            <span>{quote.customer_name}</span>
+          </>
+        ) : null
+      }
+      actions={
+        quote ? (
+          <Button type="button" variant="outline" onClick={() => void handleDownload()} disabled={!quote.proposal_content_text}>
+            <Download />
+            Download
           </Button>
-        </header>
+        ) : null
+      }
+      details={
+        quote ? (
+          <div className="flex min-w-0 flex-col gap-6">
+            <Card className="p-6">
+              <FactList>
+                <Fact label="Issued">{quote.issue_date ? formatDateOnly(quote.issue_date) : <EmptyValue context="field" />}</Fact>
+                <Fact label="Expires">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : <EmptyValue context="field" />}</Fact>
+                <Fact label="Updated">{formatDateTime(quote.updated_at ?? quote.created_time)}</Fact>
+              </FactList>
+            </Card>
 
-        {quoteQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading quote...</div>
-        ) : quoteQuery.error || !quote ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {quoteQuery.error instanceof Error ? quoteQuery.error.message : "Quote not found."}
-          </div>
-        ) : (
-          <div className="grid gap-5">
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-sm text-copy-secondary">
-                    <ScrollText className="h-4 w-4" />
-                    {quote.quote_number}
-                  </div>
-                  <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{quoteTitle(quote)}</h1>
-                  <p className="mt-1 text-sm text-copy-secondary">{quote.customer_name}</p>
-                </div>
-                <div className="text-right">
-                  <div className="capitalize text-copy-secondary">{statusLabel(quote.status)}</div>
-                  <div className="mt-1 text-xl font-semibold text-copy-primary">{money(quote.total_amount, quote.currency)}</div>
-                </div>
-              </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Issued</div>
-                  <div className="mt-1 text-sm text-copy-secondary">{quote.issue_date ? formatDateOnly(quote.issue_date) : "Not set"}</div>
-                </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Expires</div>
-                  <div className="mt-1 text-sm text-copy-secondary">{quote.expiry_date ? formatDateOnly(quote.expiry_date) : "No expiry"}</div>
-                </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="text-xs uppercase text-copy-muted">Updated</div>
-                  <div className="mt-1 text-sm text-copy-secondary">{formatDateTime(quote.updated_at ?? quote.created_time)}</div>
-                </div>
-              </div>
-            </section>
-
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className="font-semibold text-copy-primary">Proposal</h2>
-                  {quote.proposal_generated_at ? <p className="mt-1 text-xs text-copy-muted">Generated {formatDateTime(quote.proposal_generated_at)}</p> : null}
-                </div>
-                <Button type="button" variant="outline" onClick={() => void handleDownload()} disabled={!quote.proposal_content_text}>
-                  <Download className="h-4 w-4" />
-                  Download
-                </Button>
-              </div>
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
+              <PanelHeader
+                title="Proposal"
+                description={
+                  quote.proposal_generated_at
+                    ? `Generated ${formatDateTime(quote.proposal_generated_at)}`
+                    : undefined
+                }
+              />
               {quote.proposal_content_text ? (
-                <pre className="max-h-[32rem] overflow-auto whitespace-pre-wrap rounded-md border border-line-default bg-app p-4 text-sm leading-6 text-copy-secondary">{quote.proposal_content_text}</pre>
+                // Prose a customer reads, so the product face and no box of its own. It was a
+                // `<pre>` — monospace (§3.2 keeps that for secrets and raw payloads), a bordered
+                // box inside the card (§1.3's third level), and a `max-h` scroller nested in the
+                // record's content region (§4.5), hidden only while the text stayed short.
+                <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{quote.proposal_content_text}</p>
               ) : (
-                <div className="rounded-md border border-line-default bg-app p-4 text-sm text-copy-muted">No generated proposal is attached to this quote yet.</div>
+                <p className="text-sm text-copy-muted">No proposal has been attached to this quote yet.</p>
               )}
-            </section>
+            </Card>
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <h2 className="font-semibold text-copy-primary">Response</h2>
-              <p className="mt-1 text-sm text-copy-muted">
-                {quote.can_respond ? "Approve the quote or send a rejection reason for the team to review." : "This quote is not currently open for portal response."}
-              </p>
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
+              <PanelHeader
+                title="Your response"
+                description={
+                  quote.can_respond
+                    ? "Approve the quote, or send a reason for the team to review."
+                    : "This quote is not open for a response right now."
+                }
+              />
               <Textarea
-                className="mt-4 min-h-24"
+                className="min-h-24"
+                aria-label="Comment or rejection reason"
                 value={message}
                 onChange={(event) => setMessage(event.target.value)}
                 placeholder="Optional comment or rejection reason"
                 disabled={!quote.can_respond || isRespondingToQuote}
               />
-              <div className="mt-4 flex flex-wrap justify-end gap-3">
-                <Button type="button" variant="outline" onClick={() => void handleRespond("reject")} disabled={!quote.can_respond || isRespondingToQuote}>
-                  <ThumbsDown className="h-4 w-4" />
+              <div className="flex flex-wrap justify-end gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleRespond("reject")}
+                  disabled={!quote.can_respond || isRespondingToQuote}
+                >
+                  <ThumbsDown />
                   Reject
                 </Button>
-                <Button type="button" onClick={() => void handleRespond("approve")} disabled={!quote.can_respond || isRespondingToQuote}>
-                  <ThumbsUp className="h-4 w-4" />
+                <Button
+                  type="button"
+                  onClick={() => void handleRespond("approve")}
+                  disabled={!quote.can_respond || isRespondingToQuote}
+                >
+                  <ThumbsUp />
                   Approve
                 </Button>
               </div>
-            </section>
+            </Card>
           </div>
-        )}
-      </div>
-    </main>
+        ) : null
+      }
+    />
   );
 }

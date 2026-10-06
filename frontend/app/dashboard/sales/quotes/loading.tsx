@@ -1,5 +1,5 @@
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 
 export default function QuotesLoading() {
-  return <RouteLoadingState />;
+  return <RouteLoadingState label="quotes" />;
 }

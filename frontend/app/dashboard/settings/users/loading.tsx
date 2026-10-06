@@ -1,5 +1,5 @@
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 
-export default function Loading() {
+export default function UsersLoading() {
   return <RouteLoadingState label="user management" />;
 }

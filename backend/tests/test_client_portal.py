@@ -22,7 +22,8 @@ from app.modules.client_portal.routes.client_portal_routes import (
 from app.modules.client_portal.schema import ClientLoginRequest, ClientPagePricingItemRequest, ClientSetupPasswordRequest
 from app.modules.client_portal.services import client_portal_services
 from app.modules.platform.models import ActivityLog
-from app.modules.sales.models import SalesContact, SalesOrganization, SalesQuote
+from app.modules.inventory.models import InventoryReservation
+from app.modules.sales.models import SalesContact, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.sales.services.quotes_services import (
     get_client_quote_or_404,
     list_client_quotes,
@@ -30,7 +31,6 @@ from app.modules.sales.services.quotes_services import (
 )
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
-from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
 
 class ClientPortalServiceTests(unittest.TestCase):
@@ -797,16 +797,18 @@ class ClientPortalServiceTests(unittest.TestCase):
             payload={"quantity": "2", "details": "Ship after approval."},
         )
 
-        self.assertEqual(order.status, "submitted")
-        self.assertEqual(order.source_platform, "client_portal")
-        self.assertEqual(order.customer_email, "buyer@example.com")
-        self.assertEqual(str(order.subtotal_amount), "80.0000")
-        self.assertEqual(order.metadata_json["client_account_id"], 32)
+        # 13 F1.3: a portal order is a draft sales order for the client's contact; it holds
+        # no stock until the team confirms it.
+        self.assertIsInstance(order, SalesOrder)
+        self.assertEqual((order.status, order.source, order.client_account_id, order.contact_id), ("draft", "client_portal", 32, 7))
+        self.assertEqual(order.notes, "Ship after approval.")
+        self.assertEqual(Decimal(order.grand_total), Decimal("80"))
         self.assertEqual(str(product.stock_quantity), "5.0000")
-        self.assertEqual(len(order.line_items), 1)
-        self.assertEqual(order.line_items[0].catalog_product_id, 120)
+        self.assertEqual(len(order.items), 1)
+        self.assertEqual(order.items[0].catalog_product_id, 120)
+        self.assertEqual(self.db.query(InventoryReservation).count(), 0)
         self.assertEqual(
-            self.db.query(ActivityLog).filter(ActivityLog.action == "portal.order.submitted", ActivityLog.entity_id == str(order.id)).count(),
+            self.db.query(ActivityLog).filter(ActivityLog.module_key == "sales_orders", ActivityLog.entity_id == str(order.id)).count(),
             1,
         )
 
@@ -836,27 +838,25 @@ class ClientPortalServiceTests(unittest.TestCase):
                     is_public=1,
                     is_active=1,
                 ),
-                WebsiteIntegrationOrder(
+                SalesOrder(
                     id=51,
                     tenant_id=10,
-                    external_reference="portal-35-order",
-                    source_platform="client_portal",
-                    status="submitted",
-                    request_hash="order-hash",
-                    customer_email="buyer@example.com",
+                    order_number="SO-51",
+                    source="client_portal",
+                    client_account_id=35,
+                    status="draft",
                     currency="USD",
-                    subtotal_amount="40",
+                    grand_total=Decimal("40"),
                 ),
-                WebsiteIntegrationOrder(
+                SalesOrder(
                     id=52,
                     tenant_id=10,
-                    external_reference="portal-other-order",
-                    source_platform="client_portal",
-                    status="submitted",
-                    request_hash="other-order-hash",
-                    customer_email="other@example.com",
+                    order_number="SO-52",
+                    source="client_portal",
+                    client_account_id=36,
+                    status="draft",
                     currency="USD",
-                    subtotal_amount="40",
+                    grand_total=Decimal("40"),
                 ),
                 SalesQuote(
                     quote_id=506,
@@ -897,16 +897,15 @@ class ClientPortalServiceTests(unittest.TestCase):
     def test_client_order_lookup_rejects_other_client_order(self):
         first = ClientAccount(id=33, tenant_id=10, contact_id=7, email="buyer@example.com", status="active")
         second = ClientAccount(id=34, tenant_id=10, organization_id=3, email="org@example.com", status="active")
-        order = WebsiteIntegrationOrder(
+        order = SalesOrder(
             id=50,
             tenant_id=10,
-            external_reference="portal-33-manual",
-            source_platform="client_portal",
-            status="submitted",
-            request_hash="hash",
-            customer_email="buyer@example.com",
+            order_number="SO-50",
+            source="client_portal",
+            client_account_id=33,
+            status="draft",
             currency="USD",
-            subtotal_amount="10",
+            grand_total=Decimal("10"),
         )
         self.db.add_all([first, second, order])
         self.db.commit()

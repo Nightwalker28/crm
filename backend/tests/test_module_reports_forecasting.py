@@ -2,6 +2,7 @@ import unittest
 from datetime import date, datetime
 from decimal import Decimal
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
@@ -36,6 +37,10 @@ class FakeSavedReportQuery:
                 id=2,
                 module_key="sales_leads",
                 name="Lead Report",
+                description=None,
+                visibility="private",
+                user_id=1,
+                user=None,
                 config={},
                 created_at=datetime(2026, 1, 1),
                 updated_at=datetime(2026, 1, 2),
@@ -55,12 +60,13 @@ class SavedReportListTests(unittest.TestCase):
     def test_saved_reports_apply_sort_before_fetching(self):
         query = FakeSavedReportQuery()
 
-        results = module_reports.list_saved_reports(
-            FakeSavedReportDB(query),
-            SimpleNamespace(id=1, tenant_id=10),
-            sort_by="name",
-            sort_direction="asc",
-        )
+        with patch.object(module_reports.report_catalog, "resolve_source", return_value=(SimpleNamespace(label="Leads"), [])):
+            results = module_reports.list_saved_reports(
+                FakeSavedReportDB(query),
+                SimpleNamespace(id=1, tenant_id=10),
+                sort_by="name",
+                sort_direction="asc",
+            )
 
         self.assertEqual(results[0]["name"], "Lead Report")
         self.assertEqual(query.operations, ["filter", "order_by_reset", "order_by", "all"])
@@ -88,63 +94,63 @@ class ForecastReportTests(unittest.TestCase):
                     is_active=UserStatus.active,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=1,
                     tenant_id=10,
                     opportunity_name="Explicit probability",
-                    client="Acme",
                     assigned_to=1,
                     sales_stage="proposal",
                     expected_close_date=date(2026, 6, 10),
                     probability_percent=Decimal("60"),
-                    total_cost_of_project="1000",
+                    amount="1000",
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=2,
                     tenant_id=10,
                     opportunity_name="Stage probability",
-                    client="Beta",
                     assigned_to=1,
                     sales_stage="negotiation",
                     expected_close_date=date(2026, 6, 11),
-                    total_cost_of_project="2000",
+                    amount="2000",
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=3,
                     tenant_id=10,
                     opportunity_name="Won",
-                    client="Gamma",
                     assigned_to=1,
                     sales_stage="closed_won",
                     expected_close_date=date(2026, 6, 12),
-                    total_cost_of_project="500",
+                    amount="500",
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=4,
                     tenant_id=10,
                     opportunity_name="Lost",
-                    client="Delta",
                     assigned_to=1,
                     sales_stage="closed_lost",
                     expected_close_date=date(2026, 6, 13),
-                    total_cost_of_project="9999",
+                    amount="9999",
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=5,
                     tenant_id=99,
                     opportunity_name="Other tenant",
-                    client="Other",
                     sales_stage="negotiation",
                     expected_close_date=date(2026, 6, 10),
-                    total_cost_of_project="9999",
+                    amount="9999",
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=6,
                     tenant_id=10,
                     opportunity_name="Out of period",
-                    client="Future",
                     sales_stage="negotiation",
                     expected_close_date=date(2026, 8, 1),
-                    total_cost_of_project="9999",
+                    amount="9999",
                 ),
             ]
         )

@@ -24,10 +24,7 @@ class PlatformQueryHardeningTests(unittest.TestCase):
                 "sales_orders",
                 "catalog_products",
                 "catalog_services",
-                "contracts",
                 "documents",
-                "support_cases",
-                "finance_io",
                 "finance_pos",
             }.issubset(module_keys)
         )
@@ -102,6 +99,16 @@ class PlatformQueryHardeningTests(unittest.TestCase):
         self.assertIn("DELETE FROM record_tag_links", statement)
         self.assertIn("module_key = 'sales_leads'", statement)
         self.assertIn('"sales_leads"."lead_id" = rows_to_delete."lead_id"', statement)
+
+    def test_recycle_purge_keeps_products_with_stock_history(self):
+        statement = str(recycle_purge._build_purge_statement("catalog_products", "id"))
+
+        self.assertIn("NOT EXISTS (SELECT 1 FROM inventory_stock_moves", statement)
+        self.assertIn("catalog_products", recycle_purge.PURGE_PREPARE)
+        self.assertNotIn("inventory_stock_moves", str(recycle_purge._build_purge_statement("sales_leads", "lead_id")))
+        targets = [table for table, _pk in recycle_purge.PURGE_TARGETS]
+        self.assertLess(targets.index("inventory_adjustments"), targets.index("catalog_products"))
+        self.assertLess(targets.index("inventory_transfers"), targets.index("catalog_products"))
 
 
 if __name__ == "__main__":

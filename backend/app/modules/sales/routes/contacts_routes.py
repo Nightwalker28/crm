@@ -2,13 +2,14 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.permissions import require_access
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.security import require_user
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_action_access, require_linked_record_access, require_module_access
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -108,6 +109,18 @@ CONTACT_IMPORT_ALIASES = {
 
 def _serialize_contact(contact) -> dict:
     return SalesContactResponse.model_validate(contact).model_dump(mode="json")
+
+
+def _require_account_link_access(db: Session, *, current_user, payload_data: dict) -> None:
+    """A contact may only be attached to an account the user is allowed to see.
+
+    Contextual create ("+ Contact" from an Organization) prefills `organization_id`, so this
+    runs on every write that carries one, not just on the contextual path.
+    """
+
+    if payload_data.get("organization_id") is None:
+        return
+    require_linked_record_access(db, user=current_user, module_key="sales_organizations")
 
 
 def _display_user_name(user) -> str | None:
@@ -303,6 +316,7 @@ def create_contact(
             module_key="sales_contacts",
             payload=payload.model_dump(),
         )
+        _require_account_link_access(db, current_user=current_user, payload_data=sanitized_payload)
         created = create_sales_contact(
             db=db,
             payload=sanitized_payload,
@@ -356,11 +370,14 @@ async def import_contacts(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
+    if add_unknown_picklist_values:
+        require_access(db, current_user, "sales_contacts", "configure", detail="Only users who can configure contacts can add list values during an import.")
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
     target_headers = _enabled_contact_import_fields(db, current_user.tenant_id)
     mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
@@ -390,6 +407,7 @@ async def import_contacts(
         job.payload = {
             **(job.payload or {}),
             "source_file_path": stored_path,
+            "add_unknown_picklist_values": add_unknown_picklist_values,
         }
         db.add(job)
         db.commit()
@@ -411,6 +429,7 @@ async def import_contacts(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+        add_unknown_picklist_values=add_unknown_picklist_values,
     )
     return ImportExecutionResponse(
         mode="inline",
@@ -516,7 +535,7 @@ def get_contact_summary(
     require_permission = Depends(require_action_access("sales_contacts", "view")),
 ):
     contact = get_contact_or_404(db, contact_id, tenant_id=current_user.tenant_id)
-    return build_contact_summary(db, contact)
+    return build_contact_summary(db, contact, current_user=current_user)
 
 
 @router.post("/{contact_id}/follow-up", response_model=FollowUpActionResponse)
@@ -562,6 +581,7 @@ def update_contact(
         module_key="sales_contacts",
         payload=update_data,
     )
+    _require_account_link_access(db, current_user=current_user, payload_data=update_data)
 
     before_state = _serialize_contact(contact)
     updated = update_sales_contact(db, contact, update_data)

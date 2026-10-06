@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from decimal import Decimal, InvalidOperation
 import re
 
 from fastapi import HTTPException, status
+from sqlalchemy.orm import Session
 
 from app.core.uploads import build_media_url
+from app.modules.platform.services.picklists import PicklistResolver
+from app.modules.catalog.models import CatalogCategory
 
 
 def normalize_catalog_slug(value: str | None, *, fallback: str) -> str | None:
@@ -39,4 +43,100 @@ def catalog_media_payload(record) -> dict:
         "media_url": build_media_url(media_path) if media_path else None,
         "media_content_type": record.media_content_type if media_path else None,
         "media_original_filename": record.media_original_filename if media_path else None,
+    }
+
+
+CATALOG_DETAIL_FIELDS = ("category_id", "cost_price", "unit")
+
+
+def normalize_catalog_unit(value) -> str:
+    normalized = " ".join(str(value or "").split())
+    if not normalized:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unit cannot be blank")
+    if len(normalized) > 40:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unit must be 40 characters or fewer")
+    return normalized
+
+
+def normalize_catalog_cost(value) -> Decimal | None:
+    if value is None or value == "":
+        return None
+    try:
+        cost = Decimal(str(value))
+    except (InvalidOperation, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid cost_price") from exc
+    if not cost.is_finite() or cost < 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="cost_price must be non-negative")
+    return cost
+
+
+def normalize_catalog_category_id(db: Session, *, tenant_id: int, value) -> int | None:
+    """A category the record may point at: one in its own tenant."""
+
+    if value is None or value == "":
+        return None
+    try:
+        category_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid category") from exc
+    exists = (
+        db.query(CatalogCategory.id)
+        .filter(CatalogCategory.tenant_id == tenant_id, CatalogCategory.id == category_id)
+        .first()
+    )
+    if not exists:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Category not found")
+    return category_id
+
+
+def normalize_catalog_detail_fields(db: Session, *, tenant_id: int, payload: dict, partial: bool, existing=None) -> dict:
+    """Category, cost and unit, shared by products and services.
+
+    On a partial update only the keys the caller sent are returned, so an omitted field stays
+    as it is. `unit` cannot be cleared; `category_id` and `cost_price` can.
+    """
+
+    values: dict = {}
+    if not partial or "category_id" in payload:
+        values["category_id"] = normalize_catalog_category_id(db, tenant_id=tenant_id, value=payload.get("category_id"))
+    if not partial or "cost_price" in payload:
+        values["cost_price"] = normalize_catalog_cost(payload.get("cost_price"))
+    if not partial or "unit" in payload:
+        if partial and payload.get("unit") is None:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unit cannot be null")
+        # The tenant's `unit` picklist (13b §3.2); an empty unit takes the list's default.
+        units = PicklistResolver(db, tenant_id)
+        raw = normalize_catalog_unit(payload.get("unit") or units.default_key("unit") or "unit")
+        values["unit"] = units.resolve("unit", raw, current=getattr(existing, "unit", None), field_key="unit", field_label="Unit")
+    # 13a C4: a list price apart from the website price, and a tax category F5 will rate.
+    if not partial or "list_price" in payload:
+        raw_price = payload.get("list_price")
+        if raw_price in (None, "") and not partial:
+            raw_price = payload.get("public_unit_price")
+        values["list_price"] = normalize_catalog_cost(raw_price)
+    if not partial or "tax_category" in payload:
+        lists = PicklistResolver(db, tenant_id)
+        raw_category = payload.get("tax_category") or (None if partial else lists.default_key("tax_category"))
+        values["tax_category"] = lists.resolve(
+            "tax_category", raw_category, current=getattr(existing, "tax_category", None), field_key="tax_category", field_label="Tax category",
+        )
+    return values
+
+
+def normalize_catalog_code(value) -> str | None:
+    """SKU and barcode: trimmed, blank means none."""
+
+    normalized = (str(value) if value is not None else "").strip()
+    return normalized or None
+
+
+def catalog_detail_payload(record) -> dict:
+    category = getattr(record, "category", None)
+    return {
+        "category_id": record.category_id,
+        "category_name": category.full_name if category is not None else None,
+        "cost_price": record.cost_price,
+        "unit": record.unit or "unit",
+        "list_price": record.list_price,
+        "tax_category": record.tax_category,
     }

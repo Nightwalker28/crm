@@ -1,10 +1,13 @@
+import type { StatusTone } from "@/lib/statusStyles";
 import Link from "next/link";
 import { PlugZap, RefreshCw } from "lucide-react";
 
-import { IntegrationSectionError } from "@/components/integrations/IntegrationSectionError";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
+import { SectionHeading } from "@/components/ui/SectionHeading";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
-import { Pill } from "@/components/ui/Pill";
 import { formatDateTime } from "@/lib/datetime";
 
 export type IntegrationRegistryHealth = {
@@ -30,6 +33,9 @@ export type IntegrationRegistryHealth = {
     last_successful_sync_at: string | null;
     source: string;
     connection_count: number;
+    /** Mail and calendar connect per user: the signed-in user's own state (13a I10). */
+    viewer_status?: string | null;
+    viewer_account_label?: string | null;
     credential_state: string;
     health_status: string;
     scopes: string[];
@@ -43,17 +49,11 @@ export type IntegrationRegistryHealth = {
   };
 };
 
-function statusTone(status: string) {
-  if (status === "connected") {
-    return { bg: "bg-state-success-muted", text: "text-state-success", border: "border-state-success/40" };
-  }
-  if (status === "error" || status === "reconnect_required") {
-    return { bg: "bg-state-danger-muted", text: "text-state-danger", border: "border-state-danger/40" };
-  }
-  if (status === "pending") {
-    return { bg: "bg-state-warning-muted", text: "text-state-warning", border: "border-state-warning/40" };
-  }
-  return { bg: "bg-surface-muted", text: "text-copy-muted", border: "border-line-default" };
+function statusTone(status: string): StatusTone {
+  if (status === "connected") return "success";
+  if (status === "error" || status === "reconnect_required") return "critical";
+  if (status === "pending") return "attention";
+  return "neutral";
 }
 
 function formatStatus(value: string) {
@@ -74,15 +74,16 @@ function ProviderAction({
     const isConnecting = connectingProvider === provider.key;
     return (
       <Button type="button" variant="outline" size="sm" className="mt-4" disabled={Boolean(connectingProvider)} onClick={() => onConnectDocumentProvider(provider.key)}>
-        {isConnecting ? "Connecting..." : connection.status === "connected" ? "Reconnect" : connection.reconnect_action || "Connect"}
+        {isConnecting ? "Connecting…" : connection.status === "connected" ? "Reconnect" : connection.reconnect_action || "Connect"}
       </Button>
     );
   }
   if (!connection.reconnect_url && !provider.metadata_json.config_href) return null;
+  const connectedForViewer = (connection.viewer_status ?? connection.status) === "connected";
   return (
     <Button variant="outline" size="sm" className="mt-4" asChild>
       <Link href={connection.reconnect_url || provider.metadata_json.config_href || "#"}>
-        {connection.status === "connected" ? "Configure" : connection.reconnect_action || "Reconnect"}
+        {connectedForViewer ? "Configure" : connection.reconnect_action || "Reconnect"}
       </Link>
     </Button>
   );
@@ -107,41 +108,54 @@ export function IntegrationProviderRegistry({
 }) {
   return (
     <section id="provider-registry" className="flex scroll-mt-5 flex-col gap-4" aria-labelledby="provider-registry-heading">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div className="flex flex-col gap-1">
-          <h2 id="provider-registry-heading" className="text-lg font-semibold text-copy-primary">Provider Registry</h2>
-          <p className="text-sm text-copy-muted">Connection state from mail, calendar, documents, website APIs, and webhook providers for this tenant.</p>
-        </div>
-        <Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={onRetry}>
-          <RefreshCw />
-          Refresh
-        </Button>
-      </div>
-      {isError ? <IntegrationSectionError message="Provider health is temporarily unavailable. Your existing connections have not been changed." retry={onRetry} /> : null}
+      <SectionHeading
+        id="provider-registry-heading"
+        description="Connection state from mail, calendar, documents, website APIs, and webhook providers for this tenant."
+        action={(
+          <Button type="button" variant="outline" size="sm" disabled={isFetching} onClick={onRetry}>
+            <RefreshCw />
+            Refresh
+          </Button>
+        )}
+      >
+        Provider registry
+      </SectionHeading>
+      {isError ? <PanelError message="Provider health is temporarily unavailable. Your existing connections have not been changed." onRetry={onRetry} /> : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {isLoading ? (
-          <Card className="px-5 py-5 text-sm text-copy-muted md:col-span-2 xl:col-span-3">Loading provider health...</Card>
+          <div className="md:col-span-2 xl:col-span-3"><PanelLoading label="Loading provider health\u2026" /></div>
         ) : items.length ? (
           items.map((item) => {
             const { provider, connection } = item;
-            const tone = statusTone(connection.status);
+            // A per-user provider shows the viewer's own connection first: a colleague's
+            // mailbox does not let this admin send (13a I10).
+            const perUser = connection.viewer_status != null;
+            const shownStatus = perUser ? connection.viewer_status ?? "disconnected" : connection.status;
+            const tone = statusTone(shownStatus);
             return (
-              <Card key={provider.key} className="px-5 py-5">
+              <Card key={provider.key} className="p-6">
                 <div className="flex items-start justify-between gap-3">
                   <div className="flex min-w-0 items-start gap-3">
                     <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
                       <PlugZap className="text-copy-secondary" />
                     </div>
                     <div className="min-w-0">
-                      <div className="text-xs uppercase text-copy-muted">{provider.category}</div>
-                      <h3 className="mt-1 text-base font-semibold text-copy-primary">{provider.name}</h3>
+                      <div className="text-xs font-medium text-copy-label">{provider.category}</div>
+                      <h3 className="mt-1 text-sm font-semibold text-copy-primary">{provider.name}</h3>
                     </div>
                   </div>
-                  <Pill bg={tone.bg} text={tone.text} border={tone.border}>{formatStatus(connection.status)}</Pill>
+                  <StatusValue status={{ tone, label: perUser ? `${formatStatus(shownStatus)} for you` : formatStatus(shownStatus) }} context="record" />
                 </div>
-                <p className="mt-3 text-sm leading-5 text-copy-muted">{provider.description}</p>
+                <p className="mt-3 text-p-sm text-copy-muted">{provider.description}</p>
                 <div className="mt-4 grid gap-2 text-xs text-copy-muted">
-                  <div><span>Account: </span><span className="text-copy-secondary">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span></div>
+                  {perUser ? (
+                    <>
+                      <div><span>Your account: </span><span className="text-copy-secondary">{connection.viewer_account_label || "Not connected"}</span></div>
+                      <div><span>Workspace: </span><span className="text-copy-secondary">{connection.connection_count === 1 ? "1 user connected" : `${connection.connection_count} users connected`}</span></div>
+                    </>
+                  ) : (
+                    <div><span>Account: </span><span className="text-copy-secondary">{connection.account_label || (connection.connection_count ? "Connected account" : "Not connected")}</span></div>
+                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <Metric label="Connections" value={connection.connection_count} />
                     <Metric label="Queued" value={connection.queued_jobs} />
@@ -164,7 +178,12 @@ export function IntegrationProviderRegistry({
             );
           })
         ) : (
-          <Card className="px-5 py-5 text-sm text-copy-muted md:col-span-2 xl:col-span-3">No integration providers registered.</Card>
+          <EmptyState
+            className="md:col-span-2 xl:col-span-3"
+            icon={PlugZap}
+            title="No integration providers registered"
+            description="Providers appear here once the workspace enables an integration."
+          />
         )}
       </div>
     </section>

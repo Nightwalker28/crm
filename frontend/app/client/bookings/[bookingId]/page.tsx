@@ -1,12 +1,18 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
-import { CalendarDays, Clock, ExternalLink, MapPin, UserRound } from "lucide-react";
+import { ExternalLink } from "lucide-react";
 
+import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/Card";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { Fact, FactList } from "@/components/ui/Fact";
+import { PanelHeader } from "@/components/ui/PanelStates";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientBooking, type ClientBooking } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
+import { getGenericStatus } from "@/lib/statusStyles";
 
 function bookingTitle(booking: ClientBooking) {
   return booking.booking_type_name || "Appointment";
@@ -16,100 +22,74 @@ function durationLabel(booking: ClientBooking) {
   const start = new Date(booking.start_at).getTime();
   const end = new Date(booking.end_at).getTime();
   const minutes = Math.max(0, Math.round((end - start) / 60000));
-  return minutes ? `${minutes} minutes` : "Scheduled";
+  return minutes ? `${minutes} min` : "Scheduled";
 }
 
 export default function ClientBookingDetailPage() {
-  const params = useParams<{ bookingId: string }>();
-  const bookingQuery = useClientBooking(params.bookingId);
+  const params = useParams();
+  const bookingId = String(params.bookingId ?? "");
+  const bookingQuery = useClientBooking(bookingId);
   const booking = bookingQuery.data;
 
   return (
-    <main className="min-h-screen bg-app text-copy-primary">
-      <div className="mx-auto max-w-5xl px-4 py-6">
-        <header className="mb-6 flex flex-wrap items-center justify-between gap-3 border-b border-line-default pb-4">
-          <Link href="/client" className="font-lynk text-3xl text-copy-primary">Lynk</Link>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/client/bookings">Bookings</Link>
+    // Archetype 2, read-only (§4.7): no `spine`. Rescheduling from the portal is not
+    // enabled, so nothing on this record edits in place.
+    <RecordWorkspace
+      title={booking ? bookingTitle(booking) : "Appointment"}
+      description="Review the appointment's time, host and location."
+      backHref="/client/bookings"
+      backLabel="Bookings"
+      isLoading={bookingQuery.isLoading}
+      hasError={Boolean(bookingQuery.error) || (!bookingQuery.isLoading && !booking)}
+      onRetry={() => void bookingQuery.refetch()}
+      status={booking ? <StatusValue status={getGenericStatus(booking.status)} context="record" /> : null}
+      subtitle={
+        booking ? (
+          <>
+            <span>{formatDateTime(booking.start_at)}</span>
+            <span>{booking.timezone}</span>
+          </>
+        ) : null
+      }
+      actions={
+        booking?.meeting_url ? (
+          <Button asChild>
+            <a href={booking.meeting_url} target="_blank" rel="noreferrer">
+              <ExternalLink />
+              Join
+            </a>
           </Button>
-        </header>
-
-        {bookingQuery.isLoading ? (
-          <div className="rounded-md border border-line-default bg-surface p-8 text-center text-sm text-copy-muted">Loading booking...</div>
-        ) : bookingQuery.error || !booking ? (
-          <div className="rounded-md border border-state-danger/40 bg-state-danger-muted p-5 text-sm text-state-danger">
-            {bookingQuery.error instanceof Error ? bookingQuery.error.message : "Booking not found."}
-          </div>
-        ) : (
-          <div className="grid gap-5">
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <div className="flex flex-wrap items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2 text-sm text-copy-secondary">
-                    <CalendarDays className="h-4 w-4" />
-                    {booking.status}
-                  </div>
-                  <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{bookingTitle(booking)}</h1>
-                  <p className="mt-1 text-sm text-copy-secondary">{formatDateTime(booking.start_at)} / {booking.timezone}</p>
-                </div>
-                {booking.meeting_url ? (
-                  <Button asChild>
-                    <a href={booking.meeting_url} target="_blank" rel="noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                      Join
-                    </a>
-                  </Button>
-                ) : null}
-              </div>
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
-                    <Clock className="h-3.5 w-3.5" />
-                    Duration
-                  </div>
-                  <div className="mt-1 text-sm text-copy-secondary">{durationLabel(booking)}</div>
-                </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
-                    <UserRound className="h-3.5 w-3.5" />
-                    Host
-                  </div>
-                  <div className="mt-1 text-sm text-copy-secondary">{booking.owner_name || "Team member"}</div>
-                </div>
-                <div className="rounded-md border border-line-default bg-app p-3">
-                  <div className="flex items-center gap-2 text-xs uppercase text-copy-muted">
-                    <MapPin className="h-3.5 w-3.5" />
-                    Location
-                  </div>
-                  <div className="mt-1 text-sm text-copy-secondary">{booking.location || (booking.meeting_url ? "Online meeting" : "Not set")}</div>
-                </div>
-              </div>
-            </section>
+        ) : null
+      }
+      details={
+        booking ? (
+          <div className="flex min-w-0 flex-col gap-6">
+            <Card className="p-6">
+              <FactList>
+                <Fact label="Duration">{durationLabel(booking)}</Fact>
+                <Fact label="Host">{booking.owner_name || <EmptyValue context="field" />}</Fact>
+                <Fact label="Location">
+                  {booking.location || (booking.meeting_url ? "Online meeting" : <EmptyValue context="field" />)}
+                </Fact>
+              </FactList>
+            </Card>
 
             {booking.guest_note ? (
-              <section className="rounded-md border border-line-default bg-surface p-5">
-                <h2 className="font-semibold text-copy-primary">Your note</h2>
-                <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-copy-secondary">{booking.guest_note}</p>
-              </section>
+              <Card className="flex min-w-0 flex-col gap-4 p-6">
+                <PanelHeader title="Your note" />
+                <p className="whitespace-pre-wrap text-p-sm text-copy-secondary">{booking.guest_note}</p>
+              </Card>
             ) : null}
 
-            <section className="rounded-md border border-line-default bg-surface p-5">
-              <h2 className="font-semibold text-copy-primary">Changes</h2>
-              <p className="mt-2 text-sm leading-6 text-copy-secondary">
-                Cancellation and rescheduling from the portal are not enabled for this appointment yet. Contact the team from Support or Messages if this time no longer works.
-              </p>
-              <div className="mt-4 flex flex-wrap gap-3">
-                <Button asChild variant="outline">
-                  <Link href="/client/support">Support</Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href="/client/messages">Messages</Link>
-                </Button>
-              </div>
-            </section>
+            <Card className="flex min-w-0 flex-col gap-4 p-6">
+              <PanelHeader
+                title="Need to change this?"
+                description="Rescheduling and cancelling from the portal are not available yet — reply to your booking confirmation email and the team will move it for you."
+              />
+            </Card>
           </div>
-        )}
-      </div>
-    </main>
+        ) : null
+      }
+    />
   );
 }

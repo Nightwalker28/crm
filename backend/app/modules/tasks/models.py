@@ -18,6 +18,14 @@ class Task(Base):
         Index("ix_tasks_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_tasks_tenant_status", "tenant_id", "status"),
         Index("ix_tasks_tenant_due_at", "tenant_id", "due_at"),
+        Index(
+            "ix_tasks_tenant_source",
+            "tenant_id",
+            "source_module_key",
+            "source_entity_id",
+            "created_at",
+            "id",
+        ),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)

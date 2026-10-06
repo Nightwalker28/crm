@@ -8,12 +8,14 @@ from app.core.module_filters import normalize_filter_logic, parse_filter_conditi
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.permissions import require_action_access, require_module_access
+from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event, safe_publish_crm_event
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
 from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
+from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -160,6 +162,7 @@ def create_quote(payload: SalesQuoteCreateRequest, replace_duplicates: bool = Fa
     items = raw_payload.pop("items", [])
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=raw_payload)
     if "items" in payload.model_fields_set:
+        require_catalog_line_link_access(db, user=current_user, lines=items)
         sanitized_payload["items"] = items
     created = create_sales_quote(db, sanitized_payload, current_user, replace_duplicates, skip_duplicates, create_new_records)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=created.quote_id, action="create", description=f"Created quote {_display_quote_name(created)}", after_state=_serialize_quote(created))
@@ -306,10 +309,12 @@ def convert_quote_to_order_route(
     require_order_permission=Depends(require_action_access("sales_orders", "create")),
 ):
     quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
-    order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
-    log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
-    safe_publish_crm_event(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, event_type="order.created", entity_type="sales_order", entity_id=order.id, payload={"order_number": order.order_number, "status": order.status, "quote_id": quote.quote_id})
+    # The order, both timeline rows and the event commit together (13a E5).
+    with unit_of_work(db):
+        order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
+        log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
+        log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
+        safe_publish_crm_event(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, event_type="order.created", entity_type="sales_order", entity_id=order.id, payload={"order_number": order.order_number, "status": order.status, "quote_id": quote.quote_id})
     return order
 
 
@@ -323,6 +328,7 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     items = update_data.pop("items", None)
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data)
     if items is not None:
+        require_catalog_line_link_access(db, user=current_user, lines=items, existing_links=catalog_links_of(quote.items))
         update_data["items"] = items
     before_state = _serialize_quote(quote)
     updated = update_sales_quote(db, quote, update_data)
@@ -342,6 +348,7 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
                 "customer_name": updated.customer_name,
                 "previous_status": before_state.get("status"),
                 "status": updated.status,
+                "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
                 "total_amount": str(updated.total_amount),
                 "href": f"/dashboard/sales/quotes/{updated.quote_id}",
             },

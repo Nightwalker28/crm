@@ -6,7 +6,8 @@ from typing import Any
 
 import requests
 from fastapi import HTTPException, Request, status
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy import func
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -20,6 +21,7 @@ from app.modules.user_management.services.tenant_domains import tenant_domain_em
 OIDC_DISCOVERY_TIMEOUT_SECONDS = 10
 OIDC_TOKEN_TIMEOUT_SECONDS = 15
 OIDC_STATE_EXPIRE_MINUTES = 10
+OIDC_SIGNING_ALGORITHMS = frozenset({"RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"})
 
 
 def _normalize_domain(value: str) -> str:
@@ -563,10 +565,15 @@ def _validate_id_token(
     if key is None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="OIDC signing key was not found")
     try:
+        signing_key = jwt.PyJWK(key, algorithm=header.get("alg") or None)
+        # The algorithm comes from the key, never the token alone, and only asymmetric ones:
+        # an HMAC "alg" would let a token signed with the public key pass.
+        if signing_key.algorithm_name not in OIDC_SIGNING_ALGORITHMS:
+            raise jwt.InvalidAlgorithmError(signing_key.algorithm_name)
         claims = jwt.decode(
             id_token,
-            key,
-            algorithms=[header.get("alg", "RS256")],
+            signing_key,
+            algorithms=[signing_key.algorithm_name],
             audience=settings_row.client_id,
             issuer=metadata["issuer"],
         )

@@ -4,7 +4,8 @@ from dataclasses import dataclass
 import time
 
 from fastapi import HTTPException, Request, status
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.cache import cache_delete, cache_delete_prefix, cache_get_json, cache_set_json

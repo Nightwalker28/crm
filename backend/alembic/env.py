@@ -21,12 +21,13 @@ from app.modules.tasks import models as tasks_models  # noqa: F401, E402
 from app.modules.calendar import models as calendar_models  # noqa: F401, E402
 from app.modules.client_portal import models as client_portal_models  # noqa: F401, E402
 from app.modules.catalog import models as catalog_models  # noqa: F401, E402
+from app.modules.inventory import models as inventory_models  # noqa: F401, E402
+from app.modules.purchasing import models as purchasing_models  # noqa: F401, E402
 from app.modules.mail import models as mail_models  # noqa: F401, E402
 from app.modules.documents import models as document_models  # noqa: F401, E402
 from app.modules.whatsapp import models as whatsapp_models  # noqa: F401, E402
+from app.modules.telephony import models as telephony_models  # noqa: F401, E402
 from app.modules.website_integrations import models as website_integration_models  # noqa: F401, E402
-from app.modules.support import models as support_models  # noqa: F401, E402
-from app.modules.contracts import models as contracts_models  # noqa: F401, E402
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -43,6 +44,13 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 target_metadata = Base.metadata
+
+# When a verification run is isolated inside a temporary schema, the search path
+# still falls back to `public`, so Alembic would find and stamp the real
+# `public.alembic_version` while creating the tables in the temporary schema —
+# leaving the real database claiming a revision whose tables do not exist.
+# Pinning the version table to the isolated schema keeps the run self-contained.
+VERSION_TABLE_SCHEMA = os.environ.get("ALEMBIC_VERSION_TABLE_SCHEMA") or None
 
 # other values from the config, defined by the needs of env.py,
 # can be acquired:
@@ -68,6 +76,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table_schema=VERSION_TABLE_SCHEMA,
     )
 
     with context.begin_transaction():
@@ -89,7 +98,9 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema=VERSION_TABLE_SCHEMA,
         )
 
         with context.begin_transaction():

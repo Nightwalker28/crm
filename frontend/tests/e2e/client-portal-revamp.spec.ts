@@ -22,9 +22,9 @@ test.beforeEach(async ({ page }) => {
 
 async function completeRequiredFields(page: import("@playwright/test").Page) {
   await page.getByLabel("Page title").fill("Renewal proposal");
-  await page.getByLabel("Customer").fill("Ada");
-  await page.getByRole("button", { name: /Ada Customer/ }).click();
-  await page.getByLabel("Item").fill("Annual support");
+  await page.getByRole("combobox", { name: "Customer", exact: true }).fill("Ada");
+  await page.getByRole("option", { name: /Ada Customer/ }).click();
+  await page.getByRole("textbox", { name: "Item", exact: true }).fill("Annual support");
   await page.getByLabel("Public unit price").fill("1200");
 }
 
@@ -32,7 +32,7 @@ test("Client page creation is routed, responsive, and validates the first requir
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/client-portal/pages/new");
 
-  await expect(page.getByRole("heading", { name: "Create client page" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create client page", level: 2 })).toBeVisible();
   await expect(page.getByLabel("Search documents")).toBeDisabled();
 
   await page.getByRole("button", { name: "Create page" }).click();
@@ -170,8 +170,8 @@ test("Client Portal list failures use fixed recoverable guidance", async ({ page
 
   await page.goto("/dashboard/client-portal");
 
-  await expect(page.getByText("Client pages could not be loaded.")).toBeVisible();
-  await expect(page.getByText("Client accounts could not be loaded.")).toBeVisible();
+  await expect(page.getByText("Client pages could not be loaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("Client accounts could not be loaded", { exact: true })).toBeVisible();
   await expect(page.getByText(/signed_link_secret|password_hash/)).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Try again" })).toHaveCount(2);
 });

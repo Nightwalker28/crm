@@ -68,18 +68,20 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/settings/calendar-booking");
 
-  await expect(page.getByRole("heading", { name: "Booking Links" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Booking links", level: 1 })).toBeVisible();
   await expect(page.getByText("Discovery call", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Discovery call" }).click();
+  // The row is the open gesture (RecordTable). Click its name cell: the row's centre is the
+  // Public URL copy button, which copies rather than opens.
+  await page.getByRole("row", { name: "Edit booking link Discovery call" }).getByRole("cell", { name: "Discovery call", exact: true }).click();
   await expect(page.getByRole("dialog", { name: "Edit booking link" })).toBeVisible();
 
-  await page.getByLabel("Name", { exact: true }).fill("Customer discovery");
-  await expect(page.getByRole("button", { name: "Enabled", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Disabled", exact: true }).click();
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Customer discovery");
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Disabled", exact: true }).click();
   await page.getByRole("button", { name: "Question", exact: true }).click();
   await page.getByLabel("Question 1 label").fill("What should we prepare?");
-  await expect(page.getByRole("button", { name: "Optional", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await page.getByRole("button", { name: "Required", exact: true }).click();
+  await expect(page.getByRole("radio", { name: "Optional", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.getByRole("radio", { name: "Required", exact: true }).click();
   const updateRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/calendar/booking-types/17"),
   );
@@ -98,9 +100,9 @@ test("edits a booking link from the focused drawer on mobile", async ({ page }) 
 test("protects an unsaved new booking link when the drawer closes", async ({ page }) => {
   await page.goto("/dashboard/settings/calendar-booking");
 
-  await page.getByRole("button", { name: "New booking link" }).click();
+  await page.getByRole("button", { name: "Create booking link" }).click();
   await expect(page.getByRole("dialog", { name: "Create booking link" })).toBeVisible();
-  await page.getByLabel("Name", { exact: true }).fill("Onboarding call");
+  await page.getByRole("textbox", { name: "Name", exact: true }).fill("Onboarding call");
   await page.getByRole("button", { name: "Close booking link editor" }).click();
 
   await expect(page.getByRole("heading", { name: "Discard unsaved changes?" })).toBeVisible();
@@ -115,15 +117,17 @@ test("protects an unsaved new booking link when the drawer closes", async ({ pag
 test("shows and updates the stable handle and owner-scoped preview", async ({ page }) => {
   await page.goto("/dashboard/settings/calendar-booking");
 
-  await expect(page.getByLabel("Public booking handle")).toHaveValue("admin-user");
-  await page.getByLabel("Public booking handle").fill("admin-scheduling");
+  await expect(page.getByRole("textbox", { name: "Handle", exact: true })).toHaveValue("admin-user");
+  await page.getByRole("textbox", { name: "Handle", exact: true }).fill("admin-scheduling");
   const updateRequest = page.waitForRequest(
     (request) => request.method() === "PUT" && request.url().endsWith("/calendar/booking-types/handle/current"),
   );
   await page.getByRole("button", { name: "Save handle" }).click();
   expect((await updateRequest).postDataJSON()).toEqual({ booking_handle: "admin-scheduling" });
 
-  await page.getByRole("button", { name: "Discovery call" }).click();
+  // The row is the open gesture (RecordTable). Click its name cell: the row's centre is the
+  // Public URL copy button, which copies rather than opens.
+  await page.getByRole("row", { name: "Edit booking link Discovery call" }).getByRole("cell", { name: "Discovery call", exact: true }).click();
   await expect(page.getByText("The public URL will be /book/admin-user/discovery-call.")).toBeVisible();
   await expect(page.getByText("Duration (minutes)")).toBeVisible();
 });

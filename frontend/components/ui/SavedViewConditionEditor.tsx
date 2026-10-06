@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
@@ -14,6 +15,23 @@ import type {
   SavedViewFilters,
 } from "@/hooks/useSavedViews";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
+import { MultiOptionSelect } from "@/components/picklists/MultiOptionSelect";
+import { picklistFilterOptions, usePicklists } from "@/hooks/usePicklists";
+
+/**
+ * Filter fields backed by a picklist get the tenant's values as their options (13b §3.3),
+ * deactivated ones included: a view may need to find records still holding one.
+ */
+export function useResolvedFilterFields(filterFields: ModuleFilterField[]): ModuleFilterField[] {
+  const { byKey } = usePicklists();
+  return useMemo(
+    () => filterFields.map((field) => (
+      field.picklistKey ? { ...field, type: "select" as const, options: picklistFilterOptions(byKey.get(field.picklistKey)) } : field
+    )),
+    [byKey, filterFields],
+  );
+}
+
 
 export const OPERATOR_LABELS: Record<SavedViewFilterOperator, string> = {
   is: "is",
@@ -81,7 +99,8 @@ function ConditionGroupsContent({
   title,
   description,
 }: Required<Pick<Props, "allConditions" | "anyConditions">> & Omit<Props, "wrapInCard" | "allConditions" | "anyConditions">) {
-  const selectedFieldMap = new Map(filterFields.map((field) => [field.key, field]));
+  const resolvedFields = useResolvedFilterFields(filterFields);
+  const selectedFieldMap = new Map(resolvedFields.map((field) => [field.key, field]));
 
   function updateGroup(
     group: "all" | "any",
@@ -143,7 +162,7 @@ function ConditionGroupsContent({
               onClick={() => addCondition(groupKey)}
             >
               <Plus className="h-4 w-4" />
-              Add {groupKey === "all" ? "AND" : "OR"} Condition
+              Add {groupKey === "all" ? "AND" : "OR"} condition
             </Button>
           </div>
 
@@ -160,7 +179,7 @@ function ConditionGroupsContent({
                 return (
                   <div
                     key={condition.id ?? `${condition.field}-${index}`}
-                    className="grid gap-3 rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
+                    className="grid gap-3 rounded-[var(--radius-control)] border border-line-subtle px-4 py-4 md:grid-cols-[1.3fr_1fr_1.2fr_auto]"
                   >
                     <div className="space-y-2">
                       <Label>Field</Label>
@@ -176,7 +195,7 @@ function ConditionGroupsContent({
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label={`Condition ${index + 1} field`}>
                           <SelectValue placeholder="Choose field" />
                         </SelectTrigger>
                         <SelectContent>
@@ -202,7 +221,7 @@ function ConditionGroupsContent({
                           })
                         }
                       >
-                        <SelectTrigger>
+                        <SelectTrigger aria-label={`Condition ${index + 1} operator`}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -218,11 +237,12 @@ function ConditionGroupsContent({
                     <div className="space-y-2">
                       <Label>Value</Label>
                       {hidesValue ? (
-                        <div className="flex h-10 items-center rounded-md border border-line-default px-3 text-sm text-copy-muted">
+                        <div className="flex h-10 items-center rounded-[var(--radius-control)] border border-line-control bg-surface-muted px-3 text-sm text-copy-muted">
                           No value needed
                         </div>
                       ) : selectedField?.type === "relation" && selectedField.recordType ? (
                         <LinkedRecordPicker
+                          ariaLabel={`Condition ${index + 1} value`}
                           recordType={selectedField.recordType}
                           valueId={relationValueId}
                           displayValue={
@@ -247,12 +267,19 @@ function ConditionGroupsContent({
                           sourceModuleKey={selectedField.sourceModuleKey}
                           sourceAction="view"
                         />
+                      ) : selectedField?.type === "select" && selectedField.options && usesListValue ? (
+                        <MultiOptionSelect
+                          label={`Condition ${index + 1} value`}
+                          options={selectedField.options}
+                          values={Array.isArray(condition.values) ? condition.values.map(String) : []}
+                          onChange={(values) => updateCondition(groupKey, index, { values })}
+                        />
                       ) : selectedField?.type === "select" && selectedField.options && !usesListValue ? (
                         <Select
                           value={typeof condition.value === "string" ? condition.value : ""}
                           onValueChange={(value) => updateCondition(groupKey, index, { value })}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger aria-label={`Condition ${index + 1} value`}>
                             <SelectValue placeholder="Choose value" />
                           </SelectTrigger>
                           <SelectContent>
@@ -265,6 +292,7 @@ function ConditionGroupsContent({
                         </Select>
                       ) : (
                         <Input
+                          aria-label={`Condition ${index + 1} value`}
                           type={selectedField?.type === "number" ? "number" : selectedField?.type === "date" ? "date" : "text"}
                           value={
                             usesListValue
@@ -301,7 +329,7 @@ function ConditionGroupsContent({
                 );
               })
             ) : (
-              <div className="rounded-[var(--radius-card)] border border-dashed border-line-default px-4 py-5 text-sm text-copy-muted">
+              <div className="rounded-[var(--radius-control)] border border-dashed border-line-subtle p-4 text-sm text-copy-muted">
                 No {groupKey === "all" ? "AND" : "OR"} conditions yet.
               </div>
             )}
@@ -329,7 +357,7 @@ export function SavedViewConditionEditor({
 
   if (wrapInCard) {
     return (
-      <Card className="px-5 py-5">
+      <Card className="p-6">
         <ConditionGroupsContent
           filterFields={filterFields}
           filters={filters}

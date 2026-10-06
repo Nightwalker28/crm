@@ -2,20 +2,29 @@
 
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormSection } from "@/components/forms/RecordFormLayout";
+import { TextField } from "@/components/forms/TextField";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
-import { COUNTRIES } from "@/lib/countries";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
+import { AddressFields, addressFrom, type AddressValue } from "@/components/forms/AddressFields";
 
 export type ContactFormValue = {
+  salutation: string;
   first_name: string;
   last_name: string;
   primary_email: string;
+  /** The work phone; the column keeps its first name (13b §3.5). */
   contact_telephone: string;
+  mobile_phone: string;
+  mailing_address: string;
+  mailing_street2: string;
+  mailing_city: string;
+  mailing_state: string;
+  mailing_postal_code: string;
   linkedin_url: string;
   current_title: string;
   region: string;
@@ -28,10 +37,17 @@ export type ContactFormValue = {
 };
 
 export const EMPTY_CONTACT_FORM: ContactFormValue = {
+  salutation: "",
   first_name: "",
   last_name: "",
   primary_email: "",
   contact_telephone: "",
+  mobile_phone: "",
+  mailing_address: "",
+  mailing_street2: "",
+  mailing_city: "",
+  mailing_state: "",
+  mailing_postal_code: "",
   linkedin_url: "",
   current_title: "",
   region: "",
@@ -43,7 +59,23 @@ export const EMPTY_CONTACT_FORM: ContactFormValue = {
   assigned_to_name: "",
 };
 
-const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
+/** The mailing address as one value; its country is the contact's `country`. */
+export function contactMailingAddress(value: ContactFormValue): AddressValue {
+  return { ...addressFrom(value, "mailing"), country: value.country };
+}
+
+function withMailingAddress(value: ContactFormValue, address: AddressValue): ContactFormValue {
+  return {
+    ...value,
+    mailing_address: address.address,
+    mailing_street2: address.street2,
+    mailing_city: address.city,
+    mailing_state: address.state,
+    mailing_postal_code: address.postal_code,
+    country: address.country,
+  };
+}
+
 type CustomFieldDefinition = React.ComponentProps<typeof CustomFieldInputs>["definitions"];
 
 type Props = {
@@ -57,6 +89,28 @@ type Props = {
   mode: "create" | "edit";
 };
 
+/** Payload field → input id, for the server's field errors (H2). */
+export const CONTACT_FORM_INPUT_IDS: Record<string, string> = {
+  salutation: "contact-salutation",
+  first_name: "contact-first-name",
+  last_name: "contact-last-name",
+  current_title: "contact-job-title",
+  linkedin_url: "contact-linkedin",
+  primary_email: "contact-primary-email",
+  contact_telephone: "contact-phone",
+  mobile_phone: "contact-mobile",
+  mailing_address: "contact-mailing-address",
+  mailing_street2: "contact-mailing-street2",
+  mailing_city: "contact-mailing-city",
+  mailing_state: "contact-mailing-state",
+  mailing_postal_code: "contact-mailing-postal-code",
+  organization_id: "contact-account",
+  assigned_to: "contact-owner",
+  region: "contact-region",
+  country: "contact-mailing-country",
+};
+export const contactFormInputIdFor = inputIdLookup("sales_contacts", CONTACT_FORM_INPUT_IDS);
+
 export function ContactFormMainFields({ value, onChange, customFields, customFieldValues, onCustomFieldChange, moduleFields, emailError }: Props) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   const update = (key: keyof ContactFormValue, nextValue: string) => onChange({ ...value, [key]: nextValue });
@@ -64,27 +118,25 @@ export function ContactFormMainFields({ value, onChange, customFields, customFie
   return (
     <>
       <FormSection title="Basic information" description="Identify the contact and their role.">
-        <div className="grid gap-4 md:grid-cols-2">
+        <FieldGroup columns={2}>
+          {enabled("salutation") ? <PicklistField id="contact-salutation" listKey="salutation" label="Salutation" value={value.salutation} onChange={(next) => update("salutation", next)} /> : null}
           {enabled("first_name") ? <TextField id="contact-first-name" label="First name" value={value.first_name} onChange={(next) => update("first_name", next)} /> : null}
           {enabled("last_name") ? <TextField id="contact-last-name" label="Last name" value={value.last_name} onChange={(next) => update("last_name", next)} /> : null}
           {enabled("current_title") ? <TextField id="contact-job-title" label="Job title" value={value.current_title} onChange={(next) => update("current_title", next)} /> : null}
           {enabled("linkedin_url") ? <TextField id="contact-linkedin" label="LinkedIn URL" type="url" value={value.linkedin_url} onChange={(next) => update("linkedin_url", next)} placeholder="https://linkedin.com/in/..." /> : null}
-        </div>
+        </FieldGroup>
       </FormSection>
 
-      <FormSection title="Contact details" description="Add the primary channels used to reach this contact.">
-        <div className="grid gap-4 md:grid-cols-2">
+      <FormSection title="Contact details" description="An email or a phone number is required.">
+        <FieldGroup columns={2}>
           {enabled("primary_email") ? (
-            <Field data-invalid={Boolean(emailError)}>
-              <FieldLabel htmlFor="contact-primary-email">Email <RequiredMark /></FieldLabel>
-              <Input id="contact-primary-email" type="email" value={value.primary_email} onChange={(event) => update("primary_email", event.target.value)} aria-invalid={Boolean(emailError)} placeholder="person@company.com" />
-              {emailError ? <FieldError>{emailError}</FieldError> : null}
-            </Field>
+            <TextField id="contact-primary-email" label="Email" type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="person@company.com" />
           ) : null}
-          {enabled("contact_telephone") ? <TextField id="contact-phone" label="Phone" type="tel" value={value.contact_telephone} onChange={(next) => update("contact_telephone", next)} placeholder="+94 77 123 4567" /> : null}
-        </div>
+          {enabled("contact_telephone") ? <TextField id="contact-phone" label="Work phone" type="tel" value={value.contact_telephone} onChange={(next) => update("contact_telephone", next)} placeholder="+94 11 123 4567" /> : null}
+          {enabled("mobile_phone") ? <TextField id="contact-mobile" label="Mobile" type="tel" value={value.mobile_phone} onChange={(next) => update("mobile_phone", next)} placeholder="+94 77 123 4567" /> : null}
+        </FieldGroup>
         {enabled("email_opt_out") ? (
-          <label className="mt-4 flex items-start gap-3 rounded-md border border-line-subtle bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
+          <label className="mt-4 flex items-start gap-3 rounded-[var(--radius-control)] border border-line-subtle px-4 py-3 text-sm text-copy-secondary transition-colors hover:bg-surface-muted">
             <Checkbox
               checked={value.email_opt_out}
               onCheckedChange={(checked) => onChange({ ...value, email_opt_out: checked === true })}
@@ -95,6 +147,12 @@ export function ContactFormMainFields({ value, onChange, customFields, customFie
           </label>
         ) : null}
       </FormSection>
+
+      {enabled("mailing_address") ? (
+        <FormSection title="Mailing address" description="Where post for this contact goes.">
+          <AddressFields idPrefix="contact-mailing" value={contactMailingAddress(value)} onChange={(address) => onChange(withMailingAddress(value, address))} />
+        </FormSection>
+      ) : null}
 
       {customFields.length ? (
         <FormSection title="Custom fields" description="Additional information configured for your workspace.">
@@ -109,11 +167,11 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   return (
     <FormSection title="Account and ownership" description="Connect the contact to the right account and internal owner.">
-      <div className="grid gap-4">
+      <FieldGroup>
         {enabled("organization_id") ? (
           <Field>
-            <FieldLabel>Account</FieldLabel>
-            <LinkedRecordPicker
+            <FieldLabel htmlFor="contact-account">Account</FieldLabel>
+            <LinkedRecordPicker inputId="contact-account"
               recordType="organization"
               valueId={value.organization_id}
               displayValue={value.organization_name}
@@ -124,56 +182,28 @@ export function ContactFormSidebarFields({ value, onChange, moduleFields, mode }
               queryKeyPrefix="contact-account"
               noResultsText="No accounts matched this search."
             />
-          </Field>
+          <ServerFieldError inputId="contact-account" /></Field>
         ) : null}
         {enabled("assigned_to") ? (
           <Field>
-            <FieldLabel>Owner</FieldLabel>
-            <LinkedRecordPicker
-              recordType="user"
-              valueId={value.assigned_to}
-              displayValue={value.assigned_to_name}
-              onDisplayValueChange={(assigned_to_name) => onChange({ ...value, assigned_to: null, assigned_to_name })}
-              onSelect={(option) => onChange({ ...value, assigned_to: option.id, assigned_to_name: option.label })}
-              onClear={() => onChange({ ...value, assigned_to: null, assigned_to_name: "" })}
-              placeholder={mode === "create" ? "Search owners (defaults to you)" : "Search owners"}
-              queryKeyPrefix="contact-owner"
-              noResultsText="No active users matched this search."
-              sourceModuleKey="sales_contacts"
-              sourceAction={mode}
-              allowClear={mode === "create"}
+            <FieldLabel htmlFor="contact-owner">Owner</FieldLabel>
+            <OwnerSelect
+              id="contact-owner"
+              moduleKey="sales_contacts"
+              action={mode}
+              ownerId={value.assigned_to}
+              ownerName={value.assigned_to_name}
+              onChange={(assigned_to, assigned_to_name) =>
+                onChange({ ...value, assigned_to, assigned_to_name })
+              }
             />
             <FieldDescription>New contacts default to you when no owner is selected.</FieldDescription>
-          </Field>
+          <ServerFieldError inputId="contact-owner" /></Field>
         ) : null}
         {enabled("region") ? (
-          <Field>
-            <FieldLabel>Region</FieldLabel>
-            <Select value={value.region || undefined} onValueChange={(region) => onChange({ ...value, region })}>
-              <SelectTrigger><SelectValue placeholder="Select region" /></SelectTrigger>
-              <SelectContent>{REGIONS.map((region) => <SelectItem key={region} value={region}>{region}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
+          <PicklistField id="contact-region" listKey="region" label="Region" value={value.region} onChange={(region) => onChange({ ...value, region })} />
         ) : null}
-        {enabled("country") ? (
-          <Field>
-            <FieldLabel>Country</FieldLabel>
-            <Select value={value.country || undefined} onValueChange={(country) => onChange({ ...value, country })}>
-              <SelectTrigger><SelectValue placeholder="Select country" /></SelectTrigger>
-              <SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
-        ) : null}
-      </div>
+      </FieldGroup>
     </FormSection>
-  );
-}
-
-function TextField({ id, label, value, onChange, type = "text", placeholder }: { id: string; label: string; value: string; onChange: (value: string) => void; type?: string; placeholder?: string }) {
-  return (
-    <Field>
-      <FieldLabel htmlFor={id}>{label}</FieldLabel>
-      <Input id={id} type={type} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
-    </Field>
   );
 }

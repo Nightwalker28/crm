@@ -181,73 +181,25 @@ class ClientPortalOrderLineResponse(BaseModel):
     id: int
     catalog_product_id: int | None = None
     catalog_service_id: int | None = None
-    item_type: str
-    slug: str | None = None
-    sku: str | None = None
     name: str
     quantity: Decimal
-    currency: str
-    unit_price_snapshot: Decimal
+    unit_price: Decimal
     line_total: Decimal
 
 
 class ClientPortalOrderResponse(BaseModel):
     id: int
-    external_reference: str
+    order_number: str
     status: str
     currency: str
-    subtotal_amount: Decimal
-    metadata: dict | None = None
+    grand_total: Decimal
+    notes: str | None = None
     created_at: datetime
     line_items: list[ClientPortalOrderLineResponse] = Field(default_factory=list)
 
 
 class ClientPortalOrderListResponse(BaseModel):
     results: list[ClientPortalOrderResponse]
-
-
-class ClientSupportCaseCreate(BaseModel):
-    subject: str = Field(min_length=1, max_length=240)
-    category: str | None = Field(default=None, max_length=80)
-    priority: Literal["low", "medium", "high", "urgent"] = "medium"
-    description: str | None = Field(default=None, max_length=8000)
-
-
-class ClientSupportCaseCommentCreate(BaseModel):
-    body: str = Field(min_length=1, max_length=8000)
-
-
-class ClientSupportCaseCommentResponse(BaseModel):
-    id: int
-    case_id: int
-    body: str
-    is_internal: bool
-    author_type: Literal["client", "team"]
-    author_display_name: str | None = None
-    created_at: datetime
-
-
-class ClientSupportCaseResponse(BaseModel):
-    id: int
-    case_number: str
-    subject: str
-    description: str | None = None
-    category: str | None = None
-    status: str
-    priority: str
-    created_at: datetime
-    updated_at: datetime
-    closed_at: datetime | None = None
-    comments: list[ClientSupportCaseCommentResponse] = Field(default_factory=list)
-
-
-class ClientSupportCaseListResponse(BaseModel):
-    results: list[ClientSupportCaseResponse]
-
-
-class ClientQuickQuestionCreate(BaseModel):
-    subject: str = Field(min_length=1, max_length=240)
-    message: str = Field(min_length=1, max_length=8000)
 
 
 class ClientPagePricingItemRequest(BaseModel):

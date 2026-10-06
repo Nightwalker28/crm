@@ -36,19 +36,20 @@ class CatalogModuleFoundationTests(unittest.TestCase):
         default_modules = _load_default_modules()
         modules_by_name = {module["name"]: module for module in default_modules}
 
-        self.assertEqual(modules_by_name["finance_pos"]["base_route"], "/dashboard/finance/pos")
+        self.assertEqual(modules_by_name["finance_pos"]["base_route"], "/dashboard/finance/invoices")
         self.assertIn("pos", modules_by_name["finance_pos"]["description"].lower())
 
-    def test_no_default_module_uses_stale_finance_invoice_route(self):
+    def test_only_invoices_live_at_the_invoices_route(self):
+        # Invoices moved to `/dashboard/finance/invoices` in final fixes Step 5.
         default_modules = _load_default_modules()
 
-        stale_modules = [
+        at_invoices = [
             module["name"]
             for module in default_modules
             if module.get("base_route") == "/dashboard/finance/invoices"
         ]
 
-        self.assertEqual(stale_modules, [])
+        self.assertEqual(at_invoices, ["finance_pos"])
 
     def test_crm_administration_modules_are_seeded(self):
         default_modules = _load_default_modules()
@@ -65,7 +66,6 @@ class CatalogModuleFoundationTests(unittest.TestCase):
         self.assertEqual(default_sidebar_tab_key("documents"), "workspace")
         self.assertEqual(default_sidebar_tab_key("calendar"), "workspace")
         self.assertEqual(default_sidebar_tab_key("mail"), "workspace")
-        self.assertEqual(default_sidebar_tab_key("support_cases"), "support")
         self.assertEqual(default_sidebar_tab_key("client_portal"), "support")
 
 

@@ -84,9 +84,10 @@ export type MailSendPayload = {
   bcc?: string[];
   subject?: string;
   body_text?: string;
+  // The stored label is resolved from the record by the backend, so it is not
+  // part of the send payload.
   source_module_key?: string | null;
   source_entity_id?: string | null;
-  source_label?: string | null;
 };
 
 export type MailMessageLinkPayload = {

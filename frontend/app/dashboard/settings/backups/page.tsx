@@ -2,39 +2,35 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Archive, CalendarClock, Download, Play, RotateCcw, Save, SlidersHorizontal, Trash2, X } from "lucide-react";
+import { Archive, Download, Play, RotateCcw, Save, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { FormSection } from "@/components/forms/RecordFormLayout";
+import { Fact, FactList } from "@/components/ui/Fact";
+import { ActionBar, FormFooter } from "@/components/ui/ActionBar";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
+import { Checkbox } from "@/components/ui/checkbox";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
-import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
+import { PageShell } from "@/components/ui/PageShell";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { SettingsRow } from "@/components/ui/SettingsRow";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableHeaderRow, TableRow } from "@/components/ui/Table";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { useModulesAdmin } from "@/hooks/admin/useModulesAdmin";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 import { downloadBlob } from "@/lib/browser";
 import { getFilenameFromDisposition } from "@/components/ui/importExportUtils";
+import { formatBytes } from "@/lib/format";
 import { formatDateTime } from "@/lib/datetime";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 
 type TenantBackupSettings = {
   id: number;
@@ -145,8 +141,6 @@ const supportedBackupModules = new Set([
   "sales_orders",
   "tasks",
   "documents",
-  "support_cases",
-  "contracts",
 ]);
 
 async function readJson(res: Response) {
@@ -156,7 +150,7 @@ async function readJson(res: Response) {
 async function fetchBackupSettings(): Promise<TenantBackupSettings> {
   const res = await apiFetch("/admin/tenant-backup-settings");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Backup settings could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Backup settings could not be loaded.");
   return body as TenantBackupSettings;
 }
 
@@ -174,14 +168,14 @@ async function saveBackupSettings(payload: BackupSettingsDraft): Promise<TenantB
 async function fetchBackupRuns(): Promise<TenantBackupRun[]> {
   const res = await apiFetch("/admin/tenant-backup-runs?page=1&page_size=10");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Recent backup runs could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Recent backup runs could not be loaded.");
   return ((body as TenantBackupRunList).results ?? []) as TenantBackupRun[];
 }
 
 async function fetchDestinationConnections(): Promise<TenantBackupDestinationConnection[]> {
   const res = await apiFetch("/admin/tenant-backup-settings/destinations/connections");
   const body = await readJson(res);
-  if (!res.ok) throw new Error("Storage connections could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Storage connections could not be loaded.");
   return body as TenantBackupDestinationConnection[];
 }
 
@@ -236,13 +230,6 @@ async function deleteBackupRun(runId: number): Promise<{ run: TenantBackupRun; m
   return body as { run: TenantBackupRun; message: string };
 }
 
-function formatBytes(value: number | null) {
-  if (!value) return "-";
-  if (value < 1024) return `${value} B`;
-  if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
-  return `${(value / 1024 / 1024).toFixed(1)} MB`;
-}
-
 function toDraft(settings?: TenantBackupSettings): BackupSettingsDraft {
   if (!settings) return DEFAULT_DRAFT;
   return {
@@ -267,7 +254,6 @@ export default function BackupSettingsPage() {
   const runsQuery = useQuery({ queryKey: ["tenant-backup-runs"], queryFn: fetchBackupRuns });
   const storageConnectionsQuery = useQuery({ queryKey: ["tenant-backup-destination-connections"], queryFn: fetchDestinationConnections });
   const { modules, isLoading: modulesLoading } = useModulesAdmin();
-  const [settingsEditorOpen, setSettingsEditorOpen] = useState(false);
   const [draftOverride, setDraftOverride] = useState<BackupSettingsDraft | null>(null);
   const [restoreRunId, setRestoreRunId] = useState<string>("");
   const [restoreModule, setRestoreModule] = useState<string>("");
@@ -279,6 +265,12 @@ export default function BackupSettingsPage() {
   const draft = draftOverride ?? toDraft(settingsQuery.data);
   const isSettingsDirty = Boolean(
     settingsQuery.data && JSON.stringify(draft) !== JSON.stringify(toDraft(settingsQuery.data)),
+  );
+  // H26: an enabled schedule whose next run is more than an hour gone has stopped running
+  // (beat was down on 2026-10-03 and the page still said "Next run Oct 2").
+  const [openedAt] = useState(() => Date.now());
+  const isOverdue = Boolean(
+    settingsQuery.data?.enabled && settingsQuery.data.next_run_at && Date.parse(settingsQuery.data.next_run_at) < openedAt - 60 * 60 * 1000,
   );
   const setDraft = (updater: BackupSettingsDraft | ((current: BackupSettingsDraft) => BackupSettingsDraft)) => {
     setDraftOverride((current) => {
@@ -335,15 +327,19 @@ export default function BackupSettingsPage() {
     onSuccess: async (settings) => {
       toast.success("Backup settings saved.");
       setDraftOverride(toDraft(settings));
-      setSettingsEditorOpen(false);
+      // The response *is* the new record, so it is written into the cache rather than waiting
+      // on the invalidation's refetch. Without this the footer reports the page dirty for the
+      // length of that round trip — the draft has moved and the query's copy has not — which
+      // is a save that says it did not happen.
+      queryClient.setQueryData(["tenant-backup-settings"], settings);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["tenant-backup-settings"] }),
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to save backup settings."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "Backup settings could not be saved. Check the destination and try again."),
   });
-  useUnsavedChangesGuard(settingsEditorOpen && isSettingsDirty, saveMutation.isPending);
+  useUnsavedChangesGuard(isSettingsDirty, saveMutation.isPending);
 
   const manualRunMutation = useMutation({
     mutationFn: async () => {
@@ -364,7 +360,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to create tenant backup."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The backup could not be started. Check the destination and try again."),
   });
 
   const previewRestoreMutation = useMutation({
@@ -376,7 +372,7 @@ export default function BackupSettingsPage() {
       setRestorePreview(result);
       toast.success("Restore preview ready.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to preview restore."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The restore preview could not be prepared. Choose the backup again and retry."),
   });
 
   const executeRestoreMutation = useMutation({
@@ -397,7 +393,7 @@ export default function BackupSettingsPage() {
       }
       await queryClient.invalidateQueries({ queryKey: ["activity-log"] });
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore module."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The module could not be restored. Review the preview and try again."),
   });
 
   const previewWholeRestoreMutation = useMutation({
@@ -409,7 +405,7 @@ export default function BackupSettingsPage() {
       setWholeRestorePreview(result);
       toast.success("Whole-tenant restore preview ready.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to preview whole-tenant restore."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The restore preview could not be prepared. Choose the backup again and retry."),
   });
 
   const executeWholeRestoreMutation = useMutation({
@@ -428,7 +424,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to restore tenant."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The workspace could not be restored. Review the preview and try again."),
   });
 
   const deleteRunMutation = useMutation({
@@ -440,7 +436,7 @@ export default function BackupSettingsPage() {
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
       ]);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Failed to delete backup artifact."),
+    onError: (error) => toast.error(error instanceof Error ? error.message : "The backup could not be deleted. Try again."),
   });
 
   async function downloadRun(run: TenantBackupRun) {
@@ -478,276 +474,219 @@ export default function BackupSettingsPage() {
     if (confirmed) deleteRunMutation.mutate(run.id);
   }
 
-  async function closeSettingsEditor() {
-    if (isSettingsDirty) {
-      const confirmed = await confirm({
-        title: "Discard backup setting changes?",
-        description: "Your unsaved schedule, scope, retention, and destination changes will be lost.",
-        confirmLabel: "Discard changes",
-        variant: "destructive",
-      });
-      if (!confirmed) return;
-    }
-    setDraftOverride(null);
-    setSettingsEditorOpen(false);
-  }
-
-  function handleSettingsEditorOpenChange(open: boolean) {
-    if (open) {
-      setSettingsEditorOpen(true);
-      return;
-    }
-    void closeSettingsEditor();
-  }
-
-  if (settingsQuery.isLoading) return <RouteLoadingState label="backup settings" />;
-  if (settingsQuery.isError) {
+  if (settingsQuery.isLoading || settingsQuery.isError) {
     return (
-      <RouteErrorState
-        title="Unable to load backup settings"
-        description="Backup settings are unavailable right now. No backup or restore action has been started."
-        reset={() => void settingsQuery.refetch()}
+      <PageShell
+        variant="settings"
+        title="Backups"
+        description="Schedule tenant backups and restore a module from one."
+        isLoading={settingsQuery.isLoading}
+        isPermissionDenied={isForbiddenError(settingsQuery.error)}
+        hasError={settingsQuery.isError}
+        errorDescription="Backup settings are unavailable right now. No backup or restore action has been started."
+        onRetry={() => void settingsQuery.refetch()}
         backHref="/dashboard/settings"
         backLabel="Back to settings"
-      />
+      >
+        {null}
+      </PageShell>
     );
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <PageToolbar>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="outline" onClick={() => setSettingsEditorOpen(true)}><SlidersHorizontal />Configure</Button>
-            <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending || settingsQuery.isLoading}>
-              <Play />{manualRunMutation.isPending ? "Running..." : "Run Backup"}
-            </Button>
+    <PageShell
+      variant="settings"
+      title="Backups"
+      description="Schedule tenant backups and restore a module from one."
+      context={isSettingsDirty ? "Unsaved schedule changes" : undefined}
+      actions={(
+        <Button type="button" onClick={() => manualRunMutation.mutate()} disabled={manualRunMutation.isPending}>
+          <Play />{manualRunMutation.isPending ? "Running…" : "Run backup"}
+        </Button>
+      )}
+    >
+      <FormSection title="Status" description="The saved schedule and its most recent run.">
+        <FactList className="sm:grid-cols-2 xl:grid-cols-4">
+          <Fact label="Schedule">
+            <StatusValue status={{ tone: settings?.enabled ? "success" : "neutral", label: settings?.enabled ? "Enabled" : "Disabled" }} context="record" />
+          </Fact>
+          <Fact label="Last run">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</Fact>
+          <Fact label="Next run">
+            {settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}
+            {isOverdue ? <StatusValue status={{ tone: "attention", label: "Overdue" }} context="record" className="mt-1" /> : null}
+          </Fact>
+          <Fact label="Updated">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</Fact>
+        </FactList>
+        {isOverdue ? (
+          <p role="status" className="mt-3 text-p-sm text-copy-secondary">
+            The scheduled backup has not run. Scheduled backups need the background scheduler (Celery beat) running; ask whoever runs this server to check it, or run a backup now.
+          </p>
+        ) : null}
+      </FormSection>
+
+      {/* The schedule was behind a `Configure` drawer — half the page's subject hidden from
+          the page, with its own dirty banner and its own Cancel. Archetype 4 puts settings on
+          the settings page. It stays a **configuration record** (R1): the frequency, the
+          scope, the retention and the destination validate together — a selected-module
+          scope with no modules is refused, and a cloud destination needs a connected
+          account — so it commits through one footer rather than field by field. */}
+      <FormSection
+        title="Schedule"
+        description="Frequency, retention, scope and destination are validated together, so they save as a set."
+      >
+        <div className="flex flex-col gap-6">
+          <SettingsRow label="Backups" description="Scheduled backups run automatically on the frequency and retention below.">
+            <SegmentedBoolean
+              aria-label="Backup schedule"
+              value={draft.enabled}
+              onValueChange={(enabled) => setDraft((current) => ({ ...current, enabled }))}
+              trueLabel="Scheduled"
+              falseLabel="Manual only"
+            />
+          </SettingsRow>
+
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field>
+              <FieldLabel>Frequency</FieldLabel>
+              <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
+                <SelectTrigger aria-label="Frequency"><SelectValue /></SelectTrigger>
+                <SelectContent>{frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Retention</FieldLabel>
+              <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
+                <SelectTrigger aria-label="Retention"><SelectValue /></SelectTrigger>
+                <SelectContent>{retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}</SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Scope</FieldLabel>
+              <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}>
+                <SelectTrigger aria-label="Scope"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="full_tenant">Full tenant</SelectItem>
+                  <SelectItem value="selected_modules">Selected modules</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Destination</FieldLabel>
+              <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
+                <SelectTrigger aria-label="Destination"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="local_download">Local download</SelectItem>
+                  <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
+                  <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
+                </SelectContent>
+              </Select>
+              <FieldDescription>Cloud options require a connected storage account for this admin.</FieldDescription>
+            </Field>
           </div>
-      </PageToolbar>
 
-      <Sheet open={settingsEditorOpen} onOpenChange={handleSettingsEditorOpenChange}>
-        <SheetPortal>
-          <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-          <SheetContent side="right" className="z-50 flex h-full w-full max-w-[38rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none">
-            <form className="flex min-h-0 flex-1 flex-col" onSubmit={(event) => { event.preventDefault(); saveMutation.mutate(); }}>
-              <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                <div>
-                  <SheetTitle className="text-lg font-semibold text-copy-primary">Configure backups</SheetTitle>
-                  <SheetDescription className="mt-1 text-sm text-copy-muted">Set the tenant schedule, retention, scope, and storage destination.</SheetDescription>
-                </div>
-                <Button type="button" variant="ghost" size="icon-sm" aria-label="Close backup settings" onClick={() => void closeSettingsEditor()}><X /></Button>
-              </SheetHeader>
+          <SettingsRow label="Document files" description="Whether tenant documents are included in the backup artifact.">
+            <SegmentedBoolean
+              aria-label="Document files"
+              value={draft.include_documents}
+              onValueChange={(include_documents) => setDraft((current) => ({ ...current, include_documents }))}
+              trueLabel="Include"
+              falseLabel="Exclude"
+            />
+          </SettingsRow>
 
-              <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-5 py-5">
-                <Field>
-                  <FieldLabel>Backup schedule</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Backup schedule">
-                    <Button
-                      type="button"
-                      variant={draft.enabled ? "secondary" : "outline"}
-                      aria-pressed={draft.enabled}
-                      onClick={() => setDraft((current) => ({ ...current, enabled: true }))}
-                    >
-                      Scheduled
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!draft.enabled ? "secondary" : "outline"}
-                      aria-pressed={!draft.enabled}
-                      onClick={() => setDraft((current) => ({ ...current, enabled: false }))}
-                    >
-                      Manual only
-                    </Button>
-                  </div>
-                  <FieldDescription>Scheduled backups run automatically using the frequency and retention settings below.</FieldDescription>
-                </Field>
-
-                <FieldGroup>
-                  <Field>
-                    <FieldLabel>Frequency</FieldLabel>
-                    <Select value={draft.frequency} onValueChange={(value) => setDraft((current) => ({ ...current, frequency: value as BackupSettingsDraft["frequency"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{frequencies.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Retention</FieldLabel>
-                    <Select value={String(draft.retention_count)} onValueChange={(value) => setDraft((current) => ({ ...current, retention_count: Number(value) as BackupSettingsDraft["retention_count"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>{retentionOptions.map((option) => <SelectItem key={option} value={String(option)}>Keep {option}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Scope</FieldLabel>
-                    <Select value={draft.scope} onValueChange={(value) => setDraft((current) => ({ ...current, scope: value as BackupSettingsDraft["scope"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="full_tenant">Full tenant</SelectItem>
-                        <SelectItem value="selected_modules">Selected modules</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Destination</FieldLabel>
-                    <Select value={draft.destination} onValueChange={(value) => setDraft((current) => ({ ...current, destination: value as BackupSettingsDraft["destination"] }))}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="local_download">Local download</SelectItem>
-                        <SelectItem value="google_drive" disabled={!googleDriveConnected}>Google Drive</SelectItem>
-                        <SelectItem value="onedrive" disabled={!oneDriveConnected}>Microsoft OneDrive</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FieldDescription>Cloud options require a connected storage account for this admin.</FieldDescription>
-                  </Field>
-                </FieldGroup>
-
-                <Field>
-                  <FieldLabel>Document files</FieldLabel>
-                  <div className="grid grid-cols-2 gap-2" role="group" aria-label="Document files">
-                    <Button
-                      type="button"
-                      variant={draft.include_documents ? "secondary" : "outline"}
-                      aria-pressed={draft.include_documents}
-                      onClick={() => setDraft((current) => ({ ...current, include_documents: true }))}
-                    >
-                      Include
-                    </Button>
-                    <Button
-                      type="button"
-                      variant={!draft.include_documents ? "secondary" : "outline"}
-                      aria-pressed={!draft.include_documents}
-                      onClick={() => setDraft((current) => ({ ...current, include_documents: false }))}
-                    >
-                      Exclude
-                    </Button>
-                  </div>
-                  <FieldDescription>Choose whether tenant documents are included in backup artifacts.</FieldDescription>
-                </Field>
-
-                <div className="border-t border-line-subtle pt-5">
-                  <div className="mb-4 flex items-start gap-3">
-                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><Archive className="h-4 w-4" /></span>
-                    <div>
-                      <h3 className="text-sm font-semibold text-copy-primary">Module selection</h3>
-                      <p className="mt-1 text-sm text-copy-muted">Used only when scope is set to selected modules.</p>
-                    </div>
-                  </div>
-                  <div className="grid gap-2 sm:grid-cols-2">
-                    {modulesLoading ? (
-                      Array.from({ length: 3 }, (_, index) => <Skeleton key={index} className="h-12 rounded-[var(--radius-control)]" />)
-                    ) : moduleOptions.length ? (
-                      moduleOptions.map((module) => {
-                        const checked = draft.selected_modules.includes(module.value);
-                        const disabled = draft.scope !== "selected_modules";
-                        return (
-                          <label key={module.value} className={`flex items-center gap-3 rounded-[var(--radius-control)] border px-4 py-3 text-sm transition-colors ${checked ? "border-action-primary bg-action-primary-muted text-copy-primary" : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong"} ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}>
-                            <Checkbox checked={checked} disabled={disabled} onCheckedChange={() => toggleModule(module.value)} className="flex size-4 shrink-0 items-center justify-center rounded border border-line-strong bg-surface-raised text-primary">
-                              <CheckboxIndicator className="size-3" />
-                            </Checkbox>
-                            {module.label}
-                          </label>
-                        );
-                      })
-                    ) : (
-                      <EmptyState icon={Archive} title="No enabled modules available" description="Enable a supported module before using selected-module backups." className="sm:col-span-2" />
-                    )}
-                  </div>
-                </div>
+          {draft.scope === "selected_modules" ? (
+            <div>
+              <SectionHeading as="h3" className="mb-3" description="At least one module is required while the scope is set to selected modules.">
+                Modules
+              </SectionHeading>
+              {/* Ruling 4 keeps `Checkbox` for *many from a set*, which is exactly this. What
+                  went is the disabled-but-drawn grid: the whole block used to render greyed
+                  out whenever the scope was Full tenant, which is a control the backend will
+                  ignore (§7.9). */}
+              <div className="grid gap-2 sm:grid-cols-2">
+                {modulesLoading ? (
+                  Array.from({ length: 4 }, (_, index) => <Skeleton key={index} className="h-10 rounded-[var(--radius-control)]" />)
+                ) : moduleOptions.length ? (
+                  moduleOptions.map((module) => (
+                    <label key={module.value} className="flex cursor-pointer items-center gap-3 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2 text-sm text-copy-secondary transition-colors hover:border-line-strong">
+                      <Checkbox checked={draft.selected_modules.includes(module.value)} onCheckedChange={() => toggleModule(module.value)} className="shrink-0" />
+                      {module.label}
+                    </label>
+                  ))
+                ) : (
+                  <EmptyState icon={Archive} title="No enabled modules available" description="Enable a supported module before using selected-module backups." className="sm:col-span-2" />
+                )}
               </div>
+            </div>
+          ) : null}
 
-              <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                <span className={`text-sm ${isSettingsDirty ? "text-state-warning" : "text-state-success"}`}>{isSettingsDirty ? "Unsaved changes" : "All changes saved"}</span>
-                <div className="flex justify-end gap-2">
-                  <Button type="button" variant="outline" onClick={() => void closeSettingsEditor()} disabled={saveMutation.isPending}>Cancel</Button>
-                  <Button type="submit" disabled={saveMutation.isPending || !isSettingsDirty}><Save />{saveMutation.isPending ? "Saving..." : "Save Settings"}</Button>
-                </div>
-              </SheetFooter>
-            </form>
-          </SheetContent>
-        </SheetPortal>
-      </Sheet>
-
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary"><CalendarClock className="h-4 w-4" /></span>
-          <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Backup status</h2>
-            <p className="mt-1 text-sm text-copy-muted">Current saved schedule and recent execution state.</p>
-          </div>
+          <FormFooter status={isSettingsDirty ? "Unsaved changes" : null}>
+            <Button type="button" variant="ghost" onClick={() => setDraftOverride(null)} disabled={!isSettingsDirty || saveMutation.isPending}>Discard changes</Button>
+            <Button type="button" onClick={() => saveMutation.mutate()} disabled={!isSettingsDirty || saveMutation.isPending}>
+              <Save />{saveMutation.isPending ? "Saving…" : "Save schedule"}
+            </Button>
+          </FormFooter>
         </div>
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3">
-            <dt className="text-copy-muted">Schedule</dt>
-            <dd className="mt-2"><Pill bg={settings?.enabled ? "bg-state-success-muted" : "bg-surface-muted"} text={settings?.enabled ? "text-state-success" : "text-copy-muted"} border={settings?.enabled ? "border-state-success/40" : "border-line-default"}>{settings?.enabled ? "Enabled" : "Disabled"}</Pill></dd>
+      </FormSection>
+
+      <FormSection
+        title="Restore"
+        description="Preview a backup artifact before it is applied. Every restore writes to live tenant data."
+      >
+        <div className="flex flex-col gap-6">
+          <div className="grid gap-3 md:grid-cols-3">
+            <Field>
+              <FieldLabel>Backup run</FieldLabel>
+              <Select
+                value={restoreRunId}
+                onValueChange={(value) => {
+                  setRestoreRunId(value);
+                  setRestoreModule("");
+                  setRestorePreview(null);
+                  setWholeRestorePreview(null);
+                }}
+              >
+                <SelectTrigger aria-label="Backup run"><SelectValue placeholder="Select a run" /></SelectTrigger>
+                <SelectContent>
+                  {completedRuns.map((run) => (
+                    <SelectItem key={run.id} value={String(run.id)}>#{run.id} · {run.completed_at ? formatDateTime(run.completed_at) : "Completed"}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Module</FieldLabel>
+              <Select
+                value={restoreModule}
+                onValueChange={(value) => {
+                  setRestoreModule(value);
+                  setRestorePreview(null);
+                }}
+                disabled={!selectedRestoreRun}
+              >
+                <SelectTrigger aria-label="Module"><SelectValue placeholder="Select a module" /></SelectTrigger>
+                <SelectContent>
+                  {restoreModuleOptions.map((module) => <SelectItem key={module.value} value={module.value}>{module.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field>
+              <FieldLabel>Strategy</FieldLabel>
+              <Select value={restoreMode} onValueChange={(value) => setRestoreMode(value as typeof restoreMode)}>
+                <SelectTrigger aria-label="Strategy"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {restoreModes.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
           </div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Last run</dt><dd className="mt-2 text-copy-secondary">{settings?.last_run_at ? formatDateTime(settings.last_run_at) : "Never"}</dd></div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Next run</dt><dd className="mt-2 text-copy-secondary">{settings?.next_run_at ? formatDateTime(settings.next_run_at) : "Manual"}</dd></div>
-          <div className="rounded-[var(--radius-control)] border border-line-subtle px-3 py-3"><dt className="text-copy-muted">Updated</dt><dd className="mt-2 text-copy-secondary">{settings?.updated_at ? formatDateTime(settings.updated_at) : "Not saved"}</dd></div>
-        </dl>
-      </Card>
-
-      <Card className="px-5 py-5">
-        <div className="mb-4 flex items-center gap-3">
-          <span className="flex h-9 w-9 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted text-copy-secondary">
-            <RotateCcw className="h-4 w-4" />
-          </span>
-          <div>
-            <h2 className="text-lg font-semibold text-copy-primary">Module Restore</h2>
-            <p className="mt-1 text-sm text-copy-muted">Preview and restore one module from a tenant backup artifact.</p>
-          </div>
-        </div>
-
-        <FieldGroup className="grid max-w-4xl gap-4 md:grid-cols-2">
-          <Field>
-            <FieldLabel>Backup Run</FieldLabel>
-            <Select
-              value={restoreRunId}
-              onValueChange={(value) => {
-                setRestoreRunId(value);
-                setRestoreModule("");
-                setRestorePreview(null);
-                setWholeRestorePreview(null);
-              }}
-            >
-              <SelectTrigger><SelectValue placeholder="Select a run" /></SelectTrigger>
-              <SelectContent>
-                {completedRuns.map((run) => (
-                  <SelectItem key={run.id} value={String(run.id)}>#{run.id} · {run.completed_at ? formatDateTime(run.completed_at) : "Completed"}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>Module</FieldLabel>
-            <Select
-              value={restoreModule}
-              onValueChange={(value) => {
-                setRestoreModule(value);
-                setRestorePreview(null);
-              }}
-              disabled={!selectedRestoreRun}
-            >
-              <SelectTrigger><SelectValue placeholder="Select a module" /></SelectTrigger>
-              <SelectContent>
-                {restoreModuleOptions.map((module) => <SelectItem key={module.value} value={module.value}>{module.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
-
-          <Field>
-            <FieldLabel>Strategy</FieldLabel>
-            <Select value={restoreMode} onValueChange={(value) => setRestoreMode(value as typeof restoreMode)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {restoreModes.map((option) => <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-          </Field>
 
           {restoreMode === "replace_module_data" ? (
-            <Field className="md:col-span-3">
-              <FieldLabel>Confirmation</FieldLabel>
+            <Field>
+              <FieldLabel htmlFor="restore-confirmation">Confirmation</FieldLabel>
               <Input
+                id="restore-confirmation"
+                className="max-w-md"
                 value={restoreConfirmation}
                 onChange={(event) => setRestoreConfirmation(event.target.value)}
                 placeholder={restoreModule ? `REPLACE ${restoreModule}` : "REPLACE module_key"}
@@ -755,199 +694,139 @@ export default function BackupSettingsPage() {
               <FieldDescription>Replace mode updates backup rows and soft-deletes current rows that are not in the backup.</FieldDescription>
             </Field>
           ) : null}
-        </FieldGroup>
 
-        {restorePreview ? (
-          <dl className="mt-5 grid gap-3 text-sm sm:grid-cols-4">
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Rows</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.total_rows ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Existing</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.existing_matches ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Missing</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.missing_rows ?? 0}</dd>
-            </div>
-            <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-              <dt className="text-copy-muted">Invalid</dt>
-              <dd className="mt-1 text-copy-primary">{restorePreview.summary.invalid_rows ?? 0}</dd>
-            </div>
-          </dl>
-        ) : null}
-
-        <div className="mt-5 flex flex-wrap justify-end gap-3">
-          <Button type="button" variant="outline" onClick={() => previewRestoreMutation.mutate()} disabled={previewRestoreMutation.isPending || !restoreRunId || !restoreModule}>
-            {previewRestoreMutation.isPending ? "Previewing..." : "Preview"}
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => executeRestoreMutation.mutate()}
-            disabled={executeRestoreMutation.isPending || !restoreRunId || !restoreModule || (restoreMode === "replace_module_data" && restoreConfirmation !== `REPLACE ${restoreModule}`)}
-          >
-            <RotateCcw />{executeRestoreMutation.isPending ? "Restoring..." : "Restore Module"}
-          </Button>
-        </div>
-
-        <div className="mt-6 border-t border-line-subtle pt-5">
-          <div className="mb-4">
-            <h3 className="text-sm font-semibold text-copy-primary">Whole-Tenant Restore</h3>
-            <p className="mt-1 text-sm text-copy-muted">Creates a safety backup first, then replaces supported modules from a full-tenant backup.</p>
-          </div>
-
-          {wholeRestorePreview ? (
-            <dl className="mb-4 grid gap-3 text-sm sm:grid-cols-3">
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Modules</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_modules ?? 0}</dd>
-              </div>
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Rows</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.summary.total_rows ?? 0}</dd>
-              </div>
-              <div className="rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted px-3 py-2">
-                <dt className="text-copy-muted">Backup Type</dt>
-                <dd className="mt-1 text-copy-primary">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "-"}</dd>
-              </div>
-            </dl>
+          {restorePreview ? (
+            <FactList className="sm:grid-cols-4">
+              <Fact label="Rows">{restorePreview.summary.total_rows ?? 0}</Fact>
+              <Fact label="Existing">{restorePreview.summary.existing_matches ?? 0}</Fact>
+              <Fact label="Missing">{restorePreview.summary.missing_rows ?? 0}</Fact>
+              <Fact label="Invalid">{restorePreview.summary.invalid_rows ?? 0}</Fact>
+            </FactList>
           ) : null}
 
-          <Field className="mb-4">
-            <FieldLabel>Whole-tenant confirmation</FieldLabel>
-            <Input
-              value={wholeRestoreConfirmation}
-              onChange={(event) => setWholeRestoreConfirmation(event.target.value)}
-              placeholder={wholeRestoreConfirmationText || "RESTORE TENANT tenant_id"}
-            />
-            <FieldDescription>Whole-tenant restore is destructive and creates a safety backup before changes.</FieldDescription>
-          </Field>
-
-          <div className="flex flex-wrap justify-end gap-3">
-            <Button type="button" variant="outline" onClick={() => previewWholeRestoreMutation.mutate()} disabled={previewWholeRestoreMutation.isPending || !restoreRunId}>
-              {previewWholeRestoreMutation.isPending ? "Previewing..." : "Preview Whole Tenant"}
+          <ActionBar>
+            <Button type="button" variant="outline" onClick={() => previewRestoreMutation.mutate()} disabled={previewRestoreMutation.isPending || !restoreRunId || !restoreModule}>
+              {previewRestoreMutation.isPending ? "Previewing…" : "Preview module"}
             </Button>
             <Button
               type="button"
               variant="destructive"
-              onClick={() => executeWholeRestoreMutation.mutate()}
-              disabled={executeWholeRestoreMutation.isPending || !restoreRunId || !wholeRestoreConfirmationText || wholeRestoreConfirmation !== wholeRestoreConfirmationText}
+              onClick={() => executeRestoreMutation.mutate()}
+              disabled={executeRestoreMutation.isPending || !restoreRunId || !restoreModule || (restoreMode === "replace_module_data" && restoreConfirmation !== `REPLACE ${restoreModule}`)}
             >
-              <RotateCcw />{executeWholeRestoreMutation.isPending ? "Restoring..." : "Restore Whole Tenant"}
+              <RotateCcw />{executeRestoreMutation.isPending ? "Restoring…" : "Restore module"}
             </Button>
+          </ActionBar>
+
+          <div className="border-t border-line-subtle pt-6">
+            <SectionHeading as="h3" className="mb-3" description="Creates a safety backup first, then replaces every supported module from a full-tenant backup.">
+              Whole tenant
+            </SectionHeading>
+
+            {wholeRestorePreview ? (
+              <FactList className="mb-4 sm:grid-cols-3">
+                <Fact label="Modules">{wholeRestorePreview.summary.total_modules ?? 0}</Fact>
+                <Fact label="Rows">{wholeRestorePreview.summary.total_rows ?? 0}</Fact>
+                <Fact label="Backup type">{wholeRestorePreview.metadata.record_counts ? "Tenant" : "—"}</Fact>
+              </FactList>
+            ) : null}
+
+            <Field className="mb-4 max-w-md">
+              <FieldLabel htmlFor="whole-restore-confirmation">Confirmation</FieldLabel>
+              <Input
+                id="whole-restore-confirmation"
+                value={wholeRestoreConfirmation}
+                onChange={(event) => setWholeRestoreConfirmation(event.target.value)}
+                placeholder={wholeRestoreConfirmationText || "RESTORE TENANT tenant_id"}
+              />
+              <FieldDescription>A whole-tenant restore is destructive. A safety backup is taken before anything changes.</FieldDescription>
+            </Field>
+
+            <ActionBar>
+              <Button type="button" variant="outline" onClick={() => previewWholeRestoreMutation.mutate()} disabled={previewWholeRestoreMutation.isPending || !restoreRunId}>
+                {previewWholeRestoreMutation.isPending ? "Previewing…" : "Preview whole tenant"}
+              </Button>
+              <Button
+                type="button"
+                variant="destructive"
+                onClick={() => executeWholeRestoreMutation.mutate()}
+                disabled={executeWholeRestoreMutation.isPending || !restoreRunId || !wholeRestoreConfirmationText || wholeRestoreConfirmation !== wholeRestoreConfirmationText}
+              >
+                <RotateCcw />{executeWholeRestoreMutation.isPending ? "Restoring…" : "Restore whole tenant"}
+              </Button>
+            </ActionBar>
           </div>
         </div>
-      </Card>
+      </FormSection>
 
-      <Card className="px-5 py-5">
-        <div className="mb-4">
-          <h2 className="text-lg font-semibold text-copy-primary">Recent Backup Runs</h2>
-          <p className="mt-1 text-sm text-copy-muted">Tenant backup artifacts are separate from platform backups.</p>
-        </div>
-        <div className="overflow-x-auto rounded-[var(--radius-control)] border border-line-subtle">
-        <Table className="min-w-[880px]">
-          <TableHeader>
-            <TableHeaderRow>
-              <TableHead>Run</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Scope</TableHead>
-              <TableHead>Modules</TableHead>
-              <TableHead>Size</TableHead>
-              <TableHead>Upload</TableHead>
-              <TableHead>Completed</TableHead>
-              <TableHead>Action</TableHead>
-            </TableHeaderRow>
-          </TableHeader>
-          <TableBody>
-            {runsQuery.isLoading ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-8 text-center text-copy-muted" aria-busy="true">Loading backup runs...</TableCell>
-              </TableRow>
-            ) : runsQuery.isError ? (
-              <TableRow>
-                <TableCell colSpan={8} className="py-6 text-center">
-                  <div role="alert" className="mx-auto max-w-lg text-sm text-copy-secondary">
-                    <p>Recent backup runs could not be loaded.</p>
-                    <Button type="button" variant="outline" size="sm" className="mt-3" onClick={() => void runsQuery.refetch()}>
-                      <RotateCcw />Try again
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            ) : (runsQuery.data ?? []).length ? (
-              (runsQuery.data ?? []).map((run) => (
-                <TableRow key={run.id}>
-                  <TableCell>#{run.id}</TableCell>
-                  <TableCell>
-                    <Pill
-                      bg={run.status === "completed" ? "bg-state-success-muted" : run.status === "failed" ? "bg-state-danger-muted" : "bg-state-warning-muted"}
-                      text={run.status === "completed" ? "text-state-success" : run.status === "failed" ? "text-state-danger" : "text-state-warning"}
-                      border={run.status === "completed" ? "border-state-success/40" : run.status === "failed" ? "border-state-danger/40" : "border-state-warning/40"}
-                    >
-                      {run.status}
-                    </Pill>
-                  </TableCell>
-                  <TableCell>{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</TableCell>
-                  <TableCell>{run.modules_included.length}</TableCell>
-                  <TableCell>{formatBytes(run.size_bytes)}</TableCell>
-                  <TableCell>
-                    <Pill
-                      bg={run.destination_upload_status === "failed" ? "bg-state-danger-muted" : run.destination_upload_status === "uploaded" ? "bg-state-success-muted" : "bg-surface-muted"}
-                      text={run.destination_upload_status === "failed" ? "text-state-danger" : run.destination_upload_status === "uploaded" ? "text-state-success" : "text-copy-muted"}
-                      border={run.destination_upload_status === "failed" ? "border-state-danger/40" : run.destination_upload_status === "uploaded" ? "border-state-success/40" : "border-line-default"}
-                    >
-                      {run.destination_upload_status.replaceAll("_", " ")}
-                    </Pill>
-                  </TableCell>
-                  <TableCell>{run.completed_at ? formatDateTime(run.completed_at) : "-"}</TableCell>
-                  <TableCell>
-                    {run.status === "completed" && run.storage_ref ? (
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            void downloadRun(run).catch((error) => toast.error(error instanceof Error ? error.message : "Download failed."));
-                          }}
-                        >
-                          <Download />Download
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="dangerGhost"
-                          size="sm"
-                          onClick={() => void confirmDeleteRun(run)}
-                          disabled={deleteRunMutation.isPending}
-                        >
-                          <Trash2 />Delete
-                        </Button>
-                      </div>
-                    ) : run.error_message ? (
-                      <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
-                    ) : (
-                      <span className="text-xs text-copy-muted">Unavailable</span>
-                    )}
-                  </TableCell>
-                </TableRow>
-              ))
+      <FormSection title="Recent runs" description="Tenant backup artifacts, which are separate from platform backups.">
+        <RecordTable
+          label="Backup runs"
+          columns={[
+            { key: "id", label: "Run", size: "sm", render: (run) => <span className="tabular-nums text-copy-secondary">#{run.id}</span> },
+            {
+              key: "status",
+              label: "Status",
+              size: "sm",
+              render: (run) => (
+                <StatusValue status={{ tone: run.status === "completed" ? "success" : run.status === "failed" ? "critical" : "attention", label: formatSnakeCaseLabel(run.status) }} />
+              ),
+            },
+            { key: "scope", label: "Scope", size: "sm", render: (run) => <span className="text-copy-secondary">{run.scope === "full_tenant" ? "Full tenant" : "Selected"}</span> },
+            { key: "modules", label: "Modules", size: "sm", render: (run) => <span className="tabular-nums text-copy-secondary">{run.modules_included.length}</span> },
+            { key: "size", label: "Size", size: "sm", render: (run) => <span className="text-copy-secondary">{formatBytes(run.size_bytes) ?? <EmptyValue context="cell" />}</span> },
+            {
+              key: "upload",
+              label: "Upload",
+              render: (run) => (
+                <StatusValue status={{ tone: run.destination_upload_status === "failed" ? "critical" : run.destination_upload_status === "uploaded" ? "success" : "neutral", label: formatSnakeCaseLabel(run.destination_upload_status) }} />
+              ),
+            },
+            { key: "completed_at", label: "Completed", render: (run) => <span className="text-copy-muted">{run.completed_at ? formatDateTime(run.completed_at) : "Not finished"}</span> },
+          ]}
+          rows={runsQuery.data ?? []}
+          rowKey={(run) => run.id}
+          shellVariant="nested"
+          isLoading={runsQuery.isLoading}
+          isRefreshing={runsQuery.isFetching && !runsQuery.isLoading}
+          hasError={runsQuery.isError}
+          onRetry={() => void runsQuery.refetch()}
+          errorState={{ title: "Recent backup runs could not be loaded" }}
+          emptyState={{
+            icon: Archive,
+            title: "No tenant backup runs yet",
+            description: "Run a backup to create the first tenant-scoped artifact.",
+          }}
+          rowActions={(run) => (
+            run.status === "completed" && run.storage_ref ? (
+              <ActionBar size="sm">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    void downloadRun(run).catch((error) => toast.error(error instanceof Error ? error.message : "Download failed."));
+                  }}
+                >
+                  <Download />Download
+                </Button>
+                <Button
+                  type="button"
+                  variant="destructiveGhost"
+                  onClick={() => void confirmDeleteRun(run)}
+                  disabled={deleteRunMutation.isPending}
+                >
+                  <Trash2 />Delete
+                </Button>
+              </ActionBar>
+            ) : run.error_message ? (
+              <span className="text-xs text-state-danger">Backup failed. Try again or review the destination.</span>
             ) : (
-              <TableRow>
-                <TableCell colSpan={8} className="p-0">
-                  <EmptyState
-                    icon={Archive}
-                    title="No tenant backup runs yet"
-                    description="Run a backup to create the first tenant-scoped artifact."
-                  />
-                </TableCell>
-              </TableRow>
-            )}
-          </TableBody>
-        </Table>
-        </div>
-      </Card>
-    </div>
+              <span className="text-xs text-copy-muted">Unavailable</span>
+            )
+          )}
+        />
+      </FormSection>
+    </PageShell>
   );
 }
+

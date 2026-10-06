@@ -1,0 +1,31 @@
+# Local CPU ceiling. The owner's rule: Lynk's tooling must never take more than 65% of the
+# host's CPU. On the 8-core dev machine that is 5.2 cores; these caps sum to 5.0, so the
+# ceiling holds even when every service is compiling or running flat out at once.
+#
+# Applied automatically through `COMPOSE_FILE` in the local `.env`. CI sets its own
+# `COMPOSE_FILE` in the workflow environment, which wins, so runners are unaffected.
+# Any command that passes `-f` explicitly must include this file too. See AGENTS.md.
+services:
+  backend:
+    cpus: 1.0
+  celery-worker:
+    cpus: 0.5
+  celery-beat:
+    cpus: 0.25
+  frontend:
+    cpus: 2.0
+  # Replaces `frontend` while scripts/e2e.sh runs (the dev server is stopped), so the sum
+  # stays at 5.0. Memory is capped too: the build runs in this service.
+  frontend-serve:
+    cpus: 2.0
+    mem_limit: 6g
+    memswap_limit: 6656m
+  # Replace backend and celery-worker while scripts/e2e.sh runs (it stops those two).
+  backend-e2e:
+    cpus: 1.0
+  worker-e2e:
+    cpus: 0.5
+  frontend-e2e:
+    cpus: 1.0
+  redis:
+    cpus: 0.25

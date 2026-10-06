@@ -8,13 +8,16 @@ import { IntegrationEventHistory } from "@/components/integrations/IntegrationEv
 import { IntegrationProviderRegistry, type IntegrationRegistryHealth } from "@/components/integrations/IntegrationProviderRegistry";
 import { IntegrationWebhookWorkspace } from "@/components/integrations/IntegrationWebhookWorkspace";
 import { IntegrationWebsiteWorkspace } from "@/components/integrations/IntegrationWebsiteWorkspace";
+import { TenantMailSettingsPanel } from "@/components/integrations/TenantMailSettingsPanel";
+import { PageShell } from "@/components/ui/PageShell";
+import { SETTINGS_ROUTES } from "@/lib/routes";
 import { connectGoogleDriveStorage, connectMicrosoftOneDriveStorage } from "@/hooks/useDocuments";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
 
 async function fetchRegistryHealth() {
   const res = await apiFetch("/admin/integrations-registry/health");
   const body = await res.json().catch(() => null);
-  if (!res.ok) throw new Error("integration-health-unavailable");
+  if (!res.ok) throw new ApiError(res.status, "integration-health-unavailable");
   return Array.isArray(body?.results) ? body.results as IntegrationRegistryHealth[] : [];
 }
 
@@ -41,7 +44,14 @@ export default function IntegrationsPage() {
   }
 
   return (
-    <div className="flex flex-col gap-5 text-copy-secondary">
+    <PageShell
+      variant="settings"
+      title="Integrations"
+      description="Connect storage, mail, and messaging providers."
+      isPermissionDenied={isForbiddenError(registryQuery.error)}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to settings"
+    >
       <IntegrationProviderRegistry
         items={registryHealth}
         isLoading={registryQuery.isLoading}
@@ -52,11 +62,13 @@ export default function IntegrationsPage() {
         onConnectDocumentProvider={(providerKey) => void connectDocumentProvider(providerKey)}
       />
 
+      <TenantMailSettingsPanel />
+
       <IntegrationWebsiteWorkspace />
 
       <IntegrationWebhookWorkspace />
 
       <IntegrationEventHistory />
-    </div>
+    </PageShell>
   );
 }

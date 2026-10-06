@@ -10,9 +10,8 @@ from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
-from app.modules.finance.models import FinanceIO, FinancePosInvoice
+from app.modules.finance.models import FinancePosInvoice
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
-from app.modules.support.models import SupportCase
 from app.modules.user_management.models import (
     DepartmentModulePermission,
     Module,
@@ -67,26 +66,12 @@ RECORD_COMMENT_MODULES = {
         "label_field": "order_number",
         "record_path": "/dashboard/sales/orders/{entity_id}",
     },
-    "support_cases": {
-        "model": SupportCase,
-        "id_field": "id",
-        "entity_type": "support_case",
-        "label_field": "case_number",
-        "record_path": "/dashboard/support/cases/{entity_id}",
-    },
-    "finance_io": {
-        "model": FinanceIO,
-        "id_field": "id",
-        "entity_type": "finance_io",
-        "label_field": "io_number",
-        "record_path": "/dashboard/finance/insertion-orders/{entity_id}",
-    },
     "finance_pos": {
         "model": FinancePosInvoice,
         "id_field": "id",
         "entity_type": "finance_pos_invoice",
         "label_field": "invoice_number",
-        "record_path": "/dashboard/finance/pos/{entity_id}",
+        "record_path": "/dashboard/finance/invoices/{entity_id}",
     },
     "catalog_products": {
         "model": CatalogProduct,

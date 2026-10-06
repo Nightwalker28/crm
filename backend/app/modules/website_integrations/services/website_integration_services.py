@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import SimpleNamespace
 from datetime import datetime, timezone
 from decimal import Decimal
 import hashlib
@@ -9,28 +10,27 @@ import secrets
 
 from fastapi.encoders import jsonable_encoder
 from fastapi import HTTPException, status
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.cache import cache_get_json, cache_set_json
 from app.core.config import settings
 from app.core.uploads import build_media_url
+from app.core.unit_of_work import unit_of_work
 from app.modules.catalog.models import CatalogProduct, CatalogService
-from app.modules.finance.services import pos_invoice_services
-from app.modules.platform.services.activity_logs import log_activity
+from app.modules.platform.services.activity_logs import log_activity, safe_log_activity
+from app.modules.platform.services.crm_events import safe_publish_crm_event
+from app.modules.sales.models import SalesContact, SalesOrder
+from app.modules.sales.services.orders_services import create_sales_order
 from app.modules.website_integrations.repositories import website_integration_repository
-from app.modules.website_integrations.models import (
-    WebsiteCatalogItem,
-    WebsiteIntegrationApiKey,
-    WebsiteIntegrationOrder,
-    WebsiteIntegrationOrderLine,
-)
+from app.modules.website_integrations.models import WebsiteIntegrationApiKey
 
 
 INTEGRATION_KEY_PREFIX = "lynk_live_"
 DEFAULT_CATALOG_READ_SCOPE = "catalog:read"
 ORDER_WRITE_SCOPE = "orders:write"
-ORDER_STATUSES = {"submitted", "under_review", "confirmed", "in_progress", "completed", "cancelled", "rejected"}
+WEBSITE_SOURCE = "website"
 
 
 @dataclass(frozen=True)
@@ -48,7 +48,6 @@ class PublicCatalogItem:
     stock_status: str
     stock_quantity: Decimal | None
     media_url: str | None
-    metadata_json: dict | None
     is_public: bool
     is_active: bool
     created_at: datetime
@@ -97,19 +96,6 @@ def _normalize_origins(value: list[str] | None) -> list[str]:
     return sorted({str(item).strip().rstrip("/") for item in value or [] if str(item).strip()})
 
 
-def _order_state(order: WebsiteIntegrationOrder) -> dict:
-    return {
-        "id": order.id,
-        "external_reference": order.external_reference,
-        "source_platform": order.source_platform,
-        "status": order.status,
-        "customer_email": order.customer_email,
-        "currency": order.currency,
-        "subtotal_amount": order.subtotal_amount,
-        "line_count": len(getattr(order, "line_items", []) or []),
-    }
-
-
 def serialize_api_key(key: WebsiteIntegrationApiKey, *, api_key: str | None = None) -> dict:
     return {
         "id": key.id,
@@ -125,12 +111,12 @@ def serialize_api_key(key: WebsiteIntegrationApiKey, *, api_key: str | None = No
     }
 
 
-def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, public: bool = False) -> dict:
+def serialize_catalog_item(item: PublicCatalogItem, *, public: bool = False) -> dict:
     payload = {
         "id": item.id,
         "item_type": item.item_type,
-        "catalog_product_id": getattr(item, "catalog_product_id", None),
-        "catalog_service_id": getattr(item, "catalog_service_id", None),
+        "catalog_product_id": item.catalog_product_id,
+        "catalog_service_id": item.catalog_service_id,
         "slug": item.slug,
         "sku": item.sku,
         "name": item.name,
@@ -140,7 +126,6 @@ def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, publ
         "stock_status": item.stock_status,
         "stock_quantity": item.stock_quantity,
         "media_url": item.media_url,
-        "metadata": item.metadata_json,
         "updated_at": item.updated_at,
     }
     if not public:
@@ -154,39 +139,28 @@ def serialize_catalog_item(item: PublicCatalogItem | WebsiteCatalogItem, *, publ
     return payload
 
 
-def serialize_order(order: WebsiteIntegrationOrder, *, idempotent_replayed: bool = False) -> dict:
+def serialize_order(order: SalesOrder, *, idempotent_replayed: bool = False) -> dict:
     return {
         "id": order.id,
-        "pos_invoice_id": order.pos_invoice_id,
+        "order_number": order.order_number,
         "external_reference": order.external_reference,
-        "source_platform": order.source_platform,
+        "channel": order.channel,
         "status": order.status,
-        "customer_name": order.customer_name,
-        "customer_email": order.customer_email,
-        "customer_phone": order.customer_phone,
         "currency": order.currency,
-        "subtotal_amount": order.subtotal_amount,
-        "metadata": order.metadata_json,
+        "grand_total": order.grand_total,
         "created_at": order.created_at,
         "idempotent_replayed": idempotent_replayed,
         "line_items": [
             {
                 "id": line.id,
-                "catalog_item_id": line.catalog_item_id,
                 "catalog_product_id": line.catalog_product_id,
                 "catalog_service_id": line.catalog_service_id,
-                "item_type": line.item_type,
-                "slug": line.slug,
-                "sku": line.sku,
                 "name": line.name,
                 "quantity": line.quantity,
-                "currency": line.currency,
-                "unit_price_snapshot": line.unit_price_snapshot,
+                "unit_price": line.unit_price,
                 "line_total": line.line_total,
-                "stock_quantity_before": line.stock_quantity_before,
-                "stock_quantity_after": line.stock_quantity_after,
             }
-            for line in getattr(order, "line_items", []) or []
+            for line in order.items
         ],
     }
 
@@ -353,7 +327,6 @@ def _public_item_from_product(product: CatalogProduct) -> PublicCatalogItem:
         stock_status=product.stock_status,
         stock_quantity=product.stock_quantity,
         media_url=build_media_url(product.media_path) if product.media_path else None,
-        metadata_json=None,
         is_public=bool(product.is_public),
         is_active=bool(product.is_active),
         created_at=product.created_at,
@@ -377,7 +350,6 @@ def _public_item_from_service(service: CatalogService) -> PublicCatalogItem:
         stock_status="untracked",
         stock_quantity=None,
         media_url=build_media_url(service.media_path) if service.media_path else None,
-        metadata_json=None,
         is_public=bool(service.is_public),
         is_active=bool(service.is_active),
         created_at=service.created_at,
@@ -422,107 +394,6 @@ def list_catalog_items(
     return items, total
 
 
-def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset: int = 0) -> tuple[list[WebsiteIntegrationOrder], int]:
-    return website_integration_repository.list_orders(db, tenant_id=tenant_id, limit=limit, offset=offset)
-
-
-def list_orders_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[WebsiteIntegrationOrder]:
-    return website_integration_repository.list_orders_cursor(
-        db,
-        tenant_id=tenant_id,
-        limit=limit,
-        cursor=cursor,
-    )
-
-
-def get_order_or_404(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder:
-    order = website_integration_repository.get_order(db, tenant_id=tenant_id, order_id=order_id)
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Website order not found")
-    return order
-
-
-def update_order_status(db: Session, *, current_user, order_id: int, status_value: str) -> WebsiteIntegrationOrder:
-    normalized_status = status_value.strip().lower()
-    if normalized_status not in ORDER_STATUSES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported order status")
-    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
-    before_state = _order_state(order)
-    if order.status == normalized_status:
-        return order
-    order.status = normalized_status
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="website_integrations",
-        entity_type="website_order",
-        entity_id=order.id,
-        action="website_order.status_updated",
-        description=f"Updated order {order.external_reference} status to {normalized_status.replace('_', ' ')}",
-        before_state=before_state,
-        after_state=_order_state(order),
-    )
-    return order
-
-
-def create_pos_invoice_for_order(db: Session, *, current_user, order_id: int):
-    order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
-    if order.pos_invoice_id:
-        invoice = pos_invoice_services.get_invoice_or_404(db, current_user, order.pos_invoice_id)
-        return invoice, True
-    payload = {
-        "customer_name": order.customer_name or order.customer_email or f"Website order {order.external_reference}",
-        "customer_email": order.customer_email,
-        "customer_address": None,
-        "status": "issued",
-        "payment_status": "unpaid",
-        "payment_method": order.source_platform,
-        "template_id": "modern",
-        "accent_color": "#14b8a6",
-        "currency": order.currency,
-        "discount_amount": 0,
-        "tax_rate": 0,
-        "amount_paid": 0,
-        "payment_terms": "Generated from website order.",
-        "notes": f"Source order: {order.external_reference}",
-        "lines": [
-            {
-                "catalog_product_id": line.catalog_product_id,
-                "catalog_service_id": line.catalog_service_id,
-                "description": line.name,
-                "quantity": line.quantity,
-                "unit_price": line.unit_price_snapshot,
-            }
-            for line in order.line_items
-        ],
-    }
-    invoice = pos_invoice_services.create_invoice(db, current_user, payload)
-    order.pos_invoice_id = invoice.id
-    db.add(order)
-    db.commit()
-    db.refresh(order)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="website_integrations",
-        entity_type="website_order",
-        entity_id=order.id,
-        action="website_order.convert_to_pos_invoice",
-        description=f"Created POS invoice {invoice.invoice_number} from website order {order.external_reference}",
-        after_state={"order_id": order.id, "pos_invoice_id": invoice.id, "invoice_number": invoice.invoice_number},
-    )
-    return invoice, False
-
-
-def _existing_order_by_reference(db: Session, *, tenant_id: int, external_reference: str) -> WebsiteIntegrationOrder | None:
-    return website_integration_repository.get_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
-
-
 def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line: dict) -> PublicCatalogItem:
     item_type = (line.get("item_type") or "").strip().lower() or None
     product_query = website_integration_repository.build_public_product_query(db, tenant_id=tenant_id, for_update=True)
@@ -537,17 +408,6 @@ def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line:
         if not service:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog service not found for order line")
         item = _public_item_from_service(service)
-    elif line.get("catalog_item_id") and item_type in {"product", "service"}:
-        if item_type == "product":
-            product = product_query.filter(CatalogProduct.id == line["catalog_item_id"]).with_for_update().first()
-            if not product:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
-            item = _public_item_from_product(product)
-        else:
-            service = service_query.filter(CatalogService.id == line["catalog_item_id"]).first()
-            if not service:
-                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog service not found for order line")
-            item = _public_item_from_service(service)
     elif line.get("slug"):
         slug = str(line["slug"]).strip().lower()
         product = None
@@ -576,39 +436,63 @@ def _resolve_public_catalog_item_for_order(db: Session, *, tenant_id: int, line:
     return item
 
 
-def _apply_stock_decrement(db: Session, item: PublicCatalogItem, quantity: Decimal) -> tuple[Decimal | None, Decimal | None]:
-    if item.product is None:
-        return None, None
-    product = website_integration_repository.get_public_product_for_stock_update(db, product=item.product)
-    if not product:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Catalog product not found for order line")
-    if product.stock_status == "out_of_stock":
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{item.name} is out of stock")
-    before = Decimal(str(product.stock_quantity)) if product.stock_quantity is not None else None
-    if before is None:
-        return None, None
-    if before < quantity:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"Insufficient stock for {item.name}")
-    after = before - quantity
-    product.stock_quantity = after
-    if after <= 0:
-        product.stock_status = "out_of_stock"
-    elif product.stock_status == "out_of_stock":
-        product.stock_status = "in_stock"
-    db.add(product)
-    return before, after
+def _existing_order(db: Session, *, tenant_id: int, external_reference: str) -> SalesOrder | None:
+    return (
+        db.query(SalesOrder)
+        .filter(SalesOrder.tenant_id == tenant_id, SalesOrder.external_reference == external_reference)
+        .first()
+    )
 
 
-def create_public_order(
-    db: Session,
-    *,
-    tenant_id: int,
-    api_key_id: int | None,
-    payload: dict,
-) -> tuple[WebsiteIntegrationOrder, bool]:
+def _buyer_contact_id(db: Session, *, tenant_id: int, payload: dict) -> int | None:
+    """The buyer as a CRM contact: matched on email, created when new, as the shop
+    connectors of Odoo and HubSpot do. An order without an email has no contact."""
+    email = (payload.get("customer_email") or "").strip().lower()
+    if not email:
+        return None
+    contact = (
+        db.query(SalesContact)
+        .filter(
+            SalesContact.tenant_id == tenant_id,
+            SalesContact.deleted_at.is_(None),
+            func.lower(SalesContact.primary_email) == email,
+        )
+        .order_by(SalesContact.contact_id)
+        .first()
+    )
+    if contact is not None:
+        return contact.contact_id
+    first_name, _, last_name = (payload.get("customer_name") or "").strip().partition(" ")
+    contact = SalesContact(
+        tenant_id=tenant_id,
+        first_name=first_name or None,
+        last_name=last_name.strip() or None,
+        primary_email=email,
+        contact_telephone=payload.get("customer_phone"),
+    )
+    db.add(contact)
+    db.flush()
+    safe_log_activity(
+        db,
+        tenant_id=tenant_id,
+        actor_user_id=None,
+        module_key="sales_contacts",
+        entity_type="sales_contact",
+        entity_id=contact.contact_id,
+        action="create",
+        description=f"Created from website order {payload['external_reference']}",
+    )
+    return contact.contact_id
+
+
+def create_public_order(db: Session, *, key: WebsiteIntegrationApiKey, payload: dict) -> tuple[SalesOrder, bool]:
+    """A website order is a sales order (13 F1.3): source `website`, the shop platform as its
+    channel, confirmed on arrival so it holds stock, and fulfilled and invoiced like any
+    other order. A resubmission with the same body returns the order it made."""
+    tenant_id = key.tenant_id
     external_reference = str(payload["external_reference"]).strip()
     request_hash = _hash_payload(payload)
-    existing = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
+    existing = _existing_order(db, tenant_id=tenant_id, external_reference=external_reference)
     if existing:
         if existing.request_hash != request_hash:
             raise HTTPException(
@@ -617,84 +501,77 @@ def create_public_order(
             )
         return existing, True
 
-    subtotal = Decimal("0")
-    currency = (payload.get("currency") or "").strip().upper() if payload.get("currency") else None
-    order = WebsiteIntegrationOrder(
-        tenant_id=tenant_id,
-        api_key_id=api_key_id,
-        external_reference=external_reference,
-        source_platform=(payload.get("source_platform") or "").strip() or None,
-        status="submitted",
-        request_hash=request_hash,
-        customer_name=(payload.get("customer_name") or "").strip() or None,
-        customer_email=(payload.get("customer_email") or "").strip().lower() or None,
-        customer_phone=(payload.get("customer_phone") or "").strip() or None,
-        currency=currency or "USD",
-        subtotal_amount=Decimal("0"),
-        metadata_json=payload.get("metadata"),
-        raw_payload=jsonable_encoder(payload),
-    )
-    db.add(order)
-    db.flush()
-
-    for raw_line in payload.get("line_items") or []:
-        quantity = Decimal(str(raw_line["quantity"]))
+    currency = payload.get("currency")
+    items: list[dict] = []
+    for index, raw_line in enumerate(payload.get("line_items") or []):
         item = _resolve_public_catalog_item_for_order(db, tenant_id=tenant_id, line=raw_line)
-        line_currency = item.currency
         if currency is None:
-            currency = line_currency
-            order.currency = line_currency
-        if line_currency != order.currency:
+            currency = item.currency
+        if item.currency != currency:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order lines must use one currency")
-        before, after = _apply_stock_decrement(db, item, quantity)
-        unit_price = Decimal(str(item.public_unit_price))
-        line_total = unit_price * quantity
-        subtotal += line_total
-        if item.product is not None:
-            db.add(item.product)
-        db.add(
-            WebsiteIntegrationOrderLine(
-                tenant_id=tenant_id,
-                order_id=order.id,
-                catalog_product_id=item.product.id if item.product else None,
-                catalog_service_id=item.service.id if item.service else None,
-                item_type=item.item_type,
-                slug=item.slug,
-                sku=item.sku,
-                name=item.name,
-                quantity=quantity,
-                currency=line_currency,
-                unit_price_snapshot=unit_price,
-                line_total=line_total,
-                stock_quantity_before=before,
-                stock_quantity_after=after,
-            )
+        items.append(
+            {
+                "catalog_product_id": item.catalog_product_id,
+                "catalog_service_id": item.catalog_service_id,
+                "name": item.name,
+                "quantity": Decimal(str(raw_line["quantity"])),
+                "unit_price": Decimal(str(item.public_unit_price)).quantize(Decimal("0.01")),
+                "sort_order": index,
+            }
         )
-
-    order.subtotal_amount = subtotal
-    db.add(order)
+    actor = SimpleNamespace(tenant_id=tenant_id, id=None)
     try:
-        db.commit()
-    except IntegrityError as exc:
+        with unit_of_work(db):
+            order = create_sales_order(
+                db,
+                {
+                    "status": "confirmed",
+                    "currency": currency,
+                    "contact_id": _buyer_contact_id(db, tenant_id=tenant_id, payload=payload),
+                    "source": WEBSITE_SOURCE,
+                    "channel": payload.get("source_platform"),
+                    "external_reference": external_reference,
+                    "request_hash": request_hash,
+                    "integration_key_id": key.id,
+                    # The public API keeps one free-text address; it becomes the shipping street.
+                    "shipping_address": payload.get("delivery_address"),
+                    "notes": payload.get("notes"),
+                    "items": items,
+                },
+                actor,
+            )
+            safe_log_activity(
+                db,
+                tenant_id=tenant_id,
+                actor_user_id=None,
+                module_key="sales_orders",
+                entity_type="sales_order",
+                entity_id=order.id,
+                action="create",
+                description=f"Received order {order.order_number} from {order.channel or 'the website'} ({external_reference})",
+            )
+            safe_publish_crm_event(
+                db,
+                tenant_id=tenant_id,
+                actor_user_id=None,
+                event_type="order.created",
+                entity_type="sales_order",
+                entity_id=order.id,
+                payload={"order_number": order.order_number, "status": order.status, "quote_id": None, "source": WEBSITE_SOURCE},
+            )
+    except HTTPException as exc:
+        # Two submissions of one order racing: the loser finds the winner's order.
+        if exc.status_code != status.HTTP_409_CONFLICT:
+            raise
         db.rollback()
-        existing = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference)
-        if existing and existing.request_hash == request_hash:
-            return existing, True
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order external_reference already exists") from exc
-    db.refresh(order)
-    order = _existing_order_by_reference(db, tenant_id=tenant_id, external_reference=external_reference) or order
-    log_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=None,
-        module_key="website_integrations",
-        entity_type="website_order",
-        entity_id=order.id,
-        action="website_order.submitted",
-        description=f"Website order submitted from {order.source_platform or 'external site'}",
-        after_state=_order_state(order),
-    )
+        existing = _existing_order(db, tenant_id=tenant_id, external_reference=external_reference)
+        if existing is None:
+            raise
+        if existing.request_hash != request_hash:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Order external_reference already exists") from exc
+        return existing, True
     return order, False
+
 
 def get_public_catalog_item_by_slug_or_404(db: Session, *, tenant_id: int, slug: str) -> PublicCatalogItem:
     normalized = slug.strip().lower()

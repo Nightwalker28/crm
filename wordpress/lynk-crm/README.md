@@ -35,6 +35,7 @@ Render a simple order form for a catalog slug:
 [lynk_order_form slug="starter-package" item_type="product"]
 ```
 
-Submitted orders are sent to Lynk as website integration orders. In Lynk, open
-**Integrations > Website APIs** and convert captured website orders into POS
-invoices when they are ready for finance handling.
+Submitted orders arrive in Lynk as confirmed sales orders with the source *Website*
+and the channel `wordpress`: they hold stock straight away and are delivered and
+invoiced from the order page. Filter **Orders** by Source to find them. The buyer
+becomes a contact, matched on email.

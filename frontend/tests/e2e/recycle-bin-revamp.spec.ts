@@ -3,9 +3,9 @@ import { expect, test, type Page } from "@playwright/test";
 import { loginAsAdmin } from "./helpers/auth";
 
 const recycleItem = {
-  module_key: "finance_insertion_orders",
+  module_key: "sales_leads",
   record_id: 501,
-  title: "IO-2026-0501",
+  title: "Ada Lovelace",
   subtitle: "ACME Media",
   deleted_at: "2026-07-27T08:00:00Z",
   details: {},
@@ -77,7 +77,7 @@ test("requires restore confirmation and redacts backend failures", async ({ page
     }),
   );
   let restoreRequests = 0;
-  await page.route("**/recycle/finance_insertion_orders/501/restore", (route) => {
+  await page.route("**/recycle/sales_leads/501/restore", (route) => {
     restoreRequests += 1;
     return route.fulfill({
       status: 500,
@@ -88,7 +88,7 @@ test("requires restore confirmation and redacts backend failures", async ({ page
 
   await page.goto("/dashboard/settings/recycle-bin");
   await page.getByRole("button", { name: "Restore", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Restore IO-2026-0501?" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Restore Ada Lovelace?" })).toBeVisible();
   await page.getByRole("button", { name: "Cancel" }).click();
   expect(restoreRequests).toBe(0);
 
@@ -110,7 +110,9 @@ test("shows a retryable fixed error when recycled records cannot load", async ({
 
   await page.goto("/dashboard/settings/recycle-bin");
 
-  await expect(page.getByText("Recycled records could not be loaded.")).toBeVisible();
+  // The state names the module being browsed, which is the first one the picker offers.
+  await expect(page.getByText(/^.+ could not be loaded$/)).toBeVisible();
+  await expect(page.getByText("Check your connection and try again.", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Try again" })).toBeVisible();
   await expect(page.getByText(/SELECT deleted records|tenant_id=42/)).toHaveCount(0);
 });

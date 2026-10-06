@@ -35,6 +35,8 @@ class UserProfile(BaseModel):
     last_login_provider: Optional[str] = None
     mfa_enabled: bool = False
     mfa_required: bool = False
+    # False until the user sets a password from their invite (or for SSO-only users).
+    password_set: bool = False
     is_active: UserStatus
 
     model_config = ConfigDict(from_attributes=True)
@@ -54,6 +56,7 @@ class UserListItem(BaseModel):
     auth_mode: Optional[UserAuthMode] = None
     mfa_enabled: bool = False
     mfa_required: bool = False
+    password_set: bool = False
     is_active: Optional[UserStatus] = None
 
 class UserListResponse(BaseModel):
@@ -440,6 +443,27 @@ class SetupPasswordRequest(BaseModel):
     password: str
 
 
+class PasswordForgotRequest(BaseModel):
+    email: EmailStr
+
+
+class PasswordResetRequest(BaseModel):
+    token: str = Field(min_length=10, max_length=200)
+    password: str
+
+
+class PasswordChangeRequest(BaseModel):
+    # Optional only for an account that has never had a password (SSO-only until now).
+    current_password: Optional[str] = None
+    new_password: str
+
+
+class InviteEmailResult(BaseModel):
+    sent: bool
+    # Why it was not sent, in words an admin can act on. None when sent.
+    error: Optional[str] = None
+
+
 class AdminCreateUserRequest(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
@@ -453,6 +477,13 @@ class AdminCreateUserRequest(BaseModel):
 class AdminCreateUserResponse(BaseModel):
     user: UserProfile
     setup_link: Optional[str] = None
+    # None when the user signs in with SSO only and gets no setup link.
+    invite_email: Optional[InviteEmailResult] = None
+
+
+class AdminUserInviteResponse(BaseModel):
+    setup_link: str
+    invite_email: InviteEmailResult
 
 
 class UserProfileUpdateRequest(BaseModel):
@@ -482,6 +513,11 @@ class CompanyProfileResponse(BaseModel):
     operating_currencies: list[str] = []
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
+    invoicing_policy: str = "delivered"
+    default_payment_terms_days: Optional[int] = None
+    # E6 (12d §3.1): stock is valued in this currency; it locks once valuation has started.
+    base_currency: Optional[str] = None
+    base_currency_locked: bool = False
     updated_by: Optional[int] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -498,6 +534,10 @@ class CompanyProfileUpdateRequest(BaseModel):
     country: Optional[str] = None
     operating_currencies: list[str] | None = None
     billing_address: Optional[str] = None
+    # E5: tracked products invoice what was delivered, or what was ordered (12c §3.5).
+    invoicing_policy: Optional[Literal["delivered", "ordered"]] = None
+    default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
+    base_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
 
     model_config = ConfigDict(extra="forbid")
 
@@ -537,6 +577,8 @@ class SavedViewConfig(BaseModel):
     visible_columns: list[str] = []
     filters: dict[str, Any] = {}
     sort: dict[str, Any] | None = None
+    # List vs board (etc.) for the same filtered population; `None` is the module's default.
+    display: str | None = Field(default=None, max_length=20)
 
 
 class SavedViewResponse(BaseModel):

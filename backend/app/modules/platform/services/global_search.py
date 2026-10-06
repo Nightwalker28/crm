@@ -8,16 +8,16 @@ from sqlalchemy.orm import Session, selectinload
 from app.core.access_control import get_finance_user_scope, require_department_module_access, require_role_module_action_access
 from app.core.module_search import apply_ranked_search
 from app.core.postgres_search import searchable_text
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant
 from app.modules.catalog.models import CatalogProduct, CatalogService
-from app.modules.contracts.models import Contract
 from app.modules.documents.models import Document
-from app.modules.finance.models import FinanceIO, FinancePosInvoice
+from app.modules.finance.models import FinancePosInvoice
 from app.modules.mail.models import MailMessage
 from app.modules.platform.models import CustomModuleDefinition
 from app.modules.platform.repositories import custom_modules_repository
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesOrganization, SalesQuote
-from app.modules.support.models import SupportCase
+from app.modules.sales.services.pipelines_services import opportunity_stage_facts
 from app.modules.tasks.models import Task, TaskAssignee
 
 
@@ -67,24 +67,20 @@ GLOBAL_SEARCH_MODULES = (
         "module_label": "Services",
     },
     {
-        "module_key": "contracts",
-        "module_label": "Contracts",
-    },
-    {
         "module_key": "documents",
         "module_label": "Documents",
     },
     {
-        "module_key": "support_cases",
-        "module_label": "Support Cases",
-    },
-    {
-        "module_key": "finance_io",
-        "module_label": "Insertion Orders",
-    },
-    {
         "module_key": "finance_pos",
-        "module_label": "POS",
+        "module_label": "Invoices",
+    },
+    {
+        "module_key": "finance_credit_notes",
+        "module_label": "Credit notes",
+    },
+    {
+        "module_key": "purchase_bills",
+        "module_label": "Bills",
     },
 )
 GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS = 1500
@@ -279,9 +275,11 @@ def _lead_results(db: Session, *, tenant_id: int, query: str, limit: int, curren
     )
     items = ranked.limit(limit).all()
     results: list[dict] = []
+    statuses = PicklistResolver(db, tenant_id)
     for record in items:
         title = " ".join(part for part in [record.first_name, record.last_name] if part).strip() or record.primary_email or "Unnamed lead"
-        subtitle = " · ".join(part for part in [record.company, record.title, record.status] if part) or None
+        status_label = statuses.label("lead_status", record.status)
+        subtitle = " · ".join(part for part in [record.company, record.title, status_label] if part) or None
         results.append(
             {
                 "module_key": "sales_leads",
@@ -334,10 +332,8 @@ def _opportunity_results(db: Session, *, tenant_id: int, query: str, limit: int,
         search=query,
         document=searchable_text(
             SalesOpportunity.opportunity_name,
-            SalesOpportunity.client,
             SalesOpportunity.sales_stage,
-            SalesOpportunity.target_geography,
-            SalesOpportunity.target_audience,
+            SalesOpportunity.next_step,
         ),
         default_order_column=SalesOpportunity.created_time,
     )
@@ -348,7 +344,7 @@ def _opportunity_results(db: Session, *, tenant_id: int, query: str, limit: int,
             "module_label": "Opportunities",
             "record_id": str(record.opportunity_id),
             "title": record.opportunity_name,
-            "subtitle": " · ".join(part for part in [record.client, record.sales_stage, record.target_geography] if part) or None,
+            "subtitle": " · ".join(part for part in [record.organization_name, record.sales_stage and opportunity_stage_facts(record).label] if part) or None,
             "href": f"/dashboard/sales/opportunities/{record.opportunity_id}",
         }
         for record in items
@@ -448,27 +444,6 @@ def _service_results(db: Session, *, tenant_id: int, query: str, limit: int, cur
     ]
 
 
-def _contract_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
-    ranked = apply_ranked_search(
-        db.query(Contract).filter(Contract.tenant_id == tenant_id),
-        search=query,
-        document=searchable_text(Contract.contract_number, Contract.title, Contract.status, Contract.currency),
-        default_order_column=Contract.updated_at,
-    )
-    items = ranked.limit(limit).all()
-    return [
-        {
-            "module_key": "contracts",
-            "module_label": "Contracts",
-            "record_id": str(record.id),
-            "title": record.title,
-            "subtitle": " · ".join(part for part in [record.contract_number, record.status.replace("_", " ").title()] if part) or None,
-            "href": f"/dashboard/contracts/{record.id}",
-        }
-        for record in items
-    ]
-
-
 def _document_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
     ranked = apply_ranked_search(
         db.query(Document).filter(Document.tenant_id == tenant_id, Document.deleted_at.is_(None)),
@@ -485,64 +460,6 @@ def _document_results(db: Session, *, tenant_id: int, query: str, limit: int, cu
             "title": record.title,
             "subtitle": " · ".join(part for part in [record.original_filename, record.extension.upper()] if part) or None,
             "href": f"/dashboard/documents?documentId={record.id}&search={quote(record.title[:100])}",
-        }
-        for record in items
-    ]
-
-
-def _support_case_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
-    ranked = apply_ranked_search(
-        db.query(SupportCase).filter(SupportCase.tenant_id == tenant_id),
-        search=query,
-        document=searchable_text(
-            SupportCase.case_number,
-            SupportCase.subject,
-            SupportCase.description,
-            SupportCase.status,
-            SupportCase.priority,
-        ),
-        default_order_column=SupportCase.updated_at,
-    )
-    items = ranked.limit(limit).all()
-    return [
-        {
-            "module_key": "support_cases",
-            "module_label": "Support Cases",
-            "record_id": str(record.id),
-            "title": record.subject,
-            "subtitle": " · ".join(part for part in [record.case_number, record.priority.title(), record.status.title()] if part) or None,
-            "href": f"/dashboard/support/cases/{record.id}",
-        }
-        for record in items
-    ]
-
-
-def _finance_io_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
-    ranked = apply_ranked_search(
-        db.query(FinanceIO).filter(FinanceIO.tenant_id == tenant_id, FinanceIO.deleted_at.is_(None)),
-        search=query,
-        document=searchable_text(
-            FinanceIO.io_number,
-            FinanceIO.customer_name,
-            FinanceIO.external_reference,
-            FinanceIO.counterparty_reference,
-            FinanceIO.status,
-            FinanceIO.notes,
-        ),
-        default_order_column=FinanceIO.updated_at,
-    )
-    user_scope = get_finance_user_scope(db, current_user)
-    if user_scope.user_id_filter is not None:
-        ranked = ranked.filter(FinanceIO.user_id == user_scope.user_id_filter)
-    items = ranked.limit(limit).all()
-    return [
-        {
-            "module_key": "finance_io",
-            "module_label": "Insertion Orders",
-            "record_id": str(record.id),
-            "title": record.io_number,
-            "subtitle": " · ".join(part for part in [record.customer_name, record.status.title(), record.currency] if part) or None,
-            "href": f"/dashboard/finance/insertion-orders/{record.id}",
         }
         for record in items
     ]
@@ -569,14 +486,38 @@ def _finance_pos_results(db: Session, *, tenant_id: int, query: str, limit: int,
     return [
         {
             "module_key": "finance_pos",
-            "module_label": "POS",
+            "module_label": "Invoices",
             "record_id": str(record.id),
-            "title": record.invoice_number,
-            "subtitle": " · ".join(part for part in [record.customer_name, record.payment_status.title(), record.currency] if part) or None,
-            "href": f"/dashboard/finance/pos?invoiceId={record.id}",
+            "title": record.invoice_number or "Draft invoice",
+            "subtitle": " · ".join(part for part in [record.customer_name, record.status.title(), record.currency] if part) or None,
+            "href": f"/dashboard/finance/invoices/{record.id}",
         }
         for record in items
     ]
+
+
+def _credit_note_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.finance.models import FinanceCreditNote
+    from app.modules.finance.services.credit_note_services import _scoped
+
+    pattern = f"%{query}%"
+    rows = _scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == tenant_id, FinanceCreditNote.deleted_at.is_(None),
+        or_(FinanceCreditNote.number.ilike(pattern), FinanceCreditNote.reason.ilike(pattern))), db, current_user).order_by(
+        FinanceCreditNote.id.desc()).limit(limit).all()
+    return [{"module_key": "finance_credit_notes", "module_label": "Credit notes", "record_id": str(row.id),
+             "title": row.number or "Draft credit note", "subtitle": " · ".join(part for part in [row.reason, row.status.title()] if part) or None,
+             "href": f"/dashboard/finance/credit-notes/{row.id}"} for row in rows]
+
+
+def _bill_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.purchasing.models import PurchaseBill
+
+    pattern = f"%{query}%"
+    rows = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id, PurchaseBill.deleted_at.is_(None),
+        or_(PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern))).order_by(PurchaseBill.id.desc()).limit(limit).all()
+    return [{"module_key": "purchase_bills", "module_label": "Bills", "record_id": str(row.id), "title": row.number,
+             "subtitle": " · ".join(part for part in [row.vendor.org_name if row.vendor else None, row.vendor_invoice_number, row.status.title()] if part) or None,
+             "href": f"/dashboard/purchasing/bills/{row.id}"} for row in rows]
 
 
 def _custom_module_results(db: Session, *, current_user, query: str, limit: int) -> list[dict]:
@@ -633,11 +574,10 @@ SEARCH_BUILDERS = {
     "sales_orders": _order_results,
     "catalog_products": _product_results,
     "catalog_services": _service_results,
-    "contracts": _contract_results,
     "documents": _document_results,
-    "support_cases": _support_case_results,
-    "finance_io": _finance_io_results,
     "finance_pos": _finance_pos_results,
+    "finance_credit_notes": _credit_note_results,
+    "purchase_bills": _bill_results,
 }
 
 

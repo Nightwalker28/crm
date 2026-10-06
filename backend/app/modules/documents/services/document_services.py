@@ -10,7 +10,8 @@ from datetime import datetime, timedelta, timezone
 
 import requests
 from fastapi import HTTPException, Request, UploadFile, status
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session, joinedload
@@ -1067,6 +1068,7 @@ def list_documents(
     entity_id: str | int | None = None,
     is_template: bool | None = None,
     limit: int = 50,
+    offset: int = 0,
     sort_by: str | None = None,
     sort_direction: str | None = None,
     current_user=None,
@@ -1080,6 +1082,7 @@ def list_documents(
         entity_id=entity_id,
         is_template=is_template,
         limit=limit,
+        offset=offset,
         sort_by=sort_by,
         sort_direction=sort_direction,
     )

@@ -19,10 +19,13 @@ export function DocumentReferenceActions({
   document,
   showCopy = false,
   resolveView: resolveViewOverride,
+  size = "default",
 }: {
   document: DocumentReference;
   showCopy?: boolean;
   resolveView?: () => Promise<{ url: string }>;
+  /** `sm` inside a table row (design.md 4.2), so the cluster matches its siblings (R4). */
+  size?: "default" | "sm";
 }) {
   const disabledReason = document.storage_provider === "local" ? null : unavailableReason(document);
 
@@ -54,15 +57,23 @@ export function DocumentReferenceActions({
     }
   }
 
+  // These two live in a table row, so there is no space for the reason beside them and
+  // 4.7's "render it only when it works" does not apply either: a broken provider link is
+  // a state the operator has to be able to see and fix, not an action that does not exist
+  // yet. So the control stays disabled and the reason becomes readable — `title` alone is a
+  // pointer-only affordance, invisible to the keyboard and to a screen reader (8).
+  const reasonId = disabledReason ? `document-${document.id}-unavailable` : undefined;
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button type="button" variant="outline" onClick={() => void openDocument()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined}>
-        <ExternalLink className="h-4 w-4" />
+      {disabledReason ? <span id={reasonId} className="sr-only">{disabledReason}</span> : null}
+      <Button type="button" variant="outline" size={size} onClick={() => void openDocument()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
+        <ExternalLink />
         View
       </Button>
       {showCopy ? (
-        <Button type="button" variant="outline" onClick={() => void copyLink()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined}>
-          <Copy className="h-4 w-4" />
+        <Button type="button" variant="outline" size={size} onClick={() => void copyLink()} disabled={Boolean(disabledReason)} title={disabledReason ?? undefined} aria-describedby={reasonId}>
+          <Copy />
           Copy link
         </Button>
       ) : null}

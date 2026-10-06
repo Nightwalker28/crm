@@ -510,7 +510,14 @@ class CalendarGoogleSyncTests(unittest.TestCase):
     def test_calendar_context_includes_recent_sync_jobs_for_current_user(self):
         db = FakeDB()
         current_user = SimpleNamespace(id=1, tenant_id=10)
-        user = SimpleNamespace(id=1, email="ava@example.com", team_id=None, first_name="Ava", last_name="Khan")
+        user = SimpleNamespace(
+            id=1,
+            email="ava@example.com",
+            team_id=None,
+            first_name="Ava",
+            last_name="Khan",
+            booking_handle=None,
+        )
         job = SimpleNamespace(id=99, status="completed")
 
         with patch.object(calendar_services.calendar_repository, "list_context_users", return_value=[user]), \

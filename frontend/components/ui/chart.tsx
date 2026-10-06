@@ -2,6 +2,7 @@
 
 import * as React from "react";
 
+import { seriesColor } from "@/lib/chartColors";
 import { cn } from "@/lib/utils";
 
 export type ChartConfig = Record<string, { label: string; color?: string }>;
@@ -51,7 +52,7 @@ function ChartTooltipContent({ active, payload, label }: { active?: boolean; pay
   const context = React.useContext(ChartContext);
   if (!active || !payload?.length) return null;
   return (
-    <div className="min-w-36 rounded-md border border-line-default bg-surface-raised px-3 py-2 text-sm shadow-[var(--shadow-panel)]">
+    <div className="min-w-36 rounded-[var(--radius-card)] border border-line-default bg-surface-raised px-3 py-2 text-sm shadow-[var(--shadow-panel)]">
       {label ? <div className="mb-2 font-medium text-copy-primary">{label}</div> : null}
       <div className="space-y-1.5">
         {payload.map((item, index) => {
@@ -63,7 +64,7 @@ function ChartTooltipContent({ active, payload, label }: { active?: boolean; pay
           return (
             <div key={`${dataKey}-${index}`} className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-2 text-copy-secondary">
-                <span className="h-2.5 w-2.5 rounded-[2px]" style={{ backgroundColor: String(item.color ?? config?.color ?? "var(--chart-1)") }} />
+                <span aria-hidden="true" className="h-2.5 w-2.5 shrink-0 rounded-[2px]" style={{ backgroundColor: String(item.color ?? config?.color ?? seriesColor(0)) }} />
                 <span>{config?.label ?? String(item.name ?? dataKey)}</span>
               </div>
               <span className="font-medium tabular-nums text-copy-primary">{value}</span>

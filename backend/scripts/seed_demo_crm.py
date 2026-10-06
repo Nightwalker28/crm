@@ -27,6 +27,7 @@ from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 
 # User / platform models
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.user_management.models import (
     CompanyProfile,
     Department,
@@ -63,7 +64,6 @@ from app.modules.catalog.models import (
     CatalogService,
 )
 from app.modules.finance.models import (
-    FinanceIO,
     FinancePosInvoice,
     FinancePosInvoiceLine,
 )
@@ -89,8 +89,7 @@ NOW = datetime.now(timezone.utc)
 MODULES = [
     ("catalog_products", "/dashboard/catalog/products", "Product catalog"),
     ("catalog_services", "/dashboard/catalog/services", "Service catalog"),
-    ("finance_io", "/dashboard/finance/insertion-orders", "Finance insertion orders"),
-    ("finance_pos", "/dashboard/finance/pos", "POS mode invoices and walk-in sales"),
+    ("finance_pos", "/dashboard/finance/invoices", "POS mode invoices and walk-in sales"),
     ("sales_contacts", "/dashboard/sales/contacts", "Sales contacts"),
     ("sales_organizations", "/dashboard/sales/organizations", "Sales organizations"),
     ("sales_opportunities", "/dashboard/sales/opportunities", "Sales opportunities"),
@@ -188,6 +187,13 @@ def slugify(value: str) -> str:
 
 
 def demo_hash(value: str) -> str:
+    """Deterministic stand-in for a real token hash.
+
+    Callers must include the tenant id in `value` whenever the column it backs is
+    globally unique (client setup tokens, public page tokens). Those indexes are not
+    tenant-scoped - a signed link has to be unique across the whole install - so
+    seeding a second tenant with the same inputs would collide.
+    """
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
@@ -214,8 +220,14 @@ def get_or_create(db: Session, model, defaults: dict | None = None, **filters):
     return obj
 
 
-def reset_demo_tenant(db: Session) -> None:
-    tenant = get_one(db, Tenant, slug=DEMO_TENANT_SLUG)
+def reset_demo_tenant(db: Session, slug: str = DEMO_TENANT_SLUG) -> None:
+    if slug != DEMO_TENANT_SLUG:
+        raise SystemExit(
+            f"Refusing to reset tenant '{slug}'. --reset-demo deletes the tenant and every "
+            f"record linked to it, and is only allowed for the demo tenant "
+            f"('{DEMO_TENANT_SLUG}')."
+        )
+    tenant = get_one(db, Tenant, slug=slug)
     if tenant:
         print(f"Deleting existing demo tenant: {tenant.name} ({tenant.id})")
         db.delete(tenant)
@@ -243,26 +255,34 @@ def seed_modules(db: Session) -> dict[str, Module]:
     return modules
 
 
-def seed_tenant(db: Session) -> Tenant:
+def seed_tenant(db: Session, slug: str = DEMO_TENANT_SLUG, name: str = "Lynk Demo CRM") -> Tenant:
+    """Find or create the target tenant.
+
+    `get_or_create` matches on slug alone, so pointing this at an existing tenant
+    reuses it and leaves its name and status untouched - the defaults only apply
+    when the tenant is being created.
+    """
     tenant = get_or_create(
         db,
         Tenant,
-        slug=DEMO_TENANT_SLUG,
+        slug=slug,
         defaults={
-            "name": "Lynk Demo CRM",
+            "name": name,
             "is_active": 1,
         },
     )
 
-    get_or_create(
-        db,
-        TenantDomain,
-        hostname=DEMO_DOMAIN,
-        defaults={
-            "tenant_id": tenant.id,
-            "is_primary": 1,
-        },
-    )
+    # The demo hostname belongs to the demo tenant. Never attach it to a real one.
+    if slug == DEMO_TENANT_SLUG:
+        get_or_create(
+            db,
+            TenantDomain,
+            hostname=DEMO_DOMAIN,
+            defaults={
+                "tenant_id": tenant.id,
+                "is_primary": 1,
+            },
+        )
 
     db.commit()
     return tenant
@@ -356,10 +376,7 @@ def seed_roles_departments_teams(
                     can_configure=0,
                 )
 
-            if role_name == "Support" and module_key in {
-                "finance_io",
-                "finance_pos",
-            }:
+            if role_name == "Support" and module_key == "finance_pos":
                 final_preset.update(
                     can_create=0,
                     can_edit=0,
@@ -374,7 +391,6 @@ def seed_roles_departments_teams(
                 "sales_opportunities",
                 "catalog_products",
                 "catalog_services",
-                "finance_io",
                 "finance_pos",
                 "tasks",
                 "calendar",
@@ -575,6 +591,8 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
     ]
 
     organizations: list[SalesOrganization] = []
+    # Seeded rows bypass the services, so they store picklist keys through the resolver.
+    picklists = PicklistResolver(db, tenant.id, allow_create=True)
 
     for idx, (name, website, industry, city, country, group_key) in enumerate(org_specs):
         org = get_or_create(
@@ -586,15 +604,17 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
                 "website": website,
                 "primary_phone": f"+94112{idx + 100000}",
                 "primary_email": f"hello@{slugify(name)}.example",
-                "industry": industry,
-                "annual_revenue": f"LKR {(idx + 2) * 25}M",
+                "industry": picklists.resolve("industry", industry),
+                "annual_revenue": Decimal((idx + 2) * 25_000_000),
+                "account_type": "customer",
+                "employee_count": (idx + 1) * 40,
                 "assigned_to": sales_users[idx % len(sales_users)].id,
                 "customer_group_id": groups[group_key].id,
                 "billing_address": f"{idx + 10}, Demo Road",
                 "billing_city": city,
                 "billing_state": "Western",
                 "billing_postal_code": f"10{idx}00",
-                "billing_country": country,
+                "billing_country": picklists.resolve("country", country),
             },
         )
         organizations.append(org)
@@ -630,8 +650,8 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
                 "contact_telephone": f"+9477{idx:07d}",
                 "linkedin_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
                 "current_title": title,
-                "region": "Western Province",
-                "country": "Sri Lanka",
+                "region": picklists.resolve("region", "Western Province"),
+                "country": picklists.resolve("country", "Sri Lanka"),
                 "email_opt_out": False,
                 "assigned_to": sales_users[idx % len(sales_users)].id,
                 "organization_id": org.org_id,
@@ -659,24 +679,17 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
             tenant_id=tenant.id,
             opportunity_name=f"{org.org_name} - {['CRM Setup', 'Automation Package', 'Retainer', 'Website Integration'][idx % 4]}",
             defaults={
-                "client": org.org_name,
                 "sales_stage": stage,
                 "contact_id": contact.contact_id,
                 "organization_id": org.org_id,
                 "assigned_to": contact.assigned_to,
                 "start_date": date.today() - timedelta(days=20 - idx),
                 "expected_close_date": date.today() + timedelta(days=10 + idx * 3),
-                "campaign_type": ["Inbound", "Referral", "Outbound", "Website"][idx % 4],
-                "total_leads": str(50 + idx * 15),
-                "cpl": str(250 + idx * 20),
-                "total_cost_of_project": str(150000 + idx * 35000),
+                "amount": Decimal(150000 + idx * 35000),
                 "currency_type": "LKR",
-                "target_geography": "Sri Lanka",
-                "target_audience": "SMB / Mid-market",
-                "domain_cap": "Business decision makers",
-                "tactics": "Email, WhatsApp, landing page, demo call",
-                "delivery_format": "Monthly service package",
-                "attachments": None,
+                "deal_type": ["new_business", "existing_business"][idx % 2],
+                "source": ["website", "referral", "event", "partner"][idx % 4],
+                "next_step": "Send the proposal and book a review call",
                 "last_contacted_at": NOW - timedelta(days=idx),
                 "last_contacted_channel": ["email", "call", "meeting"][idx % 3],
                 "last_contacted_by_user_id": contact.assigned_to,
@@ -759,7 +772,6 @@ def seed_catalog(db: Session, tenant: Tenant, users):
 
 def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, products, services, modules):
     finance_user = users[demo_email("maya.finance")]
-    sales_user = users[demo_email("ravi.sales")]
 
     invoices = []
 
@@ -775,14 +787,18 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
 
         subtotal = sum(quantity * price for _, _, quantity, price in line_items)
         discount = Decimal("0") if idx % 3 else Decimal("5000")
-        tax_rate = Decimal("0.15")
-        tax_amount = (subtotal - discount) * tax_rate
+        # `tax_rate` is a percentage, not a fraction: `pos_invoice_services._recalculate`
+        # divides by 100, and the invoice form's own preview does the same. Seeding `0.15`
+        # here produced records that read "0.15%" beside 15% of tax on every demo invoice.
+        tax_rate = Decimal("15")
+        tax_amount = (subtotal - discount) * tax_rate / Decimal("100")
         total = subtotal - discount + tax_amount
         paid = total if idx % 4 in (0, 1) else (total / Decimal("2") if idx % 4 == 2 else Decimal("0"))
 
+        # Since E5 an invoice's lifecycle is draft → issued → void; "paid" is a payment status.
         if paid == total:
             payment_status = "paid"
-            status = "paid"
+            status = "issued"
         elif paid > 0:
             payment_status = "partial"
             status = "issued"
@@ -829,6 +845,7 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
         for order, (item_type, item, quantity, price) in enumerate(line_items, start=1):
             db.add(
                 FinancePosInvoiceLine(
+                    tenant_id=invoice.tenant_id,
                     invoice_id=invoice.id,
                     catalog_product_id=item.id if item_type == "product" else None,
                     catalog_service_id=item.id if item_type == "service" else None,
@@ -841,37 +858,6 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
             )
 
         invoices.append(invoice)
-
-    finance_module_id = modules["finance_io"].id
-
-    for idx, org in enumerate(organizations[:6]):
-        get_or_create(
-            db,
-            FinanceIO,
-            tenant_id=tenant.id,
-            io_number=f"IO-DEMO-{idx + 1:04d}",
-            defaults={
-                "module_id": finance_module_id,
-                "user_id": sales_user.id,
-                "external_reference": f"PO-{2026}-{idx + 100}",
-                "file_name": f"io-demo-{idx + 1}.pdf",
-                "file_path": f"/demo/finance/io-demo-{idx + 1}.pdf",
-                "customer_organization_id": org.org_id,
-                "customer_name": org.org_name,
-                "counterparty_reference": f"CP-{idx + 500}",
-                "issue_date": date.today() - timedelta(days=idx * 5),
-                "effective_date": date.today() - timedelta(days=idx * 4),
-                "due_date": date.today() + timedelta(days=20 + idx),
-                "status": ["draft", "issued", "active", "completed", "cancelled", "imported"][idx % 6],
-                "currency": "LKR",
-                "subtotal_amount": Decimal("125000") + Decimal(idx * 20000),
-                "tax_amount": Decimal("18750") + Decimal(idx * 3000),
-                "total_amount": Decimal("143750") + Decimal(idx * 23000),
-                "notes": "Demo finance IO linked to organization.",
-                "start_date": date.today() - timedelta(days=idx * 2),
-                "end_date": date.today() + timedelta(days=30 + idx),
-            },
-        )
 
     db.commit()
     return invoices
@@ -892,7 +878,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                 "email": contact.primary_email,
                 "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                 "status": "active" if idx % 2 == 0 else "pending",
-                "setup_token_hash": demo_hash(f"setup-{contact.primary_email}"),
+                "setup_token_hash": demo_hash(f"setup-{tenant.id}-{contact.primary_email}"),
                 "setup_token_expires_at": NOW + timedelta(days=7),
                 "last_login_at": NOW - timedelta(days=idx) if idx % 2 == 0 else None,
                 "created_by_user_id": admin.id,
@@ -914,7 +900,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                     "email": email,
                     "password_hash": hash_password(DEMO_CLIENT_PASSWORD),
                     "status": "active",
-                    "setup_token_hash": demo_hash(f"setup-{email}"),
+                    "setup_token_hash": demo_hash(f"setup-{tenant.id}-{email}"),
                     "setup_token_expires_at": NOW + timedelta(days=10),
                     "last_login_at": NOW - timedelta(days=idx + 1),
                     "created_by_user_id": admin.id,
@@ -964,7 +950,7 @@ def seed_client_portal(db: Session, tenant: Tenant, users, contacts, organizatio
                 },
                 "source_module_key": "sales_contacts",
                 "source_entity_id": str(contact.contact_id),
-                "public_token_hash": demo_hash(f"public-page-{contact.contact_id}"),
+                "public_token_hash": demo_hash(f"public-page-{tenant.id}-{contact.contact_id}"),
                 "public_token_expires_at": NOW + timedelta(days=30),
                 "published_at": NOW - timedelta(days=idx) if idx % 4 in (1, 2) else None,
                 "created_by_user_id": admin.id,
@@ -1188,7 +1174,21 @@ def main():
     parser.add_argument(
         "--reset-demo",
         action="store_true",
-        help="Delete the demo tenant and recreate all linked demo data.",
+        help="Delete the demo tenant and recreate all linked demo data. Demo tenant only.",
+    )
+    parser.add_argument(
+        "--tenant-slug",
+        default=DEMO_TENANT_SLUG,
+        help=(
+            "Slug of the tenant to seed. Defaults to the demo tenant. Point it at an "
+            "existing slug to load sample records into that tenant instead; the tenant's "
+            "own name and status are left unchanged."
+        ),
+    )
+    parser.add_argument(
+        "--tenant-name",
+        default="Lynk Demo CRM",
+        help="Name used only when the target tenant does not exist yet.",
     )
     args = parser.parse_args()
 
@@ -1196,10 +1196,10 @@ def main():
 
     try:
         if args.reset_demo:
-            reset_demo_tenant(db)
+            reset_demo_tenant(db, args.tenant_slug)
 
         modules = seed_modules(db)
-        tenant = seed_tenant(db)
+        tenant = seed_tenant(db, args.tenant_slug, args.tenant_name)
         roles, departments, teams = seed_roles_departments_teams(db, tenant, modules)
         users = seed_users(db, tenant, roles, departments, teams)
         groups = seed_customer_groups(db, tenant)

@@ -14,6 +14,7 @@ from app.modules.client_portal import models as client_portal_models  # noqa: F4
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.sales.models import SalesOrganization
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationListItem, SalesOrganizationResponse, SalesOrganizationUpdate
+from app.modules.sales.repositories import organizations_repository
 from app.modules.sales.services import organizations_services
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -88,10 +89,11 @@ class OrganizationQueryBuildTests(unittest.TestCase):
             calls.append(search)
             return query
 
-        with patch.object(organizations_services, "apply_ranked_search", side_effect=fake_apply_ranked_search), \
-             patch.object(organizations_services, "build_custom_field_filter_map", return_value={}):
-            organizations_services._build_organization_query(db, tenant_id=3, search=None)
-            organizations_services._build_organization_query(db, tenant_id=3, search="acme")
+        # One query for the list, its cursor and its export (13a A5): the repository's.
+        with patch.object(organizations_repository, "apply_ranked_search", side_effect=fake_apply_ranked_search), \
+             patch.object(organizations_repository, "build_custom_field_filter_map", return_value={}):
+            organizations_repository.build_organization_query(db, tenant_id=3, search=None)
+            organizations_repository.build_organization_query(db, tenant_id=3, search="acme")
 
         self.assertEqual(calls, [None, "acme"])
 

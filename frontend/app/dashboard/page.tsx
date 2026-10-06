@@ -1,26 +1,18 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import {
-  CalendarDays,
-  ClipboardList,
-  FileText,
-  Mail,
-  Pencil,
-  Plus,
-  RefreshCw,
-} from "lucide-react";
+import { LayoutGrid, Pencil, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useConfirm } from "@/hooks/useConfirm";
 import { useNotifications } from "@/hooks/useNotifications";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES } from "@/lib/routes";
+import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { cn } from "@/lib/utils";
 import {
   DashboardCrmWidget,
@@ -28,7 +20,6 @@ import {
   type CrmDashboardSummary,
 } from "@/components/dashboard/DashboardCrmWidgets";
 import {
-  DashboardEmptyMessage as EmptyMessage,
   DashboardModuleEntryPoints,
   DashboardNotifications,
   DashboardQuickActions,
@@ -42,6 +33,7 @@ import {
 } from "@/components/dashboard/DashboardPersonalWidgets";
 import {
   DashboardReportChartWidget,
+  describeSavedReport,
   fetchDashboardSavedReports,
 } from "@/components/dashboard/DashboardReportChartWidget";
 import {
@@ -51,7 +43,8 @@ import {
   type DashboardWidgetCatalogItem,
   type DashboardWidgetSize,
 } from "@/components/dashboard/DashboardLayoutEditor";
-import { PageToolbar } from "@/components/ui/PageToolbar";
+import { PageShell } from "@/components/ui/PageShell";
+import { PanelEmpty } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
@@ -108,6 +101,7 @@ function isCrmWidget(type: DashboardWidget["type"]) {
 
 export default function DashboardHomePage() {
   const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
   const [addOpen, setAddOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [draftWidgets, setDraftWidgets] = useState<DashboardWidget[]>(DEFAULT_DASHBOARD_WIDGETS);
@@ -173,7 +167,9 @@ export default function DashboardHomePage() {
       setAddOpen(false);
       toast.success("Dashboard layout saved.");
     },
-    onError: () => toast.error("The dashboard layout could not be saved."),
+    // The error banner that repeated this below the header is gone: one message, and it says
+    // what survived.
+    onError: () => toast.error("The dashboard layout could not be saved. Your draft is still open."),
   });
   useUnsavedChangesGuard(isLayoutDirty, saveMutation.isPending);
 
@@ -193,28 +189,28 @@ export default function DashboardHomePage() {
 
   const catalog = useMemo<DashboardWidgetCatalogItem[]>(() => {
     const items: DashboardWidgetCatalogItem[] = [
-      { type: "note", title: "Quick Note", description: "A personal scratchpad that stays on your dashboard.", defaultSize: "medium", config: { body: "" } },
-      { type: "summary_table", title: "Summary Table", description: "A searchable table of available modules and key CRM totals.", defaultSize: "large" },
-      { type: "module_entry_points", title: "Module Entry Points", description: "A compact launcher for every module you can access.", defaultSize: "large" },
-      { type: "quick_actions", title: "Quick Actions", description: "Fast links into common work areas.", defaultSize: "medium" },
-      { type: "recent_activity", title: "Recent Activity", description: "Latest audited platform writes.", defaultSize: "large" },
+      { type: "note", title: "Quick note", description: "A personal scratchpad that stays on your dashboard.", defaultSize: "medium", config: { body: "" } },
+      { type: "summary_table", title: "Summary table", description: "A searchable table of available modules and key CRM totals.", defaultSize: "large" },
+      { type: "module_entry_points", title: "Module entry points", description: "A compact launcher for every module you can access.", defaultSize: "large" },
+      { type: "quick_actions", title: "Quick actions", description: "Fast links into common work areas.", defaultSize: "medium" },
+      { type: "recent_activity", title: "Recent activity", description: "Latest audited platform writes.", defaultSize: "large" },
       { type: "notifications", title: "Notifications", description: "Recent per-user operational updates.", defaultSize: "medium" },
     ];
     if (hasReportAccess) {
       items.unshift(
-        { type: "crm_snapshot", title: "CRM Snapshot", description: "Pipeline, leads, closed deals, and follow-ups.", defaultSize: "wide" },
-        { type: "weighted_forecast", title: "Weighted Forecast", description: "Weighted pipeline forecast for the next reporting period.", defaultSize: "large" },
-        { type: "pipeline_funnel", title: "Pipeline Funnel", description: "A funnel view of deal stages and pipeline value.", defaultSize: "large" },
-        { type: "lead_status", title: "Leads By Status", description: "Lead distribution by current status.", defaultSize: "medium" },
-        { type: "deal_stages", title: "Deals By Stage", description: "Opportunity counts and value by stage.", defaultSize: "medium" },
-        { type: "quote_status", title: "Quotes By Status", description: "Quote distribution by status.", defaultSize: "medium" },
-        { type: "owner_performance", title: "Owner Performance", description: "Assigned CRM workload and won deals.", defaultSize: "large" },
+        { type: "crm_snapshot", title: "CRM snapshot", description: "Pipeline, leads, closed deals, and follow-ups.", defaultSize: "wide" },
+        { type: "weighted_forecast", title: "Weighted forecast", description: "Weighted pipeline forecast for the next reporting period.", defaultSize: "large" },
+        { type: "pipeline_funnel", title: "Pipeline funnel", description: "A funnel view of deal stages and pipeline value.", defaultSize: "large" },
+        { type: "lead_status", title: "Leads by status", description: "Lead distribution by current status.", defaultSize: "medium" },
+        { type: "deal_stages", title: "Deals by stage", description: "Opportunity counts and value by stage.", defaultSize: "medium" },
+        { type: "quote_status", title: "Quotes by status", description: "Quote distribution by status.", defaultSize: "medium" },
+        { type: "owner_performance", title: "Owner performance", description: "Assigned CRM workload and won deals.", defaultSize: "large" },
       );
       savedReports.forEach((report) => {
         items.push({
           type: "report_chart",
           title: `Chart: ${report.name}`,
-          description: `${getModuleDisplayName(report.module_key)} by ${report.config.dimension}`,
+          description: describeSavedReport(report),
           defaultSize: "large",
           config: { saved_report_id: report.id },
         });
@@ -224,7 +220,7 @@ export default function DashboardHomePage() {
       if (!module.base_route) return;
       items.push({
         type: "module_summary",
-        title: `${getModuleDisplayName(module.name, module.description ?? undefined)} Summary`,
+        title: `${getModuleDisplayName(module.name, module.description ?? undefined)} summary`,
         description: module.description || "Quick access and module context.",
         defaultSize: "small",
         module_key: module.name,
@@ -281,9 +277,13 @@ export default function DashboardHomePage() {
     saveMutation.mutate(nextWidgets);
   }
 
-  function resetLayout() {
-    if (!window.confirm("Reset this draft to the default dashboard widgets?")) return;
-    setDraftWidgets(DEFAULT_DASHBOARD_WIDGETS);
+  async function resetLayout() {
+    const confirmed = await confirm({
+      title: "Reset to the default layout?",
+      description: "Every widget in this draft is replaced with the default set. Nothing is saved until you save the layout.",
+      confirmLabel: "Reset draft",
+    });
+    if (confirmed) setDraftWidgets(DEFAULT_DASHBOARD_WIDGETS);
   }
 
   function beginEditing() {
@@ -291,8 +291,16 @@ export default function DashboardHomePage() {
     setIsEditing(true);
   }
 
-  function cancelEditing() {
-    if (isLayoutDirty && !window.confirm("Discard unsaved dashboard layout changes?")) return;
+  async function cancelEditing() {
+    if (isLayoutDirty) {
+      const confirmed = await confirm({
+        title: "Discard layout changes?",
+        description: "The widgets you added, moved, resized or removed go back to your saved dashboard.",
+        confirmLabel: "Discard changes",
+        variant: "destructive",
+      });
+      if (!confirmed) return;
+    }
     setDraftWidgets(persistedWidgets);
     setAddOpen(false);
     setIsEditing(false);
@@ -323,6 +331,7 @@ export default function DashboardHomePage() {
           type={widget.type}
           summary={summary}
           hasReportAccess={hasReportAccess}
+          isAccessLoading={isModulesLoading}
           isLoading={crmSummaryQuery.isLoading}
           isError={crmSummaryQuery.isError}
           onRetry={() => void crmSummaryQuery.refetch()}
@@ -342,7 +351,7 @@ export default function DashboardHomePage() {
       );
     }
     if (widget.type === "report_chart") {
-      return <DashboardReportChartWidget config={widget.config} savedReports={savedReports} hasReportAccess={hasReportAccess} />;
+      return <DashboardReportChartWidget config={widget.config} savedReports={savedReports} hasReportAccess={hasReportAccess} isAccessLoading={isModulesLoading} />;
     }
     if (widget.type === "module_entry_points") {
       return <DashboardModuleEntryPoints modules={modules} isLoading={isModulesLoading} />;
@@ -373,63 +382,46 @@ export default function DashboardHomePage() {
     }
     if (widget.type === "module_summary") {
       const dashboardModule = widget.module_key ? modulesByName.get(widget.module_key) : null;
-      if (!dashboardModule) return <EmptyMessage>This module is no longer available in your access scope.</EmptyMessage>;
+      if (!dashboardModule) {
+        return <PanelEmpty icon={LayoutGrid} title="This module is no longer available" description="Your role no longer has access to it. Remove this widget, or ask an administrator." />;
+      }
       return <DashboardModuleSummary module={dashboardModule} summary={summary} unreadCount={unreadCount} />;
     }
     return null;
   }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-secondary">
-      <PageToolbar>
-          {isEditing ? null : (
-            <>
-              <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
-                <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="7">Last 7 days</SelectItem>
-                  <SelectItem value="30">Last 30 days</SelectItem>
-                  <SelectItem value="90">Last 90 days</SelectItem>
-                </SelectContent>
-              </Select>
-              <Button type="button" variant="outline" onClick={() => void refreshDashboard()} disabled={isRefreshing}>
-                <RefreshCw className={cn(isRefreshing && "animate-spin")} />
-                {isRefreshing ? "Refreshing…" : "Refresh"}
-              </Button>
-              <Button type="button" variant="outline" onClick={beginEditing}>
-                <Pencil />
-                Edit dashboard
-              </Button>
-              <Button asChild variant="outline">
-                <Link href={SETTINGS_ROUTES.activityLog}>
-                  <ClipboardList />
-                  Activity log
-                </Link>
-              </Button>
-              {accessibleRoutes.has(DASHBOARD_ROUTES.tasks) ? (
-                <Button asChild>
-                  <Link href={DASHBOARD_ROUTES.tasks}>
-                    <Plus />
-                    New work
-                  </Link>
-                </Button>
-              ) : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.calendar) ? <HeaderLink href={DASHBOARD_ROUTES.calendar} icon={<CalendarDays />} label="Calendar" /> : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.mail) ? <HeaderLink href={DASHBOARD_ROUTES.mail} icon={<Mail />} label="Mail" /> : null}
-              {accessibleRoutes.has(DASHBOARD_ROUTES.documents) ? <HeaderLink href={DASHBOARD_ROUTES.documents} icon={<FileText />} label="Documents" /> : null}
-            </>
-          )}
-      </PageToolbar>
+    <PageShell
+      title="Dashboard"
+      // Ruling 3: the page's own actions and nothing else. Calendar, Mail and Documents repeated
+      // the sidebar and the quick-actions widget; `New work` was a link to the tasks list named
+      // like a create action; Activity log is an admin surface and lives in settings.
+      actions={isEditing ? null : (
+          <>
+            <Select value={String(periodDays)} onValueChange={(value) => setPeriodDays(Number(value))}>
+              <SelectTrigger aria-label="Dashboard date range" className="w-36"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button type="button" variant="outline" onClick={() => void refreshDashboard()} disabled={isRefreshing}>
+              <RefreshCw className={cn(isRefreshing && "animate-spin")} />
+              {isRefreshing ? "Refreshing…" : "Refresh"}
+            </Button>
+            <Button type="button" variant="outline" onClick={beginEditing}>
+              <Pencil />
+              Edit dashboard
+            </Button>
+          </>
+      )}
+    >
 
       {layoutQuery.error ? (
         <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-copy-secondary">
           <span>Your saved dashboard layout could not be loaded. The default layout is shown.</span>
           <Button type="button" variant="outline" size="sm" onClick={() => void layoutQuery.refetch()}>Try again</Button>
-        </div>
-      ) : null}
-      {saveMutation.error ? (
-        <div role="alert" className="rounded-[var(--radius-card)] border border-state-danger/30 bg-state-danger-muted px-4 py-3 text-sm text-state-danger">
-          The dashboard layout could not be saved. Your draft is still available.
         </div>
       ) : null}
 
@@ -455,17 +447,6 @@ export default function DashboardHomePage() {
         onSave={(nextWidgets) => saveMutation.mutate(nextWidgets)}
         renderWidget={renderWidget}
       />
-    </div>
-  );
-}
-
-function HeaderLink({ href, icon, label }: { href: string; icon: ReactNode; label: string }) {
-  return (
-    <Button asChild variant="outline">
-      <Link href={href}>
-        {icon}
-        {label}
-      </Link>
-    </Button>
+    </PageShell>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { MenuItem } from "@headlessui/react";
 import { Download, FileDown } from "lucide-react";
 import { toast } from "sonner";
 
@@ -17,6 +16,7 @@ import {
   DialogPanel,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
 import { type ExportMode, getFilenameFromDisposition } from "@/components/ui/importExportUtils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useJobPoller } from "@/hooks/useJobPoller";
@@ -32,6 +32,14 @@ type Props = {
   currentPageIds: number[];
   disabled?: boolean;
   onExportSuccess?: () => void;
+  /**
+   * Controlled from outside a menu. A dialog that lives inside `DropdownMenuContent` unmounts
+   * the moment the item that opened it closes the menu, so a caller that puts the item in a
+   * menu owns the open state and renders this beside the menu with `hideTrigger`.
+   */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  hideTrigger?: boolean;
 };
 
 type ExportExecutionResponse = {
@@ -60,10 +68,18 @@ export function ExportControls({
   currentPageIds,
   disabled,
   onExportSuccess,
+  open,
+  onOpenChange,
+  hideTrigger = false,
 }: Props) {
   const downloadedExportJobRef = useRef<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
-  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false);
+  const [ownOpen, setOwnOpen] = useState(false);
+  const isExportDialogOpen = open ?? ownOpen;
+  const setIsExportDialogOpen = (next: boolean) => {
+    if (open === undefined) setOwnOpen(next);
+    onOpenChange?.(next);
+  };
   const [exportMode, setExportMode] = useState<ExportMode>("all");
   const [exportJobId, setExportJobId] = useState<number | null>(null);
   const [exportSummary, setExportSummary] = useState<Record<string, unknown> | null>(null);
@@ -164,21 +180,15 @@ export function ExportControls({
 
   return (
     <>
-      <MenuItem>
-        {({ focus }) => (
-          <button
-            type="button"
-            disabled={disabled || isExporting}
-            onClick={() => setIsExportDialogOpen(true)}
-            className={`flex w-full items-center gap-2 rounded-[var(--radius-control-sm)] px-3 py-2 text-sm text-copy-secondary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:pointer-events-none disabled:text-copy-disabled ${
-              focus ? "bg-action-primary-muted text-copy-primary" : ""
-            }`}
-          >
-            <Download aria-hidden="true" />
-            {isExporting ? "Preparing export..." : exportLabel}
-          </button>
-        )}
-      </MenuItem>
+      {hideTrigger ? null : (
+        <DropdownMenuItem
+          disabled={disabled || isExporting}
+          onSelect={() => setIsExportDialogOpen(true)}
+        >
+          <Download aria-hidden="true" />
+          {isExporting ? "Preparing export…" : exportLabel}
+        </DropdownMenuItem>
+      )}
 
       <Dialog open={isExportDialogOpen} onClose={() => { if (!isExporting) resetExportState(); }}>
         <DialogBackdrop />
@@ -199,7 +209,7 @@ export function ExportControls({
               </div>
             </DialogHeader>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               {exportError ? (
                 <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
                   {exportError}
@@ -234,7 +244,7 @@ export function ExportControls({
                   <FileDown className="mt-0.5 size-5 shrink-0 text-copy-muted" aria-hidden="true" />
                   <div>
                     <div className="text-sm font-medium text-copy-primary">All accessible records</div>
-                    <div className="mt-1 text-sm leading-6 text-copy-secondary">
+                    <div className="mt-1 text-p-sm text-copy-secondary">
                       The download respects the module and tenant access enforced by the server.
                     </div>
                   </div>
@@ -262,7 +272,7 @@ export function ExportControls({
                   </Button>
                   <Button type="button" onClick={() => void handleExportSubmit()} disabled={isExporting || modeInvalid}>
                     <Download />
-                    {isExporting ? "Preparing..." : supportsScopedExport ? "Run export" : "Download CSV"}
+                    {isExporting ? "Preparing…" : supportsScopedExport ? "Run export" : "Download CSV"}
                   </Button>
                 </>
               )}
@@ -328,14 +338,14 @@ function ExportModeOption({
   return (
     <RadioGroupItem
       value={value}
-      className={`rounded-[var(--radius-card)] border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${
+      className={`rounded-[var(--radius-control)] border px-4 py-3 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus ${
         active
           ? "border-primary bg-action-primary-muted text-copy-primary"
-          : "border-line-default bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface"
+          : "border-line-subtle bg-surface-muted text-copy-secondary hover:border-line-strong hover:bg-surface"
       }`}
     >
       <span className="block text-sm font-medium">{title}</span>
-      <span className="mt-1 block text-xs leading-5 text-copy-muted">{description}</span>
+      <span className="mt-1 block text-p-xs text-copy-muted">{description}</span>
     </RadioGroupItem>
   );
 }

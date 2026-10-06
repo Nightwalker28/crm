@@ -1,48 +1,46 @@
 "use client";
 
-import { type FormEvent, useMemo, useState } from "react";
-import { Filter, Lock, MoreHorizontal, Plus, Settings2, Sparkles, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Filter, Lock, Plus, Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
+import { ActionBar } from "@/components/ui/ActionBar";
+import { Chip } from "@/components/ui/Chip";
+import { EditorPanel } from "@/components/ui/EditorPanel";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { SegmentedBoolean, SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/Card";
-import { Checkbox, CheckboxIndicator } from "@/components/ui/checkbox";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { PageToolbar } from "@/components/ui/PageToolbar";
-import { Pill } from "@/components/ui/Pill";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { PageShell } from "@/components/ui/PageShell";
+import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteLoadingState } from "@/components/ui/RouteStates";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetOverlay,
-  SheetPortal,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import { isProtectedFieldKey, useModuleFieldConfigs, type ModuleFieldSource } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
 import { useConfirm } from "@/hooks/useConfirm";
+import { usePageAddress } from "@/hooks/usePageAddress";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
-import { apiFetch } from "@/lib/api";
-import { getModuleDisplayName } from "@/lib/module-display";
+import { ApiError, apiFetch, isForbiddenError } from "@/lib/api";
+import { SETTINGS_ROUTES } from "@/lib/routes";
+import { TextLink } from "@/components/ui/TextLink";
+import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
+  CUSTOM_FIELD_MODULE_LABELS,
   CUSTOM_FIELD_SUPPORTED_MODULES,
   MODULE_VIEW_DEFINITIONS,
   getCustomFieldColumnKey,
   getModuleViewDefinition,
 } from "@/lib/moduleViewConfigs";
+import { EMPTY_FIELD_TYPE_DRAFT, FieldTypeSettings, fieldTypeDraftProblem, fieldTypePayload, type FieldTypeDraft } from "@/components/fields/FieldTypeSettings";
+import { picklistErrorMessage } from "@/hooks/usePicklistAdmin";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
+import { FIELD_TYPE_LABELS } from "@/lib/fieldTypes";
 
-const FIELD_TYPE_OPTIONS: Array<CustomFieldDefinition["field_type"]> = ["text", "long_text", "number", "date", "boolean"];
 const FILTERS = ["all", "system", "custom", "required", "disabled"] as const;
 
 type FieldFilter = typeof FILTERS[number];
@@ -51,7 +49,7 @@ type PanelMode = "create" | "inspect";
 type DraftField = {
   field_key: string;
   label: string;
-  field_type: CustomFieldDefinition["field_type"];
+  type: FieldTypeDraft;
   placeholder: string;
   help_text: string;
   is_required: boolean;
@@ -84,7 +82,7 @@ type FieldCatalogItem = {
 const emptyDraft: DraftField = {
   field_key: "",
   label: "",
-  field_type: "text",
+  type: EMPTY_FIELD_TYPE_DRAFT,
   placeholder: "",
   help_text: "",
   is_required: false,
@@ -103,6 +101,7 @@ function makeFieldKey(value: string) {
 }
 
 function friendlyFieldType(value?: string | null) {
+  if (value && value in FIELD_TYPE_LABELS) return FIELD_TYPE_LABELS[value as keyof typeof FIELD_TYPE_LABELS];
   return (value || "field").replaceAll("_", " ");
 }
 
@@ -129,7 +128,7 @@ function inspectorSignature(value: InspectorDraft) {
 
 async function fetchAdminCustomFields(moduleKey: string): Promise<CustomFieldDefinition[]> {
   const res = await apiFetch(`/admin/custom-fields/${moduleKey}`);
-  if (!res.ok) throw new Error("Custom fields could not be loaded.");
+  if (!res.ok) throw new ApiError(res.status, "Custom fields could not be loaded.");
   return res.json();
 }
 
@@ -186,6 +185,8 @@ function buildCustomModuleCatalog(module: CustomModuleDefinition | null): FieldC
   }));
 }
 
+const DEFAULT_MODULE_KEY = "sales_contacts";
+
 export default function FieldsPage() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
@@ -197,10 +198,14 @@ export default function FieldsPage() {
     error: customModulesError,
     refresh: refreshCustomModules,
   } = useModuleBuilder();
-  const builtInOptions = useMemo(
-    () => Object.values(MODULE_VIEW_DEFINITIONS).map((definition) => ({ key: definition.key, label: definition.label })),
-    [],
-  );
+  const builtInOptions = useMemo(() => {
+    const options = Object.values(MODULE_VIEW_DEFINITIONS).map((definition) => ({ key: definition.key, label: definition.label }));
+    // Every module that takes custom fields is offered, list view or not (13b §3.4, F3.2).
+    for (const [key, label] of Object.entries(CUSTOM_FIELD_MODULE_LABELS)) {
+      if (!options.some((option) => option.key === key)) options.push({ key, label });
+    }
+    return options;
+  }, []);
   const moduleOptions = useMemo(
     () => [
       ...builtInOptions,
@@ -211,7 +216,21 @@ export default function FieldsPage() {
     [builtInOptions, customModules],
   );
 
-  const [moduleKey, setModuleKey] = useState("sales_contacts");
+  /*
+   * A10: the module lives in `?module=`, not in local state (rebuild.md 5.6 batch 5). Every
+   * visit used to start on `sales_contacts`, so a link to a module's field config could not
+   * be sent and Back from a field's module lost it.
+   *
+   * An unknown key falls back to the default rather than showing an empty catalogue — but
+   * only once the custom modules have resolved, since a deep link to a custom module is
+   * unrecognisable while the list is still loading. The stale param is left in the address:
+   * rewriting the URL on mount is what replaces a shared link's state with the defaults.
+   */
+  const { params, updateAddress } = usePageAddress();
+  const addressedModuleKey = params.get("module")?.trim() || null;
+  const moduleKey = addressedModuleKey && (isLoadingCustomModules || moduleOptions.some((option) => option.key === addressedModuleKey))
+    ? addressedModuleKey
+    : DEFAULT_MODULE_KEY;
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<FieldFilter>("all");
   const [panelMode, setPanelMode] = useState<PanelMode>("inspect");
@@ -243,13 +262,16 @@ export default function FieldsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const problem = fieldTypeDraftProblem(draft.type);
+      if (problem) throw new Error(problem);
+      const { type, ...rest } = draft;
       const res = await apiFetch(`/admin/custom-fields/${moduleKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...rest, ...fieldTypePayload(type) }),
       });
       if (!res.ok) {
-        throw new Error(res.status === 400 ? "Check that the field key is unique and the values are valid." : "The custom field could not be created.");
+        throw new Error(picklistErrorMessage(await apiErrorFromResponse(res, "The custom field could not be created."), "The custom field could not be created."));
       }
       return res.json() as Promise<CustomFieldDefinition>;
     },
@@ -335,7 +357,8 @@ export default function FieldsPage() {
   }, [catalog, filter, search]);
 
   const isLoading = isLoadingCustomModules || isLoadingModuleFields || (supportsCustomFields && customFieldsQuery.isLoading);
-  const hasLoadError = Boolean(customModulesError || moduleFieldsError || customFieldsQuery.error);
+  const loadError = customModulesError || moduleFieldsError || customFieldsQuery.error;
+  const hasLoadError = Boolean(loadError);
   const isSaving = isSavingModuleFields || updateCustomFieldMutation.isPending || isSavingCustomModule;
 
   async function confirmDiscard(description: string) {
@@ -358,7 +381,10 @@ export default function FieldsPage() {
 
   async function handleModuleChange(nextModuleKey: string) {
     if (!await confirmDiscard("Your unsaved field changes will be lost when you switch modules.")) return;
-    setModuleKey(nextModuleKey);
+    updateAddress((next) => {
+      if (nextModuleKey === DEFAULT_MODULE_KEY) next.delete("module");
+      else next.set("module", nextModuleKey);
+    });
     setSearch("");
     setFilter("all");
     setPanelMode("inspect");
@@ -423,8 +449,7 @@ export default function FieldsPage() {
     setInspectorEdit({ fieldKey: selectedField.field_key, value: update(inspectorDraft) });
   }
 
-  function handleCreate(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function submitCreate() {
     if (!draft.field_key.trim() || !draft.label.trim() || createMutation.isPending || !supportsCustomFields) return;
     setCreateError(null);
     createMutation.mutate();
@@ -523,265 +548,254 @@ export default function FieldsPage() {
   const canCreate = supportsCustomFields && Boolean(draft.field_key.trim() && draft.label.trim()) && !createMutation.isPending;
 
   return (
-    <div className="flex flex-col gap-5">
-      <PageToolbar>
-          <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
-            <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
-              <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
-              </SelectContent>
-            </Select>
-            <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} title={supportsCustomFields ? undefined : "Custom fields for this module are managed in Module Builder."}>
-              <Plus />New Field
-            </Button>
-          </div>
-      </PageToolbar>
-
-      {hasLoadError ? (
-        <Card className="p-6" role="alert">
-          <h2 className="font-semibold text-copy-primary">Fields could not be loaded</h2>
-          <p className="mt-1 text-sm text-copy-secondary">Try the request again. Existing field settings have not been changed.</p>
-          <Button className="mt-4" variant="outline" onClick={() => void retryAll()}>Try again</Button>
-        </Card>
-      ) : (
-        <>
-          <Card className="overflow-visible">
-            <div className="border-b border-line-subtle p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-                <SearchBar value={search} onChange={setSearch} placeholder="Search fields" className="md:w-72" />
-                <div className="scrollbar-hide flex gap-1 overflow-x-auto" aria-label="Field filters">
-                  {FILTERS.map((value) => (
-                    <Button
-                      key={value}
-                      type="button"
-                      size="sm"
-                      variant={filter === value ? "secondary" : "ghost"}
-                      aria-pressed={filter === value}
-                      onClick={() => setFilter(value)}
-                      className="capitalize"
-                    >
-                      {value === "all" ? <Filter /> : null}{value}
-                    </Button>
-                  ))}
-                </div>
-              </div>
-              <p className="mt-3 text-xs text-copy-muted">{filteredCatalog.length} of {catalog.length} fields shown</p>
-            </div>
-
-            {isLoading ? (
-              <div className="p-5"><RouteLoadingState label="module fields" /></div>
-            ) : filteredCatalog.length ? (
-              <div className="divide-y divide-line-subtle">
-                {filteredCatalog.map((field) => (
-                  <div
-                    key={field.field_key}
-                    className={`group flex items-start gap-3 px-4 py-4 transition-colors hover:bg-surface-muted ${selectedField?.field_key === field.field_key && panelMode === "inspect" ? "bg-action-primary-muted" : ""}`}
-                  >
-                    <button
-                      type="button"
-                      className="min-w-0 flex-1 text-left outline-none focus-visible:ring-2 focus-visible:ring-primary"
-                      aria-pressed={selectedField?.field_key === field.field_key && panelMode === "inspect"}
-                      onClick={() => void selectField(field.field_key)}
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-semibold text-copy-primary">{field.label}</span>
-                        <Pill>{fieldSourceLabel(field.field_source)}</Pill>
-                        {field.is_required ? <Pill bg="bg-state-warning-muted" text="text-state-warning" border="border-state-warning/40">Required</Pill> : null}
-                        {!field.is_enabled ? <Pill bg="bg-state-danger-muted" text="text-state-danger" border="border-state-danger/40">Disabled</Pill> : null}
-                        {field.is_protected ? <Pill bg="bg-action-primary-muted" text="text-primary" border="border-primary/40"><Lock className="mr-1 h-3 w-3" />Protected</Pill> : null}
-                      </div>
-                      <div className="mt-1 text-xs text-copy-muted">{field.field_key} · {friendlyFieldType(field.field_type)}</div>
-                      {field.is_protected ? <p className="mt-2 text-xs text-copy-secondary">Required by this module and cannot be disabled.</p> : null}
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <Button type="button" size="icon-sm" variant="ghost" aria-label={`More actions for ${field.label}`}><MoreHorizontal /></Button>
-                        </PopoverTrigger>
-                        <PopoverContent align="end" className="w-52 border-line-default bg-surface-raised p-2 text-copy-primary">
-                          <Button className="w-full justify-start" variant="ghost" onClick={() => void selectField(field.field_key)}><Settings2 />Inspect field</Button>
-                          <Button
-                            className="mt-1 w-full justify-start"
-                            variant="ghost"
-                            disabled={field.is_protected || isSaving}
-                            title={field.is_protected ? "Protected fields cannot be disabled." : undefined}
-                            onClick={() => void toggleField(field)}
-                          >
-                            {field.is_enabled ? "Disable field" : "Enable field"}
-                          </Button>
-                          {field.is_protected ? <p className="px-2 pb-1 pt-2 text-xs text-copy-muted">This field is locked because module records depend on it.</p> : null}
-                        </PopoverContent>
-                      </Popover>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <EmptyState
-                className="py-16"
-                icon={Sparkles}
-                title={catalog.length ? "No fields match these filters" : "No fields found"}
-                description={catalog.length ? "Clear the search or choose another field filter." : "Select another module or create a custom field where supported."}
-                action={catalog.length ? <Button variant="outline" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button> : undefined}
-              />
-            )}
-          </Card>
-
-          <Sheet open={panelOpen} onOpenChange={handlePanelOpenChange}>
-            <SheetPortal>
-              <SheetOverlay className="fixed inset-0 z-40 bg-overlay" />
-              <SheetContent
-                side="right"
-                className="z-50 flex h-full w-full max-w-[32rem] flex-col border-l border-line-default bg-surface-raised shadow-2xl outline-none"
-              >
-                {panelMode === "create" ? (
-                  <form className="flex min-h-0 flex-1 flex-col" onSubmit={handleCreate}>
-                    <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                      <div>
-                        <SheetTitle className="text-lg font-semibold text-copy-primary">Create custom field</SheetTitle>
-                        <SheetDescription className="mt-1 text-sm text-copy-secondary">
-                          Add a field to this built-in module. Its key cannot be changed after creation.
-                        </SheetDescription>
-                      </div>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={() => void closePanel()}>
-                        <X />
-                      </Button>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                      <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="create-field-label">Label <RequiredMark /></FieldLabel>
-                    <Input id="create-field-label" value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract Term" disabled={createMutation.isPending} required />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="create-field-key">Field Key <RequiredMark /></FieldLabel>
-                    <Input id="create-field-key" value={draft.field_key} onChange={(event) => { setFieldKeyEdited(true); setDraft((current) => ({ ...current, field_key: makeFieldKey(event.target.value) })); }} placeholder="contract_term" disabled={createMutation.isPending} required />
-                    <FieldDescription>Auto-generated from the label unless edited.</FieldDescription>
-                  </Field>
-                  <Field>
-                    <FieldLabel>Field Type</FieldLabel>
-                    <Select value={draft.field_type} onValueChange={(value) => setDraft((current) => ({ ...current, field_type: value as DraftField["field_type"] }))} disabled={createMutation.isPending}>
-                      <SelectTrigger aria-label="Field Type"><SelectValue /></SelectTrigger>
-                      <SelectContent>{FIELD_TYPE_OPTIONS.map((option) => <SelectItem key={option} value={option}>{friendlyFieldType(option)}</SelectItem>)}</SelectContent>
-                    </Select>
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="create-field-placeholder">Placeholder</FieldLabel>
-                    <Input id="create-field-placeholder" value={draft.placeholder} onChange={(event) => setDraft((current) => ({ ...current, placeholder: event.target.value }))} disabled={createMutation.isPending} />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="create-field-help">Help Text</FieldLabel>
-                    <Input id="create-field-help" value={draft.help_text} onChange={(event) => setDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={createMutation.isPending} />
-                  </Field>
-                  <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                    <Checkbox id="create-field-required" checked={draft.is_required} onCheckedChange={(checked) => setDraft((current) => ({ ...current, is_required: checked === true }))} className="h-4 w-4 rounded border border-line-strong bg-surface-raised">
-                      <CheckboxIndicator className="h-3 w-3" />
-                    </Checkbox>
-                    <FieldLabel htmlFor="create-field-required">Require a value when records are saved</FieldLabel>
-                  </Field>
-                      </FieldGroup>
-                      {createError ? <p className="mt-4 text-sm text-state-danger" role="alert">{createError}</p> : null}
-                    </div>
-                    <SheetFooter className="flex justify-end gap-2 border-t border-line-subtle bg-surface px-5 py-4">
-                      <Button type="button" variant="outline" onClick={() => void closePanel()} disabled={createMutation.isPending}>Cancel</Button>
-                      <Button type="submit" disabled={!canCreate}>{createMutation.isPending ? "Creating…" : "Create Field"}</Button>
-                    </SheetFooter>
-                  </form>
-                ) : selectedField ? (
-                  <>
-                    <SheetHeader className="flex items-start justify-between gap-4 border-b border-line-subtle px-5 py-4">
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <SheetTitle className="text-lg font-semibold text-copy-primary">Edit field</SheetTitle>
-                          {selectedField.is_protected ? <Lock className="h-4 w-4 text-primary" aria-label="Protected field" /> : null}
-                        </div>
-                        <SheetDescription className="mt-1 break-all text-sm text-copy-muted">{selectedField.field_key}</SheetDescription>
-                      </div>
-                      <Button type="button" variant="ghost" size="icon-sm" aria-label="Close field editor" onClick={() => void closePanel()}>
-                        <X />
-                      </Button>
-                    </SheetHeader>
-                    <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5">
-                      {selectedField.is_protected ? (
-                        <div className="mb-4 rounded-[var(--radius-control)] border border-primary/30 bg-action-primary-muted p-3 text-sm text-copy-secondary">
-                          This protected field stays enabled because module records, relationships, or routing depend on it.
-                        </div>
-                      ) : null}
-                      <FieldGroup>
-                  <Field>
-                    <FieldLabel htmlFor="inspector-field-label">Label <RequiredMark /></FieldLabel>
-                    <Input id="inspector-field-label" value={inspectorDraft.label} onChange={(event) => updateInspectorDraft((current) => ({ ...current, label: event.target.value }))} disabled={isSaving} required />
-                  </Field>
-                  <Field>
-                    <FieldLabel htmlFor="inspector-field-type">Type</FieldLabel>
-                    <Input id="inspector-field-type" value={friendlyFieldType(selectedField.field_type)} disabled />
-                    <FieldDescription>Field type is fixed after records may contain values.</FieldDescription>
-                  </Field>
-                  {selectedField.field_source !== "system" ? (
-                    <>
-                      <Field>
-                        <FieldLabel htmlFor="inspector-field-placeholder">Placeholder</FieldLabel>
-                        <Input id="inspector-field-placeholder" value={inspectorDraft.placeholder} onChange={(event) => updateInspectorDraft((current) => ({ ...current, placeholder: event.target.value }))} disabled={isSaving} />
-                      </Field>
-                      <Field>
-                        <FieldLabel htmlFor="inspector-field-help">Help Text</FieldLabel>
-                        <Input id="inspector-field-help" value={inspectorDraft.help_text} onChange={(event) => updateInspectorDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={isSaving} />
-                      </Field>
-                      <Field orientation="horizontal" className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3">
-                        <Checkbox id="inspector-field-required" checked={inspectorDraft.is_required} onCheckedChange={(checked) => updateInspectorDraft((current) => ({ ...current, is_required: checked === true }))} disabled={isSaving} className="h-4 w-4 rounded border border-line-strong bg-surface-raised">
-                          <CheckboxIndicator className="h-3 w-3" />
-                        </Checkbox>
-                        <FieldLabel htmlFor="inspector-field-required">Required</FieldLabel>
-                      </Field>
-                    </>
-                  ) : null}
-                  <Field>
-                    <FieldLabel>Field availability</FieldLabel>
-                    <div className="grid grid-cols-2 gap-2" role="group" aria-label="Field availability">
-                      <Button
-                        type="button"
-                        variant={inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: true }))}
-                      >
-                        Enabled
-                      </Button>
-                      <Button
-                        type="button"
-                        variant={!inspectorDraft.is_enabled ? "secondary" : "outline"}
-                        aria-pressed={!inspectorDraft.is_enabled}
-                        disabled={selectedField.is_protected || isSaving}
-                        onClick={() => updateInspectorDraft((current) => ({ ...current, is_enabled: false }))}
-                      >
-                        Disabled
-                      </Button>
-                    </div>
-                    <FieldDescription>
-                      {selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
-                    </FieldDescription>
-                  </Field>
-                      </FieldGroup>
-                      {inspectorError ? <p className="mt-4 text-sm text-state-danger" role="alert">{inspectorError}</p> : null}
-                    </div>
-                    <SheetFooter className="flex flex-col gap-3 border-t border-line-subtle bg-surface px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
-                      <span className={`text-sm ${inspectorDirty ? "text-state-warning" : "text-state-success"}`}>{inspectorDirty ? "Unsaved changes" : "All changes saved"}</span>
-                      <div className="flex gap-2">
-                        <Button type="button" variant="outline" disabled={!inspectorDirty || isSaving} onClick={() => setInspectorEdit(null)}>Discard</Button>
-                        <Button type="button" disabled={!inspectorDirty || isSaving || !inspectorDraft.label.trim()} onClick={() => void saveInspector()}>{isSaving ? "Saving…" : "Save Field"}</Button>
-                      </div>
-                    </SheetFooter>
-                  </>
-                ) : null}
-              </SheetContent>
-            </SheetPortal>
-          </Sheet>
-        </>
+    <PageShell
+      variant="settings"
+      title="Field config"
+      description="Choose which fields each module shows, and add your own."
+      actions={(
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Select value={moduleKey} onValueChange={(value) => void handleModuleChange(value)}>
+            <SelectTrigger className="w-full sm:w-72" aria-label="Select module">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {moduleOptions.map((moduleName) => <SelectItem key={moduleName.key} value={moduleName.key}>{moduleName.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => void showCreatePanel()} disabled={!supportsCustomFields} aria-describedby={supportsCustomFields ? undefined : "fields-create-unavailable"}>
+            <Plus />Create field
+          </Button>
+        </div>
       )}
-    </div>
+      // One of settings' three competing error idioms — a hand-rolled card inside the
+      // content, where `PageShell` has supplied the §7.4 states all along. A 403 here means
+      // an admin without `configure` on the module, which is a wall and not a fault.
+      isPermissionDenied={isForbiddenError(loadError)}
+      hasError={hasLoadError}
+      errorDescription="Try the request again. Existing field settings have not been changed."
+      onRetry={() => void retryAll()}
+      backHref={SETTINGS_ROUTES.root}
+      backLabel="Back to settings"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-center">
+          <SearchBar value={search} onChange={setSearch} placeholder="Search fields" className="sm:w-72" />
+          <SegmentedControl aria-label="Field filters" value={filter} onValueChange={setFilter} className="scrollbar-hide max-w-full overflow-x-auto">
+            {FILTERS.map((value) => (
+              <SegmentedItem key={value} value={value}>
+                {value === "all" ? <Filter /> : null}
+                {formatSnakeCaseLabel(value)}
+              </SegmentedItem>
+            ))}
+          </SegmentedControl>
+        </div>
+        <span className="text-sm text-copy-muted">{isLoading ? "Loading…" : `${filteredCatalog.length} of ${catalog.length} fields`}</span>
+      </div>
+
+      {/* H26: the reason *Create field* is unavailable, in the page rather than a hover title
+          nobody on a touch screen or a keyboard ever sees. */}
+      {!supportsCustomFields ? (
+        <p id="fields-create-unavailable" className="text-p-sm text-copy-muted">
+          {selectedCustomModule ? (
+            <>Fields for this custom module are added in the <TextLink href={SETTINGS_ROUTES.moduleBuilder}>module builder</TextLink>.</>
+          ) : (
+            `${moduleOptions.find((option) => option.key === moduleKey)?.label ?? "This module"} does not take custom fields yet. You can still choose which of its standard fields show.`
+          )}
+        </p>
+      ) : null}
+
+      {/* R10: the catalogue was a `divide-y` of hand-rolled rows with the whole row as a
+          `<button aria-pressed>`, a page-local loading state, and a `Popover` of two ghost
+          buttons standing in for a menu. Every one of those is `RecordTable`'s, including
+          the highlight on the row the editor is open over. */}
+      <RecordTable
+        label="Module fields"
+        columns={[
+          {
+            key: "label",
+            label: "Field",
+            size: "lg",
+            render: (field) => (
+              <>
+                <div className="font-medium text-copy-primary">{field.label}</div>
+                <div className="mt-1 break-all text-xs text-copy-muted">{field.field_key}</div>
+              </>
+            ),
+          },
+          { key: "source", label: "Source", size: "sm", render: (field) => <Chip>{fieldSourceLabel(field.field_source)}</Chip> },
+          { key: "field_type", label: "Type", size: "sm", render: (field) => <span className="text-copy-secondary">{friendlyFieldType(field.field_type)}</span> },
+          {
+            key: "is_required",
+            label: "Required",
+            size: "sm",
+            // R5: required-ness is a property, not a status — it has no better or worse, so
+            // it is ink. It was `StatusValue tone="attention"`, which painted a whole column
+            // amber for a boolean.
+            render: (field) => (field.is_required ? <span className="text-copy-secondary">Required</span> : <EmptyValue context="cell" />),
+          },
+          {
+            key: "is_enabled",
+            label: "Status",
+            size: "sm",
+            render: (field) => (
+              field.is_protected
+                ? <Chip><Lock />Protected</Chip>
+                : <StatusValue status={{ tone: field.is_enabled ? "neutral" : "critical", label: field.is_enabled ? "Enabled" : "Disabled" }} />
+            ),
+          },
+        ]}
+        rows={filteredCatalog}
+        rowKey={(field) => field.field_key}
+        onOpenRow={(field) => void selectField(field.field_key)}
+        rowLabel={(field) => `Edit ${field.label}`}
+        isRowHighlighted={(field) => panelOpen && panelMode === "inspect" && field.field_key === selectedField?.field_key}
+        isLoading={isLoading}
+        emptyState={{
+          icon: Sparkles,
+          title: "No fields found",
+          description: "Select another module or create a custom field where supported.",
+        }}
+        hasActiveFilters={Boolean(search.trim()) || filter !== "all"}
+        onClearFilters={() => { setSearch(""); setFilter("all"); }}
+        filteredEmptyState={{
+          icon: Sparkles,
+          title: "No fields match these filters",
+          description: "Clear the search or choose another field filter.",
+        }}
+        rowActions={(field) => (
+          <ActionBar size="sm">
+            <Button
+              type="button"
+              variant="ghost"
+              disabled={field.is_protected || isSaving}
+              title={field.is_protected ? "Protected fields cannot be disabled." : undefined}
+              onClick={() => void toggleField(field)}
+            >
+              {field.is_enabled ? "Disable" : "Enable"}
+            </Button>
+          </ActionBar>
+        )}
+      />
+
+      {/* One panel, two modes. It was two full copies of the sheet recipe in one file
+          (§7.11), which is also why only one of them committed on Enter. */}
+      <EditorPanel
+        open={panelOpen}
+        onOpenChange={handlePanelOpenChange}
+        title={panelMode === "create" ? "Create custom field" : "Edit field"}
+        description={panelMode === "create"
+          ? "Add a field to this built-in module. Its key cannot be changed after creation."
+          : selectedField?.field_key}
+        closeLabel="Close field editor"
+        onSubmit={panelMode === "create" ? () => submitCreate() : () => void saveInspector()}
+        status={panelMode === "create"
+          ? (createError ? <span role="alert" className="text-state-danger">{createError}</span> : null)
+          : (inspectorError
+            ? <span role="alert" className="text-state-danger">{inspectorError}</span>
+            : inspectorDirty ? "Unsaved changes" : null)}
+        footer={panelMode === "create" ? (
+          <>
+            <Button type="button" variant="outline" onClick={() => handlePanelOpenChange(false)} disabled={createMutation.isPending}>Cancel</Button>
+            <Button type="submit" disabled={!canCreate}>{createMutation.isPending ? "Creating…" : "Create field"}</Button>
+          </>
+        ) : (
+          <>
+            <Button type="button" variant="outline" disabled={!inspectorDirty || isSaving} onClick={() => setInspectorEdit(null)}>Discard</Button>
+            <Button type="submit" disabled={!inspectorDirty || isSaving || !inspectorDraft.label.trim()}>{isSaving ? "Saving…" : "Save field"}</Button>
+          </>
+        )}
+      >
+        {panelMode === "create" ? (
+          <FieldGroup>
+            <Field>
+              <FieldLabel htmlFor="create-field-label">Label <RequiredMark /></FieldLabel>
+              <Input id="create-field-label" value={draft.label} onChange={(event) => handleLabelChange(event.target.value)} placeholder="Contract term" disabled={createMutation.isPending} required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="create-field-key">Field key <RequiredMark /></FieldLabel>
+              <Input id="create-field-key" value={draft.field_key} onChange={(event) => { setFieldKeyEdited(true); setDraft((current) => ({ ...current, field_key: makeFieldKey(event.target.value) })); }} placeholder="contract_term" disabled={createMutation.isPending} required />
+              <FieldDescription>Auto-generated from the label unless edited.</FieldDescription>
+            </Field>
+            <FieldTypeSettings idPrefix="create-field" value={draft.type} onChange={(type) => setDraft((current) => ({ ...current, type }))} disabled={createMutation.isPending} />
+            <Field>
+              <FieldLabel htmlFor="create-field-placeholder">Placeholder</FieldLabel>
+              <Input id="create-field-placeholder" value={draft.placeholder} onChange={(event) => setDraft((current) => ({ ...current, placeholder: event.target.value }))} disabled={createMutation.isPending} />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="create-field-help">Help text</FieldLabel>
+              <Input id="create-field-help" value={draft.help_text} onChange={(event) => setDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={createMutation.isPending} />
+            </Field>
+            {/* Ruling 4: a lone `Checkbox` standing in for one on/off setting is the drift.
+                `Checkbox` keeps *many from a set*. */}
+            <Field>
+              <FieldLabel>Value required</FieldLabel>
+              <SegmentedBoolean
+                aria-label="Value required"
+                value={draft.is_required}
+                onValueChange={(is_required) => setDraft((current) => ({ ...current, is_required }))}
+                trueLabel="Required"
+                falseLabel="Optional"
+                disabled={createMutation.isPending}
+              />
+              <FieldDescription>A required field must carry a value before a record can be saved.</FieldDescription>
+            </Field>
+          </FieldGroup>
+        ) : selectedField ? (
+          <FieldGroup>
+            {selectedField.is_protected ? (
+              <p className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-3 text-p-sm text-copy-secondary">
+                This field stays enabled because module records, relationships, or routing depend on it.
+              </p>
+            ) : null}
+            <Field>
+              <FieldLabel htmlFor="inspector-field-label">Label <RequiredMark /></FieldLabel>
+              <Input id="inspector-field-label" value={inspectorDraft.label} onChange={(event) => updateInspectorDraft((current) => ({ ...current, label: event.target.value }))} disabled={isSaving} required />
+            </Field>
+            <Field>
+              <FieldLabel htmlFor="inspector-field-type">Type</FieldLabel>
+              <Input id="inspector-field-type" value={friendlyFieldType(selectedField.field_type)} disabled />
+              <FieldDescription>Field type is fixed after records may contain values.</FieldDescription>
+            </Field>
+            {selectedField.field_source !== "system" ? (
+              <>
+                <Field>
+                  <FieldLabel htmlFor="inspector-field-placeholder">Placeholder</FieldLabel>
+                  <Input id="inspector-field-placeholder" value={inspectorDraft.placeholder} onChange={(event) => updateInspectorDraft((current) => ({ ...current, placeholder: event.target.value }))} disabled={isSaving} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor="inspector-field-help">Help text</FieldLabel>
+                  <Input id="inspector-field-help" value={inspectorDraft.help_text} onChange={(event) => updateInspectorDraft((current) => ({ ...current, help_text: event.target.value }))} disabled={isSaving} />
+                </Field>
+                <Field>
+                  <FieldLabel>Value required</FieldLabel>
+                  <SegmentedBoolean
+                    aria-label="Value required"
+                    value={inspectorDraft.is_required}
+                    onValueChange={(is_required) => updateInspectorDraft((current) => ({ ...current, is_required }))}
+                    trueLabel="Required"
+                    falseLabel="Optional"
+                    disabled={isSaving}
+                  />
+                </Field>
+              </>
+            ) : null}
+            <Field>
+              <FieldLabel>Field availability</FieldLabel>
+              <SegmentedBoolean
+                aria-label="Field availability"
+                value={inspectorDraft.is_enabled}
+                onValueChange={(is_enabled) => updateInspectorDraft((current) => ({ ...current, is_enabled }))}
+                trueLabel="Enabled"
+                falseLabel="Disabled"
+                disabled={selectedField.is_protected || isSaving}
+              />
+              <FieldDescription>
+                {selectedField.is_protected ? "Locked on for record safety." : "Disabled fields are removed from lists, filters, and supported forms."}
+              </FieldDescription>
+            </Field>
+          </FieldGroup>
+        ) : null}
+      </EditorPanel>
+    </PageShell>
   );
 }

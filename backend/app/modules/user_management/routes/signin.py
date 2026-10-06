@@ -2,9 +2,10 @@ import logging
 import urllib.parse
 
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, status
 from fastapi.responses import JSONResponse, RedirectResponse
-from jose import JWTError, jwt
+import jwt
+from jwt import PyJWTError as JWTError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
@@ -41,6 +42,9 @@ from app.modules.user_management.schema import (
     MfaSetupResponse,
     SsoStartRequest,
     SsoStartResponse,
+    PasswordChangeRequest,
+    PasswordForgotRequest,
+    PasswordResetRequest,
     SetupPasswordRequest,
 )
 from app.modules.user_management.services.auth import (
@@ -57,9 +61,12 @@ from app.modules.user_management.services.auth import (
     handle_google_callback,
     handle_microsoft_callback,
     record_failed_manual_login_attempt,
+    change_password,
+    reset_password_with_token,
     rotate_refresh_token,
     set_initial_password,
 )
+from app.modules.user_management.services.account_emails import deliver_password_reset, password_reset_rate_limited
 from app.modules.user_management.services.mfa import activate_mfa, disable_mfa, start_mfa_setup, verify_mfa_challenge
 from app.modules.user_management.services.sso import build_sso_start_url, handle_oidc_callback
 from app.modules.user_management.services.tenant_domains import verified_tenant_for_hostname
@@ -477,6 +484,74 @@ def setup_password(
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
     return JSONResponse({"status": "ok", "message": "Password set successfully"})
+
+
+PASSWORD_RESET_ACCEPTED_MESSAGE = (
+    "If an account uses that email, a reset link is on its way. It expires in "
+    f"{settings.PASSWORD_RESET_TOKEN_EXPIRE_MINUTES} minutes. No email? Ask your administrator."
+)
+
+
+@router.post("/password/forgot", status_code=status.HTTP_202_ACCEPTED)
+def request_password_reset(
+    payload: PasswordForgotRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    """Always the same answer, sent before any lookup or email, so it reveals nothing."""
+    email = payload.email.strip().lower()
+    if password_reset_rate_limited(email=email, client_host=_manual_login_client_host(request)):
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many reset requests. Try again later.")
+    request_tenant = getattr(request.state, "tenant", None)
+    tenant_id = _resolve_manual_login_tenant_id(db, email=email, request=request, request_tenant=request_tenant)
+    # The link's origin comes from a host-verified tenant or the configured origin, never from
+    # an unverified Host header: a forged one must not be able to point the link elsewhere.
+    frontend_origin = get_frontend_origin_for_request(request) if request_tenant else settings.FRONTEND_ORIGIN
+    background_tasks.add_task(deliver_password_reset, tenant_id=tenant_id, email=email, frontend_origin=frontend_origin)
+    return {"status": "accepted", "message": PASSWORD_RESET_ACCEPTED_MESSAGE}
+
+
+@router.post("/password/reset")
+def reset_password(payload: PasswordResetRequest, db: Session = Depends(get_db)):
+    user = reset_password_with_token(db, token=payload.token, password=payload.password)
+    _log_auth_event(
+        db,
+        action="auth.password_reset",
+        user=user,
+        description="Password reset from an emailed link; other sessions signed out",
+        after_state={"sessions": "revoked"},
+    )
+    return JSONResponse({"status": "ok", "message": "Password changed. Sign in with your new password."})
+
+
+@router.post("/password/change")
+def change_own_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    client_host = _manual_login_client_host(request)
+    check_manual_login_rate_limit(tenant_id=current_user.tenant_id, email=current_user.email, client_host=client_host)
+    user = db.query(User).filter(User.id == current_user.id, User.tenant_id == current_user.tenant_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Session expired")
+    try:
+        change_password(db, user=user, current_password=payload.current_password, new_password=payload.new_password)
+    except HTTPException as exc:
+        if isinstance(exc.detail, dict) and exc.detail.get("code") == "current_password_invalid":
+            record_failed_manual_login_attempt(tenant_id=user.tenant_id, email=user.email, client_host=client_host)
+        raise
+    _log_auth_event(
+        db,
+        action="auth.password_changed",
+        user=user,
+        description="Password changed; other sessions signed out",
+        after_state={"sessions": "revoked"},
+    )
+    # Every session was revoked, this one included: give this browser a fresh one.
+    return _issue_session_response(user, db, body={"status": "ok", "message": "Password changed. Other devices are signed out."})
 
 
 @router.post("/dev/login")

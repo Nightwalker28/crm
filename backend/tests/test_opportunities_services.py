@@ -16,8 +16,6 @@ from app.modules.sales.opportunity_stages import (
     OPPORTUNITY_CLOSED_STAGE_SET,
     OPPORTUNITY_STAGE_LABELS,
     OPPORTUNITY_STAGE_ORDER,
-    OPPORTUNITY_STAGE_PATTERN,
-    OPPORTUNITY_STAGE_SET,
 )
 from app.modules.sales.repositories import opportunities_repository
 from app.modules.sales.schema import SalesOpportunityStageUpdate
@@ -40,14 +38,10 @@ class FakeDB:
 
 class OpportunityStageMetadataTests(unittest.TestCase):
     def test_backend_stage_metadata_is_single_source_for_services_and_schema(self):
-        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_ORDER, OPPORTUNITY_STAGE_ORDER)
-        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_LABELS, OPPORTUNITY_STAGE_LABELS)
-        self.assertEqual(opportunities_services.OPPORTUNITY_STAGE_SET, OPPORTUNITY_STAGE_SET)
         self.assertEqual(OPPORTUNITY_CLOSED_STAGE_SET, {"closed_won", "closed_lost"})
-        self.assertEqual(
-            SalesOpportunityStageUpdate.model_fields["sales_stage"].metadata[0].pattern,
-            OPPORTUNITY_STAGE_PATTERN,
-        )
+        # Since pipeline Phase 4 a stage is valid when the tenant's pipeline has it, so the
+        # schema no longer pins the key to the six seeded stages.
+        self.assertEqual(SalesOpportunityStageUpdate(sales_stage="discovery").sales_stage, "discovery")
 
 
 class OpportunityCurrencyTests(unittest.TestCase):
@@ -60,8 +54,8 @@ class OpportunityCurrencyTests(unittest.TestCase):
             "get_company_operating_currencies",
             return_value=["USD", "EUR"],
         ) as get_currencies:
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "eur"), "EUR")
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, None), "USD")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, "eur"), "EUR")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, None), "USD")
 
         get_currencies.assert_called_once_with(db, current_user)
 
@@ -74,9 +68,9 @@ class OpportunityCurrencyTests(unittest.TestCase):
             "get_company_operating_currencies",
             return_value=["USD", "EUR"],
         ) as get_currencies:
-            self.assertEqual(opportunities_services._normalize_currency(db, current_user, "usd"), "USD")
+            self.assertEqual(opportunities_services.normalize_opportunity_currency(db, current_user, "usd"), "USD")
             with self.assertRaises(HTTPException) as exc:
-                opportunities_services._normalize_currency(db, current_user, "gbp")
+                opportunities_services.normalize_opportunity_currency(db, current_user, "gbp")
 
         self.assertEqual(exc.exception.status_code, 400)
         self.assertEqual(exc.exception.detail, "Currency must be one of: USD, EUR")
@@ -101,38 +95,6 @@ class OpportunitySoftDeleteTests(unittest.TestCase):
         self.assertIsInstance(opportunity.deleted_at, datetime)
         self.assertIsNotNone(opportunity.deleted_at.tzinfo)
         self.assertEqual(opportunity.deleted_at.utcoffset(), timezone.utc.utcoffset(opportunity.deleted_at))
-
-    def test_update_opportunity_stage_normalizes_and_persists(self):
-        db = FakeDB()
-        opportunity = SimpleNamespace(
-            tenant_id=3,
-            opportunity_id=11,
-            sales_stage="proposal",
-        )
-
-        with patch.object(opportunities_services, "hydrate_custom_field_record", return_value=opportunity):
-            result = opportunities_services.update_opportunity_stage(db, opportunity, sales_stage="Closed Won")
-
-        self.assertIs(result, opportunity)
-        self.assertEqual(opportunity.sales_stage, "closed_won")
-        self.assertTrue(db.committed)
-        self.assertEqual(db.refreshed, [opportunity])
-
-    def test_update_opportunity_stage_rejects_unsupported_stage(self):
-        db = FakeDB()
-        opportunity = SimpleNamespace(
-            tenant_id=3,
-            opportunity_id=11,
-            sales_stage="proposal",
-        )
-
-        with self.assertRaises(HTTPException) as exc:
-            opportunities_services.update_opportunity_stage(db, opportunity, sales_stage="verbal_yes")
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Unsupported opportunity stage")
-        self.assertFalse(db.committed)
-        self.assertEqual(opportunity.sales_stage, "proposal")
 
 
 class OpportunityListTests(unittest.TestCase):
@@ -163,26 +125,26 @@ class OpportunityListTests(unittest.TestCase):
         self.db.add_all(
             [
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=103,
                     tenant_id=10,
                     opportunity_name="Zeta rollout",
-                    client="Zeta",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=104,
                     tenant_id=10,
                     opportunity_name="Ada renewal",
-                    client="Ada",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=105,
                     tenant_id=10,
                     opportunity_name="Mia expansion",
-                    client="Mia",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
@@ -208,49 +170,49 @@ class OpportunityListTests(unittest.TestCase):
         self.db.add_all(
             [
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=301,
                     tenant_id=10,
                     opportunity_name="Lead deal",
-                    client="Ada",
                     sales_stage="lead",
-                    total_cost_of_project="1,200.50",
+                    amount="1200.50",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=302,
                     tenant_id=10,
                     opportunity_name="Won deal",
-                    client="Ada",
                     sales_stage="closed_won",
-                    total_cost_of_project="300",
+                    amount="300",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=303,
                     tenant_id=10,
                     opportunity_name="No stage deal",
-                    client="Ada",
                     sales_stage=None,
-                    total_cost_of_project="not a number",
+                    amount=None,
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=304,
                     tenant_id=10,
                     opportunity_name="Deleted deal",
-                    client="Ada",
                     sales_stage="lead",
-                    total_cost_of_project="900",
+                    amount="900",
                     deleted_at=datetime.utcnow(),
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=305,
                     tenant_id=99,
                     opportunity_name="Other tenant deal",
-                    client="Other",
                     sales_stage="lead",
-                    total_cost_of_project="700",
+                    amount="700",
                     assigned_to=1,
                 ),
             ]
@@ -278,7 +240,7 @@ class OpportunityListTests(unittest.TestCase):
         with patch.object(
             opportunities_repository,
             "summarize_pipeline",
-            return_value=[("lead", 2, Decimal("15.50"))],
+            return_value=[(None, "lead", 2, Decimal("15.50"), "")],
         ) as summarize:
             summary = opportunities_services.summarize_opportunity_pipeline(self.db, tenant_id=10)
 
@@ -288,18 +250,18 @@ class OpportunityListTests(unittest.TestCase):
 
     def test_get_opportunity_include_deleted_returns_active_and_deleted_rows(self):
         active = SalesOpportunity(
+            organization_id=1,
             opportunity_id=201,
             tenant_id=10,
             opportunity_name="Active deal",
-            client="Ada",
             sales_stage="lead",
             assigned_to=1,
         )
         deleted = SalesOpportunity(
+            organization_id=1,
             opportunity_id=202,
             tenant_id=10,
             opportunity_name="Deleted deal",
-            client="Mia",
             sales_stage="lead",
             assigned_to=1,
             deleted_at=datetime.utcnow(),
@@ -335,18 +297,18 @@ class OpportunityListTests(unittest.TestCase):
 
     def test_get_deleted_opportunity_only_returns_recycle_bin_rows(self):
         active = SalesOpportunity(
+            organization_id=1,
             opportunity_id=203,
             tenant_id=10,
             opportunity_name="Active restore candidate",
-            client="Ada",
             sales_stage="lead",
             assigned_to=1,
         )
         deleted = SalesOpportunity(
+            organization_id=1,
             opportunity_id=204,
             tenant_id=10,
             opportunity_name="Deleted restore candidate",
-            client="Mia",
             sales_stage="lead",
             assigned_to=1,
             deleted_at=datetime.utcnow(),

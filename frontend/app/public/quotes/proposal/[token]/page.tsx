@@ -7,6 +7,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { Money } from "@/components/ui/Money";
 import { downloadBlob } from "@/lib/browser";
 import { formatDateOnly } from "@/lib/datetime";
 import { apiUrl } from "@/lib/runtime-config";
@@ -28,17 +29,6 @@ async function readJsonSafely(res: Response): Promise<unknown> {
     return await res.json();
   } catch {
     return null;
-  }
-}
-
-function money(value: string | number | null | undefined, currency: string | null | undefined) {
-  const amount = Number(value);
-  const currencyCode = currency || "USD";
-  if (!Number.isFinite(amount)) return `${currencyCode} 0.00`;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency: currencyCode }).format(amount);
-  } catch {
-    return `${currencyCode} ${amount.toFixed(2)}`;
   }
 }
 
@@ -145,7 +135,7 @@ export default function PublicQuoteProposalPage() {
     <main className="min-h-screen bg-app text-copy-primary">
       <div className="mx-auto flex min-h-screen w-full max-w-4xl flex-col px-4 py-6 sm:px-6 sm:py-8">
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-line-subtle pb-4">
-          <div className="font-lynk text-3xl text-copy-primary">Lynk</div>
+          <div className="font-lynk text-2xl tracking-tight text-copy-primary">Lynk</div>
           <div className="flex items-center gap-2 text-xs text-copy-muted">
             <ShieldCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
             Time-limited proposal link
@@ -161,35 +151,37 @@ export default function PublicQuoteProposalPage() {
           ) : error || !proposal ? (
             <Card className="flex min-h-64 flex-col items-center justify-center border-state-danger/40 bg-state-danger-muted p-6 text-center" role="alert">
               <Link2Off className="h-9 w-9 text-state-danger" aria-hidden="true" />
-              <h1 className="mt-4 text-xl font-semibold text-copy-primary">
+              {/* The h1 of this branch, not a second one: the error card and the proposal are
+                  alternatives, so demoting this left a failed link with no heading at all. */}
+              <h1 className="mt-4 text-lg font-semibold text-copy-primary">
                 {error === "unavailable" ? "This proposal link is unavailable" : "The proposal could not be loaded"}
               </h1>
-              <p className="mt-2 max-w-md text-sm leading-6 text-copy-secondary">
+              <p className="mt-2 max-w-md text-p-sm text-copy-secondary">
                 {error === "unavailable"
                   ? "The link may have expired or been replaced. Ask the sender for a new proposal link."
                   : "Check your connection and try again. If the problem continues, contact the sender."}
               </p>
               {error === "temporary" ? (
-                <Button type="button" variant="outline" className="mt-5" onClick={() => setReloadKey((current) => current + 1)}>
+                <Button type="button" variant="outline" className="mt-4" onClick={() => setReloadKey((current) => current + 1)}>
                   <RefreshCw />
                   Try again
                 </Button>
               ) : null}
             </Card>
           ) : (
-            <div className="grid gap-5">
-              <Card className="p-5 sm:p-6">
+            <div className="grid gap-6">
+              <Card className="p-4 sm:p-6">
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm text-copy-muted">
                       <FileText className="h-4 w-4" aria-hidden="true" />
                       {proposal.quote_number}
                     </div>
-                    <h1 className="mt-2 text-2xl font-semibold tracking-normal text-copy-primary">{proposal.title}</h1>
+                    <h1 className="mt-2 text-lg font-semibold text-copy-primary">{proposal.title}</h1>
                     <p className="mt-1 text-sm text-copy-secondary">Prepared for {proposal.customer_name}</p>
                   </div>
                   <div className="text-left sm:text-right">
-                    <div className="text-xl font-semibold tabular-nums text-copy-primary">{money(proposal.total_amount, proposal.currency)}</div>
+                    <Money amount={proposal.total_amount} currency={proposal.currency} className="text-lg font-semibold text-copy-primary" />
                     {proposal.expiry_date ? (
                       <div className="mt-1 text-sm text-copy-muted">
                         Quote valid until <time dateTime={proposal.expiry_date}>{formatDateOnly(proposal.expiry_date)}</time>
@@ -199,7 +191,7 @@ export default function PublicQuoteProposalPage() {
                 </div>
               </Card>
 
-              <Card className="p-5 sm:p-6">
+              <Card className="p-4 sm:p-6">
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <h2 className="font-semibold text-copy-primary">Proposal</h2>
@@ -211,7 +203,7 @@ export default function PublicQuoteProposalPage() {
                   </Button>
                 </div>
                 {proposal.content_text.trim() ? (
-                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-sm leading-7 text-copy-secondary sm:p-5">
+                  <article className="whitespace-pre-wrap rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted p-4 text-p-sm text-copy-secondary sm:p-6">
                     {proposal.content_text}
                   </article>
                 ) : (
@@ -224,7 +216,7 @@ export default function PublicQuoteProposalPage() {
           )}
         </section>
 
-        <footer className="border-t border-line-subtle pt-4 text-center text-xs leading-5 text-copy-muted">
+        <footer className="border-t border-line-subtle pt-4 text-center text-p-xs text-copy-muted">
           This link provides access only to the proposal shared by its sender.
         </footer>
       </div>

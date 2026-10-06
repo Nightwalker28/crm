@@ -8,10 +8,11 @@ from sqlalchemy.orm import Session
 from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
-from app.core.module_search import apply_ranked_search
 from app.core.pagination import Pagination
+from app.modules.platform.services.picklists import PicklistResolver, picklist_error_reason
 from app.modules.sales.repositories import contacts_repository
 from app.modules.platform.services.custom_fields import (
+    export_extension,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
@@ -27,6 +28,7 @@ EXPORT_COLUMNS = [
     "first_name",
     "last_name",
     "contact_telephone",
+    "mobile_phone",
     "linkedin_url",
     "primary_email",
     "current_title",
@@ -56,15 +58,6 @@ def _contact_name_expression():
             + " "
             + func.coalesce(SalesContact.last_name, "")
         )
-    )
-
-
-def _apply_search_filter(query, search: str | None):
-    return apply_ranked_search(
-        query,
-        search=search,
-        document=SalesContact.search_doc,
-        default_order_column=SalesContact.created_time,
     )
 
 
@@ -214,6 +207,7 @@ def create_sales_contact(
         payload=data.pop("custom_fields", None),
     )
     data["custom_data"] = custom_data
+    PicklistResolver(db, current_user.tenant_id).normalize("sales_contacts", data)
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id if current_user else None
     if not data.get("assigned_to"):
@@ -224,14 +218,12 @@ def create_sales_contact(
     _ensure_assigned_user(db, data["assigned_to"], tenant_id=current_user.tenant_id)
     _ensure_organization(db, data.get("organization_id"), tenant_id=current_user.tenant_id)
 
-    email = data.get("primary_email")
-    if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="primary_email is required")
+    email = _coerce_optional(data.get("primary_email"))
+    data["primary_email"] = email
+    _require_reachable(data)
 
     normalized_name = _normalize_name(data.get("first_name"), data.get("last_name"))
-    duplicate_filters = [
-        func.lower(SalesContact.primary_email) == _normalize_email(email),
-    ]
+    duplicate_filters = [func.lower(SalesContact.primary_email) == _normalize_email(email)] if email else []
     if normalized_name:
         duplicate_filters.append(_contact_name_expression() == normalized_name)
 
@@ -243,7 +235,7 @@ def create_sales_contact(
             or_(*duplicate_filters),
         )
         .first()
-    )
+    ) if duplicate_filters else None
     if existing and not create_new_records:
         if skip_duplicates:
             return hydrate_custom_field_record(
@@ -323,6 +315,7 @@ def create_sales_contact(
 
 def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> SalesContact:
     custom_data_to_save: dict | None = None
+    PicklistResolver(db, contact.tenant_id).normalize("sales_contacts", data, existing=contact)
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(
             db,
@@ -369,6 +362,7 @@ def update_sales_contact(db: Session, contact: SalesContact, data: dict) -> Sale
             )
 
     _apply_sales_contact_payload(contact, data)
+    _require_reachable({"primary_email": contact.primary_email, "contact_telephone": contact.contact_telephone, "mobile_phone": contact.mobile_phone})
 
     db.add(contact)
     try:
@@ -426,6 +420,15 @@ def restore_sales_contact(db: Session, contact: SalesContact) -> SalesContact:
     )
 
 
+def _require_reachable(values: dict) -> None:
+    """A contact needs an email or a phone (13a A9), not both."""
+    if not any(_coerce_optional(values.get(key)) for key in ("primary_email", "contact_telephone", "mobile_phone")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=[{"loc": ["body", "primary_email"], "msg": "Enter an email or a phone number.", "type": "domain"}],
+        )
+
+
 def _coerce_optional(value: str | None) -> str | None:
     if value is None:
         return None
@@ -454,6 +457,7 @@ def import_contacts_from_csv(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
 ):
     """Import contacts with an intentional bulk-insert path for new rows.
 
@@ -468,8 +472,10 @@ def import_contacts_from_csv(
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
     )
+    resolver = PicklistResolver(db, tenant_id, allow_create=add_unknown_picklist_values)
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
-    require_csv_headers(headers, required={"primary_email"})
+    if not {"primary_email", "contact_telephone", "mobile_phone"} & {header.strip().lower() for header in headers}:
+        require_csv_headers(headers, required={"primary_email"})
     imported_fields = {header.strip().lower() for header in headers}
 
     new_rows = overwritten_rows = merged_rows = skipped_rows = 0
@@ -484,13 +490,13 @@ def import_contacts_from_csv(
         total_rows += 1
         normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
 
-        email = normalized.get("primary_email")
-        if not email:
+        email = _coerce_optional(normalized.get("primary_email"))
+        if not (email or _coerce_optional(normalized.get("contact_telephone")) or _coerce_optional(normalized.get("mobile_phone"))):
             failures.append(
                 {
                     "row_number": row_number,
                     "record_identifier": None,
-                    "reason": "Missing required field 'primary_email'.",
+                    "reason": "Enter an email or a phone number.",
                 }
             )
             continue
@@ -567,6 +573,7 @@ def import_contacts_from_csv(
             "first_name": _coerce_optional(normalized.get("first_name")),
             "last_name": _coerce_optional(normalized.get("last_name")),
             "contact_telephone": _coerce_optional(normalized.get("contact_telephone")),
+            "mobile_phone": _coerce_optional(normalized.get("mobile_phone")),
             "linkedin_url": _coerce_optional(normalized.get("linkedin_url")),
             "primary_email": email,
             "current_title": _coerce_optional(normalized.get("current_title")),
@@ -579,8 +586,13 @@ def import_contacts_from_csv(
         payload = {
             field: value
             for field, value in payload.items()
-            if field in imported_fields or field in {"primary_email", "assigned_to"}
+            if field in imported_fields or field in {"assigned_to"}
         }
+        try:
+            resolver.normalize("sales_contacts", payload)
+        except HTTPException as exc:
+            failures.append({"row_number": row_number, "record_identifier": email, "reason": picklist_error_reason(exc)})
+            continue
         rows.append(payload)
         emails.append(_normalize_email(email))
         names.append(_normalize_name(payload.get("first_name"), payload.get("last_name")))
@@ -659,11 +671,11 @@ def import_contacts_from_csv(
 
     new_contact_rows: list[dict] = []
     for payload in rows:
-        normalized_email = _normalize_email(payload["primary_email"])
+        normalized_email = _normalize_email(payload.get("primary_email"))
         normalized_name = _normalize_name(payload.get("first_name"), payload.get("last_name"))
         existing = None
         if not create_new_records:
-            existing = existing_by_email.get(normalized_email)
+            existing = existing_by_email.get(normalized_email) if normalized_email else None
             if not existing and normalized_name:
                 existing = existing_by_name.get(normalized_name)
 
@@ -710,7 +722,10 @@ def _parse_int_or_none(value: str | None) -> int | None:
         return None
 
 
-def export_contacts_to_csv(contacts: Iterable[SalesContact], field_keys: list[str] | None = None) -> bytes:
+def export_contacts_to_csv(
+    contacts: Iterable[SalesContact], field_keys: list[str] | None = None, labels: PicklistResolver | None = None
+) -> bytes:
+    contacts = list(contacts)
     headers = [field for field in (field_keys or EXPORT_COLUMNS) if field in EXPORT_COLUMNS]
     if not headers:
         headers = ["contact_id", "primary_email"]
@@ -720,11 +735,12 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact], field_keys: list[st
             "first_name": contact.first_name or "",
             "last_name": contact.last_name or "",
             "contact_telephone": contact.contact_telephone or "",
+            "mobile_phone": contact.mobile_phone or "",
             "linkedin_url": contact.linkedin_url or "",
             "primary_email": contact.primary_email or "",
             "current_title": contact.current_title or "",
-            "region": contact.region or "",
-            "country": contact.country or "",
+            "region": (labels.label("region", contact.region) if labels else contact.region) or "",
+            "country": (labels.label("country", contact.country) if labels else contact.country) or "",
             "email_opt_out": str(contact.email_opt_out).lower(),
             "assigned_to": contact.assigned_to,
             "organization_id": contact.organization_id or "",
@@ -732,6 +748,14 @@ def export_contacts_to_csv(contacts: Iterable[SalesContact], field_keys: list[st
         }
         for contact in contacts
     ]
+    if labels is not None and rows:
+        custom_headers, custom_cells = export_extension(
+            labels.db, tenant_id=labels.tenant_id, module_key="sales_contacts", record_ids=[row["contact_id"] for row in rows],
+            field_keys=[key for key in field_keys or [] if key.startswith("custom:")] or None,
+        )
+        for row in rows:
+            row.update(custom_cells.get(row["contact_id"], {}))
+        headers = [*headers, *custom_headers]
     return dict_rows_to_csv_bytes(
         headers=headers,
         rows=rows,

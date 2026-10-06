@@ -25,7 +25,7 @@ from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 from app.modules.calendar.models import CalendarEvent, CalendarEventParticipant
 from app.modules.catalog.models import CatalogProduct, CatalogService
-from app.modules.finance.models import FinanceIO, FinancePosInvoice, FinancePosInvoiceLine
+from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.sales.models import SalesContact, SalesOpportunity, SalesOrganization
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.user_management.models import Module, Role, RoleModulePermission, Tenant, TenantDomain, User, UserStatus
@@ -38,7 +38,6 @@ MODULE_KEYS = (
     "sales_contacts",
     "sales_organizations",
     "sales_opportunities",
-    "finance_io",
     "finance_pos",
     "tasks",
     "calendar",
@@ -49,8 +48,7 @@ MODULE_ROUTES = {
     "sales_contacts": "/dashboard/sales/contacts",
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
-    "finance_io": "/dashboard/finance/insertion-orders",
-    "finance_pos": "/dashboard/finance/pos",
+    "finance_pos": "/dashboard/finance/invoices",
     "tasks": "/dashboard/tasks",
     "calendar": "/dashboard/calendar",
     "catalog_products": "/dashboard/catalog/products",
@@ -139,7 +137,7 @@ def _seed_organizations(db: Session, *, tenant: Tenant, user: User, count: int, 
             org_name=f"Load Account {tenant.id}-{index}",
             primary_email=f"account-{tenant.id}-{index}@load.local",
             website=f"https://account-{tenant.id}-{index}.load.local",
-            industry="Load Test",
+            industry="other",
             billing_country="US",
             assigned_to=user.id,
         )
@@ -171,13 +169,19 @@ def _seed_contacts(db: Session, *, tenant: Tenant, user: User, count: int, batch
 
 def _seed_opportunities(db: Session, *, tenant: Tenant, user: User, count: int, batch_size: int) -> None:
     start = db.query(SalesOpportunity).filter(SalesOpportunity.tenant_id == tenant.id).count()
+    # A deal needs an account or a contact (13b Phase 3): every load deal shares one account.
+    account = db.query(SalesOrganization).filter(SalesOrganization.tenant_id == tenant.id).order_by(SalesOrganization.org_id).first()
+    if account is None:
+        account = SalesOrganization(tenant_id=tenant.id, org_name=f"Load Account {tenant.id}")
+        db.add(account)
+        db.flush()
     rows = (
         SalesOpportunity(
             tenant_id=tenant.id,
             opportunity_name=f"Load Deal {tenant.id}-{index}",
-            client=f"Load Account {tenant.id}-{index}",
+            organization_id=account.org_id,
             sales_stage=["lead", "qualified", "proposal", "closed_won"][index % 4],
-            total_cost_of_project=str(index % 10000),
+            amount=index % 10000,
             currency_type="USD",
             assigned_to=user.id,
         )
@@ -188,27 +192,7 @@ def _seed_opportunities(db: Session, *, tenant: Tenant, user: User, count: int, 
         db.commit()
 
 
-def _seed_finance(db: Session, *, tenant: Tenant, user: User, io_count: int, invoice_count: int, batch_size: int) -> None:
-    finance_io_module = _ensure_module(db, "finance_io")
-    io_start = db.query(FinanceIO).filter(FinanceIO.tenant_id == tenant.id).count()
-    io_rows = (
-        FinanceIO(
-            tenant_id=tenant.id,
-            module_id=finance_io_module.id,
-            user_id=user.id,
-            io_number=f"LOAD-IO-{tenant.id}-{index}",
-            file_name=f"load-io-{index}.manual",
-            customer_name=f"Load Customer {index}",
-            status="draft",
-            currency="USD",
-            total_amount=Decimal(index % 5000),
-        )
-        for index in range(io_start + 1, io_count + 1)
-    )
-    for batch in _chunks(io_rows, batch_size):
-        db.bulk_save_objects(batch)
-        db.commit()
-
+def _seed_finance(db: Session, *, tenant: Tenant, user: User, invoice_count: int, batch_size: int) -> None:
     invoice_start = db.query(FinancePosInvoice).filter(FinancePosInvoice.tenant_id == tenant.id).count()
     for batch_indexes in _chunks(range(invoice_start + 1, invoice_count + 1), batch_size):
         invoices = []
@@ -235,6 +219,7 @@ def _seed_finance(db: Session, *, tenant: Tenant, user: User, io_count: int, inv
         for invoice in invoices:
             lines.append(
                 FinancePosInvoiceLine(
+                    tenant_id=invoice.tenant_id,
                     invoice_id=invoice.id,
                     description="Load item",
                     quantity=Decimal("1"),
@@ -385,7 +370,6 @@ def seed(args: argparse.Namespace) -> None:
                 db,
                 tenant=tenant,
                 user=user,
-                io_count=args.insertion_orders_per_tenant,
                 invoice_count=args.invoices_per_tenant,
                 batch_size=args.batch_size,
             )
@@ -418,7 +402,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--organizations-per-tenant", type=int, default=0)
     parser.add_argument("--opportunities-per-tenant", type=int, default=0)
     parser.add_argument("--invoices-per-tenant", type=int, default=0)
-    parser.add_argument("--insertion-orders-per-tenant", type=int, default=0)
     parser.add_argument("--tasks-per-tenant", type=int, default=0)
     parser.add_argument("--calendar-events-per-tenant", type=int, default=0)
     parser.add_argument("--products-per-tenant", type=int, default=0)

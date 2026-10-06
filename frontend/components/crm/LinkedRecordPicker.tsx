@@ -1,21 +1,26 @@
 "use client";
 
-import { useId, useState, type KeyboardEvent, type Ref } from "react";
+import { useId, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { useDebouncedValue } from "@/hooks/useDebouncedValue";
 import { apiFetch } from "@/lib/api";
+import { formatMoney } from "@/lib/currency";
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 
-export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global";
+export type LinkedRecordType = "contact" | "organization" | "opportunity" | "quote" | "order" | "document" | "user" | "team" | "global" | "catalog_item" | "inventory_product" | "vendor";
 
 export type LinkedRecordFilters = {
   contactId?: number | null;
   organizationId?: number | null;
   opportunityId?: number | null;
   quoteId?: number | null;
+  /** `catalog_item` only: offer items priced in the document's currency. */
+  currency?: string | null;
 };
 
 export type LinkedRecordOption = {
@@ -35,14 +40,18 @@ export type LinkedRecordOption = {
 };
 
 function optionIdentity(recordType: LinkedRecordType, option: LinkedRecordOption) {
-  if (recordType === "global") {
+  // Both kinds of identity can repeat an id: a product and a service may both be `7`.
+  if (recordType === "global" || recordType === "catalog_item") {
     return `${option.module_key ?? "unknown"}-${option.entity_id ?? option.id}`;
   }
   return String(option.id);
 }
 
 type Props = {
+  /** Ties a visible `FieldLabel htmlFor` to the input. Prefer this. */
   inputId?: string;
+  /** Only where no visible label exists (design.md 8): a placeholder is not a name. */
+  ariaLabel?: string;
   inputRef?: Ref<HTMLInputElement>;
   recordType: LinkedRecordType;
   valueId: number | null;
@@ -61,6 +70,14 @@ type Props = {
   sourceAction?: "create" | "edit" | "view";
   allowClear?: boolean;
   allowedModuleKeys?: string[];
+  ariaDescribedBy?: string;
+  ariaInvalid?: boolean;
+  /** Names the clear button. Defaults to "Clear linked record". */
+  clearLabel?: string;
+  /** Keys the picker did not use (it uses Enter only to choose an open option). */
+  onInputKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
+  /** `data-*` attributes for the input, so a grid can find and focus its cells. */
+  inputDataAttributes?: Record<`data-${string}`, string | number>;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -89,6 +106,14 @@ async function searchLinkedRecords(
 
   if (recordType === "global") {
     endpoint = `/global-search?query=${encodeURIComponent(search)}&limit_per_module=5`;
+  } else if (recordType === "catalog_item") {
+    const catalogParams = new URLSearchParams({ query: search, limit: "10" });
+    if (filters?.currency) catalogParams.set("currency", filters.currency);
+    endpoint = `/catalog/items/search?${catalogParams.toString()}`;
+  } else if (recordType === "inventory_product") {
+    endpoint = `/inventory/products/search?query=${encodeURIComponent(search)}&limit=10`;
+  } else if (recordType === "vendor") {
+    endpoint = `/purchasing/vendors/search?query=${encodeURIComponent(search)}&limit=10`;
   } else if (recordType === "contact") {
     endpoint = `/sales/contacts/search?${params.toString()}`;
   } else if (recordType === "organization") {
@@ -137,6 +162,35 @@ async function searchLinkedRecords(
         raw: record,
       };
     }
+    if (recordType === "catalog_item") {
+      const kind = record.kind === "service" ? "service" : "product";
+      const price = formatMoney(record.unit_price as string | number, typeof record.currency === "string" ? record.currency : undefined, { maximumFractionDigits: 2 });
+      const unit = typeof record.unit === "string" && record.unit !== "unit" ? record.unit : null;
+      return {
+        id: Number(record.id),
+        entity_id: String(record.id),
+        module_key: kind === "product" ? "catalog_products" : "catalog_services",
+        label: typeof record.name === "string" ? record.name : "Unnamed item",
+        description: [
+          kind === "product" ? "Product" : "Service",
+          typeof record.sku === "string" ? record.sku : null,
+          price ? (unit ? `${price} / ${unit}` : price) : null,
+        ].filter(Boolean).join(" · "),
+        raw: record,
+      };
+    }
+    if (recordType === "vendor") {
+      // A vendor is an Account flagged as one (E4); it opens as the Account it is.
+      return { id: Number(record.id), entity_id: String(record.id), module_key: "sales_organizations",
+        label: typeof record.label === "string" ? record.label : "Vendor",
+        description: typeof record.email === "string" ? record.email : null, raw: record };
+    }
+    if (recordType === "inventory_product") {
+      return { id: Number(record.id), entity_id: String(record.id), module_key: "catalog_products",
+        label: typeof record.name === "string" ? record.name : "Product",
+        description: typeof record.sku === "string" ? record.sku : null, raw: record };
+    }
+
     if (recordType === "contact") {
       const firstName = typeof record.first_name === "string" ? record.first_name : "";
       const lastName = typeof record.last_name === "string" ? record.last_name : "";
@@ -169,12 +223,18 @@ async function searchLinkedRecords(
 
     if (recordType === "opportunity") {
       const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
-      const client = typeof record.client === "string" ? record.client : null;
-      const stage = typeof record.sales_stage === "string" ? record.sales_stage.replace(/_/g, " ") : null;
+      const account = typeof record.organization_name === "string" ? record.organization_name : null;
+      const stageRef = record.pipeline_stage as { label?: unknown } | null | undefined;
+      const stage =
+        typeof stageRef?.label === "string"
+          ? stageRef.label
+          : typeof record.sales_stage === "string" && record.sales_stage
+            ? formatSnakeCaseLabel(record.sales_stage)
+            : null;
       return {
         id: Number(record.opportunity_id),
         label: name,
-        description: [client, stage].filter(Boolean).join(" · ") || null,
+        description: [account, stage].filter(Boolean).join(" · ") || null,
         contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
         organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
         opportunity_id: Number(record.opportunity_id),
@@ -236,6 +296,7 @@ async function searchLinkedRecords(
 
 export default function LinkedRecordPicker({
   inputId,
+  ariaLabel,
   inputRef,
   recordType,
   valueId,
@@ -254,11 +315,17 @@ export default function LinkedRecordPicker({
   sourceAction = "create",
   allowClear = true,
   allowedModuleKeys,
+  ariaDescribedBy,
+  ariaInvalid,
+  clearLabel = "Clear linked record",
+  onInputKeyDown,
+  inputDataAttributes,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
   const [isOpen, setIsOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
+  const anchorRef = useRef<HTMLDivElement | null>(null);
   const debouncedSearch = useDebouncedValue(displayValue.trim(), 250);
   const query = useQuery({
     queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction, allowedModuleKeys],
@@ -293,14 +360,24 @@ export default function LinkedRecordPicker({
     if (event.key === "Enter" && isOpen && activeIndex >= 0 && options[activeIndex]) {
       event.preventDefault();
       selectOption(options[activeIndex]);
+      return;
     }
+    onInputKeyDown?.(event);
   }
 
+  const isListOpen = isOpen && Boolean(displayValue.trim());
+
+  // The list is a popover anchored to the field rather than an absolutely positioned child,
+  // so a scroll container around the field (a line-items grid, an editor panel) cannot clip
+  // it. Focus stays in the input: the popover neither takes it on open nor returns it.
   return (
-    <div className="relative">
-      <div className="flex gap-2">
+    <Popover open={isListOpen} onOpenChange={(open) => { if (!open) setIsOpen(false); }}>
+      <PopoverAnchor asChild>
+      <div ref={anchorRef} className="flex gap-2">
         <Input
+          {...inputDataAttributes}
           id={inputId}
+          aria-label={ariaLabel}
           ref={inputRef}
           value={displayValue}
           disabled={disabled}
@@ -315,8 +392,10 @@ export default function LinkedRecordPicker({
           placeholder={placeholder}
           role="combobox"
           aria-autocomplete="list"
-          aria-expanded={isOpen && Boolean(displayValue.trim())}
+          aria-expanded={isListOpen}
           aria-controls={listboxId}
+          aria-describedby={ariaDescribedBy}
+          aria-invalid={ariaInvalid}
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
               ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`
@@ -332,19 +411,31 @@ export default function LinkedRecordPicker({
             disabled={disabled}
             onMouseDown={(event) => event.preventDefault()}
             onClick={onClear}
-            aria-label="Clear linked record"
+            aria-label={clearLabel}
           >
             <X className="h-4 w-4" />
           </Button>
         ) : null}
       </div>
+      </PopoverAnchor>
 
-      {isOpen && displayValue.trim() ? (
+      <PopoverContent
+        // The input is the combobox and this only hosts its listbox, so it is not a dialog.
+        role="presentation"
+        data-slot="linked-record-picker-content"
+        align="start"
+        sideOffset={8}
+        onOpenAutoFocus={(event) => event.preventDefault()}
+        onCloseAutoFocus={(event) => event.preventDefault()}
+        onInteractOutside={(event) => {
+          if (anchorRef.current?.contains(event.target as Node)) event.preventDefault();
+        }}
+        className="w-(--radix-popover-trigger-width) rounded-[var(--radius-control)] border-line-default bg-surface-raised p-0"
+      >
         <div
           id={listboxId}
           role="listbox"
           aria-label={`${placeholder} results`}
-          className="absolute left-0 right-0 top-[calc(100%+8px)] z-30 rounded-[var(--radius-control)] border border-line-default bg-surface-raised shadow-xl"
         >
           {query.isLoading ? (
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">Searching…</div>
@@ -361,7 +452,7 @@ export default function LinkedRecordPicker({
                   type="button"
                   role="option"
                   aria-selected={optionIndex === activeIndex}
-                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
+                  className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-copy-secondary hover:bg-surface-muted hover:text-copy-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted aria-selected:text-copy-primary"
                   onMouseDown={(event) => event.preventDefault()}
                   onMouseEnter={() => setActiveIndex(optionIndex)}
                   onClick={() => selectOption(option)}
@@ -377,7 +468,7 @@ export default function LinkedRecordPicker({
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">{noResultsText}</div>
           )}
         </div>
-      ) : null}
-    </div>
+      </PopoverContent>
+    </Popover>
   );
 }

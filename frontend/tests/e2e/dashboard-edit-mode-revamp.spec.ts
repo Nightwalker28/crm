@@ -105,9 +105,10 @@ test("stages mobile widget changes and persists them with one save", async ({ pa
   await page.getByRole("button", { name: "Edit dashboard" }).click();
   await expect(page.getByText("Dashboard edit mode")).toBeVisible();
   await page.getByRole("button", { name: "Add widget" }).click();
-  await page.getByRole("button", { name: /Quick Note/ }).click();
-  await page.getByRole("button", { name: "Resize Quick Note to small" }).click();
-  await page.getByRole("button", { name: "Move Quick Note up" }).click();
+  await page.getByRole("button", { name: /Quick note/ }).click();
+  // Widget size is a segmented control (radios), one per widget.
+  await page.getByRole("radio", { name: "Resize Quick note to small" }).click();
+  await page.getByRole("button", { name: "Move Quick note up" }).click();
   await page.getByRole("button", { name: "Remove Quick Actions" }).click();
 
   await expect(page.getByText("Unsaved layout changes")).toBeVisible();
@@ -120,7 +121,7 @@ test("stages mobile widget changes and persists them with one save", async ({ pa
   expect(payload.widgets).toHaveLength(2);
   expect(payload.widgets[1]).toMatchObject({ type: "note", size: "small" });
   await expect(page.getByRole("button", { name: "Edit dashboard" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Resize Quick Note to small" })).toBeHidden();
+  await expect(page.getByRole("radio", { name: "Resize Quick note to small" })).toBeHidden();
 });
 
 test("cancel discards the whole dashboard draft without writing", async ({ page }) => {
@@ -132,10 +133,11 @@ test("cancel discards the whole dashboard draft without writing", async ({ page 
 
   await page.getByRole("button", { name: "Edit dashboard" }).click();
   await page.getByRole("button", { name: "Remove Quick Actions" }).click();
-  page.once("dialog", (dialog) => dialog.accept());
+  // Discarding is a `useConfirm` dialog, not a native confirm (rebuild 5.7 batch 2).
   await page.getByRole("button", { name: "Cancel" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Discard changes" }).click();
 
-  await expect(page.getByRole("heading", { name: "Quick Actions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Quick actions" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Edit dashboard" })).toBeVisible();
   expect(writeCount).toBe(0);
 });

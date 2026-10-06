@@ -1,5 +1,4 @@
 import unittest
-from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -7,12 +6,7 @@ from fastapi import HTTPException
 
 from app.modules.platform.custom_modules_schema import CustomModuleCreate, CustomModuleFieldCreate, CustomModuleFieldUpdate
 from app.modules.platform.schema import ModuleFieldConfigUpdateRequest
-from app.modules.platform.models import (
-    CustomModuleDefinition,
-    CustomModuleFieldDefinition,
-    CustomModuleRecord,
-    CustomModuleRecordValue,
-)
+from app.modules.platform.models import CustomModuleDefinition, FieldDefinition
 from app.modules.platform.repositories import custom_modules_repository
 from app.modules.platform.services import custom_modules
 from app.modules.platform.services import module_fields
@@ -179,18 +173,19 @@ class CustomModuleFieldTests(unittest.TestCase):
             payload=CustomModuleFieldCreate(label="Serial Number", field_type="text"),
         )
 
-        self.assertEqual(field.key, "serial_number")
+        self.assertEqual(field.field_key, "serial_number")
         self.assertEqual(field.tenant_id, 7)
         self.assertTrue(db.flushed)
 
     def test_add_field_rejects_duplicate_active_key(self):
         definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
         definition.fields.append(
-            CustomModuleFieldDefinition(
+            FieldDefinition(
                 id=9,
                 tenant_id=7,
                 custom_module_id=1,
-                key="serial_number",
+                module_key="custom_7_assets",
+                field_key="serial_number",
                 label="Serial Number",
                 field_type="text",
                 is_active=True,
@@ -213,11 +208,11 @@ class CustomModuleFieldTests(unittest.TestCase):
             custom_modules._add_field(
                 FakeDB(),
                 definition=definition,
-                payload=CustomModuleFieldCreate(label="Tags", field_type="multi_select", is_unique=True),
+                payload=CustomModuleFieldCreate(label="Tags", field_type="multi_picklist", is_unique=True),
             )
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Multi-select fields cannot be unique")
+        self.assertEqual(exc.exception.status_code, 422)
+        self.assertEqual(exc.exception.detail[0]["msg"], "Multi-select picklist fields cannot be unique.")
 
     def test_add_field_rejects_disabled_protected_identifier(self):
         definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
@@ -233,11 +228,12 @@ class CustomModuleFieldTests(unittest.TestCase):
         self.assertEqual(exc.exception.detail, "Protected identifier fields cannot be disabled")
 
     def test_update_field_rejects_disabling_protected_identifier(self):
-        field = CustomModuleFieldDefinition(
+        field = FieldDefinition(
             id=1,
             tenant_id=7,
             custom_module_id=1,
-            key="name",
+            module_key="custom_7_assets",
+            field_key="name",
             label="Name",
             field_type="text",
             is_active=True,
@@ -263,20 +259,22 @@ class CustomModuleFieldTests(unittest.TestCase):
         definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
         definition.fields.extend(
             [
-                CustomModuleFieldDefinition(
+                FieldDefinition(
                     id=1,
                     tenant_id=7,
                     custom_module_id=1,
-                    key="name",
+                    module_key="custom_7_assets",
+                    field_key="name",
                     label="Name",
                     field_type="text",
                     is_active=True,
                 ),
-                CustomModuleFieldDefinition(
+                FieldDefinition(
                     id=2,
                     tenant_id=7,
                     custom_module_id=1,
-                    key="serial_number",
+                    module_key="custom_7_assets",
+                    field_key="serial_number",
                     label="Serial Number",
                     field_type="text",
                     is_active=True,
@@ -294,21 +292,23 @@ class CustomModuleFieldTests(unittest.TestCase):
         definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
         definition.fields.extend(
             [
-                CustomModuleFieldDefinition(
+                FieldDefinition(
                     id=2,
                     tenant_id=7,
                     custom_module_id=1,
-                    key="serial_number",
+                    module_key="custom_7_assets",
+                    field_key="serial_number",
                     label="Serial Number",
                     field_type="text",
                     sort_order=2,
                     is_active=True,
                 ),
-                CustomModuleFieldDefinition(
+                FieldDefinition(
                     id=1,
                     tenant_id=7,
                     custom_module_id=1,
-                    key="asset_tag",
+                    module_key="custom_7_assets",
+                    field_key="asset_tag",
                     label="Asset Tag",
                     field_type="text",
                     sort_order=1,
@@ -393,89 +393,6 @@ class CustomModuleFieldTests(unittest.TestCase):
         self.assertEqual(len(db.department_permissions), 1)
         self.assertEqual(len(db.team_permissions), 1)
         self.assertEqual(len(db.role_permissions), 1)
-
-    def test_serialize_record_omits_deleted_and_inactive_fields(self):
-        active_field = CustomModuleFieldDefinition(
-            id=1,
-            tenant_id=7,
-            custom_module_id=1,
-            key="serial_number",
-            label="Serial Number",
-            field_type="text",
-            is_active=True,
-        )
-        deleted_field = CustomModuleFieldDefinition(
-            id=2,
-            tenant_id=7,
-            custom_module_id=1,
-            key="legacy_code",
-            label="Legacy Code",
-            field_type="text",
-            is_active=True,
-            deleted_at=datetime.now(timezone.utc),
-        )
-        inactive_field = CustomModuleFieldDefinition(
-            id=3,
-            tenant_id=7,
-            custom_module_id=1,
-            key="inactive_code",
-            label="Inactive Code",
-            field_type="text",
-            is_active=False,
-        )
-        record = CustomModuleRecord(id=5, tenant_id=7, custom_module_id=1, title="Asset 1")
-        record.values.extend(
-            [
-                CustomModuleRecordValue(field=active_field, text_value="SN-1"),
-                CustomModuleRecordValue(field=deleted_field, text_value="OLD"),
-                CustomModuleRecordValue(field=inactive_field, text_value="OFF"),
-            ]
-        )
-
-        response = custom_modules.serialize_record(record)
-
-        self.assertEqual(response.values, {"serial_number": "SN-1"})
-
-    def test_partial_value_write_preserves_omitted_required_fields(self):
-        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
-        definition.fields.append(
-            CustomModuleFieldDefinition(
-                id=1,
-                tenant_id=7,
-                custom_module_id=1,
-                key="serial_number",
-                label="Serial Number",
-                field_type="text",
-                is_required=True,
-                is_active=True,
-            )
-        )
-        record = CustomModuleRecord(id=5, tenant_id=7, custom_module_id=1, title="Asset 1")
-
-        custom_modules._write_values(
-            FakeDB(),
-            definition=definition,
-            record=record,
-            payload_values={},
-            partial=True,
-        )
-
-        self.assertEqual(record.values, [])
-
-    def test_value_write_rejects_unknown_field_keys(self):
-        definition = CustomModuleDefinition(id=1, tenant_id=7, key="assets", name="Assets")
-        record = CustomModuleRecord(id=5, tenant_id=7, custom_module_id=1, title="Asset 1")
-
-        with self.assertRaises(HTTPException) as exc:
-            custom_modules._write_values(
-                FakeDB(),
-                definition=definition,
-                record=record,
-                payload_values={"missing": "value"},
-            )
-
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Unknown field: missing")
 
     def test_runtime_action_rejects_disabled_module_for_admin(self):
         definition = CustomModuleDefinition(

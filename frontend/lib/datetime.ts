@@ -57,3 +57,12 @@ export function formatDateOnly(value?: string | null, options?: Intl.DateTimeFor
     return value;
   }
 }
+
+/** Today as `YYYY-MM-DD` in the user's timezone, for date inputs (not UTC's today). */
+export function todayIsoDate() {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone: getUserTimezone(), year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}

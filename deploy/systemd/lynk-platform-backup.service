@@ -1,0 +1,18 @@
+# Daily platform backup (database + uploads) for the production stack.
+# Install: copy both units to /etc/systemd/system/, set the paths below, then
+#   systemctl daemon-reload && systemctl enable --now lynk-platform-backup.timer
+# Check: systemctl list-timers lynk-platform-backup.timer; journalctl -u lynk-platform-backup
+[Unit]
+Description=Lynk platform backup (PostgreSQL dump + uploads)
+Wants=network-online.target docker.service
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+# The checkout that holds docker-compose.prod.yml and .env.production.
+WorkingDirectory=/opt/lynk
+Environment=LYNK_COMPOSE_FILES=docker-compose.prod.yml
+Environment=PLATFORM_BACKUP_DIR=/var/backups/maad-crm
+ExecStart=/opt/lynk/scripts/platform-backup.sh scheduled
+Nice=10
+IOSchedulingClass=idle

@@ -19,15 +19,13 @@ PROTECTED_FIELD_KEYS = {
 }
 
 MODULE_PROTECTED_FIELD_KEYS = {
-    "sales_leads": {"primary_email"},
-    "sales_contacts": {"primary_email"},
-    "sales_organizations": {"org_name", "primary_email"},
+    # Email is optional on leads and contacts since 13b Phase 3 (13a A9), so it can be hidden.
+    "sales_leads": set(),
+    "sales_contacts": set(),
+    "sales_organizations": {"org_name"},
     "sales_opportunities": {"opportunity_name"},
     "sales_quotes": {"quote_number", "customer_name"},
     "sales_orders": {"order_number"},
-    "support_cases": {"case_number", "subject"},
-    "contracts": {"contract_number", "title"},
-    "finance_io": {"io_number", "customer_name"},
 }
 
 

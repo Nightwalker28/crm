@@ -5,6 +5,7 @@ import { ImageIcon, Trash2, Upload } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
+import { MediaImage } from "@/components/ui/MediaImage";
 import { resolveMediaUrl } from "@/lib/media";
 
 export const IMAGE_ASSET_MAX_BYTES = 5 * 1024 * 1024;
@@ -63,12 +64,15 @@ export function ImageAssetField({
       <FieldLabel htmlFor={id}>{label}</FieldLabel>
       <div className="flex flex-wrap items-center gap-4 rounded-[var(--radius-control)] border border-line-subtle bg-surface-muted/40 p-4">
         <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-[var(--radius-control)] border border-line-default bg-surface text-copy-muted">
-          {imageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={resolveMediaUrl(imageUrl)} alt={previewAlt} className="h-full w-full object-cover" />
-          ) : (
-            fallback ?? <ImageIcon aria-hidden="true" />
-          )}
+          {/* A stored image whose file is gone shows the empty state, not a broken image (H17). */}
+          <MediaImage
+            src={resolveMediaUrl(imageUrl)}
+            alt={previewAlt}
+            width={64}
+            height={64}
+            className="h-full w-full object-cover"
+            fallback={fallback ?? <ImageIcon aria-hidden="true" />}
+          />
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap gap-2">

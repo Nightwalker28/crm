@@ -174,8 +174,9 @@ test("Users does not fetch identity or domain settings", async ({ page }) => {
     await route.continue();
   });
   await page.goto("/dashboard/settings/users");
-  await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByPlaceholder("Search users…")).toBeVisible();
   await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
+  // With the settings rail gone (2026-10-01), Users links no identity settings at all.
   await expect(page.getByRole("link", { name: "Authentication", exact: true })).toHaveCount(0);
   expect(identityRequests).toBe(0);
 });
@@ -196,7 +197,7 @@ test("Authentication keeps dirty SSO values until save", async ({ page }) => {
   await page.goto("/dashboard/settings/domains").catch(() => undefined);
   await expect(page).toHaveURL(/settings\/authentication/);
   await expect(page.getByLabel("Issuer URL")).toHaveValue("https://identity.example.test");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: "Save SSO settings" }).click();
   await expect.poll(() => savedPayload?.issuer_url).toBe("https://identity.example.test");
 });
 
@@ -260,9 +261,9 @@ test("Users supports responsive bulk role and status updates", async ({
   await page.goto("/dashboard/settings/users");
 
   await expect(
-    page.getByRole("heading", { name: "User Management" }),
+    page.getByRole("heading", { name: "Users", level: 1 }),
   ).toBeVisible();
-  await expect(page.getByPlaceholder("Search users...")).toBeVisible();
+  await expect(page.getByPlaceholder("Search users…")).toBeVisible();
   await page.getByRole("checkbox", { name: "Select Amina Silva" }).click();
   await page.getByRole("checkbox", { name: "Select Noah Fernando" }).click();
   await page.getByRole("combobox", { name: "Bulk role" }).click();
@@ -282,7 +283,7 @@ test("Users supports responsive bulk role and status updates", async ({
 test("opens Add User from the palette action deep link", async ({ page }) => {
   await page.goto("/dashboard/settings/users?action=create-user");
 
-  await expect(page.getByRole("heading", { name: "Add user" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Create user" })).toBeVisible();
 });
 
 test("Add user validates labeled fields and redacts create failures", async ({
@@ -321,8 +322,11 @@ test("Add user validates labeled fields and redacts create failures", async ({
 test("Edit user enforces self-protection and semantic MFA state", async ({
   page,
 }) => {
+  // Merge rather than replace: the shell's admin gate reads the cached user, and an object
+  // holding only an id reads as a non-admin and puts the page behind a permission wall.
   await page.evaluate((userId) => {
-    window.sessionStorage.setItem("lynk_user", JSON.stringify({ id: userId }));
+    const current = JSON.parse(window.sessionStorage.getItem("lynk_user") || "{}");
+    window.sessionStorage.setItem("lynk_user", JSON.stringify({ ...current, id: userId }));
   }, users[0].id);
   await page.goto("/dashboard/settings/users");
 
@@ -331,7 +335,8 @@ test("Edit user enforces self-protection and semantic MFA state", async ({
   await expect(page.getByRole("combobox", { name: "Role", exact: true })).toBeDisabled();
   await expect(page.getByRole("combobox", { name: "Status", exact: true })).toBeDisabled();
   await expect(page.getByText("You cannot deactivate your own account.")).toBeVisible();
-  await expect(page.locator("span.bg-surface-muted", { hasText: "Off" })).toBeVisible();
+  // MFA state is ink in the dialog, not a tinted capsule (R5 deleted Pill).
+  await expect(page.getByRole("dialog", { name: "Edit user" }).getByText("Off", { exact: true })).toBeVisible();
   await expect(page.getByRole("button", { name: "Save changes" })).toBeDisabled();
 });
 
@@ -366,7 +371,7 @@ test("Administration settings use dedicated routes", async ({
 }) => {
   await page.goto("/dashboard/settings/authentication");
   await expect(page.getByRole("navigation", { name: "User and access settings" })).toHaveCount(0);
-  await expect(page.getByText("MFA policy")).toBeVisible();
+  await expect(page.getByText("MFA policy", { exact: true })).toBeVisible();
   await expect(page.getByText("Password policy")).toBeVisible();
   await expect(page.getByText("Use at least 12 characters.")).toBeVisible();
   await expect(page.getByText("OIDC SSO")).toBeVisible();
@@ -382,7 +387,7 @@ test("Administration settings use dedicated routes", async ({
 
   await page.goto("/dashboard/settings/domains");
   await expect(page).toHaveURL(/settings\/domains/);
-  await expect(page.getByText("Custom domains")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Custom domains" })).toBeVisible();
 
   await page.goto("/dashboard/settings/provisioning");
   await expect(page).toHaveURL(/settings\/provisioning/);

@@ -1,8 +1,10 @@
 "use client";
 
+import { formatSnakeCaseLabel } from "@/lib/module-display";
 import { motion, AnimatePresence } from "motion/react";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { Card } from "../ui/Card";
+import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Spinner } from "../ui/spinner";
 
 type FilterChipProps = {
@@ -21,7 +23,7 @@ function FilterChip({ label, active, onClick }: FilterChipProps) {
         relative flex items-center justify-center rounded-[var(--radius-control)] border px-3 py-1.5 text-sm font-medium transition-colors motion-reduce:transition-none
         ${
           active
-            ? "border-action-primary bg-action-primary-muted text-copy-primary shadow-sm"
+            ? "border-action-primary bg-action-primary-muted text-copy-primary"
             : "border-line-default bg-surface-muted text-copy-muted hover:border-line-strong hover:text-copy-primary"
         }
       `}
@@ -71,7 +73,7 @@ export default function UserFilters({
       <ModuleListToolbar
         searchValue={value.search}
         onSearchChange={(search) => onChange({ ...value, search })}
-        searchPlaceholder="Search users..."
+        searchPlaceholder="Search users…"
         filtersOpen={value.filtersOpen}
         activeFilterCount={activeCount}
         onToggleFilters={() => onChange({ ...value, filtersOpen: !value.filtersOpen })}
@@ -108,7 +110,7 @@ export default function UserFilters({
             <Card>
               <div className="divide-y divide-line-subtle">
                 <section className="px-4 py-4" aria-labelledby="user-filter-teams">
-                  <h3 id="user-filter-teams" className="text-sm font-semibold text-copy-primary">Teams</h3>
+                  <SectionHeading as="h3" id="user-filter-teams">Teams</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
@@ -132,7 +134,7 @@ export default function UserFilters({
                 </section>
 
                 <section className="px-4 py-4" aria-labelledby="user-filter-roles">
-                  <h3 id="user-filter-roles" className="text-sm font-semibold text-copy-primary">Roles</h3>
+                  <SectionHeading as="h3" id="user-filter-roles">Roles</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
@@ -156,7 +158,7 @@ export default function UserFilters({
                 </section>
 
                 <section className="px-4 py-4" aria-labelledby="user-filter-status">
-                  <h3 id="user-filter-status" className="text-sm font-semibold text-copy-primary">Status</h3>
+                  <SectionHeading as="h3" id="user-filter-status">Status</SectionHeading>
                   <div className="mt-3 flex flex-wrap gap-2">
                     <FilterChip
                       label="All"
@@ -166,9 +168,7 @@ export default function UserFilters({
                       }
                     />
                     {options.allStatuses.map((statusValue) => {
-                      const label =
-                        statusValue.charAt(0).toUpperCase() +
-                        statusValue.slice(1);
+                      const label = formatSnakeCaseLabel(statusValue);
 
                       return (
                         <FilterChip

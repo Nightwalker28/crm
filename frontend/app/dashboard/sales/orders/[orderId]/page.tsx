@@ -1,379 +1,441 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil } from "lucide-react";
 import { toast } from "sonner";
 
-import CrmRecordActivitySection from "@/components/recordActivity/CrmRecordActivitySection";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
+import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
+import { OrderFulfilmentPanel } from "@/components/inventory/OrderFulfilmentPanel";
+import { OrderInvoicingPanel } from "@/components/finance/OrderInvoicingPanel";
+import { OrderMarginPanel } from "@/components/inventory/OrderMarginPanel";
+import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
+import RecordAuditHistory from "@/components/recordActivity/RecordAuditHistory";
+import RecordTasksPanel from "@/components/recordActivity/RecordTasksPanel";
+import RecordTimeline from "@/components/recordActivity/RecordTimeline";
+import { RecordOwnerField } from "@/components/recordWorkspace/RecordOwnerField";
+import {
+  RecordWorkspace,
+  useRecordTabHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
+import { PanelError, PanelLoading } from "@/components/ui/PanelStates";
 import {
-  Field,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  RouteErrorState,
-  RouteLoadingState,
-} from "@/components/ui/RouteStates";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableHeaderRow,
-  TableRow,
-} from "@/components/ui/Table";
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineField,
+  RecordSpineLink,
+  RecordSpineMeta,
+  RecordSpineTrack,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { StatusValue } from "@/components/ui/StatusValue";
+import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
+import { useWarehouses } from "@/hooks/inventory/useInventory";
 import type { Order } from "@/hooks/sales/useOrders";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import {
+  useResolvedRecordLayout,
+  type ResolvedRecordLayout as ResolvedRecordLayoutContract,
+} from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
+import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
+import { getOrderPriority, getOrderSource, getOrderStatus } from "@/lib/statusStyles";
 
-const STATUSES = [
-  { value: "draft", label: "Draft" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "fulfilled", label: "Fulfilled" },
-  { value: "cancelled", label: "Cancelled" },
-];
+const ORDER_STATUS_VALUES = ["draft", "confirmed", "fulfilled", "cancelled"] as const;
 
-function formatMoney(
-  value: string | number | null | undefined,
-  currency: string | null | undefined,
-) {
-  const amount = Number(value ?? 0);
-  if (!Number.isFinite(amount)) return "-";
-  return new Intl.NumberFormat(undefined, {
-    style: "currency",
-    currency: currency || "USD",
-  }).format(amount);
+const ORDER_STATUS_OPTIONS: InlineFieldEditOption[] = ORDER_STATUS_VALUES.map((value) => ({
+  value,
+  ...getOrderStatus(value),
+}));
+
+const ORDER_PRIORITY_OPTIONS: InlineFieldEditOption[] = ["normal", "high", "urgent"].map((value) => ({
+  value,
+  ...getOrderPriority(value),
+}));
+
+/** `cancelled` ends the order without fulfilling it, so it is an exit rather than a step. */
+const ORDER_TRACK_VALUES = ["draft", "confirmed", "fulfilled"] as const;
+
+const ORDER_TRACK_STEPS = ORDER_TRACK_VALUES.map((value) => ({
+  id: value,
+  label: getOrderStatus(value).label,
+}));
+
+/**
+ * Fields `Details` must not draw a second time (design.md §4.7): the header owns the order
+ * number, and the spine owns status, owner and every relationship.
+ */
+const SPINE_OWNED_FIELDS = ["order_number", "status", "owner_id", "priority", "source", "channel", "external_reference"] as const;
+
+/** Money fields in the seeded layout, which render through the order's own currency. */
+const MONEY_FIELDS = new Set(["subtotal", "discount_total", "tax_total", "grand_total"]);
+
+class OrderRequestError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function fetchOrder(orderId: string) {
+  const res = await apiFetch(`/sales/orders/${orderId}`);
+  const body = await res.json().catch(() => null);
+  if (!res.ok) {
+    throw new OrderRequestError(body?.detail ?? "We could not load this order.", res.status);
+  }
+  return body as Order;
 }
 
 export default function OrderDetailPage() {
   const params = useParams<{ orderId: string }>();
-  const [order, setOrder] = useState<Order | null>(null);
-  const [status, setStatus] = useState("confirmed");
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [loadError, setLoadError] = useState(false);
-  const [saveError, setSaveError] = useState(false);
+  const queryClient = useQueryClient();
+  const { modules } = useAccessibleModules();
 
-  async function loadOrder(signal?: { cancelled: boolean }) {
-    try {
-      setLoading(true);
-      setLoadError(false);
-      const res = await apiFetch(`/sales/orders/${params.orderId}`);
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error("Unable to load order");
-      if (signal?.cancelled) return;
-      setOrder(body);
-      setStatus(body.status ?? "confirmed");
-    } catch {
-      if (!signal?.cancelled) setLoadError(true);
-    } finally {
-      if (!signal?.cancelled) setLoading(false);
+  const moduleActions = (moduleKey: string) =>
+    modules.find((module) => module.name === moduleKey)?.actions;
+  const orderActions = moduleActions("sales_orders");
+  const taskActions = moduleActions("tasks");
+  const documentActions = moduleActions("documents");
+  const canEdit = Boolean(orderActions?.can_edit);
+  const canViewTasks = Boolean(taskActions?.can_view);
+  const canCreateTasks = Boolean(taskActions?.can_create);
+  const canEditTasks = Boolean(taskActions?.can_edit);
+  const canViewDocuments = Boolean(documentActions?.can_view);
+  const canCreateDocuments = Boolean(documentActions?.can_create);
+  const canEditDocuments = Boolean(documentActions?.can_edit);
+  const canDeleteDocuments = Boolean(documentActions?.can_delete);
+  const canViewStock = Boolean(moduleActions("inventory_stock")?.can_view);
+  const warehousesQuery = useWarehouses(false, canViewStock);
+  const multipleWarehouses = (warehousesQuery.data?.filter((warehouse) => warehouse.is_active).length ?? 0) > 1;
+
+  const orderQuery = useQuery({
+    queryKey: ["sales-order", params.orderId],
+    queryFn: () => fetchOrder(params.orderId),
+    enabled: Boolean(params.orderId),
+    refetchOnWindowFocus: false,
+  });
+  const detailLayoutQuery = useResolvedRecordLayout("sales_orders", "detail");
+
+  const order = orderQuery.data ?? null;
+  const orderError = orderQuery.error;
+  const notFound = orderError instanceof OrderRequestError && orderError.status === 404;
+  const orderName = order?.order_number || "Order";
+  const recordHref = `/dashboard/sales/orders/${params.orderId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
+  const orderTotal = order ? formatMoney(order.grand_total, order.currency) : null;
+
+  async function updateStatus(next: string) {
+    if (!order || order.status === next) return;
+    const res = await apiFetch(`/sales/orders/${params.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: next }),
+    });
+    if (!res.ok) {
+      // A refused fulfilment names the product and the shortfall; that is the next step.
+      const body = (await res.json().catch(() => null)) as { detail?: unknown } | null;
+      const message = typeof body?.detail === "string" ? body.detail : "The order status could not be saved.";
+      toast.error(message);
+      throw new Error(message);
     }
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["sales-order-fulfilment", order.id] }),
+      queryClient.invalidateQueries({ queryKey: ["inventory"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_orders", params.orderId],
+      }),
+      orderQuery.refetch(),
+    ]);
   }
 
-  useEffect(() => {
-    const signal = { cancelled: false };
-    void loadOrder(signal);
-    return () => {
-      signal.cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.orderId]);
-
-  async function handleSave() {
-    try {
-      setSaving(true);
-      setSaveError(false);
-      const res = await apiFetch(`/sales/orders/${params.orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status }),
-      });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error("Unable to update order");
-      setOrder(body);
-      toast.success("Order updated.");
-    } catch {
-      setSaveError(true);
-    } finally {
-      setSaving(false);
-    }
+  async function updatePriority(next: string) {
+    if (!order || order.priority === next) return;
+    const res = await apiFetch(`/sales/orders/${params.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ priority: next }),
+    });
+    if (!res.ok) throw new Error("The order priority could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({ queryKey: ["record-audit-history", "sales_orders", params.orderId] }),
+      orderQuery.refetch(),
+    ]);
   }
 
-  if (loading) return <RouteLoadingState />;
-  if (loadError || !order)
-    return (
-      <RouteErrorState
-        title="Unable to load order"
-        backHref="/dashboard/sales/orders"
-        backLabel="Back to orders"
-        reset={() => void loadOrder()}
-      />
-    );
+  async function updateOwner(nextOwnerId: number | null) {
+    const res = await apiFetch(`/sales/orders/${params.orderId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ owner_id: nextOwnerId }),
+    });
+    if (!res.ok) throw new Error("The order owner could not be saved.");
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
+      queryClient.invalidateQueries({
+        queryKey: ["record-audit-history", "sales_orders", params.orderId],
+      }),
+      orderQuery.refetch(),
+    ]);
+  }
 
   return (
-    <div className="flex flex-col gap-6 text-copy-primary">
-      <RecordPageHeader
-        backHref="/dashboard/sales/orders"
-        backLabel="Back to Orders"
-        title={order ? order.order_number : "Order"}
-        description="Review order value, linked quote, and fulfillment status."
-        primaryAction={
-          <>
-            <Button asChild variant="outline">
-              <Link href={`/dashboard/sales/orders/${params.orderId}/edit`}>
-                <Pencil />
-                Edit order
-              </Link>
-            </Button>
-            <Button onClick={handleSave} disabled={saving || loading}>
-              {saving ? "Saving..." : "Save status"}
-            </Button>
-          </>
-        }
-      />
-
-      {saveError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          We could not update this order. Check your connection and try again.
-        </div>
+    <RecordWorkspace
+      title={orderName}
+      description="Review the order's fulfilment status, linked quote, line items, and activity."
+      backHref="/dashboard/sales/orders"
+      backLabel="Orders"
+      isPermissionDenied={orderError instanceof OrderRequestError && orderError.status === 403}
+      isLoading={orderQuery.isLoading || (!order && !orderError)}
+      hasError={Boolean(orderError)}
+      onRetry={() => void orderQuery.refetch()}
+      errorState={notFound ? (
+        <RouteNotFoundState
+          titleAs="p"
+          recordLabel="Order"
+          backHref="/dashboard/sales/orders"
+          backLabel="Back to orders"
+        />
+      ) : undefined}
+      status={order ? <StatusValue status={getOrderStatus(order.status)} context="record" /> : null}
+      subtitle={order ? (
+        <>
+          {order.organization_name || order.contact_name ? (
+            <span>{order.organization_name || order.contact_name}</span>
+          ) : null}
+          {orderTotal ? <span>{orderTotal}</span> : null}
+        </>
       ) : null}
+      /*
+       * No filled button: an order moves forward by changing its status, and the rail owns
+       * that field (§4.7). The pre-5.3 page agreed by accident — it shipped `Edit order`
+       * alone — and this makes it the archetype rather than an omission.
+       */
+      actions={order && canEdit ? (
+        <Button asChild variant="outline">
+          <Link href={editHref}>
+            <Pencil />
+            Edit
+          </Link>
+        </Button>
+      ) : null}
+      spine={
+        <RecordSpine>
+          {order ? (
+            <>
+              {ORDER_TRACK_VALUES.includes(order.status as (typeof ORDER_TRACK_VALUES)[number]) ? (
+                <RecordSpineTrack
+                  steps={ORDER_TRACK_STEPS}
+                  currentId={order.status}
+                  label="Order lifecycle"
+                />
+              ) : null}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
-        <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-copy-primary">
-            Order details
-          </h2>
-          <FieldDescription className="mt-1">
-            Update the lifecycle status for this order.
-          </FieldDescription>
-          <FieldGroup className="mt-4 grid gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel>Status</FieldLabel>
-              <Select value={status} onValueChange={setStatus}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((item) => (
-                    <SelectItem key={item.value} value={item.value}>
-                      {item.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-            <SummaryTile
-              label="Total"
-              value={formatMoney(order.grand_total, order.currency)}
-            />
-            <SummaryTile
-              label="Subtotal"
-              value={formatMoney(order.subtotal, order.currency)}
-            />
-            <SummaryTile
-              label="Tax"
-              value={formatMoney(order.tax_total, order.currency)}
-            />
-            <SummaryTile
-              label="Discount"
-              value={formatMoney(order.discount_total, order.currency)}
-            />
-            <SummaryTile
-              label="Created"
-              value={formatDateTime(order.created_at)}
-            />
-            <SummaryTile
-              label="Delivery date"
-              value={order.delivery_date || "Not scheduled"}
-            />
-            <SummaryTile
-              label="Payment terms"
-              value={order.payment_terms || "Not set"}
-            />
-          </FieldGroup>
-        </Card>
+              <RecordSpineBlock title="State">
+                <RecordSpineField label="Status">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Status"
+                      value={order.status}
+                      options={ORDER_STATUS_OPTIONS}
+                      onCommit={(next) => updateStatus(next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getOrderStatus(order.status)} context="record" />
+                  )}
+                </RecordSpineField>
+                <RecordSpineField label="Priority">
+                  {canEdit ? (
+                    <InlineFieldEdit
+                      fieldLabel="Priority"
+                      value={order.priority ?? "normal"}
+                      options={ORDER_PRIORITY_OPTIONS}
+                      onCommit={(next) => updatePriority(next.value)}
+                    />
+                  ) : (
+                    <StatusValue status={getOrderPriority(order.priority ?? "normal")} context="record" />
+                  )}
+                </RecordSpineField>
+                {order.source && order.source !== "crm" ? (
+                  // Website and portal orders say where they came from (13 F1.3); read-only.
+                  <RecordSpineField label="Source">
+                    <StatusValue status={getOrderSource(order.source)} context="record" />
+                    {order.channel || order.external_reference ? (
+                      <span className="block text-xs text-copy-muted">
+                        {[order.channel, order.external_reference].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
+                  </RecordSpineField>
+                ) : null}
+                <RecordOwnerField
+                  moduleKey="sales_orders"
+                  ownerId={order.owner_id}
+                  ownerName={order.owner_name}
+                  canEdit={canEdit}
+                  onCommit={updateOwner}
+                />
+              </RecordSpineBlock>
 
-        <Card className="px-5 py-5">
-          <h2 className="text-lg font-semibold text-copy-primary">Links</h2>
-          <div className="mt-4 grid gap-3">
-            <LinkedTile
-              label="Quote"
-              value={order.quote_id ? `Quote #${order.quote_id}` : "No quote"}
-              href={
-                order.quote_id
-                  ? `/dashboard/sales/quotes/${order.quote_id}`
-                  : null
-              }
-            />
-            <LinkedTile
-              label="Account"
-              value={
-                order.organization_name ||
-                (order.organization_id
-                  ? `Account #${order.organization_id}`
-                  : "No account")
-              }
-              href={
-                order.organization_id
-                  ? `/dashboard/sales/organizations/${order.organization_id}`
-                  : null
-              }
-            />
-            <LinkedTile
-              label="Contact"
-              value={
-                order.contact_name ||
-                (order.contact_id
-                  ? `Contact #${order.contact_id}`
-                  : "No contact")
-              }
-              href={
-                order.contact_id
-                  ? `/dashboard/sales/contacts/${order.contact_id}`
-                  : null
-              }
-            />
-            <LinkedTile
-              label="Deal"
-              value={
-                order.opportunity_name ||
-                (order.opportunity_id
-                  ? `Deal #${order.opportunity_id}`
-                  : "No deal")
-              }
-              href={
-                order.opportunity_id
-                  ? `/dashboard/sales/opportunities/${order.opportunity_id}`
-                  : null
-              }
-            />
-            <SummaryTile
-              label="Owner"
-              value={order.owner_name || "Unassigned"}
-            />
-            {order.delivery_address ? (
-              <SummaryTile
-                label="Delivery address"
-                value={order.delivery_address}
+              <RecordSpineBlock title="Connected">
+                {/* `Quote #12` until the response started carrying the number — the same
+                    response-shape defect the contract rebuild found, in the same place. */}
+                <RecordSpineLink
+                  label="Quote"
+                  value={order.quote_number}
+                  href={order.quote_id ? `/dashboard/sales/quotes/${order.quote_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Contact"
+                  value={order.contact_name}
+                  href={order.contact_id ? `/dashboard/sales/contacts/${order.contact_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Account"
+                  value={order.organization_name}
+                  href={order.organization_id ? `/dashboard/sales/organizations/${order.organization_id}` : null}
+                />
+                <RecordSpineLink
+                  label="Deal"
+                  value={order.opportunity_name}
+                  href={order.opportunity_id ? `/dashboard/sales/opportunities/${order.opportunity_id}` : null}
+                />
+              </RecordSpineBlock>
+
+              <RecordSpineMeta
+                createdLabel={`Created ${formatDateTime(order.created_at)}`}
+                updatedLabel={`Updated ${formatDateTime(order.updated_at)}`}
+                history={<RecordAuditHistory moduleKey="sales_orders" entityId={order.id} />}
               />
-            ) : null}
-            {order.notes ? (
-              <SummaryTile label="Notes" value={order.notes} />
-            ) : null}
-          </div>
-        </Card>
-
-        <Card className="px-5 py-5 lg:col-span-2">
-          <h2 className="text-lg font-semibold text-copy-primary">Items</h2>
-          <div className="mt-4 overflow-x-auto">
-            <Table className="min-w-[720px]">
-              <TableHeader>
-                <TableHeaderRow>
-                  <TableHead className="py-2 pr-4">Name</TableHead>
-                  <TableHead className="py-2 pr-4">Qty</TableHead>
-                  <TableHead className="py-2 pr-4">Unit</TableHead>
-                  <TableHead className="py-2 pr-4">Discount</TableHead>
-                  <TableHead className="py-2 pr-4">Tax</TableHead>
-                  <TableHead className="py-2 text-right">Line Total</TableHead>
-                </TableHeaderRow>
-              </TableHeader>
-              <TableBody>
-                {(order.items ?? []).map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="py-3 pr-4 text-copy-primary">
-                      <div>{item.name}</div>
-                      {item.description ? (
-                        <div className="mt-1 text-xs text-copy-muted">
-                          {item.description}
-                        </div>
-                      ) : null}
-                    </TableCell>
-                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {String(item.quantity)}
-                    </TableCell>
-                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.unit_price, order.currency)}
-                    </TableCell>
-                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.discount_amount, order.currency)}
-                    </TableCell>
-                    <TableCell className="py-3 pr-4 tabular-nums text-copy-secondary">
-                      {formatMoney(item.tax_amount, order.currency)}
-                    </TableCell>
-                    <TableCell className="py-3 text-right tabular-nums text-copy-primary">
-                      {formatMoney(item.line_total, order.currency)}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-
-        <CrmRecordActivitySection
-          className="lg:col-span-2"
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={order ? (
+        <OrderOverview
+          order={order}
+          layout={detailLayoutQuery.data}
+          isLayoutLoading={detailLayoutQuery.isLoading}
+          layoutError={detailLayoutQuery.error}
+          onRetryLayout={() => void detailLayoutQuery.refetch()}
+        />
+      ) : null}
+      timeline={order ? (
+        // Note-only: an order has no follow-up endpoint, and inventing channels here would
+        // offer the operator buttons that post nowhere. You call the contact, from the contact.
+        <RecordTimeline moduleKey="sales_orders" entityId={order.id} canEdit={canEdit} />
+      ) : undefined}
+      tasks={order && canViewTasks ? (
+        <RecordTasksPanel
           moduleKey="sales_orders"
           entityId={order.id}
-          recordLabel="Order"
-          taskSourceLabel={order.order_number}
+          sourceLabel={orderName}
+          canCreate={canCreateTasks}
+          canEdit={canEditTasks}
+          createActionVariant="outline"
         />
-      </div>
-    </div>
+      ) : undefined}
+      extraTabs={order ? [
+        ...(order.items?.some((item) => item.catalog_product_id) ? [{
+          id: "fulfilment",
+          label: "Fulfilment",
+          content: (
+            <OrderFulfilmentPanel
+              orderId={order.id}
+              canEdit={canEdit}
+              canReallocate={canEdit && canViewStock}
+              canCreateDelivery={Boolean(moduleActions("inventory_deliveries")?.can_create)}
+              showWarehouse={multipleWarehouses}
+            />
+          ),
+        }] : []),
+        // E5 (12c-erp-invoicing.md §3.5): what is invoiced and what is left, for any order.
+        ...(order.status !== "draft" ? [{
+          id: "invoicing",
+          label: "Invoicing",
+          content: (
+            <OrderInvoicingPanel
+              orderId={order.id}
+              canCreateInvoice={Boolean(moduleActions("finance_pos")?.can_create)}
+              canViewInvoices={Boolean(moduleActions("finance_pos")?.can_view)}
+            />
+          ),
+        }] : []),
+        // E6 (12d-erp-costing.md §3.5): revenue, cost of goods and margin, with access to valuation.
+        ...(moduleActions("inventory_valuation")?.can_view && order.items?.length ? [{
+          id: "margin",
+          label: "Margin",
+          content: <OrderMarginPanel orderId={order.id} />,
+        }] : []),
+      ] : undefined}
+      files={order && canViewDocuments ? (
+        <RecordDocumentsPanel
+          moduleKey="sales_orders"
+          entityId={order.id}
+          canUpload={canCreateDocuments && canEdit}
+          canEdit={canEditDocuments && canEdit}
+          canDelete={canDeleteDocuments && canEdit}
+        />
+      ) : undefined}
+    />
   );
 }
 
-function SummaryTile({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-2 text-sm text-copy-primary">{value}</div>
-    </div>
-  );
-}
-
-function LinkedTile({
-  label,
-  value,
-  href,
+/**
+ * `Details` for a line-item document: the layout, then the items, read-only.
+ *
+ * Editing is `/[id]/edit` behind a manual save — R1 will not autosave totals derived from
+ * lines, discount and tax, and the write is a whole-document call, so an in-place editor
+ * would be the edit page rebuilt inside the record page (§4.7).
+ */
+function OrderOverview({
+  order,
+  layout,
+  isLayoutLoading,
+  layoutError,
+  onRetryLayout,
 }: {
-  label: string;
-  value: string;
-  href: string | null;
+  order: Order;
+  layout?: ResolvedRecordLayoutContract;
+  isLayoutLoading: boolean;
+  layoutError: Error | null;
+  onRetryLayout: () => void;
 }) {
-  return (
-    <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-4">
-      <div className="text-xs uppercase tracking-wide text-copy-muted">
-        {label}
-      </div>
-      <div className="mt-2 text-sm text-copy-primary">
-        {href ? (
-          <Link href={href} className="hover:underline">
-            {value}
-          </Link>
+  if (isLayoutLoading || !layout) {
+    return (
+      <Card className="p-6">
+        {layoutError ? (
+          <PanelError message="The order details layout could not be loaded." onRetry={onRetryLayout} />
         ) : (
-          value
+          <PanelLoading label="Loading order details…" />
         )}
-      </div>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <ReadOnlyRecordLayout
+        layout={layout}
+        values={order as unknown as Record<string, unknown>}
+        customValues={order.custom_fields ?? undefined}
+        omitFieldKeys={SPINE_OWNED_FIELDS}
+        renderValue={(field, value) =>
+          MONEY_FIELDS.has(field.field_key)
+            ? formatMoney(value as string | number | null, order.currency) ?? undefined
+            : undefined
+        }
+      />
+      {order.items?.length ? (
+        <TransactionLineItemsTable items={order.items} currency={order.currency} linkCatalogItems />
+      ) : null}
     </div>
   );
 }

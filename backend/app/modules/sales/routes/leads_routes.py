@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.permissions import require_access
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import (
     ImportExecutionResponse,
@@ -18,10 +19,11 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.access_control import require_role_module_action_access
 from app.core.permissions import require_action_access, require_module_access
+from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
-from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
+from app.modules.platform.services.crm_events import actor_payload, field_changes, safe_emit_crm_event
 from app.modules.platform.services.data_transfer_jobs import (
     create_data_transfer_job,
     enqueue_export_job,
@@ -340,11 +342,14 @@ async def import_leads(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_leads")),
     require_permission=Depends(require_action_access("sales_leads", "create")),
 ):
+    if add_unknown_picklist_values:
+        require_access(db, current_user, "sales_leads", "configure", detail="Only users who can configure leads can add list values during an import.")
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
     target_headers = _enabled_lead_import_fields(db, current_user.tenant_id)
     mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
@@ -364,7 +369,7 @@ async def import_leads(
             },
         )
         stored_path = persist_job_upload(job_id=job.id, filename="leads-import.csv", file_bytes=remapped_file_bytes)
-        job.payload = {**(job.payload or {}), "source_file_path": stored_path}
+        job.payload = {**(job.payload or {}), "source_file_path": stored_path, "add_unknown_picklist_values": add_unknown_picklist_values}
         db.add(job)
         db.commit()
         db.refresh(job)
@@ -380,6 +385,7 @@ async def import_leads(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+        add_unknown_picklist_values=add_unknown_picklist_values,
     )
     return ImportExecutionResponse(mode="inline", message=summary["message"], summary=StandardImportSummary(**summary))
 
@@ -469,6 +475,42 @@ def log_lead_follow_up_route(
     return log_lead_follow_up(db, lead=lead, payload=payload.model_dump(), current_user=current_user)
 
 
+# (result key, created flag, module key, entity type) for each record a conversion can touch.
+_CONVERSION_TARGETS = (
+    ("account_id", "created_account", "sales_organizations", "sales_organization"),
+    ("contact_id", "created_contact", "sales_contacts", "sales_contact"),
+    ("deal_id", "created_deal", "sales_opportunities", "sales_opportunity"),
+)
+
+
+def _log_conversion_targets(db: Session, *, current_user, result: dict) -> None:
+    """Opens each converted record's story on its own timeline (13a H11).
+
+    A record the conversion made reads "Created from lead …"; one it reused reads "Linked to
+    lead … on conversion". Both are `create`/`convert` rows, which the timeline's lifecycle
+    adapter shows; the after-state carries the sibling ids so the timeline can link them.
+    """
+    lead = result["lead"]
+    name = _display_lead_name(lead)
+    links = {"lead_id": lead.lead_id, "account_id": result["account_id"], "contact_id": result["contact_id"], "deal_id": result["deal_id"]}
+    for id_key, created_key, module_key, entity_type in _CONVERSION_TARGETS:
+        entity_id = result.get(id_key)
+        if not entity_id:
+            continue
+        created = bool(result.get(created_key))
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key=module_key,
+            entity_type=entity_type,
+            entity_id=entity_id,
+            action="create" if created else "convert",
+            description=f"Created from lead {name}" if created else f"Linked to lead {name} on conversion",
+            after_state=links,
+        )
+
+
 @router.post("/{lead_id}/convert", response_model=LeadConversionResponse)
 def convert_lead(
     lead_id: int,
@@ -480,45 +522,49 @@ def convert_lead(
 ):
     lead = get_lead_or_404(db, lead_id, tenant_id=current_user.tenant_id)
     _require_conversion_target_permissions(db, current_user, payload)
-    before_state = _serialize_lead(lead)
-    result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
-    log_activity(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        module_key="sales_leads",
-        entity_type="sales_lead",
-        entity_id=result["lead"].lead_id,
-        action="convert",
-        description=f"Converted lead {_display_lead_name(result['lead'])}",
-        before_state=before_state,
-        after_state={
-            **_serialize_lead(result["lead"]),
-            "account_id": result["account_id"],
-            "contact_id": result["contact_id"],
-            "deal_id": result["deal_id"],
-        },
-    )
-    safe_emit_crm_event(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        event_type="lead.converted",
-        entity_type="sales_lead",
-        entity_id=result["lead"].lead_id,
-        payload={
-            **actor_payload(current_user),
-            "lead_id": result["lead"].lead_id,
-            "lead_name": _display_lead_name(result["lead"]),
-            "primary_email": result["lead"].primary_email,
-            "company": result["lead"].company,
-            "status": result["lead"].status,
-            "account_id": result["account_id"],
-            "contact_id": result["contact_id"],
-            "deal_id": result["deal_id"],
-            "href": f"/dashboard/sales/leads/{result['lead'].lead_id}",
-        },
-    )
+    # One commit for the records, their timeline rows and the event: a failure anywhere
+    # leaves no half-converted lead behind (13a E5).
+    with unit_of_work(db):
+        before_state = _serialize_lead(lead)
+        result = convert_sales_lead(db, lead, payload.model_dump(), current_user=current_user)
+        log_activity(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            module_key="sales_leads",
+            entity_type="sales_lead",
+            entity_id=result["lead"].lead_id,
+            action="convert",
+            description=f"Converted lead {_display_lead_name(result['lead'])}",
+            before_state=before_state,
+            after_state={
+                **_serialize_lead(result["lead"]),
+                "account_id": result["account_id"],
+                "contact_id": result["contact_id"],
+                "deal_id": result["deal_id"],
+            },
+        )
+        _log_conversion_targets(db, current_user=current_user, result=result)
+        safe_emit_crm_event(
+            db,
+            tenant_id=current_user.tenant_id,
+            actor_user_id=current_user.id if current_user else None,
+            event_type="lead.converted",
+            entity_type="sales_lead",
+            entity_id=result["lead"].lead_id,
+            payload={
+                **actor_payload(current_user),
+                "lead_id": result["lead"].lead_id,
+                "lead_name": _display_lead_name(result["lead"]),
+                "primary_email": result["lead"].primary_email,
+                "company": result["lead"].company,
+                "status": result["lead"].status,
+                "account_id": result["account_id"],
+                "contact_id": result["contact_id"],
+                "deal_id": result["deal_id"],
+                "href": f"/dashboard/sales/leads/{result['lead'].lead_id}",
+            },
+        )
     return LeadConversionResponse.model_validate(result)
 
 
@@ -570,6 +616,7 @@ def update_lead(
             "score": updated.score,
             "score_grade": updated.score_grade,
             "changed_fields": sorted(update_data.keys()),
+            "field_changes": field_changes(before_state, _serialize_lead(updated), keys=set(update_data) - {"custom_fields"}),
             "before_status": before_state.get("status"),
             "href": f"/dashboard/sales/leads/{updated.lead_id}",
         },

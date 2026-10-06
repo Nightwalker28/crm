@@ -11,20 +11,32 @@ import {
   OrganizationFormMainFields,
   OrganizationFormSidebarFields,
   EMPTY_ORGANIZATION_FORM,
+  organizationFormInputIdFor,
   type OrganizationFormValue,
 } from "@/components/organizations/OrganizationFormFields";
+import {
+  buildOrganizationPayload,
+  saveOrganization,
+  validateOrganizationEmail,
+  validateOrganizationName,
+} from "@/components/organizations/organizationMutation";
+import {
+  consumeOrganizationQuickCreateDraft,
+  isOrganizationQuickCreateHandoff,
+} from "@/components/organizations/organizationQuickCreateDraft";
+import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { addressFrom, flatAddress, type AddressPart } from "@/components/forms/AddressFields";
+import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
+import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { PageShell } from "@/components/ui/PageShell";
 import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
-import {
-  pickEnabledModulePayload,
-  useModuleFieldConfigs,
-} from "@/hooks/useModuleFieldConfigs";
+import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
@@ -52,6 +64,10 @@ export default function OrganizationRecordFormPage({
   orgId?: string;
 }) {
   const router = useRouter();
+  // R2 travels in both directions: the tab the operator left is on this page's own URL,
+  // so Back, Cancel and the post-save redirect all return to it.
+  const listHref = "/dashboard/sales/organizations";
+  const cancelHref = useRecordTabHref(mode === "edit" && orgId ? `${listHref}/${orgId}` : listHref);
   const queryClient = useQueryClient();
   const [form, setForm] = useState<OrganizationFormValue>(
     EMPTY_ORGANIZATION_FORM,
@@ -64,7 +80,7 @@ export default function OrganizationRecordFormPage({
   );
   const [nameError, setNameError] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const serverErrors = useServerFormErrors(organizationFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
@@ -74,6 +90,16 @@ export default function OrganizationRecordFormPage({
     enabled: mode === "edit" && Boolean(orgId),
     refetchOnWindowFocus: false,
   });
+
+  // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
+  // empty on purpose, so the restored values count as unsaved changes and stay guarded.
+  useEffect(() => {
+    if (mode !== "create" || !isOrganizationQuickCreateHandoff(window.location.search)) return;
+    const draft = consumeOrganizationQuickCreateDraft();
+    if (!draft) return;
+    setForm(draft.form);
+    setCustomFieldValues(draft.customFieldValues);
+  }, [mode]);
 
   useEffect(() => {
     if (mode !== "edit" || !summaryQuery.data) return;
@@ -86,12 +112,13 @@ export default function OrganizationRecordFormPage({
       primary_phone: organization.primary_phone ?? "",
       secondary_phone: organization.secondary_phone ?? "",
       industry: organization.industry ?? "",
-      annual_revenue: organization.annual_revenue ?? "",
-      billing_address: organization.billing_address ?? "",
-      billing_city: organization.billing_city ?? "",
-      billing_state: organization.billing_state ?? "",
-      billing_postal_code: organization.billing_postal_code ?? "",
-      billing_country: organization.billing_country ?? "",
+      account_type: organization.account_type ?? "",
+      annual_revenue: organization.annual_revenue != null ? String(organization.annual_revenue) : "",
+      employee_count: organization.employee_count != null ? String(organization.employee_count) : "",
+      ...(flatAddress("billing", addressFrom(organization as unknown as Record<string, unknown>, "billing")) as Pick<OrganizationFormValue, `billing_${AddressPart}`>),
+      ...(flatAddress("shipping", addressFrom(organization as unknown as Record<string, unknown>, "shipping")) as Pick<OrganizationFormValue, `shipping_${AddressPart}`>),
+      is_vendor: Boolean(organization.is_vendor),
+      payment_terms_days: organization.payment_terms_days != null ? String(organization.payment_terms_days) : "",
       assigned_to: organization.assigned_to ?? null,
       assigned_to_name: organization.assigned_to_name ?? "",
     };
@@ -109,21 +136,15 @@ export default function OrganizationRecordFormPage({
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const name = form.org_name.trim();
-    const email = form.primary_email.trim();
-    setNameError(name ? null : "Account name is required.");
-    setEmailError(
-      !email
-        ? "Primary email is required."
-        : /^\S+@\S+\.\S+$/.test(email)
-          ? null
-          : "Enter a valid email address.",
-    );
-    if (!name) {
+    const nextNameError = validateOrganizationName(form.org_name);
+    const nextEmailError = validateOrganizationEmail(form.primary_email);
+    setNameError(nextNameError);
+    setEmailError(nextEmailError);
+    if (nextNameError) {
       document.getElementById("account-name")?.focus();
       return false;
     }
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
+    if (nextEmailError) {
       document.getElementById("account-primary-email")?.focus();
       return false;
     }
@@ -134,41 +155,12 @@ export default function OrganizationRecordFormPage({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
-      const payload = pickEnabledModulePayload(
-        {
-          ...Object.fromEntries(
-            Object.entries(form)
-              .filter(([key]) => !["assigned_to_name"].includes(key))
-              .map(([key, value]) => [
-                key,
-                typeof value === "string" ? value.trim() || null : value,
-              ]),
-          ),
-          assigned_to:
-            mode === "edit" && form.assigned_to === null
-              ? undefined
-              : form.assigned_to,
-          custom_fields: customFieldValues,
-        },
-        moduleFields,
-        ["org_name", "primary_email", "custom_fields"],
-      );
-      const endpoint =
-        mode === "edit"
-          ? `/sales/organizations/${orgId}`
-          : "/sales/organizations";
-      const res = await apiFetch(endpoint, {
-        method: mode === "edit" ? "PUT" : "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+      serverErrors.clear();
+      const savedOrgId = await saveOrganization({
+        mode,
+        organizationId: orgId,
+        payload: buildOrganizationPayload(form, customFieldValues, moduleFields, mode),
       });
-      const body = (await res.json().catch(() => null)) as {
-        org_id?: number;
-        detail?: string;
-      } | null;
-      if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
-      const savedOrgId = mode === "edit" ? orgId : body?.org_id;
       await queryClient.invalidateQueries({
         queryKey: ["sales-organizations"],
       });
@@ -178,13 +170,9 @@ export default function OrganizationRecordFormPage({
         });
       setInitialSnapshot(currentSnapshot);
       toast.success(mode === "edit" ? "Account updated." : "Account created.");
-      router.push(
-        savedOrgId
-          ? `/dashboard/sales/organizations/${savedOrgId}`
-          : "/dashboard/sales/organizations",
-      );
-    } catch {
-      setSubmitError(
+      router.push(mode === "edit" ? cancelHref : (savedOrgId ? `${listHref}/${savedOrgId}` : listHref));
+    } catch (error) {
+      serverErrors.report(error, 
         mode === "edit"
           ? "The account could not be updated. Check the fields and try again."
           : "The account could not be created. Check the fields and try again.",
@@ -199,50 +187,41 @@ export default function OrganizationRecordFormPage({
   if (mode === "edit" && summaryQuery.error)
     return (
       <RouteErrorState
-        title="Unable to load this account"
+        title="This account could not be loaded"
         reset={() => void summaryQuery.refetch()}
         backHref="/dashboard/sales/organizations"
         backLabel="Back to accounts"
       />
     );
   const title = mode === "edit" ? "Edit account" : "Create account";
-  const cancelHref =
-    mode === "edit" && orgId
-      ? `/dashboard/sales/organizations/${orgId}`
-      : "/dashboard/sales/organizations";
   return (
-    <div className="flex flex-col gap-6">
-      <PageHeader
-        title={title}
-        eyebrow={
-          mode === "edit" && summaryQuery.data?.organization.updated_at
-            ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
-            : undefined
-        }
-        description={
-          mode === "edit"
-            ? "Update account, billing, and ownership information."
-            : "Create a company account for contacts, deals, and transactions."
-        }
-        actions={
-          <Button asChild variant="ghost" size="sm">
-            <Link href={cancelHref}>
-              <ArrowLeft />
-              Back to {mode === "edit" ? "account" : "accounts"}
-            </Link>
-          </Button>
-        }
-      />
-      {submitError ? (
-        <div
-          role="alert"
-          className="rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary"
-        >
-          <div className="font-medium">We could not save this account.</div>
-          <div className="mt-1 text-copy-secondary">{submitError}</div>
-        </div>
+    <PageShell
+      title={title}
+      eyebrow={
+        mode === "edit" && summaryQuery.data?.organization.updated_at
+          ? `Last modified ${formatDateTime(summaryQuery.data.organization.updated_at)}`
+          : undefined
+      }
+      description={
+        mode === "edit"
+          ? "Update account, billing, and ownership information."
+          : "Create a company account for contacts, deals, and transactions."
+      }
+      actions={
+        <Button asChild variant="ghost" size="sm">
+          <Link href={cancelHref}>
+            <ArrowLeft />
+            Back to {mode === "edit" ? "account" : "accounts"}
+          </Link>
+        </Button>
+      }
+    >
+      {serverErrors.message ? (
+        <FormErrorBanner title="We could not save this account.">{serverErrors.message}</FormErrorBanner>
       ) : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={organizationFormInputIdFor}>
       <RecordFormLayout
+        title={mode === "edit" ? (form.org_name.trim() || "Account") : "Create account"}
         sidebar={
           <OrganizationFormSidebarFields
             value={form}
@@ -251,33 +230,29 @@ export default function OrganizationRecordFormPage({
             mode={mode}
           />
         }
-        footer={
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="text-sm text-copy-muted">
-              {isDirty
-                ? "You have unsaved changes."
+        status={isDirty
+          ? "Unsaved changes"
+          : mode === "edit"
+          ? null
+          : "Complete the required fields to create this account."}
+        actions={(
+          <>
+            <Button asChild variant="outline">
+              <Link href={cancelHref}>Cancel</Link>
+            </Button>
+            <Button
+              onClick={() => void submit()}
+              disabled={submitting || (mode === "edit" && !isDirty)}
+            >
+              <Save />
+              {submitting
+                ? "Saving…"
                 : mode === "edit"
-                  ? "No unsaved changes."
-                  : "Complete the required fields to create this account."}
-            </span>
-            <div className="flex items-center gap-2">
-              <Button asChild variant="outline">
-                <Link href={cancelHref}>Cancel</Link>
-              </Button>
-              <Button
-                onClick={() => void submit()}
-                disabled={submitting || (mode === "edit" && !isDirty)}
-              >
-                <Save />
-                {submitting
-                  ? "Saving…"
-                  : mode === "edit"
-                    ? "Save changes"
-                    : "Create account"}
-              </Button>
-            </div>
-          </div>
-        }
+                  ? "Save changes"
+                  : "Create account"}
+            </Button>
+          </>
+        )}
       >
         <OrganizationFormMainFields
           value={form}
@@ -296,6 +271,7 @@ export default function OrganizationRecordFormPage({
           mode={mode}
         />
       </RecordFormLayout>
-    </div>
+      </ServerFieldErrorsProvider>
+    </PageShell>
   );
 }

@@ -1,4 +1,6 @@
-from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func
+import uuid
+
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, Numeric, JSON, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship, validates
 
 from app.core.database import Base
@@ -46,56 +48,90 @@ class CrmNumberCounter(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
 
-class CustomFieldDefinition(Base):
-    __tablename__ = "custom_field_definitions"
+class FieldDefinition(Base):
+    """One field of the one field system (13b §3.4): a custom field on a built-in module, or a
+    field of a custom module. What each `field_type` means lives in `app/core/field_types.py`.
+
+    `module_key` is the module the field belongs to: a built-in key (`sales_leads`), or a
+    custom module's platform module name. A custom module's fields also carry
+    `custom_module_id`, so the module and its fields go together.
+    """
+
+    __tablename__ = "field_definitions"
     __table_args__ = (
-        UniqueConstraint("tenant_id", "module_key", "field_key", name="uq_custom_field_defs_tenant_module_key"),
-    )
-
-    id = Column(BigInteger, primary_key=True, index=True)
-    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    module_key = Column(String(100), nullable=False, index=True)
-    field_key = Column(String(100), nullable=False, index=True)
-    label = Column(String(150), nullable=False)
-    field_type = Column(String(50), nullable=False)
-    placeholder = Column(String(255), nullable=True)
-    help_text = Column(Text, nullable=True)
-    is_required = Column(Boolean, nullable=False, server_default="false")
-    is_active = Column(Boolean, nullable=False, server_default="true")
-    sort_order = Column(Integer, nullable=False, server_default="0")
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    values = relationship("CustomFieldValue", back_populates="definition", cascade="all, delete-orphan")
-
-
-class CustomFieldValue(Base):
-    __tablename__ = "custom_field_values"
-    __table_args__ = (
-        UniqueConstraint(
+        Index(
+            "uq_field_definitions_tenant_module_key",
             "tenant_id",
             "module_key",
-            "record_id",
-            "field_definition_id",
-            name="uq_custom_field_values_tenant_record_field",
+            "field_key",
+            unique=True,
+            postgresql_where=text("deleted_at IS NULL"),
+            sqlite_where=text("deleted_at IS NULL"),
         ),
-        Index("ix_custom_field_values_module_record", "module_key", "record_id"),
-        Index("ix_custom_field_values_definition_record", "field_definition_id", "record_id"),
+        Index("ix_field_definitions_tenant_module", "tenant_id", "module_key", "is_active"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)
-    record_id = Column(BigInteger, nullable=False, index=True)
-    field_definition_id = Column(BigInteger, ForeignKey("custom_field_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
-    value_text = Column(Text, nullable=True)
-    value_number = Column(JSON, nullable=True)
-    value_date = Column(String(20), nullable=True)
-    value_boolean = Column(Boolean, nullable=True)
+    field_key = Column(String(100), nullable=False)
+    label = Column(String(150), nullable=False)
+    field_type = Column(String(40), nullable=False)
+    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=True, index=True)
+    picklist_id = Column(BigInteger, ForeignKey("picklists.id", ondelete="RESTRICT"), nullable=True, index=True)
+    lookup_module_key = Column(String(100), nullable=True)
+    is_required = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_unique = Column(Boolean, nullable=False, default=False, server_default="false")
+    display_in_list = Column(Boolean, nullable=False, default=True, server_default="true")
+    default_value = Column(JSON, nullable=True)
+    config = Column(JSON, nullable=True)
+    placeholder = Column(String(255), nullable=True)
+    help_text = Column(Text, nullable=True)
+    sort_order = Column(Integer, nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
-    definition = relationship("CustomFieldDefinition", back_populates="values")
+    picklist = relationship("Picklist")
+    custom_module = relationship("CustomModuleDefinition", back_populates="fields")
+    values = relationship("FieldValue", back_populates="definition", cascade="all, delete-orphan", passive_deletes=True)
+
+    @property
+    def picklist_key(self) -> str | None:
+        return self.picklist.key if self.picklist is not None else None
+
+
+class FieldValue(Base):
+    """A record's value for one field, in the column its type stores into."""
+
+    __tablename__ = "field_values"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "record_id", "field_definition_id", name="uq_field_values_record_field"),
+        Index("ix_field_values_module_record", "tenant_id", "module_key", "record_id"),
+        Index("ix_field_values_definition_text", "field_definition_id", "value_text"),
+        Index("ix_field_values_definition_number", "field_definition_id", "value_number"),
+        Index("ix_field_values_definition_date", "field_definition_id", "value_date"),
+        Index("ix_field_values_definition_datetime", "field_definition_id", "value_datetime"),
+        Index("ix_field_values_definition_record", "field_definition_id", "value_record_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False)
+    record_id = Column(BigInteger, nullable=False)
+    field_definition_id = Column(BigInteger, ForeignKey("field_definitions.id", ondelete="CASCADE"), nullable=False)
+    value_text = Column(Text, nullable=True)
+    value_number = Column(Numeric(28, 8), nullable=True)
+    value_date = Column(Date, nullable=True)
+    value_datetime = Column(DateTime(timezone=True), nullable=True)
+    value_boolean = Column(Boolean, nullable=True)
+    value_json = Column(JSON, nullable=True)
+    value_record_id = Column(BigInteger, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    definition = relationship("FieldDefinition", back_populates="values")
 
 
 class ModuleFieldConfig(Base):
@@ -115,6 +151,50 @@ class ModuleFieldConfig(Base):
     is_enabled = Column(Boolean, nullable=False, server_default="true")
     is_protected = Column(Boolean, nullable=False, server_default="false")
     sort_order = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class RecordLayoutDefinition(Base):
+    __tablename__ = "record_layout_definitions"
+    __table_args__ = (
+        CheckConstraint(
+            "surface IN ('quick_create', 'detail', 'full_form')",
+            name="ck_record_layout_definitions_surface",
+        ),
+        CheckConstraint("version >= 1", name="ck_record_layout_definitions_version"),
+        UniqueConstraint(
+            "tenant_id",
+            "module_key",
+            "surface",
+            "name",
+            name="uq_record_layout_defs_tenant_module_surface_name",
+        ),
+        Index(
+            "uq_record_layout_defs_default",
+            "tenant_id",
+            "module_key",
+            "surface",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index(
+            "ix_record_layout_defs_tenant_module_surface",
+            "tenant_id",
+            "module_key",
+            "surface",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    surface = Column(String(32), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    is_default = Column(Boolean, nullable=False, server_default="false")
+    version = Column(Integer, nullable=False, server_default="1")
+    sections = Column(JSON, nullable=False, server_default="[]")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
@@ -166,23 +246,182 @@ class RecordTagLink(Base):
     tag = relationship("RecordTag", back_populates="links")
 
 
+class Picklist(Base):
+    """A tenant-managed value list (13b §3.1).
+
+    `is_system` lists are the ones code refers to by key (lead status, industry, …): their
+    values are editable but the list cannot be removed. `is_locked` lists hold values the
+    platform defines (ISO countries): an admin can only switch values on and off.
+    """
+
+    __tablename__ = "picklists"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "key", name="uq_picklists_tenant_key"),
+        UniqueConstraint("tenant_id", "id", name="uq_picklists_tenant_id"),
+        CheckConstraint("scope IN ('global', 'local')", name="ck_picklists_scope"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    key = Column(String(100), nullable=False)
+    label = Column(String(150), nullable=False)
+    scope = Column(String(20), nullable=False, server_default="global")
+    meaning_set = Column(String(50), nullable=True)
+    is_system = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_locked = Column(Boolean, nullable=False, default=False, server_default="false")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    values = relationship(
+        "PicklistValue",
+        back_populates="picklist",
+        cascade="all, delete-orphan",
+        order_by="(PicklistValue.position, PicklistValue.id)",
+    )
+
+
+class PicklistValue(Base):
+    """One value of a picklist. The key is fixed once created; records store it."""
+
+    __tablename__ = "picklist_values"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "picklist_id", "key", name="uq_picklist_values_list_key"),
+        ForeignKeyConstraint(
+            ["tenant_id", "picklist_id"],
+            ["picklists.tenant_id", "picklists.id"],
+            ondelete="CASCADE",
+            name="fk_picklist_values_tenant_list",
+        ),
+        CheckConstraint(
+            "tone IS NULL OR tone IN ('neutral', 'success', 'attention', 'critical')",
+            name="ck_picklist_values_tone",
+        ),
+        CheckConstraint("NOT is_default OR is_active", name="ck_picklist_values_default_active"),
+        Index(
+            "uq_picklist_values_default",
+            "picklist_id",
+            unique=True,
+            postgresql_where=text("is_default"),
+            sqlite_where=text("is_default = 1"),
+        ),
+        Index("ix_picklist_values_list_position", "picklist_id", "position"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    picklist_id = Column(BigInteger, nullable=False, index=True)
+    key = Column(String(100), nullable=False)
+    label = Column(String(150), nullable=False)
+    position = Column(Integer, nullable=False, server_default="0")
+    is_active = Column(Boolean, nullable=False, default=True, server_default="true")
+    is_default = Column(Boolean, nullable=False, default=False, server_default="false")
+    tone = Column(String(20), nullable=True)
+    meaning = Column(String(50), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    picklist = relationship("Picklist", back_populates="values")
+
+
 class UserModuleReport(Base):
     __tablename__ = "user_module_reports"
     __table_args__ = (
         UniqueConstraint("user_id", "module_key", "name", name="uq_user_module_reports_user_module_name"),
         Index("ix_user_module_reports_tenant_user_module", "tenant_id", "user_id", "module_key"),
+        # The library lists everyone's shared reports in a tenant.
+        Index("ix_user_module_reports_tenant_visibility", "tenant_id", "visibility"),
+        CheckConstraint("visibility IN ('private', 'everyone')", name="ck_user_module_reports_visibility"),
     )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    # The SQLite variant keeps the tests able to autoincrement it; PostgreSQL is unchanged.
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     module_key = Column(String(100), nullable=False, index=True)
     name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    # `private` (the owner only) or `everyone` in the tenant. Each viewer still sees only the
+    # records they may open: a report is a definition, never a copy of the data.
+    visibility = Column(String(20), nullable=False, server_default="private", default="private")
     config = Column(JSON, nullable=False, server_default="{}")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     user = relationship("User")
+
+
+class ReportDashboard(Base):
+    """A shared or private page of saved reports (11-reports.md Phase 2).
+
+    `widgets` holds references to saved reports, never their data or definitions: each
+    viewer's dashboard runs every report as that viewer, so a dashboard shows nobody more
+    than the reports would. `filters` holds the dashboard-wide defaults (date range, Show me).
+    """
+
+    __tablename__ = "report_dashboards"
+    __table_args__ = (
+        UniqueConstraint("user_id", "name", name="uq_report_dashboards_user_name"),
+        Index("ix_report_dashboards_tenant_visibility", "tenant_id", "visibility"),
+        CheckConstraint("visibility IN ('private', 'everyone')", name="ck_report_dashboards_visibility"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(150), nullable=False)
+    description = Column(Text, nullable=True)
+    visibility = Column(String(20), nullable=False, server_default="private", default="private")
+    widgets = Column(JSON, nullable=False, server_default="[]", default=list)
+    filters = Column(JSON, nullable=False, server_default="{}", default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    user = relationship("User")
+
+
+class ReportSubscription(Base):
+    __tablename__ = "report_subscriptions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "user_id", "target_type", "target_id", name="uq_report_subscription_user_target"),
+        CheckConstraint("target_type IN ('report', 'dashboard')", name="ck_report_subscription_target"),
+        CheckConstraint("frequency IN ('daily', 'weekly', 'monthly')", name="ck_report_subscription_frequency"),
+        Index("ix_report_subscriptions_due", "next_run_at"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    user_id = Column(BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    target_type = Column(String(20), nullable=False)
+    target_id = Column(BigInteger, nullable=False)
+    frequency = Column(String(20), nullable=False)
+    hour = Column(Integer, nullable=False)
+    minute = Column(Integer, nullable=False, server_default="0")
+    weekday = Column(Integer, nullable=True)
+    day_of_month = Column(Integer, nullable=True)
+    timezone = Column(String(100), nullable=False)
+    is_active = Column(Boolean, nullable=False, server_default="true")
+    next_run_at = Column(DateTime(timezone=True), nullable=False)
+    last_status = Column(String(20), nullable=True)
+    last_error = Column(String(255), nullable=True)
+    last_sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
+
+class ReportSubscriptionDelivery(Base):
+    __tablename__ = "report_subscription_deliveries"
+    __table_args__ = (
+        UniqueConstraint("subscription_id", "scheduled_for", name="uq_report_delivery_slot"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    subscription_id = Column(BigInteger, ForeignKey("report_subscriptions.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_for = Column(DateTime(timezone=True), nullable=False)
+    status = Column(String(20), nullable=False, server_default="queued")
+    error = Column(String(255), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
 
 
 class ForecastSnapshot(Base):
@@ -382,6 +621,10 @@ class CrmEvent(Base):
     entity_id = Column(String(100), nullable=False, index=True)
     # ORM callers use event.payload; the persisted column remains payload_json.
     payload = Column("payload_json", JSON, nullable=True)
+    # The identity an outside system sees (webhook envelope `id`). Random, so it neither
+    # reveals event volume nor changes on replay. Null on events recorded before webhooks
+    # existed: no subscription could have matched them, so they are never delivered.
+    public_id = Column(String(36), nullable=True, unique=True, index=True, default=lambda: str(uuid.uuid4()))
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
 
     actor = relationship("User")
@@ -501,8 +744,18 @@ class AutomationRuleDeadLetter(Base):
 
 class RecordComment(Base):
     __tablename__ = "record_comments"
+    __table_args__ = (
+        Index(
+            "ix_record_comments_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "created_at",
+            "id",
+        ),
+    )
 
-    id = Column(BigInteger, primary_key=True, index=True)
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     module_key = Column(String(100), nullable=False, index=True)
@@ -522,6 +775,50 @@ class RecordComment(Base):
             if self.actor.email:
                 return self.actor.email
         return "Unknown user"
+
+
+class RecordFollowUp(Base):
+    """Source of truth for a logged salesperson follow-up outcome.
+
+    Follow-ups previously existed only as ``activity_logs`` rows, which mixed
+    salesperson interaction history into the immutable audit store. This table
+    owns the interaction; the audit log keeps recording the change separately.
+    ``follow_up_task_id`` is a soft reference (no FK) matching the existing
+    cross-module convention used by ``tasks.source_entity_id``.
+    """
+
+    __tablename__ = "record_follow_ups"
+    __table_args__ = (
+        CheckConstraint(
+            "channel IN ('whatsapp', 'email', 'call')",
+            name="ck_record_follow_ups_channel",
+        ),
+        Index(
+            "ix_record_follow_ups_tenant_record",
+            "tenant_id",
+            "module_key",
+            "entity_id",
+            "occurred_at",
+            "id",
+        ),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    actor_user_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    entity_id = Column(String(100), nullable=False, index=True)
+    channel = Column(String(20), nullable=False, index=True)
+    note = Column(Text, nullable=True)
+    follow_up_task_id = Column(BigInteger, nullable=True, index=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    actor = relationship("User")
+
+    @validates("entity_id")
+    def _normalize_entity_id(self, _key, value):
+        return str(value)
 
 
 class MessageTemplate(Base):
@@ -573,37 +870,7 @@ class CustomModuleDefinition(Base):
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
     module = relationship("Module")
-    fields = relationship("CustomModuleFieldDefinition", back_populates="custom_module", cascade="all, delete-orphan")
-
-
-class CustomModuleFieldDefinition(Base):
-    __tablename__ = "custom_module_field_definitions"
-    __table_args__ = (
-        UniqueConstraint("custom_module_id", "key", name="uq_custom_module_field_definitions_module_key"),
-        Index("ix_custom_module_field_definitions_tenant_module", "tenant_id", "custom_module_id", "is_active", "deleted_at"),
-    )
-
-    id = Column(BigInteger, primary_key=True, index=True)
-    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
-    key = Column(String(100), nullable=False, index=True)
-    label = Column(String(150), nullable=False)
-    field_type = Column(String(40), nullable=False)
-    help_text = Column(Text, nullable=True)
-    placeholder = Column(String(255), nullable=True)
-    is_required = Column(Boolean, nullable=False, server_default="false")
-    is_unique = Column(Boolean, nullable=False, server_default="false")
-    display_in_list = Column(Boolean, nullable=False, server_default="true")
-    default_value = Column(JSON, nullable=True)
-    validation_json = Column(JSON, nullable=True)
-    sort_order = Column(Integer, nullable=False, server_default="0")
-    is_active = Column(Boolean, nullable=False, server_default="true")
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-    deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
-
-    custom_module = relationship("CustomModuleDefinition", back_populates="fields")
-    values = relationship("CustomModuleRecordValue", back_populates="field", cascade="all, delete-orphan")
+    fields = relationship("FieldDefinition", back_populates="custom_module", cascade="all, delete-orphan")
 
 
 class CustomModuleRecord(Base):
@@ -623,36 +890,9 @@ class CustomModuleRecord(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True, index=True)
 
+    # Field values live in `field_values` under the custom module's module key; the service
+    # loads them in one query per page of records.
     custom_module = relationship("CustomModuleDefinition")
-    values = relationship("CustomModuleRecordValue", back_populates="record", cascade="all, delete-orphan")
-
-
-class CustomModuleRecordValue(Base):
-    __tablename__ = "custom_module_record_values"
-    __table_args__ = (
-        UniqueConstraint("record_id", "field_id", name="uq_custom_module_record_values_record_field"),
-        Index("ix_custom_module_record_values_tenant_module", "tenant_id", "custom_module_id"),
-        Index("ix_custom_module_record_values_field_text", "field_id", "text_value"),
-        Index("ix_custom_module_record_values_field_number", "field_id", "number_value"),
-        Index("ix_custom_module_record_values_field_datetime", "field_id", "datetime_value"),
-        Index("ix_custom_module_record_values_field_boolean", "field_id", "boolean_value"),
-    )
-
-    id = Column(BigInteger, primary_key=True, index=True)
-    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
-    custom_module_id = Column(BigInteger, ForeignKey("custom_module_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
-    record_id = Column(BigInteger, ForeignKey("custom_module_records.id", ondelete="CASCADE"), nullable=False, index=True)
-    field_id = Column(BigInteger, ForeignKey("custom_module_field_definitions.id", ondelete="CASCADE"), nullable=False, index=True)
-    text_value = Column(Text, nullable=True)
-    number_value = Column(Numeric(18, 4), nullable=True)
-    datetime_value = Column(DateTime(timezone=True), nullable=True)
-    boolean_value = Column(Boolean, nullable=True)
-    json_value = Column(JSON, nullable=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
-
-    record = relationship("CustomModuleRecord", back_populates="values")
-    field = relationship("CustomModuleFieldDefinition", back_populates="values")
 
 
 class IntegrationProvider(Base):

@@ -2,6 +2,7 @@
 
 "use client";
 
+import { useId } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import {
@@ -36,7 +37,7 @@ async function fetchPaginationConfig() {
   const res = await apiFetch("/config/pagination");
   const body = await res.json().catch(() => null);
   if (!res.ok) {
-    throw new Error((body && typeof body.detail === "string" && body.detail) || "Failed to load pagination config.");
+    throw new Error((body && typeof body.detail === "string" && body.detail) || "Page sizes could not be loaded. Reload the page to try again.");
   }
   return body as PaginationConfig;
 }
@@ -75,6 +76,7 @@ export default function Pagination({
   onPageChange,
   onPageSizeChange,
 }: PaginationProps) {
+  const pageSizeId = useId();
   const pages = getPageNumbers(page, totalPages);
   const { data: paginationConfig } = useQuery({
     queryKey: ["pagination-config"],
@@ -83,10 +85,15 @@ export default function Pagination({
     staleTime: 24 * 60 * 60 * 1000,
     gcTime: 24 * 60 * 60 * 1000,
   });
-  const pageSizeOptions =
+  const configuredOptions =
     Array.isArray(paginationConfig?.page_size_options) && paginationConfig.page_size_options.length > 0
       ? paginationConfig.page_size_options
       : FALLBACK_PAGE_SIZE_OPTIONS;
+  // A page size the caller set outside the configured list — the task board loads 100 — left the
+  // trigger blank, because Radix shows nothing for a value no item carries.
+  const pageSizeOptions = configuredOptions.includes(pageSize)
+    ? configuredOptions
+    : [...configuredOptions, pageSize].sort((a, b) => a - b);
 
   return (
     <div className="flex w-full flex-col items-center justify-between gap-4 text-xs text-copy-muted md:flex-row md:text-sm">
@@ -94,12 +101,12 @@ export default function Pagination({
       {/* Left: Rows per page Dropdown */}
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <Label className="font-normal">Items per page</Label>
+          <Label htmlFor={pageSizeId} className="font-normal">Items per page</Label>
           <Select
             value={String(pageSize)}
             onValueChange={(value) => onPageSizeChange(Number(value))}
           >
-            <SelectTrigger className="h-7! w-[65px] text-xs">
+            <SelectTrigger id={pageSizeId} size="sm" className="w-20 text-xs">
               <SelectValue placeholder={pageSize} />
             </SelectTrigger>
             <SelectContent className="">
@@ -121,7 +128,7 @@ export default function Pagination({
           entries
         </div>
         {isRefreshing ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-[11px] uppercase tracking-[0.14em] text-copy-muted">
+          <div className="inline-flex items-center gap-2 rounded-full border border-line-default bg-surface-muted px-2.5 py-1 text-2xs font-medium text-copy-label">
             <span className="h-2 w-2 animate-pulse rounded-full bg-copy-muted motion-reduce:animate-none" />
             Refreshing
           </div>
@@ -136,14 +143,14 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(page - 1)}
           disabled={page <= 1}
-          className="flex items-center justify-center rounded-md border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Previous page"
         >
           <ChevronLeft className="h-4 w-4" />
         </button>
 
         {/* Page Numbers Container */}
-        <div className="flex items-center rounded-md border border-line-default bg-surface-muted px-1.5">
+        <div className="flex items-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-1.5">
           {pages.map((p, i) =>
             p === "..." ? (
               <div
@@ -157,14 +164,14 @@ export default function Pagination({
                 key={p}
                 onClick={() => onPageChange(p)}
                 className={`
-                  relative isolate min-w-8 p-2 rounded-md text-xs font-medium overflow-hidden transition-colors
+ relative isolate min-w-8 p-2 rounded-[var(--radius-control-sm)] text-xs font-medium overflow-hidden transition-colors
                   ${p === page ? "text-primary-foreground" : "text-copy-muted hover:text-copy-primary"}
                 `}
               >
                 {/* Expanding White Background Animation */}
                 <span
                   className={`
-                    absolute inset-0 -z-10 origin-center rounded-md bg-primary motion-reduce:transition-none
+ absolute inset-0 -z-10 origin-center rounded-[var(--radius-control-sm)] bg-primary motion-reduce:transition-none
                     ${p === page 
                       ? "scale-100 transition-transform duration-300 ease-out" // Animate IN
                       : "scale-0 transition-none" // Instant OUT (No contract animation)
@@ -183,7 +190,7 @@ export default function Pagination({
         <button
           onClick={() => onPageChange(page + 1)}
           disabled={page >= totalPages}
-          className="flex items-center justify-center rounded-md border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
+          className="flex items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted p-2 text-copy-muted transition-colors hover:bg-surface-raised hover:text-copy-primary disabled:cursor-not-allowed disabled:opacity-30"
           aria-label="Next page"
         >
           <ChevronRight className="h-4 w-4" />

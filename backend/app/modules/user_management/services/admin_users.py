@@ -12,11 +12,13 @@ from app.modules.user_management.models import Role, Team, Tenant, User, UserAut
 from app.modules.user_management.schema import (
     AdminCreateUserRequest,
     AdminCreateUserResponse,
+    AdminUserInviteResponse,
     BulkUpdateUsersRequest,
     UpdateUserRequest,
     UserProfile,
     UserUpdateOptions,
 )
+from app.modules.user_management.services.account_emails import send_user_invite_email
 from app.modules.user_management.services.auth import create_user_setup_link
 
 USER_UPDATE_OPTIONS_CACHE_SCHEMA_VERSION = 2
@@ -134,6 +136,7 @@ def create_user(
     *,
     tenant_id: int,
     frontend_origin: str | None = None,
+    inviter: User | None = None,
 ) -> AdminCreateUserResponse:
     is_active = _coerce_user_status(payload.is_active)
     auth_mode = _coerce_auth_mode(payload.auth_mode)
@@ -193,10 +196,38 @@ def create_user(
     user._serialized_role_name = getattr(role, "name", None)
     user._serialized_role_level = getattr(role, "level", None)
 
+    # The setup link stays in the response: the admin can still copy it if the email fails.
+    invite_email = send_user_invite_email(db, user=user, setup_link=setup_link, inviter=inviter) if setup_link else None
     return AdminCreateUserResponse(
         user=serialize_user_profile(user),
         setup_link=setup_link,
+        invite_email=invite_email,
     )
+
+
+def resend_user_invite(
+    db: Session,
+    *,
+    tenant_id: int,
+    user_id: int,
+    inviter: User | None,
+    frontend_origin: str | None = None,
+) -> AdminUserInviteResponse:
+    user = db.query(User).filter(User.id == user_id, User.tenant_id == tenant_id).first()
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    if user.auth_mode not in {UserAuthMode.manual_only, UserAuthMode.manual_or_google}:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This user signs in with SSO and has no password to set")
+    if user.password_hash:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="This user has already set a password. They can use Forgot password on the sign-in page.",
+        )
+    if user.is_active == UserStatus.inactive:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Activate the user before sending an invite")
+    setup_link = create_user_setup_link(db, user, frontend_origin=frontend_origin, commit=True)
+    invite_email = send_user_invite_email(db, user=user, setup_link=setup_link, inviter=inviter)
+    return AdminUserInviteResponse(setup_link=setup_link, invite_email=invite_email)
 
 
 def update_user(
@@ -340,6 +371,7 @@ def serialize_user_profile(user: User) -> UserProfile:
         ),
         "role_level": role_level,
         "is_admin": False,
+        "password_set": bool(getattr(user, "password_hash", None) or getattr(user, "password_set", False)),
         "photo_url": user.photo_url,
         "phone_number": user.phone_number,
         "job_title": user.job_title,

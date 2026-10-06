@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { downloadBlob, openBlobInNewTab } from "@/lib/browser";
 import { apiUrl } from "@/lib/runtime-config";
 
@@ -95,49 +95,22 @@ export type ClientPortalOrderLine = {
   id: number;
   catalog_product_id?: number | null;
   catalog_service_id?: number | null;
-  item_type: string;
-  slug?: string | null;
-  sku?: string | null;
   name: string;
   quantity: string | number;
-  currency: string;
-  unit_price_snapshot: string | number;
+  unit_price: string | number;
   line_total: string | number;
 };
 
+/** A sales order the client placed in the portal. `draft` means the team has not confirmed it yet. */
 export type ClientPortalOrder = {
   id: number;
-  external_reference: string;
+  order_number: string;
   status: string;
   currency: string;
-  subtotal_amount: string | number;
-  metadata?: Record<string, unknown> | null;
+  grand_total: string | number;
+  notes?: string | null;
   created_at: string;
   line_items: ClientPortalOrderLine[];
-};
-
-export type ClientSupportCaseComment = {
-  id: number;
-  case_id: number;
-  body: string;
-  is_internal: boolean;
-  author_type: "client" | "team";
-  author_display_name?: string | null;
-  created_at: string;
-};
-
-export type ClientSupportCase = {
-  id: number;
-  case_number: string;
-  subject: string;
-  description?: string | null;
-  category?: string | null;
-  status: string;
-  priority: string;
-  created_at: string;
-  updated_at: string;
-  closed_at?: string | null;
-  comments: ClientSupportCaseComment[];
 };
 
 export type ClientDocument = {
@@ -349,7 +322,9 @@ async function crmJson<T>(path: string, init: RequestInit = {}, fallback = "Requ
     },
   });
   const body = await readJsonSafely(res);
-  if (!res.ok) throw new Error(fallback);
+  // The status is kept so a 403 can render a permission wall rather than a fault
+  // (rebuild.md 5.6 batch 3).
+  if (!res.ok) throw new ApiError(res.status, fallback);
   return body as T;
 }
 
@@ -548,83 +523,6 @@ export function useClientOrder(orderId: string | number) {
   });
 }
 
-export function useClientSupportCases() {
-  return useQuery({
-    queryKey: ["client-support", "cases"],
-    queryFn: () => publicJson<{ results: ClientSupportCase[] }>("/client-support/cases", {}, "Failed to load support tickets."),
-    staleTime: 30_000,
-  });
-}
-
-export function useClientSupportCase(caseId: string | number) {
-  return useQuery({
-    queryKey: ["client-support", "cases", String(caseId)],
-    queryFn: () => publicJson<ClientSupportCase>(`/client-support/cases/${caseId}`, {}, "Support ticket not found."),
-    enabled: Boolean(caseId),
-    staleTime: 30_000,
-  });
-}
-
-export function useClientMessages() {
-  return useQuery({
-    queryKey: ["client-messages"],
-    queryFn: () => publicJson<{ results: ClientSupportCase[] }>("/client-messages", {}, "Failed to load messages."),
-    staleTime: 30_000,
-  });
-}
-
-export function useClientMessage(messageId: string | number) {
-  return useQuery({
-    queryKey: ["client-messages", String(messageId)],
-    queryFn: () => publicJson<ClientSupportCase>(`/client-messages/${messageId}`, {}, "Message not found."),
-    enabled: Boolean(messageId),
-    staleTime: 30_000,
-  });
-}
-
-export function useClientSupportActions() {
-  const queryClient = useQueryClient();
-  const invalidate = async (caseId?: string | number) => {
-    await queryClient.invalidateQueries({ queryKey: ["client-support", "cases"] });
-    if (caseId) await queryClient.invalidateQueries({ queryKey: ["client-support", "cases", String(caseId)] });
-  };
-  const createCase = useMutation({
-    mutationFn: (payload: { subject: string; category?: string | null; priority: string; description?: string | null }) =>
-      publicJson<ClientSupportCase>(
-        "/client-support/cases",
-        { method: "POST", body: JSON.stringify(payload) },
-        "Failed to create support ticket.",
-      ),
-    onSuccess: (created) => invalidate(created.id),
-  });
-  const addComment = useMutation({
-    mutationFn: ({ caseId, body }: { caseId: number | string; body: string }) =>
-      publicJson<ClientSupportCaseComment>(
-        `/client-support/cases/${caseId}/comments`,
-        { method: "POST", body: JSON.stringify({ body }) },
-        "Failed to reply to support ticket.",
-      ),
-    onSuccess: (_comment, variables) => invalidate(variables.caseId),
-  });
-  const updateStatus = useMutation({
-    mutationFn: ({ caseId, action }: { caseId: number | string; action: "close" | "reopen" }) =>
-      publicJson<ClientSupportCase>(
-        `/client-support/cases/${caseId}/${action}`,
-        { method: "POST" },
-        "Failed to update support ticket.",
-      ),
-    onSuccess: (updated) => invalidate(updated.id),
-  });
-  return {
-    createCase: createCase.mutateAsync,
-    addComment: addComment.mutateAsync,
-    updateStatus: updateStatus.mutateAsync,
-    isCreatingCase: createCase.isPending,
-    isAddingComment: addComment.isPending,
-    isUpdatingStatus: updateStatus.isPending,
-  };
-}
-
 export function useClientDocuments() {
   return useQuery({
     queryKey: ["client-documents"],
@@ -712,38 +610,6 @@ export function useClientQuoteActions() {
   return {
     respondToQuote: respond.mutateAsync,
     isRespondingToQuote: respond.isPending,
-  };
-}
-
-export function useClientMessageActions() {
-  const queryClient = useQueryClient();
-  const invalidate = async (messageId?: string | number) => {
-    await queryClient.invalidateQueries({ queryKey: ["client-messages"] });
-    if (messageId) await queryClient.invalidateQueries({ queryKey: ["client-messages", String(messageId)] });
-  };
-  const createMessage = useMutation({
-    mutationFn: (payload: { subject: string; message: string }) =>
-      publicJson<ClientSupportCase>(
-        "/client-messages",
-        { method: "POST", body: JSON.stringify(payload) },
-        "Failed to send question.",
-      ),
-    onSuccess: (created) => invalidate(created.id),
-  });
-  const addComment = useMutation({
-    mutationFn: ({ messageId, body }: { messageId: number | string; body: string }) =>
-      publicJson<ClientSupportCaseComment>(
-        `/client-messages/${messageId}/comments`,
-        { method: "POST", body: JSON.stringify({ body }) },
-        "Failed to reply to message.",
-      ),
-    onSuccess: (_comment, variables) => invalidate(variables.messageId),
-  });
-  return {
-    createMessage: createMessage.mutateAsync,
-    addMessageComment: addComment.mutateAsync,
-    isCreatingMessage: createMessage.isPending,
-    isAddingMessageComment: addComment.isPending,
   };
 }
 

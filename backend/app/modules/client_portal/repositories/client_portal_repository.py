@@ -6,9 +6,8 @@ from sqlalchemy.orm import Session, joinedload, object_session, selectinload
 from app.modules.client_portal.models import ClientAccount, ClientPage, ClientPageAction, CustomerGroup
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.documents.models import Document
-from app.modules.sales.models import SalesContact, SalesOrganization
+from app.modules.sales.models import SalesContact, SalesOrder, SalesOrganization
 from app.modules.user_management.models import Tenant
-from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
 
 CLIENT_ACCOUNT_SORT_FIELDS = {
@@ -371,29 +370,24 @@ def get_client_catalog_item(
     )
 
 
-def list_client_orders(db: Session, *, tenant_id: int, client_email: str) -> list[WebsiteIntegrationOrder]:
+def list_client_orders(db: Session, *, tenant_id: int, client_account_id: int) -> list[SalesOrder]:
     return (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(
-            WebsiteIntegrationOrder.tenant_id == tenant_id,
-            WebsiteIntegrationOrder.source_platform == "client_portal",
-            WebsiteIntegrationOrder.customer_email == client_email.strip().lower(),
-        )
-        .order_by(WebsiteIntegrationOrder.created_at.desc(), WebsiteIntegrationOrder.id.desc())
+        db.query(SalesOrder)
+        .options(selectinload(SalesOrder.items))
+        .filter(SalesOrder.tenant_id == tenant_id, SalesOrder.client_account_id == client_account_id)
+        .order_by(SalesOrder.created_at.desc(), SalesOrder.id.desc())
         .all()
     )
 
 
-def get_client_order(db: Session, *, tenant_id: int, client_email: str, order_id: int) -> WebsiteIntegrationOrder | None:
+def get_client_order(db: Session, *, tenant_id: int, client_account_id: int, order_id: int) -> SalesOrder | None:
     return (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
+        db.query(SalesOrder)
+        .options(selectinload(SalesOrder.items))
         .filter(
-            WebsiteIntegrationOrder.tenant_id == tenant_id,
-            WebsiteIntegrationOrder.id == order_id,
-            WebsiteIntegrationOrder.source_platform == "client_portal",
-            WebsiteIntegrationOrder.customer_email == client_email.strip().lower(),
+            SalesOrder.tenant_id == tenant_id,
+            SalesOrder.id == order_id,
+            SalesOrder.client_account_id == client_account_id,
         )
         .first()
     )

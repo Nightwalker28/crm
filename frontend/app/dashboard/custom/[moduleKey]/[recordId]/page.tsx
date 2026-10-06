@@ -1,173 +1,70 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import type { FormEvent } from "react";
+import { useMemo } from "react";
+import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { Save, Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
+import { ReadOnlyFieldSection } from "@/components/forms/ReadOnlyRecordLayout";
 import {
-  CustomModuleFieldInput,
-  getInitialCustomModuleValues,
-} from "@/components/customModules/CustomModuleFieldInput";
-import { FormSection } from "@/components/forms/RecordFormLayout";
-import RecordPageHeader from "@/components/recordActivity/RecordPageHeader";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { RecordTabs } from "@/components/ui/RecordTabs";
+  RecordWorkspace,
+  useRecordTabHref,
+} from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
+import { DropdownMenuItem } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RequiredMark } from "@/components/ui/RequiredMark";
-import { RouteErrorState, RouteLoadingState, RouteNotFoundState } from "@/components/ui/RouteStates";
+import {
+  RecordSpine,
+  RecordSpineBlock,
+  RecordSpineField,
+  RecordSpineMeta,
+} from "@/components/ui/RecordSpine";
+import { RouteNotFoundState } from "@/components/ui/RouteStates";
+import { StatusValue } from "@/components/ui/StatusValue";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
-import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import {
   useCustomModuleRecord,
   useCustomModuleSchema,
   type CustomModuleField,
   type CustomModuleRecord,
 } from "@/hooks/useModuleBuilder";
+import { formatDateTime } from "@/lib/datetime";
+import { FieldValue } from "@/components/fields/FieldValue";
+import { customModuleFieldShape } from "@/components/customModules/CustomModuleFieldInput";
+import { picklistOptions, usePicklists, type Picklist } from "@/hooks/usePicklists";
+import { isWideType } from "@/lib/fieldTypes";
 
-function isMissingRequiredValue(field: CustomModuleField, value: unknown) {
-  if (!field.is_required || field.field_type === "boolean") return false;
-  return value == null || value === "" || (Array.isArray(value) && value.length === 0);
+/**
+ * The field types the rail edits (design.md §4.7).
+ *
+ * `picklist` is R2's shape rule read literally, and `boolean` is the two-value closed
+ * set the same rule covers once you read it as "a set the operator picks from" — the catalog
+ * record's `Active` / `Inactive` in a tenant-defined form. Everything else is content and
+ * lives read-only in `Details` until `/[id]/edit`.
+ */
+const STATE_FIELD_TYPES = new Set(["picklist", "boolean"]);
+
+const BOOLEAN_OPTIONS: InlineFieldEditOption[] = [
+  { value: "true", tone: null, label: "Yes" },
+  { value: "false", tone: null, label: "No" },
+];
+
+function selectOptions(field: CustomModuleField, lists: Map<string, Picklist>, current: string): InlineFieldEditOption[] {
+  if (field.field_type === "boolean") return BOOLEAN_OPTIONS;
+  // A tenant's value list is a category here, never a status: nothing can be classified as
+  // an outcome or a deviation from the outside, so no value takes a tone (R5).
+  return picklistOptions(lists.get(field.picklist_key ?? ""), current).map((option) => ({ ...option, tone: null }));
 }
 
-function CustomModuleRecordOverview({
-  fields,
-  record,
-  canEdit,
-  isSaving,
-  onSave,
-}: {
-  fields: CustomModuleField[];
-  record: CustomModuleRecord;
-  canEdit: boolean;
-  isSaving: boolean;
-  onSave: (payload: { title?: string; values: Record<string, unknown> }) => Promise<CustomModuleRecord>;
-}) {
-  const [title, setTitle] = useState(record.title);
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    getInitialCustomModuleValues(fields, record),
-  );
-  const [initialSnapshot, setInitialSnapshot] = useState(() =>
-    JSON.stringify([record.title, getInitialCustomModuleValues(fields, record)]),
-  );
-  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-  const [submitError, setSubmitError] = useState(false);
-  const currentSnapshot = useMemo(() => JSON.stringify([title, values]), [title, values]);
-  const isDirty = canEdit && currentSnapshot !== initialSnapshot;
-
-  useUnsavedChangesGuard(isDirty, isSaving);
-
-  function validateRequiredFields() {
-    const nextErrors: Record<string, string> = {};
-    for (const field of fields) {
-      if (isMissingRequiredValue(field, values[field.key])) {
-        nextErrors[field.key] = `${field.label} is required.`;
-      }
-    }
-    setFieldErrors(nextErrors);
-    const firstInvalidKey = Object.keys(nextErrors)[0];
-    if (firstInvalidKey) {
-      document.getElementById(`custom-field-${firstInvalidKey}`)?.focus();
-      return false;
-    }
-    return true;
-  }
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!canEdit || !validateRequiredFields()) return;
-    setSubmitError(false);
-    try {
-      const updated = await onSave({ title: title.trim() || record.title, values });
-      const nextValues = getInitialCustomModuleValues(fields, updated);
-      setTitle(updated.title);
-      setValues(nextValues);
-      setInitialSnapshot(JSON.stringify([updated.title, nextValues]));
-      toast.success("Record saved.");
-    } catch {
-      setSubmitError(true);
-    }
-  }
-
-  return (
-    <form id="custom-module-record-form" onSubmit={handleSubmit}>
-      {submitError ? (
-        <div role="alert" className="mb-4 rounded-[var(--radius-card)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
-          <div className="font-medium">We could not save this record.</div>
-          <div className="mt-1 text-copy-secondary">Review the fields and try again.</div>
-        </div>
-      ) : null}
-
-      {!canEdit ? (
-        <div className="mb-4 rounded-[var(--radius-card)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
-          You have view-only access to this record.
-        </div>
-      ) : null}
-
-      <FormSection
-        title="Record details"
-        description={canEdit
-          ? "Required fields are controlled by the current module configuration."
-          : "These values are read-only for your current role."}
-      >
-        <FieldGroup className="grid gap-4 sm:grid-cols-2">
-          <Field className="sm:col-span-2">
-            <FieldLabel htmlFor="custom-record-title">Record title</FieldLabel>
-            <Input
-              id="custom-record-title"
-              value={title}
-              onChange={(event) => setTitle(event.target.value)}
-              disabled={!canEdit}
-            />
-          </Field>
-          {fields.map((field) => {
-            const error = fieldErrors[field.key];
-            return (
-              <Field
-                key={field.id}
-                data-invalid={Boolean(error)}
-                className={
-                  field.field_type === "textarea" || field.field_type === "multi_select"
-                    ? "sm:col-span-2"
-                    : undefined
-                }
-              >
-                {field.field_type !== "boolean" ? (
-                  <FieldLabel htmlFor={`custom-field-${field.key}`}>
-                    {field.label}
-                    {field.is_required ? <RequiredMark /> : null}
-                  </FieldLabel>
-                ) : null}
-                <CustomModuleFieldInput
-                  field={field}
-                  value={values[field.key]}
-                  invalid={Boolean(error)}
-                  disabled={!canEdit}
-                  onChange={(next) => {
-                    setValues((current) => ({ ...current, [field.key]: next }));
-                    setFieldErrors((current) => {
-                      if (!current[field.key]) return current;
-                      const nextErrors = { ...current };
-                      delete nextErrors[field.key];
-                      return nextErrors;
-                    });
-                  }}
-                />
-                {field.help_text ? <FieldDescription>{field.help_text}</FieldDescription> : null}
-                <FieldError>{error}</FieldError>
-              </Field>
-            );
-          })}
-        </FieldGroup>
-      </FormSection>
-    </form>
-  );
+function currentValue(field: CustomModuleField, values: Record<string, unknown>): string {
+  const raw = values[field.key];
+  if (field.field_type === "boolean") return String(raw === true);
+  return raw == null ? "" : String(raw);
 }
 
 export default function CustomModuleRecordDetailPage() {
@@ -176,141 +73,213 @@ export default function CustomModuleRecordDetailPage() {
   const { confirm } = useConfirm();
   const moduleKey = params.moduleKey;
   const recordId = params.recordId;
+
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  const { byKey: picklistsByKey } = usePicklists();
   const schema = useCustomModuleSchema(moduleKey);
+  const recordQuery = useCustomModuleRecord(moduleKey, recordId);
+  const moduleFields = useModuleFieldConfigs(moduleKey);
   const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const canEdit = Boolean(accessibleModule?.actions?.can_edit);
   const canDelete = Boolean(accessibleModule?.actions?.can_delete);
-  const recordQuery = useCustomModuleRecord(moduleKey, recordId);
-  const moduleFields = useModuleFieldConfigs(moduleKey);
+
   const enabledFieldKeys = useMemo(
     () => new Map(moduleFields.fields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
     [moduleFields.fields],
   );
   const fields = useMemo(
-    () => (schema.data?.fields ?? [])
-      .filter((field) => field.is_active && (enabledFieldKeys.get(field.key) ?? true))
-      .sort((a, b) => a.sort_order - b.sort_order),
+    () =>
+      (schema.data?.fields ?? [])
+        .filter((field) => field.is_active && (enabledFieldKeys.get(field.key) ?? true))
+        .sort((a, b) => a.sort_order - b.sort_order),
     [enabledFieldKeys, schema.data],
   );
+  const stateFields = fields.filter((field) => STATE_FIELD_TYPES.has(field.field_type));
+  const contentFields = fields.filter((field) => !STATE_FIELD_TYPES.has(field.field_type));
+
+  const record = recordQuery.record;
   const backHref = `/dashboard/custom/${moduleKey}`;
-  const description = schema.data?.name ? `${schema.data.name} record` : "Custom module record";
+  const recordHref = `${backHref}/${recordId}`;
+  const editHref = useRecordTabHref(`${recordHref}/edit`);
+  const notFound =
+    (schema.error instanceof Error && schema.error.message === "not-found") ||
+    (recordQuery.error instanceof Error && recordQuery.error.message === "not-found") ||
+    (!recordQuery.isLoading && !recordQuery.error && !record);
+  const hasError = Boolean(schema.error || recordQuery.error || moduleFields.error) || notFound;
+
+  async function commitStateField(field: CustomModuleField, next: InlineFieldEditOption) {
+    const value = field.field_type === "boolean" ? next.value === "true" : next.value;
+    await recordQuery.updateRecord({ values: { [field.key]: value } });
+  }
 
   async function handleDelete() {
-    if (!canDelete || !recordQuery.record) return;
+    if (!record) return;
     const confirmed = await confirm({
       title: "Delete record?",
-      description: `Move "${recordQuery.record.title}" to the Recycle Bin? An administrator can restore it later.`,
-      confirmLabel: "Move to Recycle Bin",
+      description: `Move "${record.title}" to the Recycle Bin? An administrator can restore it later.`,
+      confirmLabel: "Move to recycle bin",
       variant: "destructive",
     });
     if (!confirmed) return;
     try {
       await recordQuery.deleteRecord();
-      toast.success("Record moved to the Recycle Bin.");
+      toast.success("Record moved to the recycle bin.");
       router.push(backHref);
     } catch {
       toast.error("We could not delete this record. Try again.");
     }
   }
 
-  if (modulesLoading || schema.isLoading || recordQuery.isLoading || moduleFields.isLoading) {
-    return <RouteLoadingState label="custom module record" />;
-  }
-
-  if (!accessibleModule?.actions?.can_view) {
+  if (!modulesLoading && !schema.isLoading && schema.data && !accessibleModule?.actions?.can_view) {
     return <PermissionDeniedState />;
   }
 
-  if (
-    (schema.error instanceof Error && schema.error.message === "not-found") ||
-    (recordQuery.error instanceof Error && recordQuery.error.message === "not-found")
-  ) {
-    return <RouteNotFoundState recordLabel="Record" backHref={backHref} backLabel="Back to records" />;
-  }
+  return (
+    <RecordWorkspace
+      title={record?.title ?? "Record"}
+      description={schema.data?.name ? `${schema.data.name} record` : "Custom module record"}
+      backHref={backHref}
+      backLabel="Records"
+      isLoading={modulesLoading || schema.isLoading || recordQuery.isLoading || moduleFields.isLoading}
+      hasError={hasError}
+      onRetry={() => void Promise.all([schema.refetch(), recordQuery.refresh(), moduleFields.refresh()])}
+      errorState={notFound ? (
+        <RouteNotFoundState
+          titleAs="p"
+          recordLabel="Record"
+          backHref={backHref}
+          backLabel="Back to records"
+        />
+      ) : undefined}
+      subtitle={schema.data ? <span>{schema.data.name}</span> : null}
+      /*
+       * No filled button: a custom module has no workflow the product knows about, so there
+       * is no primary action to spend §2.2's one fill on. Delete is destructive and goes to
+       * the overflow, which is what keeps it from setting a second fill beside `Edit`.
+       */
+      actions={record && canEdit ? (
+        <Button asChild variant="outline">
+          <Link href={editHref}>
+            <Pencil />
+            Edit
+          </Link>
+        </Button>
+      ) : null}
+      overflowActions={record && canDelete ? (
+        <DropdownMenuItem
+          // Radix closes the menu on select and would steal focus from the confirmation the
+          // handler is about to open, so the close is prevented and the dialog owns focus.
+          onSelect={(event) => {
+            event.preventDefault();
+            void handleDelete();
+          }}
+          disabled={recordQuery.isDeleting}
+          className="text-state-danger focus:bg-state-danger-muted focus:text-state-danger"
+        >
+          <Trash2 />
+          {recordQuery.isDeleting ? "Deleting…" : "Delete record"}
+        </DropdownMenuItem>
+      ) : null}
+      spine={
+        <RecordSpine>
+          {record ? (
+            <>
+              {/*
+                No `Connected` block: a custom module's field types are all scalars, so the
+                schema has no relationship to draw and a heading over nothing would promise a
+                link the data model does not have (§4.7).
+              */}
+              {stateFields.length ? (
+                <RecordSpineBlock title="State">
+                  {stateFields.map((field) => (
+                    <RecordSpineField key={field.id} label={field.label}>
+                      {canEdit ? (
+                        <InlineFieldEdit
+                          fieldLabel={field.label}
+                          value={currentValue(field, record.values)}
+                          options={selectOptions(field, picklistsByKey, currentValue(field, record.values))}
+                          onCommit={(next) => commitStateField(field, next)}
+                        />
+                      ) : (
+                        <StatusValue
+                          status={{
+                            tone: null,
+                            label:
+                              selectOptions(field, picklistsByKey, currentValue(field, record.values)).find(
+                                (option) => option.value === currentValue(field, record.values),
+                              )?.label ?? "—",
+                          }}
+                          context="record"
+                        />
+                      )}
+                    </RecordSpineField>
+                  ))}
+                </RecordSpineBlock>
+              ) : null}
 
-  if (schema.error || recordQuery.error || moduleFields.error || !schema.data) {
+              {/*
+                No History sheet. `activity_logs` is written for custom module records, but
+                `/activity/record` gates on `TIMELINE_ALLOWED_MODULES` and a tenant-defined key
+                is not in it — opening that up is the deferred user-created-modules slice, not
+                a migration's call. The same is why there is no Timeline, Tasks or Files tab:
+                `RECORD_COMMENT_MODULES` is what those three resolve a record through.
+              */}
+              <RecordSpineMeta
+                createdLabel={record.created_at ? `Created ${formatDateTime(record.created_at)}` : undefined}
+                updatedLabel={record.updated_at ? `Updated ${formatDateTime(record.updated_at)}` : undefined}
+              />
+            </>
+          ) : null}
+        </RecordSpine>
+      }
+      details={record ? (
+        <CustomRecordOverview record={record} fields={contentFields} canEdit={canEdit} />
+      ) : null}
+    />
+  );
+}
+
+/**
+ * `Details` for a record with no server-side layout.
+ *
+ * `record_layouts.py` describes modules the product ships; a custom module's schema is the
+ * tenant's, so there is nothing to resolve. It still renders through `ReadOnlyField` rather
+ * than a private grid — the field renderer is the shared one, only the section it sits in is
+ * built from the module schema instead of a layout.
+ */
+function CustomRecordOverview({
+  record,
+  fields,
+  canEdit,
+}: {
+  record: CustomModuleRecord;
+  fields: CustomModuleField[];
+  canEdit: boolean;
+}) {
+  if (!fields.length) {
     return (
-      <RouteErrorState
-        title="Unable to load this record"
-        description="The record or its module configuration could not be loaded. Try again or return to the record list."
-        reset={() => void Promise.all([schema.refetch(), recordQuery.refresh(), moduleFields.refresh()])}
-        backHref={backHref}
-        backLabel="Back to records"
+      <EmptyState
+        title="No fields to show"
+        description={
+          canEdit
+            ? "Every configured field on this module is a state field, and those are in the rail."
+            : "An administrator has not configured any fields you can view on this module."
+        }
       />
     );
   }
 
-  if (!recordQuery.record) {
-    return <RouteNotFoundState recordLabel="Record" backHref={backHref} backLabel="Back to records" />;
-  }
-
-  const record = recordQuery.record;
-
   return (
-    <div className="flex flex-col gap-6">
-      <RecordPageHeader
-        backHref={backHref}
-        backLabel="Back to records"
-        title={record.title}
-        description={description}
-        primaryAction={
-          <>
-            {canDelete ? (
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => void handleDelete()}
-                disabled={recordQuery.isDeleting}
-                className="text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
-              >
-                <Trash2 />
-                {recordQuery.isDeleting ? "Deleting…" : "Delete"}
-              </Button>
-            ) : null}
-            {canEdit ? (
-              <Button type="submit" form="custom-module-record-form" disabled={recordQuery.isSaving}>
-                <Save />
-                {recordQuery.isSaving ? "Saving…" : "Save"}
-              </Button>
-            ) : null}
-          </>
-        }
-      />
-
-      <RecordTabs
-        tabs={[
-          {
-            id: "overview",
-            label: "Overview",
-            content: (
-              <CustomModuleRecordOverview
-                key={`${record.id}:${record.updated_at ?? ""}`}
-                fields={fields}
-                record={record}
-                canEdit={canEdit}
-                isSaving={recordQuery.isSaving}
-                onSave={recordQuery.updateRecord}
-              />
-            ),
-          },
-          {
-            id: "activity",
-            label: "Activity",
-            content: <EmptyState title="Activity timeline unavailable" description="Custom module record activity needs shared backend timeline support for dynamic module keys." />,
-          },
-          {
-            id: "notes",
-            label: "Notes",
-            content: <EmptyState title="Notes unavailable" description="Record comments are currently enabled for core sales records only." />,
-          },
-          {
-            id: "documents",
-            label: "Documents",
-            content: <EmptyState title="Documents unavailable" description="Document linking for dynamic custom module records needs shared backend record-reference support." />,
-          },
-        ]}
-      />
-    </div>
+    <ReadOnlyFieldSection
+      title="Record details"
+      fields={fields.map((field) => ({
+        key: field.key,
+        label: field.label,
+        fieldType: field.field_type,
+        value: record.values[field.key],
+        width: isWideType(field.field_type) ? "full" : "half",
+        display: <FieldValue field={customModuleFieldShape(field)} value={record.values[field.key]} />,
+      }))}
+    />
   );
 }

@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
@@ -7,7 +9,7 @@ from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
-from app.core.permissions import require_action_access, require_module_access
+from app.core.permissions import require_action_access, require_linked_record_access, require_module_access
 from app.core.security import require_user
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
@@ -28,7 +30,6 @@ from app.modules.platform.services.module_fields import (
     sanitize_disabled_filter_conditions,
 )
 from app.modules.user_management.services import admin_modules
-from app.modules.sales.opportunity_stages import OPPORTUNITY_CLOSED_STAGE_SET
 from app.modules.sales.schema import (
     FollowUpActionRequest,
     FollowUpActionResponse,
@@ -39,10 +40,11 @@ from app.modules.sales.schema import (
     SalesOpportunityListResponse,
     SalesOpportunityResponse,
     SalesOpportunityStageUpdate,
+    SalesPipelineResponse,
     SalesOpportunityUpdate,
 )
 from app.modules.sales.services.followups import log_opportunity_follow_up
-from app.modules.sales.services import opportunities_api
+from app.modules.sales.services import pipelines_services
 from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
     OPPORTUNITY_EXPORT_HEADERS,
@@ -65,7 +67,6 @@ router = APIRouter(prefix="/opportunities", tags=["Sales"])
 
 OPPORTUNITY_LIST_FIELDS = {
     "opportunity_name",
-    "client",
     "sales_stage",
     "contact_id",
     "contact_name",
@@ -75,8 +76,12 @@ OPPORTUNITY_LIST_FIELDS = {
     "assigned_to_name",
     "expected_close_date",
     "probability_percent",
-    "total_cost_of_project",
+    "amount",
     "currency_type",
+    "deal_type",
+    "source",
+    "next_step",
+    "lost_reason",
     "created_time",
 }
 
@@ -89,41 +94,60 @@ OPPORTUNITY_IMPORT_TARGET_FIELDS = [
     "start_date",
     "expected_close_date",
     "probability_percent",
-    "campaign_type",
-    "total_leads",
-    "cpl",
-    "total_cost_of_project",
+    "amount",
     "currency_type",
-    "target_geography",
-    "target_audience",
-    "domain_cap",
-    "tactics",
-    "delivery_format",
+    "deal_type",
+    "source",
+    "next_step",
+    "lost_reason",
 ]
 
 OPPORTUNITY_IMPORT_ALIASES = {
     "opportunity_name": ["name", "opportunity", "deal name", "opportunity name"],
-    "contact_id": ["contact", "contact id", "client", "client id"],
+    "contact_id": ["contact", "contact id"],
     "organization_id": ["organization", "organization id", "org id", "company id"],
     "assigned_to": ["owner", "assignee", "assigned to"],
     "sales_stage": ["stage", "pipeline stage", "sales stage"],
     "start_date": ["start", "start date"],
     "expected_close_date": ["close date", "expected close", "expected close date"],
-    "campaign_type": ["type", "campaign type"],
-    "total_leads": ["leads", "total leads"],
-    "cpl": ["cost per lead", "cpl"],
-    "total_cost_of_project": ["project cost", "total cost", "total project cost"],
+    "amount": ["amount", "value", "deal value", "project cost", "total cost"],
     "currency_type": ["currency", "currency type"],
-    "target_geography": ["geography", "target geography", "region"],
-    "target_audience": ["audience", "target audience"],
-    "domain_cap": ["domain cap"],
-    "tactics": ["tactic", "tactics"],
-    "delivery_format": ["format", "delivery format"],
+    "deal_type": ["type", "deal type"],
+    "source": ["source", "lead source"],
+    "next_step": ["next step"],
+    "lost_reason": ["lost reason", "loss reason"],
 }
+
+
+def _field_config_keys(field_keys: set[str]) -> set[str]:
+    """Field keys as field configuration knows them.
+
+    `pipeline_stage_id` is the stage field in another form, so a tenant that
+    disabled Stage cannot write it through the id either.
+    """
+
+    keys = set(field_keys) - {"custom_fields"}
+    if "pipeline_stage_id" in keys:
+        keys.discard("pipeline_stage_id")
+        keys.add("sales_stage")
+    return keys
 
 
 def _serialize_opportunity(opportunity) -> dict:
     return SalesOpportunityResponse.model_validate(opportunity).model_dump(mode="json")
+
+
+def _require_relationship_link_access(db: Session, *, current_user, payload_data: dict) -> None:
+    """A deal may only point at a contact and account the user is allowed to see.
+
+    Contextual create ("+ Deal" from a Contact or Organization) prefills these, so the check
+    covers every write that carries one rather than only the contextual path.
+    """
+
+    if payload_data.get("contact_id") is not None:
+        require_linked_record_access(db, user=current_user, module_key="sales_contacts")
+    if payload_data.get("organization_id") is not None:
+        require_linked_record_access(db, user=current_user, module_key="sales_organizations")
 
 
 def _display_user_name(user) -> str | None:
@@ -146,8 +170,8 @@ def _emit_deal_assigned_event(db: Session, *, current_user, opportunity) -> None
         payload={
             **actor_payload(current_user),
             "deal_name": opportunity.opportunity_name,
-            "company": getattr(getattr(opportunity, "organization", None), "org_name", None) or opportunity.client,
-            "deal_value": opportunity.total_cost_of_project,
+            "company": getattr(getattr(opportunity, "organization", None), "org_name", None),
+            "deal_value": str(opportunity.amount) if opportunity.amount is not None else None,
             "stage": opportunity.sales_stage,
             "assigned_to": opportunity.assigned_to,
             "assigned_to_name": _display_user_name(getattr(opportunity, "assigned_user", None)),
@@ -185,18 +209,12 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
             "organization_id",
             "organization_name",
             "start_date",
-            "campaign_type",
-            "total_leads",
-            "cpl",
-            "target_geography",
-            "target_audience",
-            "domain_cap",
-            "tactics",
-            "delivery_format",
-            "attachments",
             "custom_fields",
         }
     )
+    # The stage reference travels with the legacy key whenever the key is visible.
+    if "sales_stage" in safe_fields:
+        safe_fields.update({"pipeline_id", "pipeline_stage_id", "pipeline_stage"})
     payload = {"opportunity_id": opportunity.opportunity_id}
     for field in safe_fields:
         if field == "custom_fields":
@@ -204,6 +222,68 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
         else:
             payload[field] = getattr(opportunity, field, None)
     return SalesOpportunityListItem.model_validate(payload)
+
+
+def _stage_facts_from_state(state: dict) -> pipelines_services.OpportunityStageFacts:
+    """The stage facts a serialized deal carried before a write."""
+
+    stage = state.get("pipeline_stage")
+    if isinstance(stage, dict):
+        return pipelines_services.OpportunityStageFacts(
+            key=stage["key"],
+            label=stage["label"],
+            semantic_type=stage["semantic_type"],
+            probability=Decimal(str(stage["probability"])),
+            position=0,
+            stage_id=stage["id"],
+        )
+    return pipelines_services.legacy_stage_facts(state.get("sales_stage"))
+
+
+def _emit_stage_events(db: Session, *, current_user, before_state: dict, opportunity) -> None:
+    """`opportunity.stage_changed`, plus `opportunity.won`/`lost` on entering that outcome.
+
+    The payload carries stable identity and meaning alongside the legacy keys:
+    `stage_id` and `stage_semantic_type` for automations, and `sales_stage` plus a
+    `field_changes` entry so the Stage condition field (which reads
+    `payload.sales_stage`) can match this event. Won/lost fire on the transition
+    into that semantic type only, so moving between two won stages is not a second win.
+    """
+
+    previous = _stage_facts_from_state(before_state)
+    current = pipelines_services.opportunity_stage_facts(opportunity)
+    payload = {
+        **actor_payload(current_user),
+        "opportunity_id": opportunity.opportunity_id,
+        "deal_name": opportunity.opportunity_name,
+        "previous_stage": before_state.get("sales_stage"),
+        "stage": opportunity.sales_stage,
+        "sales_stage": opportunity.sales_stage,
+        "stage_id": current.stage_id,
+        "stage_label": current.label,
+        "stage_semantic_type": current.semantic_type,
+        "previous_stage_id": previous.stage_id,
+        "previous_stage_semantic_type": previous.semantic_type,
+        "assigned_to": opportunity.assigned_to,
+        "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
+    }
+    if before_state.get("sales_stage") != opportunity.sales_stage:
+        # The stage PATCH also emits for a same-stage move; that is not a change.
+        payload["field_changes"] = {"sales_stage": {"from": before_state.get("sales_stage"), "to": opportunity.sales_stage}}
+    common = {
+        "tenant_id": current_user.tenant_id,
+        "actor_user_id": current_user.id if current_user else None,
+        "entity_type": "sales_opportunity",
+        "entity_id": opportunity.opportunity_id,
+    }
+    safe_emit_crm_event(db, event_type="opportunity.stage_changed", payload=payload, **common)
+    if current.semantic_type != previous.semantic_type and (current.is_won or current.is_lost):
+        safe_emit_crm_event(
+            db,
+            event_type="opportunity.won" if current.is_won else "opportunity.lost",
+            payload=payload,
+            **common,
+        )
 
 
 @router.get("", response_model=SalesOpportunityListResponse)
@@ -348,6 +428,24 @@ def get_sales_opportunity_pipeline_summary(
     )
 
 
+@router.get("/pipeline", response_model=SalesPipelineResponse)
+def get_sales_opportunity_pipeline(
+    db: Session = Depends(get_db),
+    current_user = Depends(require_user),
+    require_module = Depends(require_module_access("sales_opportunities")),
+    require_permission = Depends(require_action_access("sales_opportunities", "view")),
+):
+    """The tenant's resolved default pipeline, with every stage in board order.
+
+    Inactive stages are included and flagged, because existing deals can still sit
+    in them; clients offer only active stages for new assignment.
+    """
+
+    pipeline = pipelines_services.ensure_default_opportunity_pipeline(db, current_user.tenant_id)
+    db.commit()
+    return pipelines_services.serialize_pipeline(pipeline)
+
+
 @router.get("/recycle", response_model=SalesOpportunityListResponse)
 def list_deleted_sales_opportunities(
     pagination: Pagination = Depends(get_pagination),
@@ -376,7 +474,7 @@ def create_sales_opportunity(
         db,
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
-        field_keys=set(payload.model_fields_set) - {"custom_fields"},
+        field_keys=_field_config_keys(set(payload.model_fields_set)),
     )
     data = sanitize_disabled_field_payload(
         db,
@@ -384,6 +482,7 @@ def create_sales_opportunity(
         module_key="sales_opportunities",
         payload=data,
     )
+    _require_relationship_link_access(db, current_user=current_user, payload_data=data)
     opportunity = create_opportunity(db, data, current_user=current_user)
     log_activity(
         db,
@@ -396,44 +495,24 @@ def create_sales_opportunity(
         description=f"Created opportunity {opportunity.opportunity_name}",
         after_state=_serialize_opportunity(opportunity),
     )
+    safe_emit_crm_event(
+        db,
+        tenant_id=current_user.tenant_id,
+        actor_user_id=current_user.id if current_user else None,
+        event_type="opportunity.created",
+        entity_type="sales_opportunity",
+        entity_id=opportunity.opportunity_id,
+        payload={
+            **actor_payload(current_user),
+            "opportunity_id": opportunity.opportunity_id,
+            "deal_name": opportunity.opportunity_name,
+            "sales_stage": opportunity.sales_stage,
+            "assigned_to": opportunity.assigned_to,
+            "href": f"/dashboard/sales/opportunities/{opportunity.opportunity_id}",
+        },
+    )
     _emit_deal_assigned_event(db, current_user=current_user, opportunity=opportunity)
     return SalesOpportunityResponse.model_validate(opportunity)
-
-
-@router.post("/{opportunity_id}/attachments", response_model=SalesOpportunityResponse, status_code=status.HTTP_201_CREATED)
-async def upload_opportunity_attachments(
-    opportunity_id: int,
-    files: list[UploadFile] = File(...),
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
-):
-    return await opportunities_api.upload_opportunity_attachments(
-        db,
-        opportunity_id=opportunity_id,
-        tenant_id=current_user.tenant_id,
-        files=files,
-        current_user=current_user,
-    )
-
-
-@router.delete("/{opportunity_id}/attachments", response_model=SalesOpportunityResponse)
-def delete_opportunity_attachments(
-    opportunity_id: int,
-    attachments: list[str] = Body(..., embed=True),
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
-):
-    return opportunities_api.delete_opportunity_attachments(
-        db,
-        opportunity_id=opportunity_id,
-        tenant_id=current_user.tenant_id,
-        attachments=attachments,
-        current_user=current_user,
-    )
 
 
 @router.get("/{opportunity_id}", response_model=SalesOpportunityResponse)
@@ -457,7 +536,7 @@ def get_sales_opportunity_summary(
     require_permission = Depends(require_action_access("sales_opportunities", "view")),
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
-    return build_opportunity_summary(db, opportunity)
+    return build_opportunity_summary(db, opportunity, current_user=current_user)
 
 
 @router.post("/{opportunity_id}/follow-up", response_model=FollowUpActionResponse)
@@ -495,7 +574,7 @@ def update_sales_opportunity(
         db,
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
-        field_keys=set(update_data) - {"custom_fields"},
+        field_keys=_field_config_keys(set(update_data)),
     )
     update_data = sanitize_disabled_field_payload(
         db,
@@ -503,6 +582,7 @@ def update_sales_opportunity(
         module_key="sales_opportunities",
         payload=update_data,
     )
+    _require_relationship_link_access(db, current_user=current_user, payload_data=update_data)
 
     before_state = _serialize_opportunity(opportunity)
     updated = update_opportunity(db, opportunity, update_data, current_user=current_user)
@@ -518,24 +598,8 @@ def update_sales_opportunity(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
-    if "sales_stage" in update_data and before_state.get("sales_stage") != updated.sales_stage:
-        safe_emit_crm_event(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            event_type="opportunity.stage_changed",
-            entity_type="sales_opportunity",
-            entity_id=updated.opportunity_id,
-            payload={
-                **actor_payload(current_user),
-                "opportunity_id": updated.opportunity_id,
-                "deal_name": updated.opportunity_name,
-                "previous_stage": before_state.get("sales_stage"),
-                "stage": updated.sales_stage,
-                "assigned_to": updated.assigned_to,
-                "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
-            },
-        )
+    if ("sales_stage" in update_data or "pipeline_stage_id" in update_data) and before_state.get("sales_stage") != updated.sales_stage:
+        _emit_stage_events(db, current_user=current_user, before_state=before_state, opportunity=updated)
     if "assigned_to" in update_data and before_state.get("assigned_to") != updated.assigned_to:
         _emit_deal_assigned_event(db, current_user=current_user, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
@@ -552,8 +616,14 @@ def update_sales_opportunity_stage(
 ):
     opportunity = get_opportunity_or_404(db, opportunity_id, tenant_id=current_user.tenant_id)
     before_state = _serialize_opportunity(opportunity)
-    updated = update_opportunity_stage(db, opportunity, sales_stage=payload.sales_stage)
-    action = "close" if updated.sales_stage in OPPORTUNITY_CLOSED_STAGE_SET else "stage_change"
+    updated = update_opportunity_stage(
+        db,
+        opportunity,
+        sales_stage=payload.sales_stage,
+        pipeline_stage_id=payload.pipeline_stage_id,
+        lost_reason=payload.lost_reason,
+    )
+    action = "close" if pipelines_services.opportunity_stage_facts(updated).is_closed else "stage_change"
     log_activity(
         db,
         tenant_id=current_user.tenant_id,
@@ -566,23 +636,7 @@ def update_sales_opportunity_stage(
         before_state=before_state,
         after_state=_serialize_opportunity(updated),
     )
-    safe_emit_crm_event(
-        db,
-        tenant_id=current_user.tenant_id,
-        actor_user_id=current_user.id if current_user else None,
-        event_type="opportunity.stage_changed",
-        entity_type="sales_opportunity",
-        entity_id=updated.opportunity_id,
-        payload={
-            **actor_payload(current_user),
-            "opportunity_id": updated.opportunity_id,
-            "deal_name": updated.opportunity_name,
-            "previous_stage": before_state.get("sales_stage"),
-            "stage": updated.sales_stage,
-            "assigned_to": updated.assigned_to,
-            "href": f"/dashboard/sales/opportunities/{updated.opportunity_id}",
-        },
-    )
+    _emit_stage_events(db, current_user=current_user, before_state=before_state, opportunity=updated)
     return SalesOpportunityResponse.model_validate(updated)
 
 
@@ -632,21 +686,6 @@ def restore_sales_opportunity(
         after_state=_serialize_opportunity(restored),
     )
     return SalesOpportunityResponse.model_validate(restored)
-
-
-@router.post("/{opportunity_id}/create_finance_io")
-def create_finance_io(
-    opportunity_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "create")),
-):
-    return opportunities_api.create_finance_io_for_opportunity(
-        db,
-        opportunity_id=opportunity_id,
-        current_user=current_user,
-    )
 
 
 @router.post("/import", response_model=ImportExecutionResponse, status_code=status.HTTP_201_CREATED)

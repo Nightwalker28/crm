@@ -53,6 +53,14 @@ class CalendarEvent(Base):
     __tablename__ = "calendar_events"
     __table_args__ = (
         Index("ix_calendar_events_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        Index(
+            "ix_calendar_events_tenant_source",
+            "tenant_id",
+            "source_module_key",
+            "source_entity_id",
+            "start_at",
+            "id",
+        ),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)

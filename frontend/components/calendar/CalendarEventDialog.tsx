@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import CalendarParticipantPicker from "@/components/calendar/CalendarParticipantPicker";
 import { DialogIconClose } from "@/components/ui/DialogIconClose";
 import { RequiredMark } from "@/components/ui/RequiredMark";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,7 +17,6 @@ import {
 } from "@/components/ui/dialog";
 import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Switch, SwitchThumb } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   CalendarAssignmentTeamOption,
@@ -159,7 +159,7 @@ export default function CalendarEventDialog({
       });
       onClose();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : "Failed to save calendar event");
+      setError(submitError instanceof Error ? submitError.message : "The event could not be saved. Check the times and try again.");
     }
   }
 
@@ -177,7 +177,7 @@ export default function CalendarEventDialog({
       await onDelete();
       onClose();
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : "Failed to delete calendar event");
+      setError(deleteError instanceof Error ? deleteError.message : "The event could not be deleted. Try again.");
     }
   }
 
@@ -185,17 +185,15 @@ export default function CalendarEventDialog({
     <Dialog open={open} onClose={onClose}>
       <DialogBackdrop />
       <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
-        <DialogPanel size="3xl">
+        <DialogPanel size="3xl" aria-describedby={undefined}>
           <DialogHeader>
-            <DialogTitle>{event ? (canManage ? "Edit Event" : "Event details") : "Create Event"}</DialogTitle>
+            <DialogTitle>{event ? (canManage ? "Edit event" : "Event details") : "Create event"}</DialogTitle>
             <DialogIconClose />
           </DialogHeader>
 
           <fieldset disabled={!canManage} className="mt-4 space-y-4 disabled:opacity-80">
             {!canManage ? (
-              <div className="rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary">
-                Only the event owner can change or delete this event.
-              </div>
+              <p className="text-sm text-copy-muted">Only the event owner can change or delete this event.</p>
             ) : null}
             {error ? (
               <div role="alert" className="rounded-[var(--radius-control)] border border-state-danger/40 bg-state-danger-muted px-4 py-3 text-sm text-copy-primary">
@@ -279,25 +277,19 @@ export default function CalendarEventDialog({
               </Field>
 
               <Field className="md:col-span-2">
-                <div className="flex min-h-10 items-center justify-between gap-4 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-3 py-2">
-                  <div>
-                    <FieldLabel htmlFor="calendar-all-day">All-day event</FieldLabel>
-                    <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
-                  </div>
-                  <Switch
-                    id="calendar-all-day"
-                    checked={form.is_all_day}
-                    onCheckedChange={(checked) => setForm((current) => ({ ...current, is_all_day: checked }))}
-                    aria-label="All-day event"
-                    className="relative h-6 w-11 shrink-0 rounded-full border border-line-strong bg-surface data-[state=checked]:bg-primary"
-                  >
-                    <SwitchThumb className="block h-5 w-5 rounded-full bg-copy-primary shadow-sm data-[state=checked]:translate-x-5" />
-                  </Switch>
-                </div>
+                <FieldLabel>All-day event</FieldLabel>
+                <SegmentedBoolean
+                  aria-label="All-day event"
+                  value={form.is_all_day}
+                  onValueChange={(isAllDay) => setForm((current) => ({ ...current, is_all_day: isAllDay }))}
+                  trueLabel="All day"
+                  falseLabel="Timed"
+                />
+                <FieldDescription>Show this event without a specific meeting time.</FieldDescription>
               </Field>
             </FieldGroup>
 
-            <div className="rounded-[var(--radius-card)] border border-line-default bg-surface-muted p-4">
+            <div className="border-t border-line-subtle pt-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-copy-primary">Participants</div>
@@ -322,12 +314,12 @@ export default function CalendarEventDialog({
             {event && onDelete && canManage ? (
               <Button
                 type="button"
-                variant="outline"
-                className="mr-auto border-state-danger/50 text-state-danger hover:bg-state-danger-muted hover:text-state-danger"
+                variant="destructiveOutline"
+                className="mr-auto"
                 onClick={() => void handleDelete()}
                 disabled={isSubmitting || isDeleting}
               >
-                Move To Recycle Bin
+                Move to recycle bin
               </Button>
             ) : null}
             <Button type="button" variant="ghost" onClick={onClose}>
@@ -335,7 +327,7 @@ export default function CalendarEventDialog({
             </Button>
             {canManage ? (
               <Button type="button" onClick={() => void handleSubmit()} disabled={isSubmitting || isDeleting || !canSubmit}>
-                {event ? "Save Event" : "Create Event"}
+                {event ? "Save event" : "Create event"}
               </Button>
             ) : null}
           </DialogFooter>

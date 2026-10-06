@@ -5,9 +5,11 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import type { User } from "@/components/users/userManagementTable";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 
 export type UserOption = { id: number; name: string };
+/** Whether the invite email went out; `error` says what an admin should fix when it did not. */
+export type InviteEmailResult = { sent: boolean; error?: string | null };
 type AuthMode = "manual_only" | "manual_or_google";
 type UserStatus = "active" | "inactive";
 export type MfaPolicy = "off" | "admins_only" | "all_users";
@@ -99,7 +101,7 @@ export function useUserManagement() {
     queryKey: ["user-options"],
     queryFn: async () => {
       const response = await apiFetch("/admin/users/options");
-      if (!response.ok) throw new Error("Failed to fetch user options");
+      if (!response.ok) throw new ApiError(response.status, "Failed to fetch user options");
       return response.json();
     },
     staleTime: 600_000,
@@ -129,7 +131,14 @@ export function useUserManagement() {
     if (!response.ok) throw new Error(body?.detail ?? body?.message ?? `Status ${response.status}`);
     await refreshUsers();
     toast.success("User created.");
-    return { setup_link: body?.setup_link ?? null };
+    return { setup_link: body?.setup_link ?? null, invite_email: (body?.invite_email ?? null) as InviteEmailResult | null };
+  }
+  /** A new setup link (the last stops working), emailed to the user and returned (13 F0.7 B4). */
+  async function resendInvite(id: number): Promise<{ setup_link: string; invite_email: InviteEmailResult }> {
+    const response = await apiFetch(`/admin/users/${id}/invite`, { method: "POST" });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(typeof body?.detail === "string" ? body.detail : "The invite could not be sent. Try again.");
+    return { setup_link: body.setup_link, invite_email: body.invite_email };
   }
   async function updateUser(id: number, form: Partial<User>) {
     const response = await apiFetch(`/admin/users/${id}`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
@@ -150,6 +159,8 @@ export function useUserManagement() {
     isEditOpen,
     isCreateOpen,
     optionsData: optionsQuery.data ?? EMPTY_OPTIONS,
+    // A 403 here is an admin without `configure` on user management, not a fault.
+    loadError: optionsQuery.error,
     roles: optionsQuery.data?.roles ?? EMPTY_OPTIONS.roles,
     teams: optionsQuery.data?.teams ?? EMPTY_OPTIONS.teams,
     openEditModal: (user: User) => { setEditUserData(user); setIsEditOpen(true); },
@@ -160,6 +171,7 @@ export function useUserManagement() {
     updateUser,
     bulkUpdateUsers,
     resetUserMfa: resetMfa.mutateAsync,
+    resendInvite,
     isResettingUserMfa: resetMfa.isPending,
   };
 }

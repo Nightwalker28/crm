@@ -14,6 +14,7 @@ from sqlalchemy.orm import Session
 from app.core.duplicates import DuplicateMode, ensure_single_duplicate_action, resolve_duplicate_mode, should_merge_value
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
+from app.modules.sales.services.document_fields import fill_addresses_from_account, normalize_document_fields
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
@@ -23,8 +24,10 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.platform.services.activity_logs import log_activity
+from app.modules.catalog.services.line_links import normalize_catalog_line_links
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteItem, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
+from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
 from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
@@ -125,8 +128,7 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
     if organization_id is not None and not quotes_repository.organization_exists(db, tenant_id=tenant_id, organization_id=organization_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Organization not found")
     if opportunity is not None:
-        if contact_id is not None and opportunity.contact_id is not None and contact_id != opportunity.contact_id:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote contact must match the linked opportunity")
+        ensure_contact_on_opportunity(db, opportunity=opportunity, contact_id=contact_id, record_label="Quote")
         if organization_id is not None and opportunity.organization_id is not None and organization_id != opportunity.organization_id:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote organization must match the linked opportunity")
         if data.get("contact_id") is None and opportunity.contact_id is not None:
@@ -165,11 +167,12 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
     return normalized
 
 
-def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
+def _normalize_quote_items(db: Session, items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
     normalized_items: list[SalesQuoteItem] = []
     subtotal = Decimal("0")
     discount_total = Decimal("0")
     tax_total = Decimal("0")
+    catalog_links = normalize_catalog_line_links(db, tenant_id=tenant_id, lines=items)
     for index, item in enumerate(items):
         name = _coerce_required(item.get("name"), "Quote item name")
         quantity = _coerce_decimal(item.get("quantity", "1"))
@@ -187,6 +190,7 @@ def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[S
         normalized_items.append(
             SalesQuoteItem(
                 tenant_id=tenant_id,
+                **catalog_links[index],
                 name=name,
                 description=_coerce_optional(item.get("description")),
                 quantity=quantity,
@@ -207,6 +211,14 @@ def _normalize_quote_items(items: list[dict], *, tenant_id: int) -> tuple[list[S
         "total_amount": (subtotal - discount_total + tax_total).quantize(Decimal("0.01")),
     }
     return normalized_items, totals
+
+
+def _refresh_total(quote: SalesQuote) -> None:
+    """Lines plus the shipping charge (13b §5 decision 8)."""
+    money = lambda value: Decimal(value or 0)  # noqa: E731
+    quote.total_amount = (
+        money(quote.subtotal_amount) - money(quote.discount_amount) + money(quote.tax_amount) + money(quote.shipping_charge)
+    ).quantize(Decimal("0.01"))
 
 
 def _generate_quote_number(db: Session, *, tenant_id: int) -> str:
@@ -430,10 +442,11 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
     ensure_single_duplicate_action(replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     data = dict(payload)
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
+    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
     explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields", None))
     data = _normalize_quote_payload(data)
+    normalize_document_fields(db, data, tenant_id=current_user.tenant_id, module_key="sales_quotes")
     if item_totals is not None:
         data.update(item_totals)
     data["custom_data"] = custom_data
@@ -443,6 +456,7 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
         data["assigned_to"] = current_user.id if current_user else None
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=current_user.tenant_id)
     _ensure_linked_records(db, data, tenant_id=current_user.tenant_id)
+    fill_addresses_from_account(db, data, tenant_id=current_user.tenant_id)
     if quotes_repository.quote_number_exists(db, tenant_id=current_user.tenant_id, quote_number=data["quote_number"]) and not create_new_records:
         existing = (
             db.query(SalesQuote)
@@ -472,6 +486,7 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
     quote = SalesQuote(tenant_id=current_user.tenant_id, **data)
     if normalized_items is not None:
         quote.items = normalized_items
+    _refresh_total(quote)
     db.add(quote)
     try:
         db.flush()
@@ -486,21 +501,24 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
 
 def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote:
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
+    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(db, tenant_id=quote.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields"), existing=load_custom_field_values_with_fallback(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, fallback=quote.custom_data))
         data["custom_data"] = custom_data_to_save
     data = _normalize_quote_payload(data, partial=True)
+    normalize_document_fields(db, data, tenant_id=quote.tenant_id, module_key="sales_quotes", existing=quote)
     if item_totals is not None:
         data.update(item_totals)
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=quote.tenant_id)
     _ensure_linked_records(db, data, tenant_id=quote.tenant_id)
+    fill_addresses_from_account(db, data, tenant_id=quote.tenant_id, existing=quote)
     if data.get("quote_number") and quotes_repository.quote_number_exists(db, tenant_id=quote.tenant_id, quote_number=data["quote_number"], exclude_quote_id=quote.quote_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another quote already uses this number")
     _apply_quote_payload(quote, data)
     if normalized_items is not None:
         quote.items = normalized_items
+    _refresh_total(quote)
     db.add(quote)
     try:
         db.flush()
