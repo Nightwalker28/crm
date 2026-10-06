@@ -23,6 +23,7 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.purchasing.services.purchase_order_services import get_vendor, received_by_line
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 MODULE = "purchase_bills"
 
@@ -238,6 +239,8 @@ def save_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, payload
     _check_duplicate(db, bill=bill)
     db.add(bill)
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="purchase_bills", record=bill, payload=payload, created=bill_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, bill=bill, actor_user_id=actor_user_id, action="update" if bill_id else "create",
         description=f"{'Updated' if bill_id else 'Drafted'} bill {bill.number} ({bill.vendor_invoice_number}) from {vendor.org_name}")
     return bill
@@ -356,6 +359,8 @@ def serialize_bill(db: Session, *, tenant_id: int, bill: PurchaseBill, include_l
             "billable": rows.get(line.order_line_id, {}).get("to_bill") if line.order_line_id else None,
         } for line in bill.lines]
         result["payments"] = payments_for(db, tenant_id=tenant_id, bill_id=bill.id)
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="purchase_bills", record_id=bill.id)
     return result
 
 

@@ -25,6 +25,7 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPurchaseReceiptStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 
 function plural(count: number, word: string) {
@@ -55,6 +56,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   const [notes, setNotes] = useState("");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
 
@@ -66,6 +68,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   const seedKey = isNew ? (order.data ? `order-${order.data.id}` : null) : receipt && order.data ? `receipt-${receipt.id}-${receipt.status}` : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(receipt?.custom_fields ?? {});
     setReceivedOn(receipt?.received_on ?? "");
     setReference(receipt?.vendor_delivery_ref ?? "");
     setNotes(receipt?.notes ?? "");
@@ -89,6 +92,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
     if (invalidLine) { setError(`${invalidLine.product_name}: receive between 0 and ${quantity(invalidLine.to_receive)}.`); return; }
     if (!receiving.length) { setError("Enter a received quantity on at least one line."); return; }
     const payload = {
+      custom_fields: customValues,
       received_on: receivedOn || null, vendor_delivery_ref: reference.trim() || null, notes: notes.trim() || null,
       lines: receiving.map((line) => ({ order_line_id: line.id, quantity: quantities[line.id] })),
     };
@@ -177,6 +181,8 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
               <Field className="lg:col-span-2"><FieldLabel htmlFor="receipt-notes">Notes</FieldLabel><Textarea id="receipt-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
             </div>
           ) : receipt?.notes ? <p className="text-p-sm text-copy-secondary">{receipt.notes}</p> : null}
+
+          {editable ? <RecordCustomFieldsSection moduleKey="purchase_receipts" values={customValues} onChange={setCustomValues} /> : receipt ? <RecordCustomFieldsFacts moduleKey="purchase_receipts" values={receipt.custom_fields} /> : null}
 
           <section className="flex flex-col gap-3">
             <SectionHeading description={editable ? `${plural(totalUnits, "unit")} on this receipt.` : undefined}>Lines</SectionHeading>

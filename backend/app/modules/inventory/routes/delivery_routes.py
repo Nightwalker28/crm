@@ -3,6 +3,8 @@
 from datetime import date
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -27,6 +29,7 @@ class DeliveryLinePayload(BaseModel):
 
 
 class DeliveryPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     shipped_on: date | None = None
     carrier: str | None = Field(default=None, max_length=120)
     tracking_number: str | None = Field(default=None, max_length=120)

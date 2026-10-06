@@ -11,7 +11,7 @@ import type { Order } from "@/hooks/sales/useOrders";
 import type { TableColumnOption } from "@/types/table";
 import { formatDateTime } from "@/lib/datetime";
 import { getReadableColumnLabel } from "@/lib/moduleViewConfigs";
-import { getOrderDeliveryStatus, getOrderInvoiceStatus, getOrderPriority, getOrderStatus } from "@/lib/statusStyles";
+import { getOrderDeliveryStatus, getOrderInvoiceStatus, getOrderPriority, getOrderSource, getOrderStatus } from "@/lib/statusStyles";
 import { Money } from "@/components/ui/Money";
 
 type OrdersTableProps = {
@@ -39,6 +39,7 @@ const SORTABLE_COLUMNS = new Set([
   "delivery_status",
   "invoice_status",
   "priority",
+  "source",
   "currency",
   "subtotal",
   "tax_total",
@@ -54,6 +55,7 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
   delivery_status: "sm",
   invoice_status: "sm",
   priority: "sm",
+  source: "sm",
   currency: "sm",
   organization_name: "lg",
   opportunity_name: "lg",
@@ -69,6 +71,8 @@ function renderCell(order: Order, column: string) {
     }
     case "priority":
       return <StatusValue status={getOrderPriority(order.priority ?? "normal")} />;
+    case "source":
+      return <StatusValue status={getOrderSource(order.source ?? "crm")} />;
     case "delivery_status":
       return <StatusValue status={getOrderDeliveryStatus(order.delivery_status ?? "none")} />;
     case "invoice_status":

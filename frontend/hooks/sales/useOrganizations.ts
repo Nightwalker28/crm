@@ -15,7 +15,10 @@ export type Organization = {
   primary_phone?: string;
   secondary_phone?: string;
   industry?: string;
-  annual_revenue?: string;
+  account_type?: string | null;
+  /** In the company's base currency. */
+  annual_revenue?: string | number | null;
+  employee_count?: number | null;
   billing_country?: string;
   is_vendor?: boolean;
   /** Days to pay, for invoices to and bills from this account (E5); none uses the company default. */

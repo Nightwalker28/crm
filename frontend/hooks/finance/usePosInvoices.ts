@@ -33,6 +33,8 @@ export type PosInvoiceLine = {
 export type PaymentAllocation = { id: number; document_type: "invoice" | "credit_note" | "bill"; document_id: number; document_label: string | null; amount: string };
 
 export type PaymentRecord = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; direction: "received" | "made"; kind: "payment" | "refund"; status: "posted" | "void";
   organization_id: number | null; contact_id: number | null; party_name: string | null; amount: string; currency: string;
   paid_on: string; method: string | null; reference: string | null; notes: string | null; voided_at: string | null;
@@ -45,10 +47,12 @@ export type InvoiceCreditNoteSummary = {
 };
 
 export type PosInvoice = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number;
   invoice_number: string | null;
   mode: string;
-  source?: "manual" | "pos" | "sales_order" | "website_order";
+  source?: "manual" | "pos" | "sales_order";
   sales_order_id?: number | null;
   sales_order_number?: string | null;
   status: PosInvoiceStatus;
@@ -88,7 +92,7 @@ export type PosInvoice = {
   credit_notes?: InvoiceCreditNoteSummary[];
 };
 
-export type RecordPaymentPayload = { amount: number; payment_method?: string | null; paid_on?: string | null; reference?: string | null };
+export type RecordPaymentPayload = { amount: number; payment_method?: string | null; paid_on?: string | null; reference?: string | null; custom_fields?: Record<string, unknown> };
 
 /** What a draft or issued invoice shows as its number. */
 export function invoiceDisplayNumber(invoice: Pick<PosInvoice, "invoice_number" | "status">) {
@@ -123,7 +127,7 @@ async function fetchInvoices(
     params.set("sort_by", sort.key);
     params.set("sort_direction", sort.direction);
   }
-  const res = await apiFetch(`/finance/pos-invoices?${params.toString()}`);
+  const res = await apiFetch(`/finance/invoices?${params.toString()}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error("Invoices could not be loaded.");
   return body as PosInvoicesResponse;
@@ -143,7 +147,7 @@ export class PosInvoiceRequestError extends Error {
 }
 
 export async function fetchPosInvoice(id: number): Promise<PosInvoice> {
-  const res = await apiFetch(`/finance/pos-invoices/${id}`);
+  const res = await apiFetch(`/finance/invoices/${id}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) {
     throw new PosInvoiceRequestError(
@@ -164,7 +168,7 @@ export function usePosInvoice(id: number | null) {
 }
 
 async function recordInvoicePayment(id: number, payload: RecordPaymentPayload): Promise<PosInvoice> {
-  const res = await apiFetch(`/finance/pos-invoices/${id}/payments`, {
+  const res = await apiFetch(`/finance/invoices/${id}/payments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -202,12 +206,12 @@ export function useInvoiceActions() {
       queryClient.invalidateQueries({ queryKey: ["record-audit-history", "finance_pos"] }),
     ]);
   };
-  const issue = useMutation({ mutationFn: (id: number) => invoiceAction(`/finance/pos-invoices/${id}/issue`), onSuccess: refresh });
-  const voidInvoice = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => invoiceAction(`/finance/pos-invoices/${id}/void`, { reason }), onSuccess: refresh });
-  const voidAndCopy = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => invoiceAction(`/finance/pos-invoices/${id}/void-and-copy`, { reason }), onSuccess: () => refresh() });
+  const issue = useMutation({ mutationFn: (id: number) => invoiceAction(`/finance/invoices/${id}/issue`), onSuccess: refresh });
+  const voidInvoice = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => invoiceAction(`/finance/invoices/${id}/void`, { reason }), onSuccess: refresh });
+  const voidAndCopy = useMutation({ mutationFn: ({ id, reason }: { id: number; reason: string }) => invoiceAction(`/finance/invoices/${id}/void-and-copy`, { reason }), onSuccess: () => refresh() });
   const pay = useMutation({ mutationFn: ({ id, payload }: { id: number; payload: RecordPaymentPayload }) => recordInvoicePayment(id, payload), onSuccess: refresh });
   const fromSource = useMutation({
-    mutationFn: (source: { order_id: number; delivery_id?: number | null }) => invoiceAction("/finance/pos-invoices/from-order", { sources: [source] }),
+    mutationFn: (source: { order_id: number; delivery_id?: number | null }) => invoiceAction("/finance/invoices/from-order", { sources: [source] }),
     onSuccess: refresh,
   });
   const all = [issue, voidInvoice, voidAndCopy, pay, fromSource];

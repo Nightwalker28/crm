@@ -14,14 +14,6 @@ from app.modules.catalog.services.service_services import (
     restore_service,
     serialize_service,
 )
-from app.modules.finance.services.io_search_services import (
-    _finance_record_customer_name,
-    _serialize_finance_record_state,
-    get_deleted_insertion_order_or_404,
-    get_finance_module_id,
-    list_deleted_insertion_orders,
-    restore_insertion_order,
-)
 from fastapi.encoders import jsonable_encoder
 
 from app.modules.inventory.repositories import document_repository as inventory_documents
@@ -75,7 +67,6 @@ from app.modules.tasks.services.tasks_services import (
 
 
 SUPPORTED_RECYCLE_MODULES = {
-    "finance_insertion_orders",
     "sales_leads",
     "sales_contacts",
     "sales_organizations",
@@ -107,27 +98,6 @@ def list_recycle_items(
     module_key: str,
     tenant_id: int,
 ):
-    if module_key == "finance_insertion_orders":
-        module_id = get_finance_module_id(db)
-        items, total = list_deleted_insertion_orders(
-            db,
-            tenant_id=tenant_id,
-            module_id=module_id,
-            pagination=pagination,
-        )
-        serialized = [
-            {
-                "module_key": module_key,
-                "record_id": item.id,
-                "title": item.io_number,
-                "subtitle": _finance_record_customer_name(item),
-                "deleted_at": item.deleted_at,
-                "details": _serialize_finance_record_state(item),
-            }
-            for item in items
-        ]
-        return build_paged_response(serialized, total_count=total, pagination=pagination)
-
     if module_key == "sales_contacts":
         items, total = list_deleted_sales_contacts(db, tenant_id, pagination)
         serialized = [
@@ -185,7 +155,7 @@ def list_recycle_items(
                 "module_key": module_key,
                 "record_id": item.opportunity_id,
                 "title": item.opportunity_name,
-                "subtitle": item.client or (item.sales_stage and opportunity_stage_facts(item).label) or "Opportunity",
+                "subtitle": item.organization_name or (item.sales_stage and opportunity_stage_facts(item).label) or "Opportunity",
                 "deleted_at": item.deleted_at,
                 "details": SalesOpportunityResponse.model_validate(item).model_dump(mode="json"),
             }
@@ -402,29 +372,6 @@ def restore_recycle_item(
     record_id: int,
     current_user,
 ):
-    if module_key == "finance_insertion_orders":
-        module_id = get_finance_module_id(db)
-        record = get_deleted_insertion_order_or_404(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_id=module_id,
-            io_id=record_id,
-        )
-        restored = restore_insertion_order(db, record=record)
-        serialized = _serialize_finance_record_state(restored, current_user=current_user)
-        log_activity(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            module_key=module_key,
-            entity_type="finance_insertion_order",
-            entity_id=restored.id,
-            action="restore",
-            description=f"Restored insertion order {restored.io_number} from recycle bin",
-            after_state=serialized,
-        )
-        return serialized
-
     if module_key == "sales_contacts":
         contact = get_contact_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
         restored = restore_sales_contact(db, contact)

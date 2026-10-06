@@ -29,6 +29,7 @@ from app.modules.finance.services.document_amounts import ZERO, decimal_input, l
 from app.modules.finance.services.invoice_balances import refresh_credit_note_balance, refresh_invoice_balance
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 MODULE = "finance_credit_notes"
 
@@ -160,6 +161,8 @@ def save_draft(db: Session, user, *, payload: dict, credit_note_id: int | None =
         _apply_lines(db, credit_note=credit_note, invoice=invoice, lines=lines)
     db.add(credit_note)
     db.flush()
+    sync_custom_fields(db, tenant_id=user.tenant_id, module_key="finance_credit_notes", record=credit_note, payload=payload, created=credit_note_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, credit_note=credit_note, actor_user_id=user.id, action="update" if credit_note_id else "create",
         description=f"{'Updated' if credit_note_id else 'Drafted'} {label(credit_note)} against {invoice.invoice_number}")
     return credit_note
@@ -315,6 +318,8 @@ def serialize(db: Session, credit_note: FinanceCreditNote, *, include_lines: boo
                             "discount_amount": line.discount_amount, "tax_amount": line.tax_amount, "line_total": line.line_total,
                             "creditable": left.get(line.invoice_line_id, ZERO)} for line in credit_note.lines]
         result["refunds"] = payments_for(db, tenant_id=credit_note.tenant_id, credit_note_id=credit_note.id)
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=credit_note.tenant_id, module_key="finance_credit_notes", record_id=credit_note.id)
     return result
 
 

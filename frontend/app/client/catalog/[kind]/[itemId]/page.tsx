@@ -45,7 +45,7 @@ export default function ClientCatalogItemPage() {
     try {
       const order = await requestItem({ kind: kind as ClientCatalogKind, itemId: Number(itemId), quantity, details });
       setDetails("");
-      toast.success(`Order ${order.external_reference} submitted.`);
+      toast.success(`Order ${order.order_number} submitted.`);
     } catch {
       toast.error("The request could not be submitted. Check your connection and try again.");
     }

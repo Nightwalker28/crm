@@ -40,7 +40,6 @@ const DOCUMENT_LABELS: Record<string, string> = {
   inventory_return: "Return",
   purchase_receipt: "Receipt",
   sales_order: "Sales order",
-  website_order: "Website order",
   catalog_product: "Opening stock",
 };
 
@@ -67,7 +66,7 @@ export default function InventoryMovementsPage() {
   return <PageShell variant="list" title="Movements" description="Every posted change to tracked stock, newest first." actions={<Button asChild variant="outline"><Link href={DASHBOARD_ROUTES.inventoryStock}>Stock</Link></Button>}>
     <div className="flex flex-wrap items-center gap-3">
       {showWarehouse ? <Select value={warehouseId || "all"} onValueChange={(value) => changeFilter(() => setWarehouseId(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter warehouse"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All warehouses</SelectItem>{warehouses.data?.filter((row) => row.is_active).map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent></Select> : null}
-      <Select value={moveType || "all"} onValueChange={(value) => changeFilter(() => setMoveType(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter movement type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{["opening", "adjustment", "count", "transfer_out", "transfer_in", "receipt", "delivery", "return", "sales_order", "website_order", "reversal"].map((type) => <SelectItem key={type} value={type}>{formatSnakeCaseLabel(type)}</SelectItem>)}</SelectContent></Select>
+      <Select value={moveType || "all"} onValueChange={(value) => changeFilter(() => setMoveType(value === "all" ? "" : value))}><SelectTrigger aria-label="Filter movement type"><SelectValue /></SelectTrigger><SelectContent><SelectItem value="all">All types</SelectItem>{["opening", "adjustment", "count", "transfer_out", "transfer_in", "receipt", "delivery", "return", "sales_order", "reversal"].map((type) => <SelectItem key={type} value={type}>{formatSnakeCaseLabel(type)}</SelectItem>)}</SelectContent></Select>
     </div>
     <InventoryDataTransferActions kind="movements" canExport={Boolean(stockActions?.can_export)} />
     <RecordTable label="Stock movements" rows={moves.data?.results ?? []} rowKey={(row) => row.id}

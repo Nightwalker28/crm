@@ -47,8 +47,8 @@ export function RecordOwnerField({
   canEdit,
   onCommit,
 }: {
-  /** The module's own word for the field. `Assignee` on a support case; the behaviour is the
-   *  same either way (§4.7). */
+  /** The module's own word for the field, when it is not `Owner`; the behaviour is the same
+   *  either way (§4.7). */
   label?: string;
   moduleKey: string;
   ownerId?: number | null;

@@ -75,15 +75,6 @@ export function getGenericStatus(value: string): StatusDescriptor {
   return { tone: "neutral", label: labelize(value || "Unknown") };
 }
 
-const INSERTION_ORDER_STATUS: Record<string, StatusDescriptor> = {
-  draft: n("Draft"),
-  issued: n("Issued"),
-  active: n("Active"),
-  imported: n("Imported"),
-  completed: s("Completed"),
-  cancelled: c("Cancelled"),
-};
-
 /**
  * `in_stock` is neutral rather than success on purpose: it is the state most rows are in, and
  * R5's whole point is that painting the normal case leaves nothing for the exception. Out of
@@ -94,17 +85,6 @@ const CATALOG_STOCK_STATUS: Record<string, StatusDescriptor> = {
   in_stock: n("In stock"),
   out_of_stock: c("Out of stock"),
   preorder: a("Preorder"),
-};
-
-const CONTRACT_STATUS: Record<string, StatusDescriptor> = {
-  draft: n("Draft"),
-  review: n("Review"),
-  sent: n("Sent"),
-  active: n("Active"),
-  signed: s("Signed"),
-  partially_signed: a("Partially signed"),
-  expired: a("Expired"),
-  cancelled: c("Cancelled"),
 };
 
 // E5 (12c-erp-invoicing.md §3.3): draft → issued → void. Whether it is paid is the payment
@@ -164,13 +144,6 @@ const PURCHASE_ORDER_BILL_STATUS: Record<string, StatusDescriptor> = {
   billed: s("Billed"),
 };
 
-const LEAD_STATUS: Record<string, StatusDescriptor> = {
-  new: n("New"),
-  contacted: n("Contacted"),
-  qualified: n("Qualified"),
-  unqualified: n("Unqualified"),
-  converted: s("Converted"),
-};
 
 const LEAD_SCORE_GRADE: Record<string, StatusDescriptor> = {
   hot: cat("Hot"),
@@ -191,6 +164,19 @@ const ORDER_STATUS: Record<string, StatusDescriptor> = {
   confirmed: n("Confirmed"),
   fulfilled: s("Fulfilled"),
   cancelled: c("Cancelled"),
+};
+
+/** Where an order came from — a category, so toneless (R5). */
+const ORDER_SOURCE: Record<string, StatusDescriptor> = {
+  crm: cat("CRM"),
+  website: cat("Website"),
+  client_portal: cat("Client portal"),
+};
+
+/** The same order seen by the client in the portal: a draft is one the team has not confirmed. */
+const CLIENT_ORDER_STATUS: Record<string, StatusDescriptor> = {
+  ...ORDER_STATUS,
+  draft: n("Awaiting confirmation"),
 };
 
 /**
@@ -255,23 +241,6 @@ const TASK_PRIORITY: Record<string, StatusDescriptor> = {
   low: cat("Low"),
 };
 
-const SUPPORT_CASE_STATUS: Record<string, StatusDescriptor> = {
-  new: n("New"),
-  open: n("Open"),
-  closed: n("Closed"),
-  resolved: s("Resolved"),
-  pending: a("Pending"),
-};
-
-const SUPPORT_CASE_PRIORITY: Record<string, StatusDescriptor> = {
-  low: n("Low"),
-  medium: n("Medium"),
-  high: a("High"),
-  urgent: c("Urgent"),
-};
-
-export const getInsertionOrderStatus = (v: string) => descriptorFrom(INSERTION_ORDER_STATUS, v);
-export const getContractStatus = (v: string) => descriptorFrom(CONTRACT_STATUS, v);
 export const getPosInvoiceStatus = (v: string) => descriptorFrom(POS_INVOICE_STATUS, v);
 export const getPosPaymentStatus = (v: string) => descriptorFrom(POS_PAYMENT_STATUS, v);
 export const getOrderInvoiceStatus = (v: string) => descriptorFrom(ORDER_INVOICE_STATUS, v);
@@ -282,9 +251,10 @@ export const getBillMatchStatus = (v: string) => descriptorFrom(BILL_MATCH_STATU
 export const getPurchaseOrderBillStatus = (v: string) => descriptorFrom(PURCHASE_ORDER_BILL_STATUS, v);
 /** An unpaid balance past its due date: the one invoice state that takes colour in a list. */
 export const OVERDUE_STATUS: StatusDescriptor = { tone: "critical", label: "Overdue" };
-export const getLeadStatus = (v: string) => descriptorFrom(LEAD_STATUS, v);
 export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);
+export const getClientOrderStatus = (v: string) => descriptorFrom(CLIENT_ORDER_STATUS, v);
+export const getOrderSource = (v: string) => descriptorFrom(ORDER_SOURCE, v);
 export const getOrderAvailability = (v: string) => descriptorFrom(ORDER_AVAILABILITY, v);
 export const getOrderDeliveryStatus = (v: string) => descriptorFrom(ORDER_DELIVERY_STATUS, v);
 export const getOrderPriority = (v: string) => descriptorFrom(ORDER_PRIORITY, v);
@@ -293,7 +263,6 @@ export const getReturnStatus = (v: string) => descriptorFrom(RETURN_STATUS, v);
 export const getPurchaseOrderStatus = (v: string) => descriptorFrom(PURCHASE_ORDER_STATUS, v);
 export const getPurchaseReceiptStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, v);
 export const getTaskStatus = (v: string) => descriptorFrom(TASK_STATUS, v);
-export const getSupportCaseStatus = (v: string) => descriptorFrom(SUPPORT_CASE_STATUS, v);
 export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK_STATUS, v);
 
 /**
@@ -309,7 +278,6 @@ export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK
  */
 export const getCatalogActiveState = (v: boolean) => (v ? n("Active") : a("Inactive"));
 export const getCatalogVisibility = (v: boolean) => (v ? cat("Public") : cat("Private"));
-export const getSupportCasePriority = (v: string) => descriptorFrom(SUPPORT_CASE_PRIORITY, v);
 
 /** Categories — classified so the label is right, toneless so nothing paints them. */
 export const getLeadScoreGrade = (v: string) =>

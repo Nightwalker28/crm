@@ -9,11 +9,9 @@ from app.modules.client_portal.routes.client_portal_routes import (
     client_bookings_router,
     client_catalog_router,
     client_documents_router,
-    client_messages_router,
     client_orders_router,
     client_overview_router,
     client_quotes_router,
-    client_support_router,
     public_client_pages_router,
 )
 from app.modules.catalog.routes.item_routes import router as catalog_items_router
@@ -26,7 +24,6 @@ from app.modules.purchasing.routes.bill_routes import router as purchasing_bill_
 from app.modules.purchasing.routes.purchasing_routes import router as purchasing_router
 from app.modules.catalog.routes.product_routes import router as catalog_products_router
 from app.modules.catalog.routes.service_routes import router as catalog_services_router
-from app.modules.contracts.routes.contracts_routes import router as contracts_router
 from app.modules.documents.routes.document_routes import router as documents_router
 from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
@@ -44,6 +41,7 @@ from app.modules.platform.routes.global_search import router as global_search_ro
 from app.modules.platform.routes.integrations_registry import router as integrations_registry_router
 from app.modules.platform.routes.linked_record_options import router as linked_record_options_router
 from app.modules.platform.routes.notifications import router as notifications_router
+from app.modules.platform.routes.picklists import admin_router as picklists_admin_router, router as picklists_router
 from app.modules.platform.routes.record_activity import router as record_activity_router
 from app.modules.platform.routes.record_comments import router as record_comments_router
 from app.modules.platform.routes.record_layouts import (
@@ -70,7 +68,6 @@ from app.modules.sales.routes.opportunity_participants_routes import (
 )
 from app.modules.sales.routes.orders_routes import router as sales_orders_router
 from app.modules.sales.routes.quotes_routes import router as sales_quotes_router
-from app.modules.support.routes.cases_routes import router as support_cases_router
 from app.modules.tasks.routes.tasks_routes import router as tasks_router
 from app.modules.telephony.routes.telephony_routes import router as telephony_router
 from app.modules.whatsapp.routes.whatsapp_routes import router as whatsapp_router
@@ -93,6 +90,8 @@ router.include_router(custom_module_builder_router)
 router.include_router(custom_module_runtime_router)
 router.include_router(public_custom_fields_router)
 router.include_router(module_fields_admin_router)
+router.include_router(picklists_admin_router)
+router.include_router(picklists_router)
 router.include_router(module_fields_router)
 router.include_router(module_reports_router)
 router.include_router(tenant_mail_router)
@@ -122,11 +121,9 @@ router.include_router(client_auth_router)
 router.include_router(client_bookings_router)
 router.include_router(client_catalog_router)
 router.include_router(client_documents_router)
-router.include_router(client_messages_router)
 router.include_router(client_orders_router)
 router.include_router(client_overview_router)
 router.include_router(client_quotes_router)
-router.include_router(client_support_router)
 router.include_router(public_client_pages_router)
 router.include_router(catalog_items_router)
 router.include_router(catalog_products_router)
@@ -138,7 +135,6 @@ router.include_router(inventory_return_router)
 router.include_router(inventory_valuation_router)
 router.include_router(purchasing_router)
 router.include_router(purchasing_bill_router)
-router.include_router(contracts_router)
 router.include_router(documents_router)
 router.include_router(mail_router)
 router.include_router(finance_router)
@@ -153,7 +149,6 @@ router.include_router(sales_pipelines_router, prefix="/sales")
 router.include_router(sales_opportunities_router, prefix="/sales")
 router.include_router(sales_quotes_router, prefix="/sales")
 router.include_router(sales_orders_router, prefix="/sales")
-router.include_router(support_cases_router)
 router.include_router(tasks_router)
 router.include_router(telephony_router)
 router.include_router(whatsapp_router)

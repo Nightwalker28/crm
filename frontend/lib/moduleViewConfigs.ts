@@ -7,8 +7,9 @@ import type { TableColumnOption } from "@/types/table";
 import type { ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { isProtectedFieldKey } from "@/hooks/useModuleFieldConfigs";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
-import type { CustomModuleDefinition, CustomModuleField } from "@/hooks/useModuleBuilder";
+import type { CustomModuleDefinition } from "@/hooks/useModuleBuilder";
 import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
+import { filterFieldFor } from "@/lib/fieldTypes";
 import { SETTINGS_ROUTES } from "@/lib/routes";
 
 export type ModuleFilterFieldType = "text" | "number" | "date" | "select" | "relation";
@@ -26,6 +27,8 @@ export type ModuleFilterField = {
   options?: ModuleFilterFieldOption[];
   sourceModuleKey?: string;
   recordType?: "user" | "team" | "organization" | "contact";
+  /** The field stores keys of this picklist; its values become the options (13b §3.3). */
+  picklistKey?: string;
 };
 
 export type ModuleViewDisplayMode = { value: string; label: string };
@@ -46,15 +49,29 @@ export type ModuleViewDefinition = {
 };
 
 export const CUSTOM_FIELD_COLUMN_PREFIX = "custom:";
-export const CUSTOM_FIELD_SUPPORTED_MODULES = new Set([
-  "sales_leads",
-  "sales_contacts",
-  "sales_organizations",
-  "sales_opportunities",
-  "sales_quotes",
-  "sales_orders",
-  "finance_io",
-]);
+/** Built-in modules that take custom fields, with their names (13b §3.4; the server's list is
+ * `SUPPORTED_MODULE_KEYS` in `custom_fields.py`). */
+export const CUSTOM_FIELD_MODULE_LABELS: Record<string, string> = {
+  sales_leads: "Leads",
+  sales_contacts: "Contacts",
+  sales_organizations: "Accounts",
+  sales_opportunities: "Deals",
+  sales_quotes: "Quotes",
+  sales_orders: "Orders",
+  catalog_products: "Products",
+  catalog_services: "Services",
+  finance_pos: "Invoices",
+  finance_credit_notes: "Credit notes",
+  finance_payments: "Payments",
+  purchase_orders: "Purchase orders",
+  purchase_receipts: "Receipts",
+  purchase_bills: "Bills",
+  inventory_deliveries: "Deliveries",
+  inventory_returns: "Returns",
+  inventory_adjustments: "Stock adjustments",
+  inventory_transfers: "Stock transfers",
+};
+export const CUSTOM_FIELD_SUPPORTED_MODULES = new Set(Object.keys(CUSTOM_FIELD_MODULE_LABELS));
 
 const TEXT_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "contains", "not_contains", "in", "not_in", "is_empty", "is_not_empty"];
 const NUMBER_OPERATORS: SavedViewFilterOperator[] = ["is", "is_not", "gt", "gte", "lt", "lte", "in", "not_in", "is_empty", "is_not_empty"];
@@ -101,7 +118,9 @@ export const ORGANIZATION_COLUMNS: TableColumnOption[] = [
   { key: "primary_email", label: "Email" },
   { key: "website", label: "Website" },
   { key: "industry", label: "Industry" },
+  { key: "account_type", label: "Type" },
   { key: "annual_revenue", label: "Revenue" },
+  { key: "employee_count", label: "Employees" },
   { key: "primary_phone", label: "Phone" },
   { key: "billing_country", label: "Country" },
   { key: "is_vendor", label: "Vendor" },
@@ -117,8 +136,12 @@ export const OPPORTUNITY_COLUMNS: TableColumnOption[] = [
   { key: "sales_stage", label: "Stage" },
   { key: "expected_close_date", label: "Expected close" },
   { key: "probability_percent", label: "Probability" },
-  { key: "total_cost_of_project", label: "Project cost" },
+  { key: "amount", label: "Amount" },
   { key: "currency_type", label: "Currency" },
+  { key: "deal_type", label: "Type" },
+  { key: "source", label: "Source" },
+  { key: "next_step", label: "Next step" },
+  { key: "lost_reason", label: "Lost reason" },
   { key: "assigned_to_name", label: "Owner" },
   { key: "created_time", label: "Created" },
 ];
@@ -142,6 +165,9 @@ export const ORDER_COLUMNS: TableColumnOption[] = [
   { key: "delivery_status", label: "Delivery" },
   { key: "invoice_status", label: "Invoicing" },
   { key: "priority", label: "Priority" },
+  { key: "source", label: "Source" },
+  { key: "channel", label: "Channel" },
+  { key: "external_reference", label: "External reference" },
   { key: "quote_id", label: "Quote ID" },
   { key: "organization_name", label: "Account" },
   { key: "contact_name", label: "Contact" },
@@ -150,62 +176,6 @@ export const ORDER_COLUMNS: TableColumnOption[] = [
   { key: "currency", label: "Currency" },
   { key: "grand_total", label: "Total" },
   { key: "created_at", label: "Created" },
-  { key: "updated_at", label: "Updated" },
-];
-
-export const CONTRACT_COLUMNS: TableColumnOption[] = [
-  { key: "contract_number", label: "Contract Number" },
-  { key: "title", label: "Title" },
-  { key: "status", label: "Status" },
-  { key: "organization_id", label: "Account ID" },
-  { key: "contact_id", label: "Contact ID" },
-  { key: "opportunity_id", label: "Deal ID" },
-  { key: "quote_id", label: "Quote ID" },
-  { key: "order_id", label: "Order ID" },
-  { key: "document_id", label: "Document ID" },
-  { key: "value_amount", label: "Value" },
-  { key: "currency", label: "Currency" },
-  { key: "effective_date", label: "Effective" },
-  { key: "expiration_date", label: "Expiration" },
-  { key: "renewal_date", label: "Renewal" },
-  { key: "owner_id", label: "Owner ID" },
-  { key: "updated_at", label: "Updated" },
-];
-
-export const SUPPORT_CASE_COLUMNS: TableColumnOption[] = [
-  { key: "case_number", label: "Case Number" },
-  { key: "subject", label: "Subject" },
-  { key: "category", label: "Category" },
-  { key: "status", label: "Status" },
-  { key: "priority", label: "Priority" },
-  { key: "source", label: "Source" },
-  { key: "contact_id", label: "Contact ID" },
-  { key: "organization_id", label: "Account ID" },
-  { key: "opportunity_id", label: "Deal ID" },
-  { key: "quote_id", label: "Quote ID" },
-  { key: "order_id", label: "Order ID" },
-  { key: "assigned_to_id", label: "Assignee ID" },
-  { key: "assigned_to_name", label: "Assignee" },
-  { key: "sla_due_at", label: "SLA Due" },
-  { key: "updated_at", label: "Updated" },
-];
-
-export const INSERTION_ORDER_COLUMNS: TableColumnOption[] = [
-  { key: "io_number", label: "IO number" },
-  { key: "customer_name", label: "Customer" },
-  { key: "status", label: "Status" },
-  { key: "currency", label: "Currency" },
-  { key: "subtotal_amount", label: "Subtotal" },
-  { key: "tax_amount", label: "Tax" },
-  { key: "total_amount", label: "Total" },
-  { key: "issue_date", label: "Issue date" },
-  { key: "effective_date", label: "Effective" },
-  { key: "due_date", label: "Due date" },
-  { key: "start_date", label: "Start date" },
-  { key: "end_date", label: "End date" },
-  { key: "external_reference", label: "Reference" },
-  { key: "counterparty_reference", label: "Counterparty ref" },
-  { key: "user_name", label: "Owner" },
   { key: "updated_at", label: "Updated" },
 ];
 
@@ -282,7 +252,7 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     sort: null,
   },
   sales_opportunities: {
-    visible_columns: ["opportunity_name", "organization_name", "sales_stage", "total_cost_of_project", "expected_close_date", "assigned_to_name"],
+    visible_columns: ["opportunity_name", "organization_name", "sales_stage", "amount", "expected_close_date", "assigned_to_name"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
     sort: null,
   },
@@ -294,21 +264,6 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
   sales_orders: {
     visible_columns: ["order_number", "organization_name", "status", "delivery_status", "invoice_status", "grand_total", "owner_name", "created_at"],
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
-    sort: null,
-  },
-  contracts: {
-    visible_columns: ["contract_number", "title", "status", "organization_id", "value_amount", "currency", "expiration_date", "updated_at"],
-    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
-    sort: null,
-  },
-  support_cases: {
-    visible_columns: ["case_number", "subject", "category", "status", "priority", "assigned_to_name", "sla_due_at", "updated_at"],
-    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [] },
-    sort: null,
-  },
-  finance_io: {
-    visible_columns: ["io_number", "customer_name", "status", "total_amount", "due_date"],
-    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [], status: "all" },
     sort: null,
   },
   finance_pos: {
@@ -419,7 +374,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
       { key: "title", label: "Job title", type: "text", operators: TEXT_OPERATORS },
-      { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
+      { key: "source", label: "Source", type: "select", operators: SELECT_OPERATORS, picklistKey: "lead_source" },
       {
         key: "assigned_to",
         label: "Owner",
@@ -465,13 +420,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         label: "Status",
         type: "select",
         operators: SELECT_OPERATORS,
-        options: [
-          { value: "new", label: "New" },
-          { value: "contacted", label: "Contacted" },
-          { value: "qualified", label: "Qualified" },
-          { value: "unqualified", label: "Unqualified" },
-          { value: "converted", label: "Converted" },
-        ],
+        picklistKey: "lead_status",
       },
       { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
@@ -498,8 +447,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         recordType: "user",
       },
       { key: "last_contacted_at", label: "Last activity", type: "date", operators: DATE_OPERATORS },
-      { key: "region", label: "Region", type: "text", operators: TEXT_OPERATORS },
-      { key: "country", label: "Country", type: "text", operators: TEXT_OPERATORS },
+      { key: "region", label: "Region", type: "select", operators: SELECT_OPERATORS, picklistKey: "region" },
+      { key: "country", label: "Country", type: "select", operators: SELECT_OPERATORS, picklistKey: "country" },
       { key: "linkedin_url", label: "LinkedIn", type: "text", operators: TEXT_OPERATORS },
       { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
@@ -514,10 +463,12 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "org_name", label: "Account", type: "text", operators: TEXT_OPERATORS },
       { key: "primary_email", label: "Email", type: "text", operators: TEXT_OPERATORS },
       { key: "website", label: "Website", type: "text", operators: TEXT_OPERATORS },
-      { key: "industry", label: "Industry", type: "text", operators: TEXT_OPERATORS },
+      { key: "industry", label: "Industry", type: "select", operators: SELECT_OPERATORS, picklistKey: "industry" },
+      { key: "account_type", label: "Type", type: "select", operators: SELECT_OPERATORS, picklistKey: "account_type" },
       { key: "annual_revenue", label: "Revenue", type: "number", operators: NUMBER_OPERATORS },
+      { key: "employee_count", label: "Employees", type: "number", operators: NUMBER_OPERATORS },
       { key: "primary_phone", label: "Phone", type: "text", operators: TEXT_OPERATORS },
-      { key: "billing_country", label: "Country", type: "text", operators: TEXT_OPERATORS },
+      { key: "billing_country", label: "Country", type: "select", operators: SELECT_OPERATORS, picklistKey: "country" },
       { key: "is_vendor", label: "Vendor", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
       { key: "assigned_to", label: "Owner", type: "relation", operators: RELATION_OPERATORS, sourceModuleKey: "sales_organizations", recordType: "user" },
       { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
@@ -536,7 +487,6 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     columns: OPPORTUNITY_COLUMNS,
     filterFields: [
       { key: "opportunity_name", label: "Deal", type: "text", operators: TEXT_OPERATORS },
-      { key: "client", label: "Client", type: "text", operators: TEXT_OPERATORS },
       {
         key: "sales_stage",
         label: "Stage",
@@ -553,9 +503,11 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       { key: "expected_close_date", label: "Expected close", type: "date", operators: DATE_OPERATORS },
       { key: "probability_percent", label: "Probability", type: "number", operators: NUMBER_OPERATORS },
-      { key: "total_cost_of_project", label: "Project cost", type: "number", operators: NUMBER_OPERATORS },
+      { key: "amount", label: "Amount", type: "number", operators: NUMBER_OPERATORS },
       { key: "currency_type", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "target_geography", label: "Target geography", type: "text", operators: TEXT_OPERATORS },
+      { key: "deal_type", label: "Type", type: "select", operators: SELECT_OPERATORS, picklistKey: "deal_type" },
+      { key: "source", label: "Source", type: "select", operators: SELECT_OPERATORS, picklistKey: "lead_source" },
+      { key: "lost_reason", label: "Lost reason", type: "select", operators: SELECT_OPERATORS, picklistKey: "lost_reason" },
       { key: "created_time", label: "Created time", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_opportunities,
@@ -656,6 +608,19 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
         ],
       },
       { key: "waiting_for_stock", label: "Waiting for stock", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
+      {
+        key: "source",
+        label: "Source",
+        type: "select",
+        operators: SELECT_OPERATORS,
+        options: [
+          { value: "crm", label: "CRM" },
+          { value: "website", label: "Website" },
+          { value: "client_portal", label: "Client portal" },
+        ],
+      },
+      { key: "channel", label: "Channel", type: "text", operators: TEXT_OPERATORS },
+      { key: "external_reference", label: "External reference", type: "text", operators: TEXT_OPERATORS },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "grand_total", label: "Total", type: "number", operators: NUMBER_OPERATORS },
       { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
@@ -663,125 +628,10 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.sales_orders,
   },
-  contracts: {
-    key: "contracts",
-    label: "Contracts",
-    route: "/dashboard/contracts",
-    columns: CONTRACT_COLUMNS,
-    filterFields: [
-      { key: "contract_number", label: "Contract Number", type: "text", operators: TEXT_OPERATORS },
-      { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        operators: SELECT_OPERATORS,
-        options: [
-          { value: "draft", label: "Draft" },
-          { value: "review", label: "Review" },
-          { value: "sent", label: "Sent" },
-          { value: "partially_signed", label: "Partially signed" },
-          { value: "signed", label: "Signed" },
-          { value: "active", label: "Active" },
-          { value: "expired", label: "Expired" },
-          { value: "cancelled", label: "Cancelled" },
-        ],
-      },
-      { key: "organization_id", label: "Account ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "contact_id", label: "Contact ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "opportunity_id", label: "Deal ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "quote_id", label: "Quote ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "order_id", label: "Order ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "document_id", label: "Document ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "value_amount", label: "Value", type: "number", operators: NUMBER_OPERATORS },
-      { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "effective_date", label: "Effective", type: "date", operators: DATE_OPERATORS },
-      { key: "expiration_date", label: "Expiration", type: "date", operators: DATE_OPERATORS },
-      { key: "renewal_date", label: "Renewal", type: "date", operators: DATE_OPERATORS },
-      { key: "owner_id", label: "Owner ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
-      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
-    ],
-    defaultConfig: MODULE_VIEW_DEFAULTS.contracts,
-  },
-  support_cases: {
-    key: "support_cases",
-    label: "Support Cases",
-    route: "/dashboard/support/cases",
-    columns: SUPPORT_CASE_COLUMNS,
-    filterFields: [
-      { key: "case_number", label: "Case Number", type: "text", operators: TEXT_OPERATORS },
-      { key: "subject", label: "Subject", type: "text", operators: TEXT_OPERATORS },
-      { key: "category", label: "Category", type: "text", operators: TEXT_OPERATORS },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        operators: SELECT_OPERATORS,
-        options: [
-          { value: "new", label: "New" },
-          { value: "open", label: "Open" },
-          { value: "pending", label: "Pending" },
-          { value: "resolved", label: "Resolved" },
-          { value: "closed", label: "Closed" },
-        ],
-      },
-      {
-        key: "priority",
-        label: "Priority",
-        type: "select",
-        operators: SELECT_OPERATORS,
-        options: [
-          { value: "low", label: "Low" },
-          { value: "medium", label: "Medium" },
-          { value: "high", label: "High" },
-          { value: "urgent", label: "Urgent" },
-        ],
-      },
-      { key: "source", label: "Source", type: "text", operators: TEXT_OPERATORS },
-      { key: "assigned_to_id", label: "Assignee ID", type: "number", operators: NUMBER_OPERATORS },
-      { key: "sla_due_at", label: "SLA Due", type: "date", operators: DATE_OPERATORS },
-      { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
-      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
-    ],
-    defaultConfig: MODULE_VIEW_DEFAULTS.support_cases,
-  },
-  finance_io: {
-    key: "finance_io",
-    label: "Insertion orders",
-    route: "/dashboard/finance/insertion-orders",
-    columns: INSERTION_ORDER_COLUMNS,
-    filterFields: [
-      { key: "io_number", label: "IO number", type: "text", operators: TEXT_OPERATORS },
-      { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
-      {
-        key: "status",
-        label: "Status",
-        type: "select",
-        operators: SELECT_OPERATORS,
-        options: [
-          { value: "draft", label: "Draft" },
-          { value: "issued", label: "Issued" },
-          { value: "active", label: "Active" },
-          { value: "completed", label: "Completed" },
-          { value: "cancelled", label: "Cancelled" },
-          { value: "imported", label: "Imported" },
-        ],
-      },
-      { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
-      { key: "total_amount", label: "Total", type: "number", operators: NUMBER_OPERATORS },
-      { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
-      { key: "due_date", label: "Due date", type: "date", operators: DATE_OPERATORS },
-      { key: "external_reference", label: "Reference", type: "text", operators: TEXT_OPERATORS },
-      { key: "counterparty_reference", label: "Counterparty ref", type: "text", operators: TEXT_OPERATORS },
-      { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
-    ],
-    defaultConfig: MODULE_VIEW_DEFAULTS.finance_io,
-  },
   finance_pos: {
     key: "finance_pos",
     label: "Invoices",
-    route: "/dashboard/finance/pos",
+    route: "/dashboard/finance/invoices",
     columns: [
       { key: "invoice_number", label: "Invoice" },
       { key: "customer_name", label: "Customer" },
@@ -824,7 +674,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       },
       // Issued, something still due, and past its due date (12c §3.2).
       { key: "overdue", label: "Overdue", type: "select", operators: ["is"], options: [{ value: "true", label: "Yes" }, { value: "false", label: "No" }] },
-      { key: "payment_method", label: "Payment method", type: "text", operators: TEXT_OPERATORS },
+      { key: "payment_method", label: "Payment method", type: "select", operators: SELECT_OPERATORS, picklistKey: "payment_method" },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "total_amount", label: "Invoice total", type: "number", operators: NUMBER_OPERATORS },
       { key: "amount_paid", label: "Amount paid", type: "number", operators: NUMBER_OPERATORS },
@@ -847,7 +697,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "sku", label: "SKU", type: "text", operators: TEXT_OPERATORS },
       { key: "barcode", label: "Barcode", type: "text", operators: TEXT_OPERATORS },
       { key: "category_name", label: "Category", type: "text", operators: TEXT_OPERATORS },
-      { key: "unit", label: "Unit", type: "text", operators: TEXT_OPERATORS },
+      { key: "unit", label: "Unit", type: "select", operators: SELECT_OPERATORS, picklistKey: "unit" },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "public_unit_price", label: "Price", type: "number", operators: NUMBER_OPERATORS },
       { key: "cost_price", label: "Cost", type: "number", operators: NUMBER_OPERATORS },
@@ -881,7 +731,7 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "slug", label: "Slug", type: "text", operators: TEXT_OPERATORS },
       { key: "sku", label: "SKU", type: "text", operators: TEXT_OPERATORS },
       { key: "category_name", label: "Category", type: "text", operators: TEXT_OPERATORS },
-      { key: "unit", label: "Unit", type: "text", operators: TEXT_OPERATORS },
+      { key: "unit", label: "Unit", type: "select", operators: SELECT_OPERATORS, picklistKey: "unit" },
       { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
       { key: "public_unit_price", label: "Price", type: "number", operators: NUMBER_OPERATORS },
       { key: "cost_price", label: "Cost", type: "number", operators: NUMBER_OPERATORS },
@@ -1040,33 +890,8 @@ export function buildModuleViewDefinition(
   const customFilterFields: ModuleFilterField[] = customFields
     .filter((field) => field.is_active)
     .sort((left, right) => left.sort_order - right.sort_order || left.id - right.id)
-    .map((field) => ({
-      key: getCustomFieldColumnKey(field.field_key),
-      label: field.label,
-      type:
-        field.field_type === "number"
-          ? "number"
-          : field.field_type === "date"
-            ? "date"
-            : field.field_type === "boolean"
-              ? "select"
-              : "text",
-      operators:
-        field.field_type === "number"
-          ? NUMBER_OPERATORS
-          : field.field_type === "date"
-            ? DATE_OPERATORS
-            : field.field_type === "boolean"
-              ? SELECT_OPERATORS
-              : TEXT_OPERATORS,
-      options:
-        field.field_type === "boolean"
-          ? [
-              { value: "true", label: "True" },
-              { value: "false", label: "False" },
-            ]
-          : undefined,
-    }));
+    .map((field) => withOperators(filterFieldFor(field, getCustomFieldColumnKey(field.field_key)), baseDefinition.key))
+    .filter((field): field is ModuleFilterField => field !== null);
 
   return {
     ...applyFieldConfigs(
@@ -1080,19 +905,21 @@ export function buildModuleViewDefinition(
   };
 }
 
-function customModuleFieldType(field: CustomModuleField): ModuleFilterFieldType {
-  if (field.field_type === "number" || field.field_type === "currency") return "number";
-  if (field.field_type === "date" || field.field_type === "datetime") return "date";
-  if (field.field_type === "boolean" || field.field_type === "single_select" || field.field_type === "multi_select") return "select";
-  return "text";
-}
-
-function customModuleOperators(field: CustomModuleField): SavedViewFilterOperator[] {
-  const type = customModuleFieldType(field);
-  if (type === "number") return NUMBER_OPERATORS;
-  if (type === "date") return DATE_OPERATORS;
-  if (type === "select") return SELECT_OPERATORS;
-  return TEXT_OPERATORS;
+/** Operators for a field-system filter, by the filter type `filterFieldFor` chose (13b §3.4). */
+function withOperators(field: ModuleFilterField | null, sourceModuleKey: string): ModuleFilterField | null {
+  if (!field) return null;
+  const operators: Record<ModuleFilterFieldType, SavedViewFilterOperator[]> = {
+    text: TEXT_OPERATORS,
+    number: NUMBER_OPERATORS,
+    date: DATE_OPERATORS,
+    select: SELECT_OPERATORS,
+    relation: RELATION_OPERATORS,
+  };
+  return {
+    ...field,
+    operators: field.operators ?? operators[field.type],
+    ...(field.type === "relation" ? { sourceModuleKey } : {}),
+  };
 }
 
 export function buildCustomModuleViewDefinition(module: CustomModuleDefinition, fieldConfigs: ModuleFieldConfig[] = []): ModuleViewDefinition {
@@ -1119,19 +946,9 @@ export function buildCustomModuleViewDefinition(module: CustomModuleDefinition, 
       { key: "title", label: "Title", type: "text", operators: TEXT_OPERATORS },
       { key: "created_at", label: "Created", type: "date", operators: DATE_OPERATORS },
       { key: "updated_at", label: "Updated", type: "date", operators: DATE_OPERATORS },
-      ...activeFields.map((field) => ({
-        key: field.key,
-        label: field.label,
-        type: customModuleFieldType(field),
-        operators: customModuleOperators(field),
-        options:
-          field.field_type === "boolean"
-            ? [
-                { value: "true", label: "True" },
-                { value: "false", label: "False" },
-              ]
-            : (field.validation_json?.options ?? []).map((option) => ({ value: option, label: option })),
-      })),
+      ...activeFields
+        .map((field) => withOperators(filterFieldFor({ ...field, field_key: field.key }, field.key), module.key))
+        .filter((field): field is ModuleFilterField => field !== null),
     ],
     defaultConfig: {
       visible_columns: defaultColumns.length ? defaultColumns : ["title"],

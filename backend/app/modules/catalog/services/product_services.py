@@ -71,6 +71,25 @@ def _opening_quantity(payload: dict) -> Decimal | None:
     return coerce_nonnegative_decimal(payload.get("stock_quantity"), field_name="stock_quantity", required=False)
 
 
+WEIGHT_UNITS = {"kg", "g", "lb", "oz"}
+DIMENSION_UNITS = {"cm", "m", "in"}
+
+
+def _physical_fields(payload: dict, *, partial: bool) -> dict:
+    """Weight and dimensions (13a C4); each unit from a small fixed list."""
+    values: dict = {}
+    for field in ("weight", "length", "width", "height"):
+        if not partial or field in payload:
+            values[field] = coerce_nonnegative_decimal(payload.get(field), field_name=field, required=False)
+    for field, allowed in (("weight_unit", WEIGHT_UNITS), ("dimension_unit", DIMENSION_UNITS)):
+        if not partial or field in payload:
+            unit = (payload.get(field) or "").strip().lower() or None
+            if unit is not None and unit not in allowed:
+                raise HTTPException(status_code=422, detail=[{"loc": ["body", field], "msg": f"Choose one of {', '.join(sorted(allowed))}.", "type": "domain"}])
+            values[field] = unit
+    return values
+
+
 def _create_fields(db: Session, tenant_id: int, payload: dict) -> dict:
     opening_quantity = _opening_quantity(payload)
     tracked = bool(payload.get("track_inventory")) or opening_quantity is not None
@@ -84,6 +103,7 @@ def _create_fields(db: Session, tenant_id: int, payload: dict) -> dict:
         "track_inventory": int(tracked),
         "reorder_point": coerce_nonnegative_decimal(payload.get("reorder_point", 0), field_name="reorder_point", required=True),
         "reorder_quantity": coerce_nonnegative_decimal(payload.get("reorder_quantity", 0), field_name="reorder_quantity", required=True),
+        **_physical_fields(payload, partial=False),
     }
 
 
@@ -143,6 +163,12 @@ def _serialize_extra(product: CatalogProduct) -> dict:
         "preferred_vendor_name": product.preferred_vendor.org_name if product.preferred_vendor else None,
         "vendor_sku": product.vendor_sku,
         "lead_time_days": product.lead_time_days,
+        "weight": product.weight,
+        "weight_unit": product.weight_unit,
+        "length": product.length,
+        "width": product.width,
+        "height": product.height,
+        "dimension_unit": product.dimension_unit,
     }
 
 
@@ -158,7 +184,10 @@ PRODUCT = CatalogKind(
     after_create=_after_create,
     prepare_update=_prepare_update,
     update_fields=("barcode", "reorder_point", "reorder_quantity"),
-    update_field_groups=(lambda db, tenant_id, payload: _purchasing_fields(db, tenant_id=tenant_id, payload=payload, partial=True),),
+    update_field_groups=(
+        lambda db, tenant_id, payload: _purchasing_fields(db, tenant_id=tenant_id, payload=payload, partial=True),
+        lambda db, tenant_id, payload: _physical_fields(payload, partial=True),
+    ),
     required_fields=frozenset({"stock_status", "reorder_point", "reorder_quantity"}),
     normalizers={
         "barcode": normalize_catalog_code,

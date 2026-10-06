@@ -9,6 +9,7 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_access, require_action_access, require_module_access
 from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
+from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.crm_events import safe_publish_crm_event
 from app.modules.sales.schema import SalesOrderCreateRequest, SalesOrderListItem, SalesOrderListResponse, SalesOrderResponse, SalesOrderUpdateRequest
@@ -54,6 +55,7 @@ def _with_currency(db: Session, order):
     order.base_currency = base_currency(db, tenant_id=order.tenant_id)
     order.suggested_exchange_rate = (default_exchange_rate(db, tenant_id=order.tenant_id, currency=order.currency)
                                      if order.exchange_rate is None else None)
+    order.custom_fields = load_custom_field_values(db, tenant_id=order.tenant_id, module_key="sales_orders", record_id=order.id) or None
     return order
 
 

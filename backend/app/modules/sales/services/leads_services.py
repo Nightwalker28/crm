@@ -13,13 +13,16 @@ from app.core.duplicates import DuplicateMode, ensure_single_duplicate_action, r
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.pagination import Pagination
+from app.modules.inventory.services.costing import base_currency
 from app.modules.platform.services.custom_fields import (
+    export_extension,
     hydrate_custom_field_record,
     hydrate_custom_field_records,
     load_custom_field_values_with_fallback,
     save_custom_field_values,
     validate_custom_field_payload,
 )
+from app.modules.platform.services.picklists import LEAD_STATUS_LIST, PicklistResolver, picklist_error_reason
 from app.modules.platform.services.record_tags import hydrate_record_tags, normalize_record_tags, sync_record_tags
 from app.modules.sales.models import SalesContact, SalesLead, SalesLeadScore, SalesOpportunity, SalesOrganization, SalesPipelineStage
 from app.modules.sales.repositories import leads_repository, organizations_repository
@@ -30,8 +33,10 @@ from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
 
-LEAD_STATUSES = {"new", "contacted", "qualified", "unqualified", "converted"}
-LEAD_SCORE_INACTIVE_STATUSES = {"unqualified", "converted"}
+# Lead status is the tenant's `lead_status` picklist (13b §3.1); logic reads each value's
+# meaning. These are the seeded keys' meanings, for a lead scored without a session.
+SEEDED_STATUS_MEANINGS = {"new": "open", "contacted": "working", "qualified": "qualified", "unqualified": "unqualified", "converted": "converted"}
+LEAD_SCORE_INACTIVE_MEANINGS = {"unqualified", "converted"}
 EXPORT_COLUMNS = [
     "lead_id",
     "first_name",
@@ -39,6 +44,7 @@ EXPORT_COLUMNS = [
     "company",
     "primary_email",
     "phone",
+    "mobile_phone",
     "title",
     "source",
     "status",
@@ -162,11 +168,27 @@ def _find_contact_by_email(db: Session, *, tenant_id: int, email: str) -> SalesC
     )
 
 
-def _validate_status(value: str | None) -> str:
-    normalized = (value or "new").strip().lower()
-    if normalized not in LEAD_STATUSES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid lead status")
-    return normalized
+def _normalize_lead_picklists(resolver: PicklistResolver, data: dict, *, existing: SalesLead | None = None) -> dict:
+    """Status and source as list keys; a new lead without a status gets the list's default."""
+    if existing is None and not _coerce_optional(data.get("status")):
+        data["status"] = resolver.default_key(LEAD_STATUS_LIST) or resolver.key_for_meaning(LEAD_STATUS_LIST, "open")
+    elif "status" in data and data["status"] is None:
+        data.pop("status")
+    resolver.normalize("sales_leads", data, existing=existing)
+    return data
+
+
+def _require_reachable(values: dict) -> None:
+    """A lead or contact needs an email or a phone (13a A9), not both."""
+    if not any(_coerce_optional(values.get(key)) for key in ("primary_email", "phone", "mobile_phone", "contact_telephone")):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail=[{"loc": ["body", "primary_email"], "msg": "Enter an email or a phone number.", "type": "domain"}],
+        )
+
+
+def lead_status_meaning(db: Session, lead: SalesLead) -> str | None:
+    return PicklistResolver(db, lead.tenant_id).meaning(LEAD_STATUS_LIST, lead.status)
 
 
 def _resolve_conversion_deal_stage(db: Session, tenant_id: int, value: str | None) -> SalesPipelineStage:
@@ -191,9 +213,11 @@ def _score_grade(score: int) -> str:
     return "cold"
 
 
-def calculate_lead_score(lead: SalesLead, *, now: datetime | None = None) -> tuple[int, str, list[dict]]:
-    status = (lead.status or "new").lower()
-    if status in LEAD_SCORE_INACTIVE_STATUSES:
+def calculate_lead_score(
+    lead: SalesLead, *, now: datetime | None = None, status_meaning: str | None = None
+) -> tuple[int, str, list[dict]]:
+    meaning = status_meaning or SEEDED_STATUS_MEANINGS.get((lead.status or "new").lower(), "open")
+    if meaning in LEAD_SCORE_INACTIVE_MEANINGS:
         return 0, "cold", [
             {
                 "key": "inactive_status",
@@ -214,11 +238,11 @@ def calculate_lead_score(lead: SalesLead, *, now: datetime | None = None) -> tup
         factors.append({"key": key, "label": label, "points": points, "reason": reason})
 
     add_factor("has_email", "Has email", 10, "Lead has a reachable email address.", bool(_coerce_optional(lead.primary_email)))
-    add_factor("has_phone", "Has phone", 10, "Lead has a phone number for direct follow-up.", bool(_coerce_optional(lead.phone)))
+    add_factor("has_phone", "Has phone", 10, "Lead has a phone number for direct follow-up.", bool(_coerce_optional(lead.phone) or _coerce_optional(lead.mobile_phone)))
     add_factor("has_company", "Has company", 10, "Lead is attached to a company or account name.", bool(_coerce_optional(lead.company)))
     add_factor("has_source", "Has source", 10, "Lead includes source attribution.", bool(_coerce_optional(lead.source)))
-    add_factor("contacted", "Contacted", 10, "Lead has already been contacted.", status in {"contacted", "qualified"})
-    add_factor("qualified", "Qualified", 20, "Lead has been qualified by sales.", status == "qualified")
+    add_factor("contacted", "Contacted", 10, "Lead has already been contacted.", meaning in {"working", "qualified"})
+    add_factor("qualified", "Qualified", 20, "Lead has been qualified by sales.", meaning == "qualified")
 
     if lead.last_contacted_at:
         reference = as_utc(now) or utc_now()
@@ -236,7 +260,7 @@ def calculate_lead_score(lead: SalesLead, *, now: datetime | None = None) -> tup
 
 
 def recalculate_lead_score(db: Session, lead: SalesLead) -> SalesLeadScore:
-    score, grade, factors = calculate_lead_score(lead)
+    score, grade, factors = calculate_lead_score(lead, status_meaning=lead_status_meaning(db, lead))
     record = lead.score_record
     if record is None:
         record = SalesLeadScore(tenant_id=lead.tenant_id, lead_id=lead.lead_id)
@@ -356,7 +380,7 @@ def create_sales_lead(
         payload=data.pop("custom_fields", None),
     )
     data["custom_data"] = custom_data
-    data["status"] = _validate_status(data.get("status"))
+    _normalize_lead_picklists(PicklistResolver(db, current_user.tenant_id), data)
     if not data.get("assigned_to"):
         data["assigned_to"] = current_user.id if current_user else None
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=current_user.tenant_id)
@@ -364,10 +388,11 @@ def create_sales_lead(
         data["team_id"] = getattr(current_user, "team_id", None)
     _ensure_team(db, data.get("team_id"), tenant_id=current_user.tenant_id)
 
-    email = data.get("primary_email")
-    if not email:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="primary_email is required")
+    email = _coerce_optional(data.get("primary_email"))
+    data["primary_email"] = email
+    _require_reachable(data)
 
+    # Duplicates are matched on email; a phone-only lead has nothing to match on.
     existing = (
         db.query(SalesLead)
         .filter(
@@ -376,7 +401,7 @@ def create_sales_lead(
             func.lower(SalesLead.primary_email) == _normalize_email(email),
         )
         .first()
-    )
+    ) if email else None
     if existing and not create_new_records:
         if skip_duplicates:
             return _hydrate_lead_record(db, tenant_id=current_user.tenant_id, record=existing)
@@ -441,8 +466,7 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
             ),
         )
         data["custom_data"] = custom_data_to_save
-    if "status" in data and data["status"] is not None:
-        data["status"] = _validate_status(data["status"])
+    _normalize_lead_picklists(PicklistResolver(db, lead.tenant_id), data, existing=lead)
     if "assigned_to" in data:
         _ensure_assigned_user(db, data["assigned_to"], tenant_id=lead.tenant_id)
     if "team_id" in data:
@@ -461,6 +485,7 @@ def update_sales_lead(db: Session, lead: SalesLead, data: dict) -> SalesLead:
         if duplicate:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Another lead already uses this email")
     _apply_lead_payload(lead, data)
+    _require_reachable({"primary_email": lead.primary_email, "phone": lead.phone, "mobile_phone": lead.mobile_phone})
     db.add(lead)
     try:
         db.flush()
@@ -499,7 +524,8 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
     tenant_id = current_user.tenant_id
     if lead.tenant_id != tenant_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Lead not found")
-    if lead.status == "converted":
+    statuses = PicklistResolver(db, tenant_id)
+    if statuses.meaning(LEAD_STATUS_LIST, lead.status) == "converted":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Lead is already converted")
 
     assigned_to = payload.get("assigned_to") or lead.assigned_to or current_user.id
@@ -538,13 +564,14 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         if organization is not None and contact.organization_id is None:
             contact.organization_id = organization.org_id
     elif create_contact:
-        contact = _find_contact_by_email(db, tenant_id=tenant_id, email=lead.primary_email)
+        contact = _find_contact_by_email(db, tenant_id=tenant_id, email=lead.primary_email) if lead.primary_email else None
         if contact is None:
             contact = SalesContact(
                 tenant_id=tenant_id,
                 first_name=lead.first_name,
                 last_name=lead.last_name,
                 contact_telephone=lead.phone,
+                mobile_phone=lead.mobile_phone,
                 primary_email=lead.primary_email,
                 current_title=lead.title,
                 assigned_to=assigned_to,
@@ -566,14 +593,17 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         opportunity = SalesOpportunity(
             tenant_id=tenant_id,
             opportunity_name=deal_name,
-            client=" ".join(part for part in [contact.first_name, contact.last_name] if part).strip() or contact.primary_email,
             contact_id=contact.contact_id,
             organization_id=organization.org_id if organization else contact.organization_id,
             assigned_to=assigned_to,
-            total_cost_of_project=format(Decimal(str(amount)).normalize(), "f") if amount is not None else None,
-            # Only when the caller names one: automation conversions send none and keep the
-            # pre-H11 behaviour, without resolving the company's currencies.
-            currency_type=normalize_opportunity_currency(db, current_user, payload["deal_currency"]) if payload.get("deal_currency") else None,
+            amount=Decimal(str(amount)).quantize(Decimal("0.01")) if amount is not None else None,
+            # The deal keeps where the lead came from (13b §3.5).
+            source=lead.source,
+            # A deal starts in the base currency unless the caller names one (13b §3.5).
+            currency_type=(
+                normalize_opportunity_currency(db, current_user, payload["deal_currency"]) if payload.get("deal_currency")
+                else base_currency(db, tenant_id=tenant_id)
+            ),
             expected_close_date=payload.get("deal_close_date"),
         )
         pipelines_services.assign_opportunity_stage(db, opportunity, pipeline_stage_id=deal_stage.id)
@@ -584,7 +614,7 @@ def convert_sales_lead(db: Session, lead: SalesLead, payload: dict, *, current_u
         sync_primary_contact_association(db, opportunity=opportunity, actor_user_id=assigned_to)
         created_deal = True
 
-    lead.status = "converted"
+    lead.status = statuses.key_for_meaning(LEAD_STATUS_LIST, "converted")
     if assigned_to and lead.assigned_to is None:
         lead.assigned_to = assigned_to
     db.add(lead)
@@ -614,6 +644,7 @@ def import_leads_from_csv(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
 ) -> dict:
     mode = resolve_duplicate_mode(
         duplicate_mode=duplicate_mode,
@@ -623,18 +654,20 @@ def import_leads_from_csv(
         create_new_records=create_new_records,
     )
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
-    require_csv_headers(headers, required={"primary_email"})
+    if not {"primary_email", "phone", "mobile_phone"} & {header.strip().lower() for header in headers}:
+        require_csv_headers(headers, required={"primary_email"})
     new_rows = overwritten_rows = merged_rows = skipped_rows = total_rows = 0
     failures: list[dict[str, str | int | None]] = []
     user_cache: dict[int, bool] = {}
+    resolver = PicklistResolver(db, tenant_id, allow_create=add_unknown_picklist_values)
 
     current_user = db.query(User).filter(User.id == default_assigned_to, User.tenant_id == tenant_id).first() if default_assigned_to else None
     for row_number, row in enumerate(row_iter, start=2):
         total_rows += 1
         normalized = {k.strip().lower(): (v.strip() if isinstance(v, str) else v) for k, v in row.items() if k}
-        email = normalized.get("primary_email")
-        if not email:
-            failures.append({"row_number": row_number, "record_identifier": None, "reason": "Missing required field 'primary_email'."})
+        email = _coerce_optional(normalized.get("primary_email"))
+        if not (email or _coerce_optional(normalized.get("phone")) or _coerce_optional(normalized.get("mobile_phone"))):
+            failures.append({"row_number": row_number, "record_identifier": None, "reason": "Enter an email or a phone number."})
             continue
         assigned_to = default_assigned_to
         if normalized.get("assigned_to"):
@@ -656,12 +689,18 @@ def import_leads_from_csv(
             "company": _coerce_optional(normalized.get("company")),
             "primary_email": email,
             "phone": _coerce_optional(normalized.get("phone")),
+            "mobile_phone": _coerce_optional(normalized.get("mobile_phone")),
             "title": _coerce_optional(normalized.get("title")),
-            "source": _coerce_optional(normalized.get("source")),
-            "status": _validate_status(normalized.get("status")),
+            "source": normalized.get("source"),
+            "status": normalized.get("status"),
             "notes": _coerce_optional(normalized.get("notes")),
             "assigned_to": assigned_to,
         }
+        try:
+            _normalize_lead_picklists(resolver, payload)
+        except HTTPException as exc:
+            failures.append({"row_number": row_number, "record_identifier": email, "reason": picklist_error_reason(exc)})
+            continue
         existing = (
             db.query(SalesLead)
             .filter(
@@ -670,7 +709,7 @@ def import_leads_from_csv(
                 func.lower(SalesLead.primary_email) == _normalize_email(email),
             )
             .first()
-        )
+        ) if email else None
         if existing and not create_new_records:
             if mode == DuplicateMode.skip:
                 skipped_rows += 1
@@ -704,15 +743,26 @@ def import_leads_from_csv(
     )
 
 
-def export_leads_to_csv(records: Sequence[SalesLead], *, field_keys: list[str] | None = None) -> bytes:
+def export_leads_to_csv(
+    records: Sequence[SalesLead], *, field_keys: list[str] | None = None, labels: PicklistResolver | None = None
+) -> bytes:
     columns = [field for field in (field_keys or EXPORT_COLUMNS) if field in EXPORT_COLUMNS]
     if not columns:
         columns = EXPORT_COLUMNS
+    custom_headers, custom_cells = ([], {})
+    if labels is not None and records:
+        custom_headers, custom_cells = export_extension(
+            labels.db, tenant_id=labels.tenant_id, module_key="sales_leads", record_ids=[lead.lead_id for lead in records],
+            field_keys=[key for key in field_keys or [] if key.startswith("custom:")] or None,
+        )
     rows = []
     for lead in records:
         row = {}
         for column in columns:
             value = getattr(lead, column, None)
             row[column] = value.isoformat() if hasattr(value, "isoformat") else value
+        if labels is not None:
+            labels.labels_for_row("sales_leads", row)
+        row.update(custom_cells.get(lead.lead_id, {}))
         rows.append(row)
-    return dict_rows_to_csv_bytes(headers=columns, rows=rows)
+    return dict_rows_to_csv_bytes(headers=[*columns, *custom_headers], rows=rows)

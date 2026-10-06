@@ -311,6 +311,7 @@ function CatalogOverview({
       <ReadOnlyRecordLayout
         layout={layout}
         values={record as unknown as Record<string, unknown>}
+        customValues={record.custom_fields ?? undefined}
         omitFieldKeys={SPINE_OWNED_FIELDS}
         renderValue={(field, value) =>
           MONEY_FIELDS.has(field.field_key)

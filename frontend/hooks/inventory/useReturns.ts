@@ -13,6 +13,8 @@ export type ReturnLine = {
 };
 
 export type InventoryReturn = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: ReturnStatus; reason: string; notes: string | null;
   delivery_id: number; delivery_number: string | null; order_id: number; order_number: string | null; customer_name: string | null;
   warehouse_id: number; warehouse_name: string | null; received_at: string | null; received_by: number | null; cancel_reason: string | null;

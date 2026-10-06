@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
+from app.core import field_types
 from app.core.access_control import require_department_module_access
 from app.core.database import get_db
 from app.core.security import require_admin, require_user
@@ -15,6 +16,16 @@ router = APIRouter(prefix="/admin/custom-fields", tags=["Custom Fields"])
 
 
 public_router = APIRouter(prefix="/custom-fields", tags=["Custom Fields"])
+
+
+@public_router.get("/types")
+def list_field_types(current_user=Depends(require_user)):
+    """The one field type set (13b §3.4) and what a lookup can link to, for field editors."""
+    return {
+        "types": field_types.catalog(),
+        "lookup_targets": [{"module_key": key, "label": label} for key, (_kind, label) in field_types.LOOKUP_TARGETS.items()],
+        "modules": [{"module_key": key, "label": label} for key, label in custom_fields.SUPPORTED_MODULE_KEYS.items()],
+    }
 
 
 @public_router.get("/{module_key}", response_model=list[CustomFieldDefinitionResponse])

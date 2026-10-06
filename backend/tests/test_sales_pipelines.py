@@ -84,10 +84,10 @@ class PipelineFixture(unittest.TestCase):
     def make_opportunity(self, opportunity_id, *, tenant_id=TENANT, sales_stage=None):
         self.db.add(
             SalesOpportunity(
+                organization_id=1,
                 opportunity_id=opportunity_id,
                 tenant_id=tenant_id,
                 opportunity_name=f"Deal {opportunity_id}",
-                client="Acme",
                 sales_stage=sales_stage,
             )
         )

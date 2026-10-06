@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session
 
 from app.modules.catalog.models import CatalogProduct, CatalogService
-from app.modules.website_integrations.models import WebsiteIntegrationApiKey, WebsiteIntegrationOrder
+from app.modules.website_integrations.models import WebsiteIntegrationApiKey
 
 
 def list_api_keys(db: Session, *, tenant_id: int) -> list[WebsiteIntegrationApiKey]:
@@ -95,72 +95,9 @@ def build_catalog_queries(
     return product_query, service_query
 
 
-def list_orders(db: Session, *, tenant_id: int, limit: int | None = None, offset: int = 0) -> tuple[list[WebsiteIntegrationOrder], int]:
-    query = (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id)
-    )
-    total = query.count()
-    query = query.order_by(WebsiteIntegrationOrder.created_at.desc(), WebsiteIntegrationOrder.id.desc())
-    if offset:
-        query = query.offset(offset)
-    if limit is not None:
-        query = query.limit(limit)
-    return query.all(), total
-
-
-def list_orders_cursor(db: Session, *, tenant_id: int, limit: int, cursor: int | None = None) -> list[WebsiteIntegrationOrder]:
-    query = (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id)
-    )
-    if cursor is not None:
-        query = query.filter(WebsiteIntegrationOrder.id < cursor)
-    return query.order_by(None).order_by(WebsiteIntegrationOrder.id.desc()).limit(limit + 1).all()
-
-
-def get_order(db: Session, *, tenant_id: int, order_id: int) -> WebsiteIntegrationOrder | None:
-    return (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(WebsiteIntegrationOrder.tenant_id == tenant_id, WebsiteIntegrationOrder.id == order_id)
-        .first()
-    )
-
-
-def get_order_by_reference(db: Session, *, tenant_id: int, external_reference: str) -> WebsiteIntegrationOrder | None:
-    return (
-        db.query(WebsiteIntegrationOrder)
-        .options(selectinload(WebsiteIntegrationOrder.line_items))
-        .filter(
-            WebsiteIntegrationOrder.tenant_id == tenant_id,
-            WebsiteIntegrationOrder.external_reference == external_reference,
-        )
-        .first()
-    )
-
-
 def get_public_product_by_slug(db: Session, *, tenant_id: int, slug: str) -> CatalogProduct | None:
     return build_public_product_query(db, tenant_id=tenant_id).filter(CatalogProduct.slug == slug).first()
 
 
 def get_public_service_by_slug(db: Session, *, tenant_id: int, slug: str) -> CatalogService | None:
     return build_public_service_query(db, tenant_id=tenant_id).filter(CatalogService.slug == slug).first()
-
-
-def get_public_product_for_stock_update(db: Session, *, product: CatalogProduct) -> CatalogProduct | None:
-    return (
-        db.query(CatalogProduct)
-        .filter(
-            CatalogProduct.tenant_id == product.tenant_id,
-            CatalogProduct.id == product.id,
-            CatalogProduct.is_public == 1,
-            CatalogProduct.is_active == 1,
-            CatalogProduct.deleted_at.is_(None),
-        )
-        .populate_existing()
-        .with_for_update()
-        .first()
-    )

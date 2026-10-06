@@ -74,6 +74,7 @@ def build_leads_query(
         "company": {"expression": SalesLead.company, "type": "text"},
         "primary_email": {"expression": SalesLead.primary_email, "type": "text"},
         "phone": {"expression": SalesLead.phone, "type": "text"},
+        "mobile_phone": {"expression": SalesLead.mobile_phone, "type": "text"},
         "title": {"expression": SalesLead.title, "type": "text"},
         "source": {"expression": SalesLead.source, "type": "text"},
         "status": {"expression": SalesLead.status, "type": "text"},

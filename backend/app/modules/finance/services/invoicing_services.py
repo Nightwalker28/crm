@@ -15,9 +15,10 @@ from collections import defaultdict
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.modules.sales.services.document_fields import format_address
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.services.document_amounts import ZERO, money, pro_rata, units
 from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine
@@ -185,18 +186,19 @@ def _order_or_404(db: Session, *, tenant_id: int, order_id: int) -> SalesOrder:
     return order
 
 
+SHIPPING_LINE_DESCRIPTION = "Shipping"
+
+
 def _customer_payload(order: SalesOrder) -> dict:
     organization, contact = order.organization, order.contact
     contact_name = " ".join(part for part in ((contact.first_name, contact.last_name) if contact else ()) if part).strip() or None
-    address = None
-    if organization is not None:
-        address = "\n".join(part for part in (organization.billing_address, organization.billing_city, organization.billing_state,
-            organization.billing_postal_code, organization.billing_country) if part) or None
+    # The order's own billing snapshot (13b §3.5), else its shipping address.
+    address = format_address(order, "billing") or format_address(order, "shipping")
     return {
         "customer_name": (organization.org_name if organization else None) or contact_name or (contact.primary_email if contact else None)
                          or f"Order {order.order_number}",
         "customer_email": (contact.primary_email if contact else None) or (organization.primary_email if organization else None),
-        "customer_address": order.delivery_address if address is None else address,
+        "customer_address": address,
         "customer_contact_id": order.contact_id,
         "customer_organization_id": order.organization_id,
     }
@@ -212,27 +214,13 @@ def _line_amounts_for(row: dict, item: SalesOrderItem, quantity: Decimal) -> tup
     return pro_rata(item.discount_amount or 0, quantity, ordered), pro_rata(item.tax_amount or 0, quantity, ordered)
 
 
-def _guard_website_invoice(db: Session, *, order: SalesOrder) -> None:
-    """A website order invoiced on its own before it became this sales order already billed
-    the customer; invoicing the order too would bill them twice (13a A3)."""
-    from app.modules.website_integrations.models import WebsiteIntegrationOrder
-
-    earlier = (
-        db.query(FinancePosInvoice.invoice_number)
-        .join(WebsiteIntegrationOrder, WebsiteIntegrationOrder.pos_invoice_id == FinancePosInvoice.id)
-        .filter(
-            WebsiteIntegrationOrder.tenant_id == order.tenant_id,
-            WebsiteIntegrationOrder.sales_order_id == order.id,
-            FinancePosInvoice.tenant_id == order.tenant_id,
-            or_(FinancePosInvoice.sales_order_id.is_(None), FinancePosInvoice.sales_order_id != order.id),
-            FinancePosInvoice.status != "void",
-            FinancePosInvoice.deleted_at.is_(None),
-        )
-        .first()
-    )
-    if earlier is not None:
-        raise HTTPException(status_code=409, detail=f"This order was already invoiced from its website order as "
-                            f"{earlier[0] or 'a draft invoice'}; void that invoice before invoicing the order")
+def _shipping_invoiced(db: Session, *, order: SalesOrder) -> bool:
+    """Whether a draft or issued invoice of the order already carries its shipping line."""
+    return db.query(FinancePosInvoiceLine.id).join(FinancePosInvoice, FinancePosInvoice.id == FinancePosInvoiceLine.invoice_id).filter(
+        FinancePosInvoice.tenant_id == order.tenant_id, FinancePosInvoice.sales_order_id == order.id,
+        FinancePosInvoice.status != "void", FinancePosInvoice.deleted_at.is_(None),
+        FinancePosInvoiceLine.sales_order_item_id.is_(None), FinancePosInvoiceLine.description == SHIPPING_LINE_DESCRIPTION,
+    ).first() is not None
 
 
 def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> FinancePosInvoice:
@@ -247,7 +235,6 @@ def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> Fin
     order = _order_or_404(db, tenant_id=tenant_id, order_id=int(source["order_id"]))
     if order.status not in INVOICEABLE_ORDER_STATUSES:
         raise HTTPException(status_code=409, detail="Only a confirmed or fulfilled order can be invoiced")
-    _guard_website_invoice(db, order=order)
     rows = {row["order_line_id"]: row for row in invoicing_lines(db, order=order)}
     items = {item.id: item for item in order.items}
     wanted: list[tuple[SalesOrderItem, Decimal, int | None]] = []
@@ -286,9 +273,14 @@ def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> Fin
         discount, tax = _line_amounts_for(rows[item.id], item, quantity)
         lines.append({"description": item.name, "quantity": quantity, "unit_price": item.unit_price or 0, "discount_amount": discount,
                       "tax_amount": tax, "catalog_product_id": item.catalog_product_id, "catalog_service_id": item.catalog_service_id})
+    # The shipping charge reaches the order's first invoice, once (13b §5 decision 8).
+    if money(order.shipping_charge) > 0 and not _shipping_invoiced(db, order=order):
+        lines.append({"description": SHIPPING_LINE_DESCRIPTION, "quantity": Decimal("1"), "unit_price": money(order.shipping_charge),
+                      "discount_amount": ZERO, "tax_amount": ZERO})
     payload = {**_customer_payload(order), "currency": order.currency, "payment_terms": order.payment_terms,
                "source": "sales_order", "notes": None, "lines": lines}
     invoice = pos_invoice_services.create_invoice(db, current_user, payload, commit=False)
+    # zip stops at the order lines; a shipping line after them links to no order line.
     for invoice_line, (item, _quantity, delivery_line_id) in zip(invoice.lines, wanted):
         invoice_line.sales_order_item_id = item.id
         invoice_line.delivery_line_id = delivery_line_id

@@ -28,14 +28,14 @@ test("an invoice is drafted, issued, part-paid and credited", async ({ page }) =
   page.on("pageerror", (error) => errors.push(error.message));
   const stamp = Date.now();
 
-  await page.goto("/dashboard/finance/pos/new");
+  await page.goto("/dashboard/finance/invoices/new");
   await expect(page.getByRole("heading", { name: "Create invoice" }).first()).toBeVisible();
   await page.getByLabel(/^Customer name/).fill(`E5 Customer ${stamp}`);
   await page.getByLabel("name line 1").fill("Consulting day");
   await page.getByLabel("quantity line 1").fill("2");
   await page.getByLabel("unit price line 1").fill("50");
   await page.getByRole("button", { name: "Save draft" }).click();
-  await expect(page).toHaveURL(/\/dashboard\/finance\/pos\/\d+$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/dashboard\/finance\/invoices\/\d+$/, { timeout: 30_000 });
   const invoiceUrl = page.url();
   const invoiceId = Number(invoiceUrl.split("/").pop());
 
@@ -52,7 +52,7 @@ test("an invoice is drafted, issued, part-paid and credited", async ({ page }) =
   }
 
   // An issued invoice refuses a line edit.
-  await expect(api(page, `/finance/pos-invoices/${invoiceId}`, "PUT", { lines: [{ description: "Changed", quantity: 1, unit_price: 1 }] }))
+  await expect(api(page, `/finance/invoices/${invoiceId}`, "PUT", { lines: [{ description: "Changed", quantity: 1, unit_price: 1 }] }))
     .rejects.toThrow(/409/);
 
   await page.getByRole("button", { name: "Record payment" }).click();
@@ -61,7 +61,7 @@ test("an invoice is drafted, issued, part-paid and credited", async ({ page }) =
   await dialog.getByLabel("Reference").fill(`E5-${stamp}`);
   await dialog.getByRole("button", { name: "Record payment" }).click();
   await expect(page.getByRole("region", { name: "Payments on this invoice" })).toContainText("PAY-", { timeout: 30_000 });
-  let invoice = await api<Invoice>(page, `/finance/pos-invoices/${invoiceId}`);
+  let invoice = await api<Invoice>(page, `/finance/invoices/${invoiceId}`);
   expect([invoice.payment_status, invoice.balance_due]).toEqual(["partial", 60]);
 
   // Credit one of the two days.
@@ -71,7 +71,7 @@ test("an invoice is drafted, issued, part-paid and credited", async ({ page }) =
   await page.getByLabel("Reason").fill("One day not delivered");
   await page.getByRole("button", { name: "Save and issue" }).click();
   await expect(page.getByRole("heading", { name: /^Credit note CN-/ })).toBeVisible({ timeout: 30_000 });
-  invoice = await api<Invoice>(page, `/finance/pos-invoices/${invoiceId}`);
+  invoice = await api<Invoice>(page, `/finance/invoices/${invoiceId}`);
   expect([invoice.amount_credited, invoice.balance_due]).toEqual([50, 10]);
 
   // Payments list shows the payment record.
@@ -102,9 +102,9 @@ test("an order is invoiced as it is delivered", async ({ page }) => {
   await page.goto(`/dashboard/sales/orders/${order.id}?tab=invoicing`);
   await expect(page.getByRole("region", { name: "Order lines to invoice" })).toBeVisible({ timeout: 30_000 });
   await page.getByRole("button", { name: "Create invoice" }).click();
-  await expect(page).toHaveURL(/\/dashboard\/finance\/pos\/\d+$/, { timeout: 30_000 });
+  await expect(page).toHaveURL(/\/dashboard\/finance\/invoices\/\d+$/, { timeout: 30_000 });
   const invoiceId = Number(page.url().split("/").pop());
-  const draft = await api<Invoice & { lines: Array<{ quantity: number; sales_order_item_id: number }> }>(page, `/finance/pos-invoices/${invoiceId}`);
+  const draft = await api<Invoice & { lines: Array<{ quantity: number; sales_order_item_id: number }> }>(page, `/finance/invoices/${invoiceId}`);
   expect(draft.lines.map((line) => [line.quantity, line.sales_order_item_id])).toEqual([[2, order.items[0].id]]);
   await page.getByRole("button", { name: "Issue invoice" }).click();
   await expect(page.getByRole("heading", { name: /^INV-/, level: 2 })).toBeVisible({ timeout: 30_000 });

@@ -24,6 +24,8 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 // The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
 // the empty spelling this surface wants (3.6).
@@ -48,6 +50,7 @@ export default function RecordPaymentPage() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [paidOn, setPaidOn] = useState(() => todayIsoDate());
   const [reference, setReference] = useState("");
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
   const [saveComplete, setSaveComplete] = useState(false);
   const filters = useMemo<SavedViewFilters>(() => ({
@@ -90,9 +93,10 @@ export default function RecordPaymentPage() {
     try {
       await payments.recordPayment(invoice.id, {
         amount: parsedAmount,
-        payment_method: paymentMethod.trim() || null,
+        payment_method: paymentMethod || null,
         paid_on: paidOn || null,
         reference: reference.trim() || null,
+        custom_fields: customValues,
       });
       setSaveComplete(true);
       toast.success("Payment recorded.");
@@ -202,10 +206,7 @@ export default function RecordPaymentPage() {
               {invoice ? <FieldDescription>Maximum outstanding balance: {money(invoice.balance_due, invoice.currency)}.</FieldDescription> : null}
               <FieldError>{error}</FieldError>
             </Field>
-            <Field>
-              <FieldLabel htmlFor="record-payment-method">Payment method</FieldLabel>
-              <Input id="record-payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} disabled={!invoice} maxLength={100} placeholder="Bank transfer, card, cash…" />
-            </Field>
+            <PicklistField id="record-payment-method" listKey="payment_method" label="Payment method" value={paymentMethod} onChange={setPaymentMethod} disabled={!invoice} />
             <Field>
               <FieldLabel htmlFor="record-payment-date">Paid on</FieldLabel>
               <Input id="record-payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} disabled={!invoice} />
@@ -216,6 +217,7 @@ export default function RecordPaymentPage() {
             </Field>
           </FieldGroup>
         </FormSection>
+        <RecordCustomFieldsSection moduleKey="finance_payments" values={customValues} onChange={setCustomValues} disabled={!invoice} />
       </RecordFormLayout>
     </PageShell>
   );

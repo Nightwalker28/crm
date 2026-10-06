@@ -3,6 +3,8 @@
 from datetime import date
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -33,6 +35,7 @@ class OrderLinePayload(BaseModel):
 
 
 class OrderPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     vendor_id: int = Field(gt=0)
     warehouse_id: int | None = Field(default=None, gt=0)
     currency: str | None = Field(default=None, max_length=10)
@@ -53,6 +56,7 @@ class ReceiptLinePayload(BaseModel):
 
 
 class ReceiptPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     received_on: date | None = None
     vendor_delivery_ref: str | None = Field(default=None, max_length=120)
     notes: str | None = None

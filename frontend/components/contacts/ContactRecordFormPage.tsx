@@ -76,8 +76,15 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     const nextForm: ContactFormValue = {
       first_name: contact.first_name ?? "",
       last_name: contact.last_name ?? "",
+      salutation: contact.salutation ?? "",
       primary_email: contact.primary_email ?? "",
       contact_telephone: contact.contact_telephone ?? "",
+      mobile_phone: contact.mobile_phone ?? "",
+      mailing_address: contact.mailing_address ?? "",
+      mailing_street2: contact.mailing_street2 ?? "",
+      mailing_city: contact.mailing_city ?? "",
+      mailing_state: contact.mailing_state ?? "",
+      mailing_postal_code: contact.mailing_postal_code ?? "",
       linkedin_url: contact.linkedin_url ?? "",
       current_title: contact.current_title ?? "",
       region: contact.region ?? "",
@@ -100,7 +107,7 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const error = validateContactEmail(form.primary_email);
+    const error = validateContactEmail(form);
     setEmailError(error);
     if (error) {
       document.getElementById("contact-primary-email")?.focus();

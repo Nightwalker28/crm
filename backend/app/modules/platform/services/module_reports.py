@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_role_module_action_access
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.inventory.services.costing import BaseCurrencyTotals
 from app.modules.platform.models import ForecastSnapshot, UserModuleReport
 from app.modules.platform.services import report_catalog, report_engine
@@ -581,7 +582,7 @@ def generate_forecast_summary(
     for opportunity in opportunities:
         facts = pipelines_services.opportunity_stage_facts(opportunity)
         # Base currency; a deal with no known rate is counted but adds no amount (13a H5).
-        amount = converter.convert(_parse_decimalish(opportunity.total_cost_of_project), opportunity.currency_type) or Decimal("0")
+        amount = converter.convert(opportunity.amount or Decimal("0"), opportunity.currency_type) or Decimal("0")
         probability = _forecast_probability(opportunity, facts)
         if not facts.is_closed:
             open_count += 1
@@ -714,6 +715,12 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
             .all()
         )
         new_leads_count = lead_base.filter(SalesLead.created_time >= period_start).count()
+        # Status and source store picklist keys; the dashboard shows the tenant's labels.
+        lead_lists = PicklistResolver(db, tenant_id)
+        for list_key, rows in (("lead_status", lead_status_rows), ("lead_source", lead_source_rows)):
+            for row in rows:
+                if row["key"]:
+                    row["label"] = lead_lists.label(list_key, row["key"]) or row["label"]
 
     deal_stage_rows: list[dict[str, Any]] = []
     deal_totals = BaseCurrencyTotals(db, tenant_id=tenant_id)
@@ -729,7 +736,7 @@ def generate_crm_dashboard_summary(db: Session, current_user, *, period_days: in
         rows = deal_base.with_entities(
             SalesOpportunity.sales_stage,
             SalesOpportunity.pipeline_stage_id,
-            SalesOpportunity.total_cost_of_project,
+            SalesOpportunity.amount,
             SalesOpportunity.currency_type,
         ).all()
         stages_by_id = {

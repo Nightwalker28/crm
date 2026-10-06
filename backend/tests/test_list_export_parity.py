@@ -73,7 +73,9 @@ class ListAndExportShareOneQueryTests(unittest.TestCase):
 
         with patch.object(target, attribute, side_effect=record), \
              patch("app.modules.finance.repositories.pos_invoice_repository.get_finance_user_scope",
-                   return_value=SimpleNamespace(user_id_filter=None)):
+                   return_value=SimpleNamespace(user_id_filter=None)), \
+             patch("app.modules.platform.services.custom_fields.export_columns", return_value=[]):
+            # Exports also carry the module's custom fields (13b §3.4); none here.
             run()
         return calls
 
@@ -140,7 +142,8 @@ class ListAndExportShareOneQueryTests(unittest.TestCase):
             return _RecordingQuery()
 
         conditions = '[{"field": "currency", "operator": "is", "value": "USD"}]'
-        with patch.object(pos_invoice_repository, "build_invoice_query", side_effect=record):
+        with patch.object(pos_invoice_repository, "build_invoice_query", side_effect=record), \
+             patch("app.modules.platform.services.custom_fields.export_columns", return_value=[]):
             pos_invoice_routes.list_pos_invoices(pagination=self.pagination, search="INV", status_filter="issued", payment_status_filter="unpaid",
                 filter_logic="all", filters=None, filters_all=conditions, filters_any=None, sort_by=None, sort_direction=None,
                 db=self.db, current_user=self.user)

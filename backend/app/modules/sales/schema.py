@@ -23,18 +23,27 @@ class CustomerGroupSummary(BaseModel):
 # organization schemas
 class SalesOrganizationBase(BaseModel):
     org_name: str
-    primary_email: str
+    primary_email: str | None = None
     website: str | None = None
     primary_phone: str | None = None # optional str = either can be a string or None = None by default
     secondary_phone: str | None = None
     secondary_email: str | None = None
     industry: str | None = None
-    annual_revenue: str | None = None
+    account_type: str | None = None
+    annual_revenue: Decimal | None = Field(default=None, ge=0)
+    employee_count: int | None = Field(default=None, ge=0)
     billing_address: str | None = None
+    billing_street2: str | None = None
     billing_city: str | None = None
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
     # Vendors are Accounts we buy from (E4); the same company can also be a customer.
     is_vendor: bool = False
     # Days to pay, for invoices to this Account and bills from it (E5); none uses the company default.
@@ -54,12 +63,21 @@ class SalesOrganizationUpdate(BaseModel):
     secondary_phone: str | None = None
     secondary_email: str | None = None
     industry: str | None = None
-    annual_revenue: str | None = None
+    account_type: str | None = None
+    annual_revenue: Decimal | None = Field(default=None, ge=0)
+    employee_count: int | None = Field(default=None, ge=0)
     billing_address: str | None = None
+    billing_street2: str | None = None
     billing_city: str | None = None
     billing_state: str | None = None
     billing_postal_code: str | None = None
     billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
     is_vendor: bool | None = None
     payment_terms_days: int | None = Field(default=None, ge=0, le=365)
     assigned_to: int | None = None
@@ -85,7 +103,10 @@ class SalesOrganizationListItem(BaseModel):
     website: str | None = None
     primary_phone: str | None = None
     industry: str | None = None
-    annual_revenue: str | None = None
+    account_type: str | None = None
+    annual_revenue: Decimal | None = None
+    employee_count: int | None = None
+    billing_city: str | None = None
     billing_country: str | None = None
     is_vendor: bool = False
     customer_group_id: int | None = None
@@ -110,12 +131,19 @@ class SalesOrganizationListResponse(BaseModel):
 # contacts schemas
    
 class SalesContactBase(BaseModel):
+    salutation: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     contact_telephone: Optional[str] = None
+    mobile_phone: Optional[str] = None
     linkedin_url: Optional[str] = None
     current_title: Optional[str] = None
     region: Optional[str] = None
+    mailing_address: Optional[str] = None
+    mailing_street2: Optional[str] = None
+    mailing_city: Optional[str] = None
+    mailing_state: Optional[str] = None
+    mailing_postal_code: Optional[str] = None
     country: Optional[str] = None
     email_opt_out: bool = False
     organization_id: Optional[int] = None
@@ -123,17 +151,25 @@ class SalesContactBase(BaseModel):
 
 
 class SalesContactCreateRequest(SalesContactBase):
-    primary_email: EmailStr
+    # Email or a phone (13a A9): the service checks that one is there.
+    primary_email: EmailStr | None = None
     assigned_to: Optional[int] = None
 
 
 class SalesContactUpdateRequest(BaseModel):
+    salutation: Optional[str] = None
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     contact_telephone: Optional[str] = None
+    mobile_phone: Optional[str] = None
     linkedin_url: Optional[str] = None
     current_title: Optional[str] = None
     region: Optional[str] = None
+    mailing_address: Optional[str] = None
+    mailing_street2: Optional[str] = None
+    mailing_city: Optional[str] = None
+    mailing_state: Optional[str] = None
+    mailing_postal_code: Optional[str] = None
     country: Optional[str] = None
     email_opt_out: Optional[bool] = None
     organization_id: Optional[int] = None
@@ -144,7 +180,7 @@ class SalesContactUpdateRequest(BaseModel):
 
 class SalesContactResponse(SalesContactBase):
     contact_id: int
-    primary_email: EmailStr
+    primary_email: str | None = None
     assigned_to: int | None = None
     assigned_to_name: str | None = None
     customer_group_id: int | None = None
@@ -164,11 +200,14 @@ class SalesContactListItem(BaseModel):
     contact_id: int
     first_name: Optional[str] = None
     last_name: Optional[str] = None
-    primary_email: EmailStr | None = None
+    primary_email: str | None = None
+    salutation: Optional[str] = None
     contact_telephone: Optional[str] = None
+    mobile_phone: Optional[str] = None
     linkedin_url: Optional[str] = None
     current_title: Optional[str] = None
     region: Optional[str] = None
+    mailing_city: Optional[str] = None
     country: Optional[str] = None
     organization_id: Optional[int] = None
     organization_name: Optional[str] = None
@@ -197,9 +236,11 @@ class SalesLeadBase(BaseModel):
     last_name: str | None = None
     company: str | None = None
     phone: str | None = None
+    mobile_phone: str | None = None
     title: str | None = None
     source: str | None = None
-    status: str = "new"
+    # Empty takes the tenant's default lead status (13b §3.1).
+    status: str | None = None
     notes: str | None = None
     next_follow_up_at: datetime | None = None
     custom_fields: dict[str, Any] | None = None
@@ -213,7 +254,8 @@ class SalesLeadScoreFactor(BaseModel):
 
 
 class SalesLeadCreateRequest(SalesLeadBase):
-    primary_email: EmailStr
+    # Email or a phone (13a A9): the service checks that one is there.
+    primary_email: EmailStr | None = None
     assigned_to: int | None = None
     team_id: int | None = None
     tags: list[str] = Field(default_factory=list, max_length=20)
@@ -223,8 +265,10 @@ class SalesLeadUpdateRequest(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
     company: str | None = None
-    primary_email: EmailStr | None = None
+    primary_email: str | None = None
     phone: str | None = None
+    mobile_phone: str | None = None
+    mobile_phone: str | None = None
     title: str | None = None
     source: str | None = None
     status: str | None = None
@@ -238,7 +282,7 @@ class SalesLeadUpdateRequest(BaseModel):
 
 class SalesLeadResponse(SalesLeadBase):
     lead_id: int
-    primary_email: EmailStr
+    primary_email: str | None = None
     assigned_to: int | None = None
     assigned_to_name: str | None = None
     team_id: int | None = None
@@ -350,6 +394,23 @@ class SalesQuoteItemResponse(SalesQuoteItemBase):
 
 
 class SalesQuoteBase(BaseModel):
+    billing_address: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
+    customer_po_reference: str | None = None
+    terms_and_conditions: str | None = None
+    shipping_method: str | None = None
+    shipping_charge: Decimal | None = Field(default=None, ge=0)
+    lost_reason: str | None = None
     title: str | None = None
     customer_name: str
     contact_id: int | None = None
@@ -374,6 +435,23 @@ class SalesQuoteCreateRequest(SalesQuoteBase):
 
 
 class SalesQuoteUpdateRequest(BaseModel):
+    billing_address: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
+    customer_po_reference: str | None = None
+    terms_and_conditions: str | None = None
+    shipping_method: str | None = None
+    shipping_charge: Decimal | None = Field(default=None, ge=0)
+    lost_reason: str | None = None
     quote_number: str | None = None
     title: str | None = None
     customer_name: str | None = None
@@ -554,6 +632,7 @@ class SalesOrderItemResponse(SalesOrderItemBase):
 
 
 class SalesOrderCreateRequest(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     order_number: str | None = None
     quote_id: int | None = None
     organization_id: int | None = None
@@ -567,7 +646,23 @@ class SalesOrderCreateRequest(BaseModel):
     discount_total: Decimal = Decimal("0")
     grand_total: Decimal = Decimal("0")
     delivery_date: date | None = None
-    delivery_address: str | None = None
+    billing_address: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
+    customer_po_reference: str | None = None
+    terms_and_conditions: str | None = None
+    shipping_method: str | None = None
+    shipping_charge: Decimal | None = Field(default=None, ge=0)
+    lost_reason: str | None = None
     payment_terms: str | None = None
     notes: str | None = None
     owner_id: int | None = None
@@ -577,6 +672,7 @@ class SalesOrderCreateRequest(BaseModel):
 
 
 class SalesOrderUpdateRequest(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     order_number: str | None = None
     organization_id: int | None = None
     contact_id: int | None = None
@@ -586,7 +682,23 @@ class SalesOrderUpdateRequest(BaseModel):
     exchange_rate: Decimal | None = Field(default=None, gt=0)
     owner_id: int | None = None
     delivery_date: date | None = None
-    delivery_address: str | None = None
+    billing_address: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
+    customer_po_reference: str | None = None
+    terms_and_conditions: str | None = None
+    shipping_method: str | None = None
+    shipping_charge: Decimal | None = Field(default=None, ge=0)
+    lost_reason: str | None = None
     payment_terms: str | None = None
     notes: str | None = None
     warehouse_id: int | None = Field(default=None, gt=0)
@@ -595,6 +707,7 @@ class SalesOrderUpdateRequest(BaseModel):
 
 
 class SalesOrderResponse(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     id: int
     order_number: str
     quote_id: int | None = None
@@ -616,7 +729,23 @@ class SalesOrderResponse(BaseModel):
     discount_total: Decimal
     grand_total: Decimal
     delivery_date: date | None = None
-    delivery_address: str | None = None
+    billing_address: str | None = None
+    billing_street2: str | None = None
+    billing_city: str | None = None
+    billing_state: str | None = None
+    billing_postal_code: str | None = None
+    billing_country: str | None = None
+    shipping_address: str | None = None
+    shipping_street2: str | None = None
+    shipping_city: str | None = None
+    shipping_state: str | None = None
+    shipping_postal_code: str | None = None
+    shipping_country: str | None = None
+    customer_po_reference: str | None = None
+    terms_and_conditions: str | None = None
+    shipping_method: str | None = None
+    shipping_charge: Decimal | None = Field(default=None, ge=0)
+    lost_reason: str | None = None
     payment_terms: str | None = None
     notes: str | None = None
     owner_id: int | None = None
@@ -628,6 +757,9 @@ class SalesOrderResponse(BaseModel):
     priority: str = "normal"
     remaining_closed_at: datetime | None = None
     remaining_close_reason: str | None = None
+    source: str = "crm"
+    channel: str | None = None
+    external_reference: str | None = None
     created_by_id: int | None = None
     created_at: datetime
     updated_at: datetime
@@ -650,6 +782,9 @@ class SalesOrderListItem(BaseModel):
     delivery_status: str = "none"
     invoice_status: str = "none"
     priority: str = "normal"
+    source: str = "crm"
+    channel: str | None = None
+    external_reference: str | None = None
     currency: str
     grand_total: Decimal
     owner_id: int | None = None
@@ -679,7 +814,7 @@ class RelatedOpportunitySummary(BaseModel):
     sales_stage: str | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = None
-    total_cost_of_project: str | None = None
+    amount: Decimal | None = None
     currency_type: str | None = None
     # Set only on a contact's related deals: the role that contact plays on the deal.
     # `contact_role_key` is null when the contact is the legacy primary without a
@@ -703,7 +838,6 @@ class RelatedRecordAccess(BaseModel):
     quotes: bool | None = None
     orders: bool | None = None
     invoices: bool | None = None
-    insertion_orders: bool | None = None
 
 
 class QuoteSummaryResponse(BaseModel):
@@ -714,16 +848,6 @@ class QuoteSummaryResponse(BaseModel):
     latest_proposal: SalesQuoteProposalDocumentResponse | None = None
     proposal_events: list[SalesQuoteProposalEventResponse] = Field(default_factory=list)
     related_order: SalesOrderListItem | None = None
-
-
-class RelatedInsertionOrderSummary(BaseModel):
-    id: int
-    io_number: str
-    customer_name: str | None = None
-    status: str | None = None
-    total_amount: float | None = None
-    currency: str | None = None
-    updated_at: datetime | None = None
 
 
 class RelatedQuoteSummary(BaseModel):
@@ -782,13 +906,10 @@ class ContactSummaryResponse(BaseModel):
     related_opportunities: list[RelatedOpportunitySummary]
     related_quotes: list[RelatedQuoteSummary]
     related_orders: list[RelatedOrderSummary] = Field(default_factory=list)
-    related_insertion_orders: list[RelatedInsertionOrderSummary]
-    inferred_services: list[str]
     # Counts are totals; the lists above hold the most recent few.
     opportunity_count: int
     quote_count: int
     order_count: int = 0
-    insertion_order_count: int
 
 
 class FollowUpActionRequest(BaseModel):
@@ -821,15 +942,12 @@ class OrganizationSummaryResponse(BaseModel):
     related_quotes: list[RelatedQuoteSummary]
     related_orders: list[RelatedOrderSummary]
     related_invoices: list[RelatedInvoiceSummary]
-    related_insertion_orders: list[RelatedInsertionOrderSummary]
-    inferred_services: list[str]
     contact_count: int
     opportunity_count: int
     quote_count: int
     order_count: int
     invoice_count: int
     # Counts are totals; the lists above hold the most recent few.
-    insertion_order_count: int
     # E5: what the account owes on issued invoices, and is owed on posted bills, per currency.
     receivables: list[MoneyTotal] = Field(default_factory=list)
     payables: list[MoneyTotal] = Field(default_factory=list)
@@ -852,7 +970,6 @@ class ContactCompactSummary(BaseModel):
 
 class SalesOpportunityBase(BaseModel):
     opportunity_name: str
-    client: str | None = None
     # Legacy stage key; still accepted and returned during the pipeline
     # compatibility period. `pipeline_stage_id` is the stable reference.
     sales_stage: str | None = None
@@ -863,44 +980,21 @@ class SalesOpportunityBase(BaseModel):
     start_date: date | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = Field(default=None, ge=0, le=100)
-    campaign_type: str | None = None
-    total_leads: str | None = None
-    cpl: str | None = None
-    total_cost_of_project: str | None = None
+    amount: Decimal | None = Field(default=None, ge=0)
     currency_type: str | None = None
-    target_geography: str | None = None
-    target_audience: str | None = None
-    domain_cap: str | None = None
-    tactics: str | None = None
-    delivery_format: str | None = None
-    attachments: list[str] | None = None
+    deal_type: str | None = None
+    source: str | None = None
+    next_step: str | None = None
+    lost_reason: str | None = None
     custom_fields: dict[str, Any] | None = None
-
-    @field_validator("attachments", mode="before")
-    @classmethod
-    def parse_attachments(cls, value):
-        if value is None:
-            return None
-        if isinstance(value, list):
-            return value
-        if isinstance(value, str):
-            try:
-                parsed = json.loads(value)
-                if isinstance(parsed, list):
-                    return parsed
-            except json.JSONDecodeError:
-                pass
-            return [value]
-        return None
 
 
 class SalesOpportunityCreate(SalesOpportunityBase):
-    client: str | None = None
+    pass
 
 
 class SalesOpportunityUpdate(BaseModel):
     opportunity_name: str | None = None
-    client: str | None = None
     sales_stage: str | None = None
     pipeline_stage_id: int | None = None
     contact_id: int | None = None
@@ -909,17 +1003,12 @@ class SalesOpportunityUpdate(BaseModel):
     start_date: date | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = Field(default=None, ge=0, le=100)
-    campaign_type: str | None = None
-    total_leads: str | None = None
-    cpl: str | None = None
-    total_cost_of_project: str | None = None
+    amount: Decimal | None = Field(default=None, ge=0)
     currency_type: str | None = None
-    target_geography: str | None = None
-    target_audience: str | None = None
-    domain_cap: str | None = None
-    tactics: str | None = None
-    delivery_format: str | None = None
-    attachments: list[str] | None = None
+    deal_type: str | None = None
+    source: str | None = None
+    next_step: str | None = None
+    lost_reason: str | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -929,6 +1018,8 @@ class SalesOpportunityStageUpdate(BaseModel):
     # Validated against the tenant's pipeline by `assign_opportunity_stage`, not a fixed list.
     sales_stage: str | None = Field(default=None, max_length=40)
     pipeline_stage_id: int | None = None
+    # Required when the move is into a lost stage (13a H13); a picklist key or label.
+    lost_reason: str | None = Field(default=None, max_length=150)
 
     @model_validator(mode="after")
     def require_a_stage(self):
@@ -969,15 +1060,18 @@ class SalesOpportunityResponse(SalesOpportunityBase):
 class SalesOpportunityListItem(BaseModel):
     opportunity_id: int
     opportunity_name: str | None = None
-    client: str | None = None
     sales_stage: str | None = None
     pipeline_id: int | None = None
     pipeline_stage_id: int | None = None
     pipeline_stage: OpportunityPipelineStageRef | None = None
     expected_close_date: date | None = None
     probability_percent: Decimal | None = None
-    total_cost_of_project: str | None = None
+    amount: Decimal | None = None
     currency_type: str | None = None
+    deal_type: str | None = None
+    source: str | None = None
+    next_step: str | None = None
+    lost_reason: str | None = None
     created_time: datetime | None = None
     last_contacted_at: datetime | None = None
     last_contacted_channel: str | None = None
@@ -989,15 +1083,6 @@ class SalesOpportunityListItem(BaseModel):
     organization_id: int | None = None
     organization_name: str | None = None
     start_date: date | None = None
-    campaign_type: str | None = None
-    total_leads: str | None = None
-    cpl: str | None = None
-    target_geography: str | None = None
-    target_audience: str | None = None
-    domain_cap: str | None = None
-    tactics: str | None = None
-    delivery_format: str | None = None
-    attachments: list[str] | None = None
     custom_fields: dict[str, Any] | None = None
 
     
@@ -1082,10 +1167,7 @@ class OpportunitySummaryResponse(BaseModel):
     can_view_contacts: bool = True
     related_access: RelatedRecordAccess = Field(default_factory=RelatedRecordAccess)
     related_quotes: list[RelatedQuoteSummary]
-    related_insertion_orders: list[RelatedInsertionOrderSummary]
-    inferred_services: list[str]
     quote_count: int = 0
-    insertion_order_count: int
 
 
 class SalesPipelineStageResponse(BaseModel):

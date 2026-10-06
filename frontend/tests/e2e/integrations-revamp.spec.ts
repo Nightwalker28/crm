@@ -56,9 +56,6 @@ async function mockIntegrations(page: import("@playwright/test").Page) {
   await page.route("**/integrations/catalog/published?**", (route) =>
     route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [], total_count: 0 }) }),
   );
-  await page.route("**/integrations/orders?**", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) }),
-  );
   await page.route("**/admin/notification-channels", (route) =>
     route.fulfill({
       status: 200,

@@ -115,9 +115,6 @@ class SavedViewConfigTests(unittest.TestCase):
                 "sales_opportunities",
                 "sales_quotes",
                 "sales_orders",
-                "contracts",
-                "support_cases",
-                "finance_io",
                 "finance_pos",
                 "finance_payments",
                 "catalog_products",
@@ -129,8 +126,6 @@ class SavedViewConfigTests(unittest.TestCase):
     def test_list_saved_views_does_not_require_legacy_table_preferences_for_view_only_modules(self):
         view_only_modules = {
             "sales_orders",
-            "contracts",
-            "support_cases",
             "finance_pos",
             "finance_payments",
             "catalog_products",

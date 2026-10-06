@@ -27,6 +27,7 @@ from app.core.database import SessionLocal
 from app.core.passwords import hash_password
 
 # User / platform models
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.user_management.models import (
     CompanyProfile,
     Department,
@@ -63,7 +64,6 @@ from app.modules.catalog.models import (
     CatalogService,
 )
 from app.modules.finance.models import (
-    FinanceIO,
     FinancePosInvoice,
     FinancePosInvoiceLine,
 )
@@ -89,8 +89,7 @@ NOW = datetime.now(timezone.utc)
 MODULES = [
     ("catalog_products", "/dashboard/catalog/products", "Product catalog"),
     ("catalog_services", "/dashboard/catalog/services", "Service catalog"),
-    ("finance_io", "/dashboard/finance/insertion-orders", "Finance insertion orders"),
-    ("finance_pos", "/dashboard/finance/pos", "POS mode invoices and walk-in sales"),
+    ("finance_pos", "/dashboard/finance/invoices", "POS mode invoices and walk-in sales"),
     ("sales_contacts", "/dashboard/sales/contacts", "Sales contacts"),
     ("sales_organizations", "/dashboard/sales/organizations", "Sales organizations"),
     ("sales_opportunities", "/dashboard/sales/opportunities", "Sales opportunities"),
@@ -377,10 +376,7 @@ def seed_roles_departments_teams(
                     can_configure=0,
                 )
 
-            if role_name == "Support" and module_key in {
-                "finance_io",
-                "finance_pos",
-            }:
+            if role_name == "Support" and module_key == "finance_pos":
                 final_preset.update(
                     can_create=0,
                     can_edit=0,
@@ -395,7 +391,6 @@ def seed_roles_departments_teams(
                 "sales_opportunities",
                 "catalog_products",
                 "catalog_services",
-                "finance_io",
                 "finance_pos",
                 "tasks",
                 "calendar",
@@ -596,6 +591,8 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
     ]
 
     organizations: list[SalesOrganization] = []
+    # Seeded rows bypass the services, so they store picklist keys through the resolver.
+    picklists = PicklistResolver(db, tenant.id, allow_create=True)
 
     for idx, (name, website, industry, city, country, group_key) in enumerate(org_specs):
         org = get_or_create(
@@ -607,15 +604,17 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
                 "website": website,
                 "primary_phone": f"+94112{idx + 100000}",
                 "primary_email": f"hello@{slugify(name)}.example",
-                "industry": industry,
-                "annual_revenue": f"LKR {(idx + 2) * 25}M",
+                "industry": picklists.resolve("industry", industry),
+                "annual_revenue": Decimal((idx + 2) * 25_000_000),
+                "account_type": "customer",
+                "employee_count": (idx + 1) * 40,
                 "assigned_to": sales_users[idx % len(sales_users)].id,
                 "customer_group_id": groups[group_key].id,
                 "billing_address": f"{idx + 10}, Demo Road",
                 "billing_city": city,
                 "billing_state": "Western",
                 "billing_postal_code": f"10{idx}00",
-                "billing_country": country,
+                "billing_country": picklists.resolve("country", country),
             },
         )
         organizations.append(org)
@@ -651,8 +650,8 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
                 "contact_telephone": f"+9477{idx:07d}",
                 "linkedin_url": f"https://linkedin.com/in/{first.lower()}-{last.lower()}",
                 "current_title": title,
-                "region": "Western Province",
-                "country": "Sri Lanka",
+                "region": picklists.resolve("region", "Western Province"),
+                "country": picklists.resolve("country", "Sri Lanka"),
                 "email_opt_out": False,
                 "assigned_to": sales_users[idx % len(sales_users)].id,
                 "organization_id": org.org_id,
@@ -680,24 +679,17 @@ def seed_sales_data(db: Session, tenant: Tenant, users, groups):
             tenant_id=tenant.id,
             opportunity_name=f"{org.org_name} - {['CRM Setup', 'Automation Package', 'Retainer', 'Website Integration'][idx % 4]}",
             defaults={
-                "client": org.org_name,
                 "sales_stage": stage,
                 "contact_id": contact.contact_id,
                 "organization_id": org.org_id,
                 "assigned_to": contact.assigned_to,
                 "start_date": date.today() - timedelta(days=20 - idx),
                 "expected_close_date": date.today() + timedelta(days=10 + idx * 3),
-                "campaign_type": ["Inbound", "Referral", "Outbound", "Website"][idx % 4],
-                "total_leads": str(50 + idx * 15),
-                "cpl": str(250 + idx * 20),
-                "total_cost_of_project": str(150000 + idx * 35000),
+                "amount": Decimal(150000 + idx * 35000),
                 "currency_type": "LKR",
-                "target_geography": "Sri Lanka",
-                "target_audience": "SMB / Mid-market",
-                "domain_cap": "Business decision makers",
-                "tactics": "Email, WhatsApp, landing page, demo call",
-                "delivery_format": "Monthly service package",
-                "attachments": None,
+                "deal_type": ["new_business", "existing_business"][idx % 2],
+                "source": ["website", "referral", "event", "partner"][idx % 4],
+                "next_step": "Send the proposal and book a review call",
                 "last_contacted_at": NOW - timedelta(days=idx),
                 "last_contacted_channel": ["email", "call", "meeting"][idx % 3],
                 "last_contacted_by_user_id": contact.assigned_to,
@@ -780,7 +772,6 @@ def seed_catalog(db: Session, tenant: Tenant, users):
 
 def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, products, services, modules):
     finance_user = users[demo_email("maya.finance")]
-    sales_user = users[demo_email("ravi.sales")]
 
     invoices = []
 
@@ -867,37 +858,6 @@ def seed_finance(db: Session, tenant: Tenant, users, contacts, organizations, pr
             )
 
         invoices.append(invoice)
-
-    finance_module_id = modules["finance_io"].id
-
-    for idx, org in enumerate(organizations[:6]):
-        get_or_create(
-            db,
-            FinanceIO,
-            tenant_id=tenant.id,
-            io_number=f"IO-DEMO-{idx + 1:04d}",
-            defaults={
-                "module_id": finance_module_id,
-                "user_id": sales_user.id,
-                "external_reference": f"PO-{2026}-{idx + 100}",
-                "file_name": f"io-demo-{idx + 1}.pdf",
-                "file_path": f"/demo/finance/io-demo-{idx + 1}.pdf",
-                "customer_organization_id": org.org_id,
-                "customer_name": org.org_name,
-                "counterparty_reference": f"CP-{idx + 500}",
-                "issue_date": date.today() - timedelta(days=idx * 5),
-                "effective_date": date.today() - timedelta(days=idx * 4),
-                "due_date": date.today() + timedelta(days=20 + idx),
-                "status": ["draft", "issued", "active", "completed", "cancelled", "imported"][idx % 6],
-                "currency": "LKR",
-                "subtotal_amount": Decimal("125000") + Decimal(idx * 20000),
-                "tax_amount": Decimal("18750") + Decimal(idx * 3000),
-                "total_amount": Decimal("143750") + Decimal(idx * 23000),
-                "notes": "Demo finance IO linked to organization.",
-                "start_date": date.today() - timedelta(days=idx * 2),
-                "end_date": date.today() + timedelta(days=30 + idx),
-            },
-        )
 
     db.commit()
     return invoices

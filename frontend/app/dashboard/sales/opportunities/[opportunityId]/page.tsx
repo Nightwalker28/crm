@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import type { ReactNode } from "react";
+import { useRef, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Pencil } from "lucide-react";
+import { Pencil, Plus } from "lucide-react";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
@@ -18,6 +18,7 @@ import {
   type OpportunityStageRef,
 } from "@/components/opportunities/opportunityStages";
 import RecordEmailAction from "@/components/mail/RecordEmailAction";
+import { useLostReasonPrompt } from "@/components/opportunities/LostReasonDialog";
 import {
   OpportunityParticipants,
   participantName,
@@ -60,7 +61,7 @@ import {
   type ResolvedRecordLayout as ResolvedRecordLayoutContract,
 } from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
-import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
+import type { RelatedRecordAccess } from "@/lib/related-access";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -74,20 +75,11 @@ type RelatedQuote = {
   total_amount?: number | string | null;
 };
 
-type RelatedInsertionOrder = {
-  id: number;
-  io_number: string;
-  customer_name?: string | null;
-  status?: string | null;
-  total_amount?: number | null;
-  currency?: string | null;
-};
 
 type OpportunitySummary = {
   opportunity: {
     opportunity_id: number;
     opportunity_name: string;
-    client?: string | null;
     sales_stage?: string | null;
     pipeline_stage?: OpportunityStageRef | null;
     contact_id?: number | null;
@@ -99,16 +91,12 @@ type OpportunitySummary = {
     start_date?: string | null;
     expected_close_date?: string | null;
     probability_percent?: number | string | null;
-    campaign_type?: string | null;
-    total_leads?: string | null;
-    cpl?: string | null;
-    total_cost_of_project?: string | null;
+    amount?: number | string | null;
     currency_type?: string | null;
-    target_geography?: string | null;
-    target_audience?: string | null;
-    domain_cap?: string | null;
-    tactics?: string | null;
-    delivery_format?: string | null;
+    deal_type?: string | null;
+    source?: string | null;
+    next_step?: string | null;
+    lost_reason?: string | null;
     custom_fields?: Record<string, unknown> | null;
     created_time?: string | null;
     updated_at?: string | null;
@@ -126,11 +114,8 @@ type OpportunitySummary = {
   can_view_contacts: boolean;
   related_access?: RelatedRecordAccess;
   related_quotes: RelatedQuote[];
-  related_insertion_orders: RelatedInsertionOrder[];
-  inferred_services: string[];
   /** Total linked quotes; `related_quotes` holds the most recent few. */
   quote_count?: number;
-  insertion_order_count: number;
 };
 
 /**
@@ -169,7 +154,6 @@ function contactLabel(summary: OpportunitySummary) {
     [summary.contact?.first_name, summary.contact?.last_name].filter(Boolean).join(" ")
     || summary.contact?.primary_email
     || summary.opportunity.contact_name
-    || summary.opportunity.client
     || null
   );
 }
@@ -183,6 +167,8 @@ export default function OpportunityDetailPage() {
     modules.find((module) => module.name === moduleKey)?.actions;
   const opportunityActions = moduleActions("sales_opportunities");
   const quoteActions = moduleActions("sales_quotes");
+  const canCreateQuotes = Boolean(quoteActions?.can_create);
+  const canCreateOrders = Boolean(moduleActions("sales_orders")?.can_create);
   const taskActions = moduleActions("tasks");
   const documentActions = moduleActions("documents");
   const canEditDeal = Boolean(opportunityActions?.can_edit);
@@ -232,6 +218,17 @@ export default function OpportunityDetailPage() {
   const editHref = useRecordTabHref(`${recordHref}/edit`);
   const relatedHref = `${recordHref}?tab=related`;
 
+  const { askLostReason, lostReasonDialog } = useLostReasonPrompt();
+  const lostReason = useRef<string | null>(null);
+
+  /** The stage is the one control for a deal's outcome (§4.7); a lost stage asks why first. */
+  async function confirmStage(next: InlineFieldEditOption) {
+    lostReason.current = null;
+    if (findStage(pipeline, next.value)?.semantic_type !== "lost") return true;
+    lostReason.current = await askLostReason(dealName);
+    return lostReason.current !== null;
+  }
+
   /**
    * R1's autosave for the deal's one state field.
    *
@@ -255,7 +252,7 @@ export default function OpportunityDetailPage() {
       const res = await apiFetch(`/sales/opportunities/${params.opportunityId}/stage`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sales_stage: next }),
+        body: JSON.stringify({ sales_stage: next, lost_reason: lostReason.current }),
       });
       if (!res.ok) throw new Error("The deal stage could not be saved.");
       const saved = (await res.json()) as OpportunitySummary["opportunity"];
@@ -304,9 +301,7 @@ export default function OpportunityDetailPage() {
     }
   }
 
-  const dealValue = deal
-    ? formatMoney(deal.total_cost_of_project, deal.currency_type)
-    : null;
+  const dealValue = deal ? formatMoney(deal.amount, deal.currency_type) : null;
 
   return (
     <RecordWorkspace
@@ -334,9 +329,7 @@ export default function OpportunityDetailPage() {
       />}
       subtitle={deal ? (
         <>
-          {deal.organization_name || deal.client ? (
-            <span>{deal.organization_name || deal.client}</span>
-          ) : null}
+          {deal.organization_name ? <span>{deal.organization_name}</span> : null}
           {dealValue ? <span>{dealValue}</span> : null}
         </>
       ) : null}
@@ -368,6 +361,16 @@ export default function OpportunityDetailPage() {
               }))}
             />
           ) : null}
+          {canCreateQuotes ? (
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/sales/quotes/new?opportunity_id=${deal.opportunity_id}`}>Create quote</Link>
+            </Button>
+          ) : null}
+          {canCreateOrders ? (
+            <Button asChild variant="outline">
+              <Link href={`/dashboard/sales/orders/new?opportunity_id=${deal.opportunity_id}`}>Create order</Link>
+            </Button>
+          ) : null}
           {canEditDeal ? (
             <Button asChild variant="outline">
               <Link href={editHref}>
@@ -376,6 +379,7 @@ export default function OpportunityDetailPage() {
               </Link>
             </Button>
           ) : null}
+          {lostReasonDialog}
         </>
       ) : null}
       overflowActions={deal && canDeleteDeal ? (
@@ -407,6 +411,7 @@ export default function OpportunityDetailPage() {
                       fieldLabel="Stage"
                       value={stage}
                       options={stageOptions}
+                      confirm={confirmStage}
                       onCommit={(next) => updateStage(next.value)}
                     />
                   ) : (
@@ -451,22 +456,8 @@ export default function OpportunityDetailPage() {
                     href={relatedHref}
                   />
                 ) : null}
-                {canViewRelated(summary.related_access, "insertion_orders") ? (
-                  <RecordSpineCollection
-                    label="Insertion orders"
-                    count={summary.insertion_order_count}
-                    href={relatedHref}
-                  />
-                ) : null}
               </RecordSpineBlock>
 
-              {summary.inferred_services.length ? (
-                <RecordSpineBlock title="Services">
-                  <div className="text-sm text-copy-primary">
-                    {summary.inferred_services.join(", ")}
-                  </div>
-                </RecordSpineBlock>
-              ) : null}
 
               <RecordSpineMeta
                 createdLabel={
@@ -561,6 +552,7 @@ export default function OpportunityDetailPage() {
             <RelatedRecords
               summary={summary}
               canViewQuotes={canViewQuotes}
+              canCreateQuotes={canCreateQuotes}
               participants={summary.can_view_contacts ? (
                 <OpportunityParticipants
                   opportunityId={summary.opportunity.opportunity_id}
@@ -613,7 +605,7 @@ function DealOverview({
       customValues={deal.custom_fields ?? {}}
       omitFieldKeys={SPINE_OWNED_FIELDS}
       renderValue={(field, value) => {
-        if (field.field_key === "total_cost_of_project") {
+        if (field.field_key === "amount") {
           return formatMoney(value as string | null, deal.currency_type) ?? undefined;
         }
         if (field.field_key !== "probability_percent") return undefined;
@@ -628,10 +620,12 @@ function DealOverview({
 function RelatedRecords({
   summary,
   canViewQuotes,
+  canCreateQuotes,
   participants,
 }: {
   summary: OpportunitySummary;
   canViewQuotes: boolean;
+  canCreateQuotes: boolean;
   /** Null when the reader cannot see contacts: the panel is not drawn at all (05 §11). */
   participants: ReactNode;
 }) {
@@ -639,25 +633,25 @@ function RelatedRecords({
     <RecordRelatedList>
       {participants}
       {canViewQuotes ? (
-        <RecordRelatedCard title="Quotes" empty="No quotes are linked to this deal yet.">
+        <RecordRelatedCard
+          title="Quotes"
+          empty="No quotes are linked to this deal yet."
+          total={summary.quote_count}
+          action={canCreateQuotes ? (
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/dashboard/sales/quotes/new?opportunity_id=${summary.opportunity.opportunity_id}`}>
+                <Plus />
+                Quote
+              </Link>
+            </Button>
+          ) : null}
+        >
           {summary.related_quotes.map((quote) => (
             <RecordRelatedLink
               key={quote.quote_id}
               href={`/dashboard/sales/quotes/${quote.quote_id}`}
               title={quote.quote_number}
               detail={`${quote.status || "Unknown status"} · ${formatMoney(quote.total_amount, quote.currency) ?? EMPTY_CELL_VALUE}`}
-            />
-          ))}
-        </RecordRelatedCard>
-      ) : null}
-      {canViewRelated(summary.related_access, "insertion_orders") ? (
-        <RecordRelatedCard title="Insertion orders" empty="No related insertion orders yet.">
-          {summary.related_insertion_orders.map((order) => (
-            <RecordRelatedLink
-              key={order.id}
-              href={`/dashboard/finance/insertion-orders/${order.id}`}
-              title={order.io_number}
-              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
             />
           ))}
         </RecordRelatedCard>

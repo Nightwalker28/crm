@@ -91,7 +91,7 @@ export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreat
     validate: ({ layout, form, customFieldValues }) => {
       const errors = validateContactQuickCreateLayout(layout, form, customFieldValues);
       if (!errors.primary_email && layoutHasVisibleField(layout, "primary_email")) {
-        const emailError = validateContactEmail(form.primary_email);
+        const emailError = validateContactEmail(form);
         if (emailError) errors.primary_email = emailError;
       }
       return errors;

@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { CalendarDays, FileText, HelpCircle, MessageSquare, PackageSearch, ScrollText, ShoppingCart } from "lucide-react";
+import { CalendarDays, FileText, PackageSearch, ScrollText, ShoppingCart } from "lucide-react";
 
 /**
  * The client portal's sections — one source, read by the rail and by the hub's metric
@@ -20,11 +20,9 @@ export type ClientPortalSection = {
 export const CLIENT_PORTAL_SECTIONS: ClientPortalSection[] = [
   { key: "quotes", label: "Quotes", href: "/client/quotes", icon: ScrollText },
   { key: "orders", label: "Orders", href: "/client/orders", icon: ShoppingCart },
-  { key: "support", label: "Support", href: "/client/support", icon: HelpCircle },
   { key: "documents", label: "Documents", href: "/client/documents", icon: FileText },
   { key: "bookings", label: "Bookings", href: "/client/bookings", icon: CalendarDays },
   { key: "catalog", label: "Catalog", href: "/client/catalog", icon: PackageSearch },
-  { key: "messages", label: "Messages", href: "/client/messages", icon: MessageSquare },
 ];
 
 export const CLIENT_PORTAL_ROUTES = {

@@ -1,3 +1,4 @@
+from typing import Any
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
@@ -13,6 +14,15 @@ class CatalogProductStockStatus(str, Enum):
 
 
 class CatalogProductBase(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    weight: Decimal | None = Field(default=None, ge=0)
+    weight_unit: str | None = None
+    length: Decimal | None = Field(default=None, ge=0)
+    width: Decimal | None = Field(default=None, ge=0)
+    height: Decimal | None = Field(default=None, ge=0)
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str = Field(min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -72,6 +82,15 @@ class CatalogProductCreateRequest(CatalogProductBase):
 
 
 class CatalogProductUpdateRequest(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    weight: Decimal | None = Field(default=None, ge=0)
+    weight_unit: str | None = None
+    length: Decimal | None = Field(default=None, ge=0)
+    width: Decimal | None = Field(default=None, ge=0)
+    height: Decimal | None = Field(default=None, ge=0)
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -131,6 +150,16 @@ class CatalogProductUpdateRequest(BaseModel):
 
 
 class CatalogProductResponse(BaseModel):
+    list_price: Decimal | None = None
+    tax_category: str | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)
+    weight: Decimal | None = None
+    weight_unit: str | None = None
+    length: Decimal | None = None
+    width: Decimal | None = None
+    height: Decimal | None = None
+    dimension_unit: str | None = None
+    custom_fields: dict[str, Any] | None = None
     id: int
     name: str
     slug: str | None = None
@@ -174,6 +203,9 @@ class CatalogProductListResponse(BaseModel):
 
 
 class CatalogServiceBase(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str = Field(min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -216,6 +248,9 @@ class CatalogServiceCreateRequest(CatalogServiceBase):
 
 
 class CatalogServiceUpdateRequest(BaseModel):
+    list_price: Decimal | None = Field(default=None, ge=0)
+    tax_category: str | None = None
+    custom_fields: dict[str, Any] | None = None
     name: str | None = Field(default=None, min_length=1, max_length=180)
     slug: str | None = Field(default=None, max_length=160)
     description: str | None = None
@@ -258,6 +293,10 @@ class CatalogServiceUpdateRequest(BaseModel):
 
 
 class CatalogServiceResponse(BaseModel):
+    list_price: Decimal | None = None
+    tax_category: str | None = None
+    images: list[dict[str, Any]] = Field(default_factory=list)
+    custom_fields: dict[str, Any] | None = None
     id: int
     name: str
     slug: str | None = None

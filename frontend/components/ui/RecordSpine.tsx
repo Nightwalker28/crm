@@ -55,13 +55,12 @@ export function RecordSpine({
     >
       {/*
         The rail scrolls itself once its blocks outgrow the row, rather than growing the row
-        and handing the overflow to the dashboard shell's own scroller. Without this a
-        support case — a lifecycle track, three State fields, six Connected entries and the
-        meta footer — pushed `Updated` and its `History` trigger 222px below the fold at a
-        695px viewport, and reaching them scrolled the *page*, dragging the record's name and
+        and handing the overflow to the dashboard shell's own scroller. Without this a tall
+        rail — a lifecycle track, three State fields, six Connected entries and the meta
+        footer — pushed `Updated` and its `History` trigger below the fold at a 695px
+        viewport, and reaching them scrolled the *page*, dragging the record's name and
         actions off the top. §4.5 allows one scroller per region; that was a second one,
-        owned by the shell. It shipped in batch 1 and no assertion could see it — the
-        contract page carried the same defect at 130px.
+        owned by the shell.
 
         `-mx-2 px-2` is load-bearing, not cosmetic. `RecordSpineLink` and
         `RecordSpineCollection` bleed 8px each side so their hover ground and focus ring reach

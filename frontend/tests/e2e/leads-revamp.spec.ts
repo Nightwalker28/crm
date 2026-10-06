@@ -450,7 +450,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.getByRole("button", { name: "Create lead" }).click();
   // Next renders an empty route announcer with role="alert", so match the form's own error
   // slot rather than every alert on the page.
-  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Add an email or a phone number.");
   await expect(page.getByLabel("Email")).toBeFocused();
 
   const ownerPicker = page.getByRole("combobox", { name: "Owner" });
@@ -1045,7 +1045,8 @@ test("Lead custom fields are labeled and preserve required false boolean values"
   await page.goto("/dashboard/sales/leads/new");
   await expect(page.getByLabel("Renewal tier")).toHaveAttribute("required", "");
   await expect(page.getByText("Internal qualification tier.")).toBeVisible();
-  await expect(page.getByRole("checkbox", { name: /Priority account.*Enabled|Enabled.*Priority account/ })).not.toBeChecked();
+  // A boolean is a Yes/No pair (SegmentedBoolean, 13b §3.4); an unset required one reads No.
+  await expect(page.getByRole("group", { name: "Priority account" }).getByRole("radio", { name: "No" })).toBeChecked();
 
   await page.getByLabel("Email").fill("qualified@example.test");
   await page.getByLabel("Renewal tier").fill("Gold");

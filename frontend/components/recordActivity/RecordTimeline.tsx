@@ -8,7 +8,6 @@ import {
   History,
   Mail,
   MessageCircle,
-  MessagesSquare,
   Phone,
   Sparkles,
   PhoneCall,
@@ -42,7 +41,7 @@ import type {
  * This was `RecordActivityFeed`, and the rebuild is structural rather than cosmetic.
  * `CrmRecordActivitySection` used to render Activity, Notes, Documents and Tasks as a
  * *second* tab strip inside the page's own — the nested-tabs defect at
- * `opportunities/[opportunityId]` and `finance/pos/[invoiceId]`. The archetype owns the
+ * `opportunities/[opportunityId]` and `finance/invoices/[invoiceId]`. The archetype owns the
  * only strip now, so those panels are the archetype's tabs and the notes list is gone:
  * the feed already emits `type="note"`, and rendering the same rows twice was the
  * duplication this sub-phase was called on to remove.
@@ -68,7 +67,6 @@ type Filter = "all" | RecordActivityType;
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "note", label: "Notes" },
-  { id: "case_reply", label: "Replies" },
   { id: "email", label: "Email" },
   { id: "call", label: "Calls" },
   { id: "whatsapp", label: "WhatsApp" },
@@ -78,7 +76,6 @@ const FILTERS: { id: Filter; label: string }[] = [
 ];
 
 const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
-  case_reply: MessagesSquare,
   call: Phone,
   email: Mail,
   follow_up: PhoneCall,
@@ -90,7 +87,6 @@ const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
 };
 
 const TYPE_LABELS: Record<RecordActivityType, string> = {
-  case_reply: "Reply",
   call: "Call",
   email: "Email",
   follow_up: "Follow-up",
@@ -260,7 +256,6 @@ function ActivityBody({ item }: { item: RecordActivityEnvelope }) {
         </div>
       ) : null;
     }
-    case "case_reply":
     case "note":
     default:
       return item.summary ? (

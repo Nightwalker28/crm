@@ -21,8 +21,7 @@
 // Exemptions, all deliberate: <code>/<pre> are monospace by UA default and are the right
 // elements for a machine string; textareas are multi-line so the single-line height
 // contract does not apply; nav items, card-buttons, sort headers, tabs and pills size to
-// their content and are not form controls. Contracts and support are out of the rebuild
-// programme (scoping decision 8): they keep the pre-5.10 checks and skip the new ones.
+// their content and are not form controls.
 //
 // See docs/design/design.md and docs/design/rebuild.md 5.10.
 import { expect, test, type Page } from "@playwright/test";
@@ -54,17 +53,13 @@ const STATIC_ROUTES = [
   "/dashboard/catalog/services/new",
   "/dashboard/client-portal",
   "/dashboard/client-portal/pages/new",
-  "/dashboard/contracts",
-  "/dashboard/contracts/new",
   "/dashboard/documents",
   "/dashboard/documents/upload",
-  "/dashboard/finance/insertion-orders",
-  "/dashboard/finance/insertion-orders/new",
   "/dashboard/finance/payments",
   "/dashboard/finance/payments/record",
   "/dashboard/finance/credit-notes",
-  "/dashboard/finance/pos",
-  "/dashboard/finance/pos/new",
+  "/dashboard/finance/invoices",
+  "/dashboard/finance/invoices/new",
   "/dashboard/mail",
   "/dashboard/mail/compose",
   "/dashboard/profile",
@@ -92,6 +87,9 @@ const STATIC_ROUTES = [
   "/dashboard/settings/calendar-booking",
   "/dashboard/settings/customer-groups",
   "/dashboard/settings/catalog-categories",
+  "/dashboard/settings/picklists",
+  "/dashboard/settings/picklists/lead_status",
+  "/dashboard/settings/picklists/country",
   "/dashboard/settings/warehouses",
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",
@@ -108,8 +106,6 @@ const STATIC_ROUTES = [
   "/dashboard/settings/recycle-bin",
   "/dashboard/settings/teams",
   "/dashboard/settings/users",
-  "/dashboard/support/cases",
-  "/dashboard/support/cases/new",
   "/dashboard/tasks",
   "/dashboard/views/sales_contacts",
   "/dashboard/views/sales_leads",
@@ -124,9 +120,7 @@ const LISTS: Array<{ list: string; re: string; suffixes: string[]; record?: bool
   { list: "/dashboard/sales/opportunities",     re: "^/dashboard/sales/opportunities/\\d+$",    suffixes: ["", "/edit"], record: true },
   { list: "/dashboard/sales/orders",            re: "^/dashboard/sales/orders/\\d+$",           suffixes: ["", "/edit"], record: true },
   { list: "/dashboard/sales/quotes",            re: "^/dashboard/sales/quotes/\\d+$",           suffixes: ["", "/edit"], record: true },
-  { list: "/dashboard/contracts",               re: "^/dashboard/contracts/\\d+$",              suffixes: ["", "/edit"] },
-  { list: "/dashboard/finance/pos",             re: "^/dashboard/finance/pos/\\d+$",            suffixes: ["", "/edit", "/print"], record: true },
-  { list: "/dashboard/finance/insertion-orders",re: "^/dashboard/finance/insertion-orders/\\d+$",suffixes: ["", "/edit"], record: true },
+  { list: "/dashboard/finance/invoices",             re: "^/dashboard/finance/invoices/\\d+$",            suffixes: ["", "/edit", "/print"], record: true },
   { list: "/dashboard/catalog/products",        re: "^/dashboard/catalog/products/\\d+$",       suffixes: ["", "/edit"], record: true },
   { list: "/dashboard/catalog/services",        re: "^/dashboard/catalog/services/\\d+$",       suffixes: ["", "/edit"], record: true },
   { list: "/dashboard/inventory/adjustments",     re: "^/dashboard/inventory/adjustments/\\d+$",   suffixes: [""] },
@@ -139,7 +133,6 @@ const LISTS: Array<{ list: string; re: string; suffixes: string[]; record?: bool
   { list: "/dashboard/purchasing/bills",         re: "^/dashboard/purchasing/bills/\\d+$",        suffixes: [""] },
   { list: "/dashboard/finance/credit-notes",     re: "^/dashboard/finance/credit-notes/\\d+$",    suffixes: [""] },
   { list: "/dashboard/finance/payments",         re: "^/dashboard/finance/payments/\\d+$",        suffixes: [""] },
-  { list: "/dashboard/support/cases",           re: "^/dashboard/support/cases/\\d+$",          suffixes: [""] },
   { list: "/dashboard/settings/modules",        re: "^/dashboard/settings/modules/\\d+$",       suffixes: [""] },
   { list: "/dashboard/settings/message-templates", re: "^/dashboard/settings/message-templates/\\d+/edit$", suffixes: [""] },
 ];
@@ -163,17 +156,16 @@ const CLIENT_ROUTES = [
   "/client/bookings",
   "/client/catalog",
   "/client/documents",
-  "/client/messages",
   "/client/orders",
   "/client/quotes",
   "/client/setup",
 ];
 // Client lists whose first row opens an archetype-2 record.
-const CLIENT_RECORD_LISTS = ["/client/bookings", "/client/catalog", "/client/messages", "/client/orders", "/client/quotes"];
+const CLIENT_RECORD_LISTS = ["/client/bookings", "/client/catalog", "/client/orders", "/client/quotes"];
 
 // The invoice print document is a census `unchanged` row (§2.5 exception 2): its own theme,
 // its own type. It keeps the pre-5.10 checks.
-const OUT_OF_SCOPE = /\/(contracts|support)(\/|$)|\/print$/;
+const OUT_OF_SCOPE = /\/print$/;
 
 // Tailwind v4 emits calc(infinity * 1px) for rounded-full, which computes to 3.35544e+07px.
 const ALLOWED_RADII = new Set(["0px", "6px", "8px", "10px", "12px", "14px", "2px", "4px", "9999px", "3.35544e+07px"]);

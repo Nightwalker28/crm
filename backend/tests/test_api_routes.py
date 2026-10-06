@@ -1,10 +1,8 @@
 import asyncio
-import tempfile
 import urllib.parse
 import unittest
 from inspect import iscoroutinefunction
 from datetime import datetime
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, AsyncMock, patch
 
@@ -15,10 +13,9 @@ import jwt as pyjwt
 
 from app.core.database import get_db
 from app.core.pagination import Pagination
-from app.core.security import get_current_user, require_admin, require_user
+from app.core.security import require_admin, require_user
 from app.main import app
 from app.modules.platform.routes import module_reports
-from app.modules.support.routes import cases_routes
 from app.modules.sales.routes import contacts_routes, organizations_routes
 from app.modules.sales.routes import opportunities_routes
 from app.modules.tasks.routes import tasks_routes
@@ -1060,100 +1057,12 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(len(matches), 1)
         self.assertEqual(matches[0].status_code, 201)
 
-    def test_finance_list_route_returns_paged_payload(self):
-        app.dependency_overrides[get_current_user] = self._active_user
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-        fake_payload = {
-            "results": [],
-            "range_start": 0,
-            "range_end": 0,
-            "total_count": 0,
-            "total_pages": 0,
-            "page": 1,
-            "page_size": 10,
-        }
-        expected_response = fake_payload
-
-        with patch(
-            "app.modules.finance.routes.io_search_routes.io_search_api.list_generic_insertion_orders_page",
-            return_value=fake_payload,
-        ) as list_mock:
-            response = self.client.get("/api/v1/finance/insertion-orders?page=1&page_size=10")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), expected_response)
-        list_mock.assert_called_once()
-
-    def test_finance_search_route_returns_paged_payload(self):
-        app.dependency_overrides[get_current_user] = self._active_user
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-        fake_payload = {
-            "results": [
-                {
-                    "id": 1,
-                    "io_number": "IO-1",
-                    "customer_name": "Campaign A",
-                    "status": "draft",
-                    "currency": "USD",
-                    "total_amount": "100.00",
-                }
-            ],
-            "range_start": 1,
-            "range_end": 1,
-            "total_count": 1,
-            "total_pages": 1,
-            "page": 1,
-            "page_size": 10,
-        }
-
-        with patch(
-            "app.modules.finance.routes.io_search_routes.io_search_api.list_generic_insertion_orders_page",
-            return_value=fake_payload,
-        ) as search_mock:
-            response = self.client.get(
-                "/api/v1/finance/insertion-orders?search=Campaign%20A&page=1&page_size=10"
-            )
-
-        self.assertEqual(response.status_code, 200)
-        body = response.json()
-        self.assertEqual(body["range_start"], 1)
-        self.assertEqual(body["range_end"], 1)
-        self.assertEqual(body["total_count"], 1)
-        self.assertEqual(body["total_pages"], 1)
-        self.assertEqual(body["page"], 1)
-        self.assertEqual(body["results"][0]["io_number"], "IO-1")
-        self.assertEqual(body["results"][0]["customer_name"], "Campaign A")
-        search_mock.assert_called_once()
-
-    def test_finance_download_route_returns_file(self):
-        app.dependency_overrides[get_current_user] = self._active_user
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            file_path = Path(tmpdir) / "io.docx"
-            file_path.write_bytes(b"docx-bytes")
-
-            with patch(
-                "app.modules.finance.routes.io_search_routes.io_search_api.get_downloadable_insertion_order",
-                return_value=(file_path, "io.docx"),
-            ) as download_mock:
-                response = self.client.get("/api/v1/finance/insertion-orders/files/IO-1")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b"docx-bytes")
-        self.assertIn('filename="io.docx"', response.headers.get("content-disposition", ""))
-        download_mock.assert_called_once()
-
     def test_sales_opportunities_list_route_returns_paged_payload(self):
         app.dependency_overrides[require_user] = self._active_user
         app.dependency_overrides[get_db] = self._override_db
         fake_item = SalesOpportunityResponse(
             opportunity_id=11,
             opportunity_name="ACME Launch",
-            client="ACME",
             attachments=[],
         )
         fake_payload = {
@@ -1194,7 +1103,6 @@ class APIRouteTests(unittest.TestCase):
         created = SalesOpportunityResponse(
             opportunity_id=12,
             opportunity_name="ACME Launch",
-            client="ACME",
             assigned_to=7,
             attachments=[],
         )
@@ -1207,7 +1115,6 @@ class APIRouteTests(unittest.TestCase):
                 "/api/v1/sales/opportunities",
                 json={
                     "opportunity_name": "ACME Launch",
-                    "client": "ACME",
                 },
             )
 
@@ -1223,7 +1130,6 @@ class APIRouteTests(unittest.TestCase):
         created = SalesOpportunityResponse(
             opportunity_id=12,
             opportunity_name="ACME Launch",
-            client="ACME",
             assigned_to=None,
             attachments=[],
         )
@@ -1232,7 +1138,7 @@ class APIRouteTests(unittest.TestCase):
             "app.modules.sales.routes.opportunities_routes.reject_disabled_field_writes",
         ), patch(
             "app.modules.sales.routes.opportunities_routes.sanitize_disabled_field_payload",
-            return_value={"opportunity_name": "ACME Launch", "client": "ACME"},
+            return_value={"opportunity_name": "ACME Launch"},
         ) as sanitize_mock, patch(
             "app.modules.sales.routes.opportunities_routes.create_opportunity",
             return_value=created,
@@ -1241,7 +1147,6 @@ class APIRouteTests(unittest.TestCase):
                 "/api/v1/sales/opportunities",
                 json={
                     "opportunity_name": "ACME Launch",
-                    "client": "ACME",
                 },
             )
 
@@ -1250,31 +1155,6 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(sanitize_payload["assigned_to"], 7)
         create_data = create_mock.call_args.args[1]
         self.assertNotIn("assigned_to", create_data)
-
-    def test_sales_opportunity_attachment_upload_route_calls_service(self):
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-        payload = SalesOpportunityResponse(
-            opportunity_id=13,
-            opportunity_name="ACME Launch",
-            client="ACME",
-            attachments=["uploads/opportunities-attachments/file.pdf"],
-        )
-
-        with patch("app.core.permissions.require_department_module_access"), patch(
-            "app.modules.sales.routes.opportunities_routes.opportunities_api.upload_opportunity_attachments",
-            return_value=payload,
-        ) as upload_mock:
-            response = self.client.post(
-                "/api/v1/sales/opportunities/13/attachments",
-                files=[("files", ("spec.pdf", b"hello", "application/pdf"))],
-            )
-
-        self.assertEqual(response.status_code, 201)
-        self.assertEqual(response.json()["opportunity_id"], 13)
-        upload_mock.assert_called_once()
-        self.assertEqual(upload_mock.call_args.kwargs["tenant_id"], 1)
-        self.assertEqual(upload_mock.call_args.kwargs["current_user"].id, 7)
 
     def test_task_recycle_route_passes_current_user_to_visibility_filtered_service(self):
         pagination = Pagination(page=1, page_size=10, offset=0, limit=10)
@@ -1364,21 +1244,6 @@ class APIRouteTests(unittest.TestCase):
         self.assertEqual(response["id"], 11)
         get_mock.assert_called_once_with(db, 11, tenant_id=42, current_user=user)
         restore_mock.assert_called_once_with(db, task=task, current_user=user)
-
-    def test_sales_opportunity_create_finance_io_route_calls_service(self):
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-        fake_result = {"file_id": "doc-1", "doc_url": "https://docs.google.com/document/d/doc-1/edit"}
-
-        with patch("app.core.permissions.require_department_module_access"), patch(
-            "app.modules.sales.routes.opportunities_routes.opportunities_api.create_finance_io_for_opportunity",
-            return_value=fake_result,
-        ) as create_mock:
-            response = self.client.post("/api/v1/sales/opportunities/13/create_finance_io")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json(), fake_result)
-        create_mock.assert_called_once()
 
     def test_lead_conversion_route_checks_target_module_permissions(self):
         app.dependency_overrides[require_user] = self._active_user
@@ -1501,14 +1366,12 @@ class APIRouteTests(unittest.TestCase):
         before = SalesOpportunityResponse(
             opportunity_id=13,
             opportunity_name="ACME Launch",
-            client="ACME",
             sales_stage="proposal",
             attachments=[],
         )
         updated = SalesOpportunityResponse(
             opportunity_id=13,
             opportunity_name="ACME Launch",
-            client="ACME",
             sales_stage="closed_won",
             attachments=[],
         )
@@ -1946,44 +1809,6 @@ class APIRouteTests(unittest.TestCase):
         get_mock.assert_called_once_with(db=db, org_id=35, tenant_id=42)
         update_mock.assert_called_once()
         self.assertIs(update_mock.call_args.kwargs["organization"], existing)
-
-    def test_support_case_search_static_route_reaches_search_handler(self):
-        app.dependency_overrides[require_user] = self._active_user
-        app.dependency_overrides[get_db] = self._override_db
-        case = SimpleNamespace(
-            id=51,
-            case_number="CASE-51",
-            subject="Router issue",
-            category=None,
-            status="open",
-            priority="medium",
-            source=None,
-            contact_id=None,
-            organization_id=None,
-            opportunity_id=None,
-            quote_id=None,
-            order_id=None,
-            assigned_to_id=None,
-            assigned_to_name=None,
-            sla_due_at=None,
-            first_response_at=None,
-            resolved_at=None,
-            closed_at=None,
-            created_at=datetime(2026, 4, 11, 10, 0, 0),
-            updated_at=datetime(2026, 4, 11, 10, 0, 0),
-        )
-
-        with patch("app.core.permissions.require_department_module_access"), patch.object(
-            cases_routes,
-            "list_support_cases",
-            return_value=([case], 1),
-        ) as search_mock:
-            response = self.client.get("/api/v1/support/cases/search?query=router&page=1&page_size=10")
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["results"][0]["case_number"], "CASE-51")
-        search_mock.assert_called_once()
-        self.assertEqual(search_mock.call_args.kwargs["search"], "router")
 
     def test_report_module_export_static_suffix_reaches_export_handler(self):
         app.dependency_overrides[require_user] = self._active_user

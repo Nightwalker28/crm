@@ -6,6 +6,7 @@ import {
   LayoutDrivenQuickCreateFields,
   type LayoutDrivenQuickCreateFieldContext,
   QuickCreateField,
+  QuickCreatePicklistField,
   makeQuickCreateInputId,
   quickCreateInputType,
   validateLayoutDrivenQuickCreate,
@@ -20,7 +21,7 @@ import type {
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
 
-const TEXT_FIELD_KEYS = ["opportunity_name", "expected_close_date", "total_cost_of_project"] as const;
+const TEXT_FIELD_KEYS = ["opportunity_name", "expected_close_date", "amount", "next_step"] as const;
 
 export const opportunityQuickCreateInputId = makeQuickCreateInputId(
   "deal-quick-create",
@@ -73,14 +74,13 @@ export function OpportunityQuickCreateLayoutFields({
             valueId={value.contact_id}
             displayValue={value.contact_name}
             onDisplayValueChange={(contact_name) =>
-              onChange({ ...value, contact_id: null, contact_name, client: contact_name })
+              onChange({ ...value, contact_id: null, contact_name })
             }
             onSelect={(option) =>
               onChange({
                 ...value,
                 contact_id: option.id,
                 contact_name: option.label,
-                client: option.label,
                 // Picking a contact fills the account it already belongs to, unless the
                 // surface was opened from an account that already set one.
                 organization_id: value.organization_id ?? option.organization_id ?? null,
@@ -89,7 +89,7 @@ export function OpportunityQuickCreateLayoutFields({
                   : option.organization_name ?? value.organization_name,
               })
             }
-            onClear={() => onChange({ ...value, contact_id: null, contact_name: "", client: "" })}
+            onClear={() => onChange({ ...value, contact_id: null, contact_name: "" })}
             placeholder={field.placeholder ?? "Search contacts"}
             disabled={disabled}
             filters={contactOrganizationFilter ? { organizationId: contactOrganizationFilter } : undefined}
@@ -179,6 +179,14 @@ export function OpportunityQuickCreateLayoutFields({
       );
     }
 
+    if (field.field_key === "deal_type" || field.field_key === "source" || field.field_key === "lost_reason") {
+      const key = field.field_key;
+      return (
+        <QuickCreatePicklistField field={field} context={{ inputId, error, aria, disabled }} value={value[key]}
+          onChange={(next) => onChange({ ...value, [key]: next })} />
+      );
+    }
+
     const textKey = TEXT_FIELD_KEYS.find((key) => key === field.field_key);
     if (!textKey) return null;
     return (
@@ -186,7 +194,7 @@ export function OpportunityQuickCreateLayoutFields({
         <Input
           id={inputId}
           type={quickCreateInputType(field.field_type)}
-          inputMode={textKey === "total_cost_of_project" ? "decimal" : undefined}
+          inputMode={textKey === "amount" ? "decimal" : undefined}
           required={field.required}
           disabled={disabled}
           aria-invalid={aria.invalid}

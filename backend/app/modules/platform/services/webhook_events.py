@@ -41,7 +41,6 @@ RECORD_TYPES = {
     "sales_opportunity": "opportunity",
     "sales_quote": "quote",
     "sales_order": "order",
-    "finance_insertion_order": "invoice",
     "task": "task",
 }
 
@@ -210,18 +209,6 @@ WEBHOOK_EVENT_TYPES: tuple[WebhookEventType, ...] = (
         (_f("order_number"), _f("status"), _f("quote_id", "id")),
     ),
     WebhookEventType(
-        "invoice.overdue", 1, "invoice.overdue", "finance_insertion_order", "finance_io",
-        "An invoice became overdue.",
-        (
-            _f("invoice_number"),
-            _f("customer_name"),
-            _f("amount", "decimal"),
-            _f("currency"),
-            _f("due_date", "date"),
-            _f("status"),
-        ),
-    ),
-    WebhookEventType(
         "task.assigned", 1, "task.assigned", "task", "tasks",
         "A task gained assignees.",
         _TASK_FIELDS,
@@ -317,8 +304,8 @@ def _actor(event: CrmEvent) -> dict[str, Any]:
 def build_webhook_envelope(event: CrmEvent) -> dict[str, Any] | None:
     """The external form of a recorded event, or None when it must not leave Lynk.
 
-    None for an event with no catalogue entry (support cases, contracts, anything added
-    internally but not yet approved for export) and for an event with no public ID (it
+    None for an event with no catalogue entry (anything added internally but not yet
+    approved for export) and for an event with no public ID (it
     predates webhooks).
     """
 

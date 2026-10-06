@@ -8,7 +8,7 @@ import { Money } from "@/components/ui/Money";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientOrder } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-import { getOrderStatus } from "@/lib/statusStyles";
+import { getClientOrderStatus } from "@/lib/statusStyles";
 
 export default function ClientOrderDetailPage() {
   const params = useParams();
@@ -20,18 +20,18 @@ export default function ClientOrderDetailPage() {
     // Archetype 2, read-only (§4.7): no `spine`. Nothing on a portal order edits in place,
     // so the rail would be 20rem of read-only fields.
     <RecordWorkspace
-      title={order?.external_reference ?? "Order"}
-      description="Review the order's line items and total."
+      title={order?.order_number ?? "Order"}
+      description={order?.notes ? `Your note: ${order.notes}` : "Review the order's line items and total."}
       backHref="/client/orders"
       backLabel="Orders"
       isLoading={orderQuery.isLoading}
       hasError={Boolean(orderQuery.error) || (!orderQuery.isLoading && !order)}
       onRetry={() => void orderQuery.refetch()}
-      status={order ? <StatusValue status={getOrderStatus(order.status)} context="record" /> : null}
+      status={order ? <StatusValue status={getClientOrderStatus(order.status)} context="record" /> : null}
       subtitle={
         order ? (
           <>
-            <Money amount={order.subtotal_amount} currency={order.currency} />
+            <Money amount={order.grand_total} currency={order.currency} />
             <span>Placed {formatDateTime(order.created_at)}</span>
           </>
         ) : null
@@ -44,9 +44,8 @@ export default function ClientOrderDetailPage() {
             items={order.line_items.map((line) => ({
               id: line.id,
               name: line.name,
-              description: line.item_type,
               quantity: line.quantity,
-              unit_price: line.unit_price_snapshot,
+              unit_price: line.unit_price,
               line_total: line.line_total,
             }))}
             currency={order.currency}

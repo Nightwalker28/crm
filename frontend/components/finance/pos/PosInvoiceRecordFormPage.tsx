@@ -54,6 +54,8 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { invoiceDisplayNumber, type PosInvoice } from "@/hooks/finance/usePosInvoices";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, todayIsoDate } from "@/lib/datetime";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type InvoiceForm = {
   customer_name: string;
@@ -75,6 +77,7 @@ type InvoiceForm = {
   tax_rate: string;
   payment_terms: string;
   notes: string;
+  custom_fields: Record<string, unknown>;
 };
 const EMPTY_FORM: InvoiceForm = {
   customer_name: "",
@@ -95,9 +98,10 @@ const EMPTY_FORM: InvoiceForm = {
   tax_rate: "0",
   payment_terms: "",
   notes: "",
+  custom_fields: {},
 };
 /** What an issued invoice still lets you change (12c §3.3); the server refuses the rest. */
-const ISSUED_EDITABLE_KEYS = ["due_date", "notes", "payment_terms", "template_id", "accent_color"] as const;
+const ISSUED_EDITABLE_KEYS = ["due_date", "notes", "payment_terms", "template_id", "accent_color", "custom_fields"] as const;
 const TEMPLATES = [
   { value: "modern", label: "Modern" },
   { value: "classic", label: "Classic" },
@@ -111,7 +115,7 @@ function numberValue(value: string) {
 type InvoiceSeed = { form: InvoiceForm; lines: TransactionLineItem[] };
 
 async function fetchInvoiceForEdit(invoiceId: string) {
-  const res = await apiFetch(`/finance/pos-invoices/${invoiceId}`);
+  const res = await apiFetch(`/finance/invoices/${invoiceId}`);
   const body = await res.json().catch(() => null);
   if (!res.ok) throw new Error("We could not load this invoice.");
   return body as PosInvoice;
@@ -122,6 +126,7 @@ function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
     return { form: { ...EMPTY_FORM, issue_date: todayIsoDate() }, lines: [createTransactionLineItem("invoice")] };
   return {
     form: {
+      custom_fields: invoice.custom_fields ?? {},
       customer_name: invoice.customer_name,
       customer_email: invoice.customer_email ?? "",
       customer_address: invoice.customer_address ?? "",
@@ -182,7 +187,7 @@ export default function PosInvoiceRecordFormPage({
         title="A void invoice cannot be changed"
         description="Open the invoice to see why it was voided; a corrected copy is a new draft."
         reset={() => void query.refetch()}
-        backHref={`/dashboard/finance/pos/${invoiceId}`}
+        backHref={`/dashboard/finance/invoices/${invoiceId}`}
         backLabel="Back to invoice"
       />
     );
@@ -191,7 +196,7 @@ export default function PosInvoiceRecordFormPage({
       <RouteErrorState
         title="Invoice could not be loaded"
         reset={() => void query.refetch()}
-        backHref="/dashboard/finance/pos"
+        backHref="/dashboard/finance/invoices"
         backLabel="Back to invoices"
       />
     );
@@ -233,7 +238,7 @@ function PosInvoiceRecordFormEditor({
   const router = useRouter();
   // R2 travels in both directions: the tab the operator left is on this page's own URL,
   // so Back, Cancel and the post-save redirect all return to it.
-  const listHref = "/dashboard/finance/pos";
+  const listHref = "/dashboard/finance/invoices";
   const backHref = useRecordTabHref(mode === "edit" && invoiceId ? `${listHref}/${invoiceId}` : listHref);
   const queryClient = useQueryClient();
   const currencies = useCompanyCurrencies(true);
@@ -306,7 +311,7 @@ function PosInvoiceRecordFormEditor({
       create_customer_if_missing: false,
       issue_date: form.issue_date || null,
       due_date: form.due_date || null,
-      payment_method: form.payment_method.trim() || null,
+      payment_method: form.payment_method || null,
       template_id: form.template_id,
       accent_color: form.accent_color,
       currency: form.currency,
@@ -314,6 +319,7 @@ function PosInvoiceRecordFormEditor({
       tax_rate: numberValue(form.tax_rate),
       payment_terms: form.payment_terms.trim() || null,
       notes: form.notes.trim() || null,
+      custom_fields: form.custom_fields,
       lines: lines.map((line) => ({
         ...(line.id ? { id: line.id } : {}),
         ...transactionCatalogLink(line),
@@ -336,17 +342,17 @@ function PosInvoiceRecordFormEditor({
       const body = payload();
       if (mode === "create" && intent === "issue") {
         body.issue = true;
-        if (form.paid_now === "yes") body.paid_now = { method: form.payment_method.trim() || null };
+        if (form.paid_now === "yes") body.paid_now = { method: form.payment_method || null };
       }
       const res = await apiFetch(
-        mode === "edit" ? `/finance/pos-invoices/${invoiceId}` : "/finance/pos-invoices",
+        mode === "edit" ? `/finance/invoices/${invoiceId}` : "/finance/invoices",
         { method: mode === "edit" ? "PUT" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
       );
       const saved = (await res.json().catch(() => null)) as { id?: number; detail?: string; invoice_number?: string | null } | null;
       if (!res.ok) throw new Error(typeof saved?.detail === "string" ? saved.detail : "Check the form and your connection, then try again.");
       let number = saved?.invoice_number ?? null;
       if (mode === "edit" && intent === "issue" && saved?.id) {
-        const issued = await apiFetch(`/finance/pos-invoices/${saved.id}/issue`, { method: "POST" });
+        const issued = await apiFetch(`/finance/invoices/${saved.id}/issue`, { method: "POST" });
         const issuedBody = (await issued.json().catch(() => null)) as { detail?: string; invoice_number?: string | null } | null;
         if (!issued.ok) throw new Error(typeof issuedBody?.detail === "string" ? `Saved as a draft, but it could not be issued: ${issuedBody.detail}` : "Saved as a draft, but it could not be issued.");
         number = issuedBody?.invoice_number ?? number;
@@ -701,6 +707,7 @@ function InvoiceSidebar({
           </Field>
         </fieldset>
       </FormSection>
+      <RecordCustomFieldsSection moduleKey="finance_pos" values={form.custom_fields} onChange={(custom_fields) => onChange({ ...form, custom_fields })} />
       {/* Money is recorded as payments on the issued invoice (12c §3.3). The one exception is
           the till: a walk-in sale is issued and paid in the same step. */}
       {showPaidNow ? (
@@ -717,11 +724,8 @@ function InvoiceSidebar({
               </Select>
             </Field>
             {form.paid_now === "yes" ? (
-              <Field>
-                <FieldLabel htmlFor="invoice-payment-method">Payment method</FieldLabel>
-                <Input id="invoice-payment-method" value={form.payment_method} placeholder="Cash, card…" maxLength={100}
-                  onChange={(event) => onChange({ ...form, payment_method: event.target.value })} />
-              </Field>
+              <PicklistField id="invoice-payment-method" listKey="payment_method" label="Payment method" value={form.payment_method}
+                onChange={(payment_method) => onChange({ ...form, payment_method })} />
             ) : null}
           </div>
         </FormSection>

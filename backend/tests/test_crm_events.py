@@ -204,10 +204,10 @@ class CrmEventHistoryTests(unittest.TestCase):
                 self.db,
                 tenant_id=10,
                 actor_user_id=None,
-                event_type="case.created",
-                entity_type="support_case",
+                event_type="order.created",
+                entity_type="sales_order",
                 entity_id=7,
-                payload={"subject": "Broken login"},
+                payload={"order_number": "SO-7"},
             )
 
         self.assertEqual(event.payload["_automation_dispatch"]["status"], "failed")

@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -24,6 +26,7 @@ class AdjustmentLinePayload(BaseModel):
 
 
 class AdjustmentPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     warehouse_id: int = Field(gt=0)
     mode: str
     reason: str = Field(min_length=1, max_length=120)
@@ -37,6 +40,7 @@ class TransferLinePayload(BaseModel):
 
 
 class TransferPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     from_warehouse_id: int = Field(gt=0)
     to_warehouse_id: int = Field(gt=0)
     notes: str | None = None

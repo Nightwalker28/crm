@@ -195,10 +195,24 @@ def export_filters(module_key: str, filters: dict[str, Any] | None) -> dict[str,
 
 def document_export_rows(db: Session, user, *, module_key: str, filters: dict[str, Any] | None = None) -> tuple[list[dict], tuple[str, ...]]:
     """Every row the module's list shows under `filters`, serialized as the list serializes them."""
+    from app.core.field_types import FieldContext
+    from app.modules.platform.services import custom_fields
+
     spec = document_export(module_key)
     query = spec.query(db, user, export_filters(module_key, filters))
     rows = query.order_by(None).order_by(spec.order_column).all()
-    return spec.serialize(db, user, rows), spec.headers
+    serialized = spec.serialize(db, user, rows)
+    # Picklist keys export as labels, and every custom field is a column (13b §3.3–3.4).
+    ctx = FieldContext(db, user.tenant_id)
+    definitions = custom_fields.export_columns(db, tenant_id=user.tenant_id, module_key=module_key)
+    values = custom_fields.load_custom_field_values_bulk(
+        db, tenant_id=user.tenant_id, module_key=module_key, record_ids=[row.id for row in rows]
+    ) if definitions else {}
+    for row, item in zip(rows, serialized):
+        ctx.picklists.labels_for_row(module_key, item)
+        item.update(custom_fields.export_cells(definitions, values.get(row.id), ctx))
+    headers = (*spec.headers, *[f"{custom_fields.CUSTOM_FIELD_FILTER_PREFIX}{definition.field_key}" for definition in definitions])
+    return serialized, headers
 
 
 

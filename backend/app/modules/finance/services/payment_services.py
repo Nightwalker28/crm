@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import get_finance_user_scope
 from app.core.pagination import Pagination, build_paged_response
+from app.modules.platform.services.custom_fields import load_custom_field_values_bulk, sync_custom_fields
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePaymentAllocation, FinancePosInvoice
 from app.modules.finance.services.document_amounts import ZERO, decimal_input, money
 from app.modules.finance.services.invoice_balances import refresh_credit_note_balance, refresh_invoice_balance
@@ -155,7 +157,7 @@ def record_payment(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
     payment = FinancePayment(
         tenant_id=tenant_id, number=allocate_business_number(db, tenant_id=tenant_id, scope=PAYMENTS_MODULE, prefix="PAY"),
         direction=direction, kind=kind, status="posted", organization_id=organization_id, contact_id=contact_id, party_name=party_name,
-        amount=total, currency=currencies.pop(), paid_on=paid_on, method=(payload.get("method") or "").strip()[:100] or None,
+        amount=total, currency=currencies.pop(), paid_on=paid_on, method=PicklistResolver(db, tenant_id).resolve("payment_method", payload.get("method"), field_key="method", field_label="Payment method"),
         reference=(payload.get("reference") or "").strip()[:200] or None, notes=(payload.get("notes") or "").strip() or None,
         created_by=actor_user_id,
     )
@@ -181,6 +183,9 @@ def record_payment(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
             refresh_bill_balance(db, document)
             _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, module_key="purchase_bills", entity_type="purchase_bill",
                 entity_id=document.id, action="payment.record", description=f"{what} {amount} {currency} ({payment.number})")
+    # Required custom fields bind the payment form, not a payment another flow records (13b §5 decision 9).
+    sync_custom_fields(db, tenant_id=tenant_id, module_key=PAYMENTS_MODULE, record=payment, payload=payload, created=True,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, module_key=PAYMENTS_MODULE, entity_type="finance_payment",
         entity_id=payment.id, action="create", description=f"Recorded {payment.number}: {total} {payment.currency} for "
         + ", ".join(row[5] or "document" for row in resolved))
@@ -285,7 +290,10 @@ def serialize_payment(payment: FinancePayment, labels: dict[tuple[str, int], str
 
 def serialize_payments(db: Session, payments: list[FinancePayment]) -> list[dict]:
     labels = _document_labels(db, payments)
-    return [serialize_payment(payment, labels) for payment in payments]
+    custom = load_custom_field_values_bulk(
+        db, tenant_id=payments[0].tenant_id, module_key=PAYMENTS_MODULE, record_ids=[payment.id for payment in payments]
+    ) if payments else {}
+    return [{**serialize_payment(payment, labels), "custom_fields": custom.get(payment.id) or None} for payment in payments]
 
 
 def payments_for(db: Session, *, tenant_id: int, invoice_id: int | None = None, bill_id: int | None = None, credit_note_id: int | None = None) -> list[dict]:

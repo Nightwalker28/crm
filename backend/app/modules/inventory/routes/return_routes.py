@@ -2,6 +2,8 @@
 
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -27,6 +29,7 @@ class ReturnLinePayload(BaseModel):
 
 
 class ReturnPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     reason: str = Field(min_length=1, max_length=120)
     warehouse_id: int | None = Field(default=None, gt=0)
     notes: str | None = None

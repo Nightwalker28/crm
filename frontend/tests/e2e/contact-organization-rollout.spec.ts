@@ -162,14 +162,12 @@ const accountSummary = {
   related_quotes: [],
   related_orders: [],
   related_invoices: [],
-  related_insertion_orders: [],
   inferred_services: [],
   contact_count: 0,
   opportunity_count: 0,
   quote_count: 0,
   order_count: 0,
   invoice_count: 0,
-  insertion_order_count: 0,
 };
 
 const contactSummary = {

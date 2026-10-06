@@ -5,6 +5,8 @@ that document's module."""
 from datetime import date
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -32,6 +34,7 @@ class CreditLinePayload(BaseModel):
 
 
 class CreditNotePayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     reason: str | None = Field(default=None, max_length=500)
     notes: str | None = None
     issue_date: date | None = None
@@ -56,6 +59,7 @@ class AllocationPayload(BaseModel):
 
 
 class PaymentPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     direction: str = Field(pattern="^(received|made)$")
     kind: str = Field(default="payment", pattern="^(payment|refund)$")
     paid_on: date | None = None

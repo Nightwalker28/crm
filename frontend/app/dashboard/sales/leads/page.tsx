@@ -94,6 +94,7 @@ export default function LeadsPage() {
         viewControls={<SavedViewSelector moduleKey="sales_leads" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
         actionControls={(
           <ModuleImportExportControls
+            picklistModuleKey="sales_leads"
             importEndpoint="/sales/leads/import"
             exportEndpoint="/sales/leads/export"
             exportMethod="POST"

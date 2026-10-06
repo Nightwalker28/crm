@@ -28,9 +28,12 @@ test("Blocking errors and suggestions stay separate, and only errors gate publis
   const publish = page.getByRole("button", { name: "Publish" });
   await expect(publish).toBeDisabled();
 
-  // Email is required by the Lead domain, so taking it off Quick Create is a blocking error
-  // rather than advice. The server decides that; the builder only has to show it as blocking.
+  // A lead needs an email or a phone (13a A9), so taking all three off Quick Create is a
+  // blocking error rather than advice. The server decides that; the builder only has to show
+  // it as blocking.
   await page.getByRole("button", { name: "Remove Email from the layout" }).click();
+  await page.getByRole("button", { name: "Remove Phone from the layout" }).click();
+  await page.getByRole("button", { name: "Remove Mobile from the layout" }).click();
 
   const errors = page.locator("[data-layout-error]");
   await expect(errors.first()).toBeVisible({ timeout: VALIDATION_TIMEOUT });
@@ -38,6 +41,8 @@ test("Blocking errors and suggestions stay separate, and only errors gate publis
   await expect(publish).toBeDisabled();
   // A blocking error means there is nothing truthful to preview.
   await expect(page.getByText("No preview available")).toBeVisible();
+
+  await expect(page.getByText(/at least one of Email, Phone or Mobile/)).toBeVisible();
 
   await page.getByRole("button", { name: "Add Email to the layout" }).click();
   await expect(page.locator("[data-layout-validation='valid']")).toBeVisible({ timeout: VALIDATION_TIMEOUT });

@@ -12,14 +12,15 @@ import { apiFetch } from "@/lib/api";
 import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
-const ALWAYS_SUBMITTED_FIELDS = ["opportunity_name", "contact_id", "custom_fields"];
+const ALWAYS_SUBMITTED_FIELDS = ["opportunity_name", "contact_id", "organization_id", "custom_fields"];
 
 export function validateOpportunityName(rawName: string | null | undefined): string | null {
   return (rawName ?? "").trim() ? null : "Deal name is required.";
 }
 
-export function validateOpportunityContact(contactId: number | null): string | null {
-  return contactId ? null : "Select an existing contact.";
+/** A deal belongs to an account, a contact, or both (13a H13). */
+export function validateOpportunityParty(form: Pick<OpportunityFormValue, "contact_id" | "organization_id">): string | null {
+  return form.contact_id || form.organization_id ? null : "Choose an account or a contact.";
 }
 
 export function buildOpportunityPayload(
@@ -36,8 +37,6 @@ export function buildOpportunityPayload(
   return pickEnabledModulePayload(
     {
       opportunity_name: text(form.opportunity_name),
-      // `client` is the denormalized contact name the domain keeps alongside the link.
-      client: text(form.contact_name),
       contact_id: form.contact_id,
       organization_id: form.organization_id,
       // An edit that clears the owner would otherwise reassign the deal to the editor.
@@ -46,17 +45,12 @@ export function buildOpportunityPayload(
       start_date: form.start_date || null,
       expected_close_date: form.expected_close_date || null,
       probability_percent: text(form.probability_percent) ? Number(form.probability_percent) : null,
-      total_cost_of_project: trim(form.total_cost_of_project),
+      amount: text(form.amount) ? text(form.amount) : null,
       currency_type: form.currency_type || null,
-      campaign_type: trim(form.campaign_type),
-      total_leads: trim(form.total_leads),
-      cpl: trim(form.cpl),
-      target_geography: trim(form.target_geography),
-      target_audience: trim(form.target_audience),
-      domain_cap: trim(form.domain_cap),
-      tactics: trim(form.tactics),
-      delivery_format: trim(form.delivery_format),
-      attachments: form.attachments,
+      deal_type: form.deal_type || null,
+      source: form.source || null,
+      next_step: trim(form.next_step),
+      lost_reason: form.lost_reason || null,
       custom_fields: customFieldValues,
     },
     moduleFields,

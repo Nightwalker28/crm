@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Planned outbound moves take only what no confirmed order holds. An adjustment or count
 # records physical reality instead, and releases holds that no longer fit (§3.2 of
 # 12a-erp-fulfilment.md).
-RESERVATION_RESPECTING_MOVES = {"website_order", "sales_order", "transfer_out", "delivery"}
+RESERVATION_RESPECTING_MOVES = {"sales_order", "transfer_out", "delivery"}
 
 
 @dataclass(frozen=True)

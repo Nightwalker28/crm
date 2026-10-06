@@ -25,7 +25,7 @@ RATE_PLACES = Decimal("0.00000001")
 COST_SOURCES = ("receipt", "opening", "average", "return", "reversal", "manual", "fallback", "missing")
 
 # Moves whose value is cost of goods sold, together with their reversals (same source type).
-COGS_SOURCE_TYPES = ("inventory_delivery", "sales_order", "website_order", "inventory_return")
+COGS_SOURCE_TYPES = ("inventory_delivery", "sales_order", "inventory_return")
 
 
 def money(value) -> Decimal:

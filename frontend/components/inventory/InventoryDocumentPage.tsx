@@ -21,6 +21,7 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { useInventoryDocument, useInventoryDocumentActions, useProductStock, useWarehouses, type InventoryDocument, type InventoryKind } from "@/hooks/inventory/useInventory";
 import { isForbiddenError } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type DraftLine = { key: number; productId: number | null; name: string; value: string; expected: string | null; unitCost: string };
 let nextKey = 1;
@@ -78,6 +79,7 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
   const doc = query.data;
@@ -93,6 +95,7 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
     setToWarehouseId(doc.to_warehouse_id ?? null);
     setMode(doc.mode ?? "quantity");
     setReason(doc.reason ?? ""); setNotes(doc.notes ?? "");
+    setCustomValues(doc.custom_fields ?? {});
     setLines(doc.lines?.map((line) => ({ key: nextKey++, productId: line.product_id, name: line.product_name,
       value: kind === "transfers" ? line.quantity ?? "" : doc.mode === "count" ? line.counted ?? "" : line.delta ?? "",
       expected: line.expected ?? null, unitCost: line.unit_cost ?? "" })) ?? [blankLine()]);
@@ -113,10 +116,10 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
     const ids = lines.map((line) => line.productId);
     if (new Set(ids).size !== ids.length) { setError("A product can appear only once."); return; }
     const payload = kind === "adjustments"
-      ? { warehouse_id: from, mode, reason: reason.trim(), notes: notes.trim() || null,
+      ? { custom_fields: customValues, warehouse_id: from, mode, reason: reason.trim(), notes: notes.trim() || null,
           lines: lines.map((line) => ({ product_id: line.productId!, ...(mode === "count" ? { counted: Number(line.value) } : { delta: Number(line.value) }),
             ...(line.unitCost.trim() && Number.isFinite(Number(line.unitCost)) && Number(line.unitCost) >= 0 ? { unit_cost: Number(line.unitCost) } : {}) })) }
-      : { from_warehouse_id: from, to_warehouse_id: toWarehouseId!, notes: notes.trim() || null,
+      : { custom_fields: customValues, from_warehouse_id: from, to_warehouse_id: toWarehouseId!, notes: notes.trim() || null,
           lines: lines.map((line) => ({ product_id: line.productId!, quantity: Number(line.value) })) };
     try {
       setError(null);
@@ -159,6 +162,8 @@ export function InventoryDocumentPage({ kind, documentId = null }: { kind: Inven
       {kind === "adjustments" ? <Field><FieldLabel htmlFor="inventory-reason">Reason</FieldLabel><Input id="inventory-reason" maxLength={120} value={reason} onChange={(event) => setReason(event.target.value)} disabled={!editable} /></Field> : null}
       <Field><FieldLabel htmlFor="inventory-notes">Notes</FieldLabel><Textarea id="inventory-notes" value={notes} onChange={(event) => setNotes(event.target.value)} disabled={!editable} /></Field>
     </div>
+    {editable ? <RecordCustomFieldsSection moduleKey={`inventory_${kind}`} values={customValues} onChange={setCustomValues} />
+      : doc ? <RecordCustomFieldsFacts moduleKey={`inventory_${kind}`} values={doc.custom_fields} /> : null}
     <section className="space-y-3"><div className="flex items-center justify-between gap-3"><h2 className="text-sm font-semibold text-copy-primary">Products</h2></div>
       {editable ? <LineItemsEditor<DraftLine>
           id={`inventory-${kind}`}

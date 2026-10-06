@@ -55,8 +55,8 @@ class ReportFixture(PipelineFixture):
     def deal(self, stage, *, owner=1, value="1000", close=date(2026, 8, 15), tenant_id=TENANT, **extra):
         self.next_id += 1
         self.db.add(SalesOpportunity(
-            opportunity_id=self.next_id, tenant_id=tenant_id, opportunity_name=f"Deal {self.next_id}", client="Acme",
-            sales_stage=stage, assigned_to=owner, total_cost_of_project=value, expected_close_date=close, **extra,
+            opportunity_id=self.next_id, tenant_id=tenant_id, opportunity_name=f"Deal {self.next_id}",
+            sales_stage=stage, assigned_to=owner, amount=value, expected_close_date=close, **{"organization_id": 1, **extra},
         ))
         self.db.commit()
         return self.next_id
@@ -88,9 +88,9 @@ class GroupingTests(ReportFixture):
         self.assertEqual(result["rows"][0]["labels"][0], self.stage_label("lead"))
 
     def test_the_deal_amount_is_a_number_that_sums(self):
-        self.deal("lead", value="1,000")
+        self.deal("lead", value="1000")
         self.deal("lead", value="250.50")
-        self.deal("lead", value="not a number")
+        self.deal("lead", value=None)
         result = self.run_report(_summary([{"field": "sales_stage"}], [{"aggregate": "sum", "field": "amount"}, {"aggregate": "avg", "field": "amount"}]))
         self.assertEqual(result["measures"][0]["label"], "Amount")
         self.assertEqual(result["rows"][0]["values"][0], 1250.5)
@@ -236,12 +236,12 @@ class DefinitionTests(ReportFixture):
         with self.assertRaises(HTTPException):
             self.normalize({"version": 2, "format": "matrix", "groupings": [{"field": "sales_stage"}]})
         with self.assertRaises(HTTPException):
-            self.normalize(_summary([{"field": "sales_stage"}], [{"aggregate": "sum", "field": "client"}]))
+            self.normalize(_summary([{"field": "sales_stage"}], [{"aggregate": "sum", "field": "opportunity_name"}]))
 
     def test_unknown_fields_drop_out_instead_of_failing(self):
-        normalized = self.normalize(_summary([{"field": "gone"}, {"field": "sales_stage"}], columns=["gone", "client"]))
+        normalized = self.normalize(_summary([{"field": "gone"}, {"field": "sales_stage"}], columns=["gone", "opportunity_name"]))
         self.assertEqual(normalized["groupings"], [{"field": "sales_stage", "granularity": None}])
-        self.assertEqual(normalized["columns"], ["client"])
+        self.assertEqual(normalized["columns"], ["opportunity_name"])
 
     def test_a_version_1_config_reads_as_version_2(self):
         normalized = self.normalize({"dimension": "expected_close_date", "metric": "sum", "metric_field": "amount", "view_mode": "pie", "filters": {}})

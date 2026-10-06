@@ -1,9 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { ArrowLeft, Menu } from "lucide-react";
 import CalendarSyncBridge from "@/components/calendar/CalendarSyncBridge";
 import Sidebar from "@/components/sidebar/Sidebar";
@@ -20,7 +20,7 @@ import { useSidebarUser } from "@/hooks/useSidebarUser";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getGuardedModuleRoutePrefixes, getModuleRegistryLabel, getRequiredModuleKeyForRoute, MODULE_REGISTRY, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { DASHBOARD_ROUTES, SETTINGS_ROUTES, canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
+import { DASHBOARD_ROUTES, SETTINGS_ROUTES, getFriendlyRouteLabel } from "@/lib/routes";
 
 const ADMIN_ONLY_PREFIXES = [
   SETTINGS_ROUTES.root,
@@ -67,7 +67,6 @@ function settingsPageTitle(pathname: string) {
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
   const [mobileNavigationOpen, setMobileNavigationOpen] = useState(false);
   const { isAdmin, isLoading } = useSidebarUser();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
@@ -97,19 +96,10 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const isCheckingModuleAccess = Boolean((moduleRoute || isCustomModulePath) && modulesLoading);
   const isCheckingAccess = isCheckingAdminAccess || isCheckingModuleAccess;
   const isBlocked = requiresAdmin && !isLoading && !isAdmin;
-  const canonicalPathname = canonicalizeDashboardHref(pathname);
-  const hasLegacyPathname = canonicalPathname !== pathname;
   const isModuleBlocked = Boolean(
     (moduleRoute && !modulesLoading && !allowedModuleNames.has(getRequiredModuleKeyForRoute(moduleRoute) ?? "")) ||
       (isCustomModulePath && !modulesLoading && !customModuleRoute),
   );
-
-  useEffect(() => {
-    if (hasLegacyPathname) {
-      router.replace(canonicalPathname);
-      return;
-    }
-  }, [canonicalPathname, hasLegacyPathname, router]);
 
   return (
     <div className="relative flex h-screen w-full overflow-hidden bg-app font-sans text-copy-secondary">

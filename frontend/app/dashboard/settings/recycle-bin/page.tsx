@@ -38,7 +38,6 @@ type RecycleResponse = {
 };
 
 const MODULE_OPTIONS = [
-  "finance_insertion_orders",
   "sales_leads",
   "sales_contacts",
   "sales_organizations",
@@ -75,7 +74,7 @@ export default function RecycleBinPage() {
   const queryClient = useQueryClient();
   const { confirm } = useConfirm();
   const { modules: customModules, error: customModulesError, refresh: refreshCustomModules } = useModuleBuilder();
-  const [moduleKey, setModuleKey] = useState("finance_insertion_orders");
+  const [moduleKey, setModuleKey] = useState("sales_leads");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [restoringKey, setRestoringKey] = useState<string | null>(null);
@@ -124,7 +123,6 @@ export default function RecycleBinPage() {
       await Promise.all([
         query.refetch(),
         queryClient.invalidateQueries({ queryKey: ["activity-log"] }),
-        queryClient.invalidateQueries({ queryKey: ["insertion-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-leads"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-organizations"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-contacts"] }),

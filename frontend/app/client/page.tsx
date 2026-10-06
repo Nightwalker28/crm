@@ -94,7 +94,7 @@ export default function ClientPortalHomePage() {
         {nextActions.length === 0 ? (
           <EmptyState
             title="Nothing needs your attention"
-            description="Quotes to review and tickets awaiting your reply will appear here."
+            description="Quotes to review and orders in progress will appear here."
           />
         ) : (
           <RowList label="Next actions" inset>

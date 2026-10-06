@@ -79,7 +79,7 @@ export function LeadQuickCreate({ open, onOpenChange, returnFocusRef, onCreated 
         const hasEmailField = layout.sections.some((section) =>
           section.fields.some((field) => field.field_key === "primary_email" && field.visible),
         );
-        const emailError = hasEmailField ? validateLeadEmail(form.primary_email) : null;
+        const emailError = hasEmailField ? validateLeadEmail(form) : null;
         if (emailError) nextErrors.primary_email = emailError;
       }
       return nextErrors;

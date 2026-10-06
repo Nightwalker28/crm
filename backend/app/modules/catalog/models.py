@@ -91,6 +91,15 @@ class CatalogProduct(Base):
     sku = Column(String(100), nullable=True, index=True)
     currency = Column(String(3), nullable=False, server_default="USD")
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
+    # The price quotes and orders start from; `public_unit_price` is the website's (13a C4).
+    list_price = Column(Numeric(12, 4), nullable=True)
+    tax_category = Column(String(100), nullable=True)
+    weight = Column(Numeric(12, 4), nullable=True)
+    weight_unit = Column(String(10), nullable=True)
+    length = Column(Numeric(12, 4), nullable=True)
+    width = Column(Numeric(12, 4), nullable=True)
+    height = Column(Numeric(12, 4), nullable=True)
+    dimension_unit = Column(String(10), nullable=True)
     stock_status = Column(String(20), nullable=False, server_default="untracked", index=True)
     stock_quantity = Column(Numeric(12, 4), nullable=True)
     track_inventory = Column(SmallInteger, nullable=False, server_default="0")
@@ -159,6 +168,8 @@ class CatalogService(Base):
     sku = Column(String(100), nullable=True, index=True)
     currency = Column(String(3), nullable=False, server_default="USD")
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
+    list_price = Column(Numeric(12, 4), nullable=True)
+    tax_category = Column(String(100), nullable=True)
     category_id = Column(BigInteger, ForeignKey("catalog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     cost_price = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(40), nullable=False, server_default="unit")
@@ -181,3 +192,23 @@ class CatalogService(Base):
 
 # Products point at their preferred vendor, an Account; load those tables wherever these are.
 import app.modules.sales.models  # noqa: E402, F401
+
+
+class CatalogItemImage(Base):
+    """More pictures of a product or service, after its main image (13a C4)."""
+
+    __tablename__ = "catalog_item_images"
+    __table_args__ = (
+        CheckConstraint("item_kind IN ('product', 'service')", name="ck_catalog_item_images_kind"),
+        Index("ix_catalog_item_images_item", "tenant_id", "item_kind", "item_id", "position"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    item_kind = Column(String(10), nullable=False)
+    item_id = Column(BigInteger, nullable=False)
+    media_path = Column(String(500), nullable=False)
+    media_content_type = Column(String(120), nullable=True)
+    media_original_filename = Column(String(255), nullable=True)
+    position = Column(Integer, nullable=False, server_default="0")
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

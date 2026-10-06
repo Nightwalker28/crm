@@ -12,7 +12,7 @@ from sqlalchemy import func, inspect as sqlalchemy_inspect, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.sqltypes import Date, DateTime, Numeric
 
-from app.modules.platform.models import TenantBackupRun, TenantRestoreRun
+from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistValue, TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import rebuild_reservations
@@ -395,7 +395,77 @@ def _restore_with_children(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int
     return result
 
 
+def _restore_picklists(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, authoritative: bool) -> None:
+    """The backup's picklists, before any record that stores their keys (13b §3.8).
+
+    Lists match by key and values by list and key, so a tenant whose lists were reseeded
+    under new ids gets the backup's values back. Missing values are always created; existing
+    ones take the backup's label, order and flags only when the backup wins. A backup taken
+    before picklists existed restores none, and its stray values show under *Values not in
+    the list*.
+    """
+    list_ids: dict[Any, int] = {}
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="picklists.json"):
+        picklist, _outcome = _upsert_child(db, tenant_id=tenant_id, model=Picklist, row=row, authoritative=authoritative, natural_key=("key",))
+        db.flush()
+        list_ids[row.get("id")] = picklist.id
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="picklist_values.json"):
+        if row.get("picklist_id") not in list_ids:
+            continue
+        row = {**row, "picklist_id": list_ids[row["picklist_id"]]}
+        if row.get("is_default"):
+            other = db.query(PicklistValue).filter(
+                PicklistValue.tenant_id == tenant_id, PicklistValue.picklist_id == row["picklist_id"],
+                PicklistValue.is_default.is_(True), PicklistValue.key != row.get("key"),
+            ).first()
+            if other is not None:
+                if authoritative:
+                    other.is_default = False
+                    db.flush()
+                else:
+                    row = {**row, "is_default": False}
+        _upsert_child(db, tenant_id=tenant_id, model=PicklistValue, row=row, authoritative=authoritative, natural_key=("picklist_id", "key"))
+        db.flush()
+    _sync_id_sequences(db, [Picklist, PicklistValue])
+
+
+def _restore_field_values(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, authoritative: bool) -> None:
+    """The set's custom field values (13b §3.8), after its records: definitions match by module
+    and key, values by record and definition, and a value whose record is not here is skipped."""
+    definitions = [row for row in _child_rows(zipf, tenant_id=tenant_id, filename="field_definitions.json") if row.get("module_key") == module_key]
+    if not definitions:
+        return
+    list_ids = {row.get("id"): row.get("key") for row in _child_rows(zipf, tenant_id=tenant_id, filename="picklists.json")}
+    current_lists = {key: list_id for list_id, key in db.query(Picklist.id, Picklist.key).filter(Picklist.tenant_id == tenant_id).all()}
+    definition_ids: dict[Any, int] = {}
+    for row in definitions:
+        row = {**row, "picklist_id": current_lists.get(list_ids.get(row.get("picklist_id"))) if row.get("picklist_id") else None,
+               "custom_module_id": row.get("custom_module_id")}
+        definition, _outcome = _upsert_child(db, tenant_id=tenant_id, model=FieldDefinition, row=row, authoritative=authoritative,
+                                             natural_key=("module_key", "field_key"))
+        db.flush()
+        definition_ids[row.get("id")] = definition.id
+    live = _tenant_ids(db, tenant_id=tenant_id, column=getattr(model, _primary_key_name(model)))
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="field_values.json"):
+        if row.get("module_key") != module_key or row.get("field_definition_id") not in definition_ids or row.get("record_id") not in live:
+            continue
+        row = {**row, "field_definition_id": definition_ids[row["field_definition_id"]]}
+        _upsert_child(db, tenant_id=tenant_id, model=FieldValue, row=row, authoritative=authoritative,
+                      natural_key=("module_key", "record_id", "field_definition_id"))
+    db.flush()
+    _sync_id_sequences(db, [FieldDefinition, FieldValue])
+
+
 def _restore_module_rows(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, mode: str, rows: list[dict[str, Any]]) -> dict[str, int]:
+    """One set, parents and children, then its custom field values, in the given mode."""
+    authoritative = mode in {"update_existing", "replace_module_data", WHOLE_TENANT_RESTORE_MODE}
+    _restore_picklists(db, zipf, tenant_id=tenant_id, authoritative=authoritative)
+    result = _restore_module_rows_only(db, zipf, tenant_id=tenant_id, module_key=module_key, model=model, mode=mode, rows=rows)
+    _restore_field_values(db, zipf, tenant_id=tenant_id, module_key=module_key, model=model, authoritative=authoritative)
+    return result
+
+
+def _restore_module_rows_only(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, mode: str, rows: list[dict[str, Any]]) -> dict[str, int]:
     """One set, parents and children, in the given mode."""
     if module_key == "inventory_stock":
         return _restore_inventory_bundle(db, zipf, tenant_id=tenant_id, mode=mode, warehouse_rows=rows)

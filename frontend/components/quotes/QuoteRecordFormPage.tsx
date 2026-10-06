@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -11,6 +11,7 @@ import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { customFieldInputId, ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import {
   FormSection,
   RecordFormLayout,
@@ -26,6 +27,17 @@ import {
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
+import { fetchDealForDocument, type DealForDocument } from "@/components/transactions/dealPrefill";
+import {
+  DocumentAddressesSection,
+  documentHeaderFrom,
+  documentHeaderInputId,
+  documentHeaderPayload,
+  DocumentTermsSection,
+  EMPTY_DOCUMENT_HEADER,
+  shippingChargeAmount,
+  type DocumentHeaderValue,
+} from "@/components/transactions/DocumentHeaderFields";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -58,6 +70,7 @@ import {
   useModuleFieldConfigs,
 } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 import { formatDateTime } from "@/lib/datetime";
 
 type QuoteForm = {
@@ -77,6 +90,7 @@ type QuoteForm = {
   expiry_date: string;
   currency: string;
   notes: string;
+  header: DocumentHeaderValue;
 };
 
 const EMPTY_FORM: QuoteForm = {
@@ -96,6 +110,7 @@ const EMPTY_FORM: QuoteForm = {
   expiry_date: "",
   currency: "USD",
   notes: "",
+  header: EMPTY_DOCUMENT_HEADER,
 };
 const STATUSES = [
   { value: "draft", label: "Draft" },
@@ -112,7 +127,8 @@ type QuoteEditSource = {
     | "organization_name"
     | "opportunity_name"
     | "assigned_to_name"
-  > & {
+    | "header"
+  > & Record<string, unknown> & {
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
     items?: Array<{
@@ -148,10 +164,24 @@ async function fetchQuoteForEdit(quoteId: string) {
   return body as QuoteEditSource;
 }
 
-function quoteSeed(source?: QuoteEditSource): QuoteSeed {
+function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): QuoteSeed {
   if (!source)
     return {
-      form: EMPTY_FORM,
+      // *Create quote* on a deal (13a H13): the deal's customer, currency and link.
+      form: deal
+        ? {
+            ...EMPTY_FORM,
+            title: deal.opportunity_name,
+            customer_name: deal.organization_name || deal.contact_name || "",
+            organization_id: deal.organization_id ?? null,
+            organization_name: deal.organization_name ?? "",
+            contact_id: deal.contact_id ?? null,
+            contact_name: deal.contact_name ?? "",
+            opportunity_id: deal.opportunity_id,
+            opportunity_name: deal.opportunity_name,
+            currency: deal.currency_type || EMPTY_FORM.currency,
+          }
+        : EMPTY_FORM,
       items: [createTransactionLineItem("quote")],
       customValues: {},
     };
@@ -179,6 +209,7 @@ function quoteSeed(source?: QuoteEditSource): QuoteSeed {
       expiry_date: quote.expiry_date ?? "",
       currency: quote.currency ?? "USD",
       notes: quote.notes ?? "",
+      header: documentHeaderFrom(quote),
     },
     items: quote.items?.length
       ? quote.items.map((item) => ({
@@ -209,7 +240,15 @@ export default function QuoteRecordFormPage({
     enabled: mode === "edit" && Boolean(quoteId),
     staleTime: 30_000,
   });
+  const dealId = useSearchParams().get("opportunity_id");
+  const dealQuery = useQuery({
+    queryKey: ["document-deal-prefill", dealId],
+    queryFn: () => fetchDealForDocument(dealId as string),
+    enabled: mode === "create" && Boolean(dealId),
+    staleTime: 30_000,
+  });
   if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
+  if (mode === "create" && dealId && dealQuery.isLoading) return <RouteLoadingState />;
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
@@ -219,10 +258,10 @@ export default function QuoteRecordFormPage({
         backLabel="Back to quotes"
       />
     );
-  const seed = quoteSeed(query.data);
+  const seed = quoteSeed(query.data, dealQuery.data);
   return (
     <QuoteRecordFormEditor
-      key={`${mode}:${quoteId ?? "new"}:${query.data?.quote.updated_at ?? ""}`}
+      key={`${mode}:${quoteId ?? "new"}:${query.data?.quote.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}`}
       mode={mode}
       quoteId={quoteId}
       seed={seed}
@@ -258,13 +297,18 @@ function QuoteRecordFormEditor({
   );
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const inputIdFor = useCallback(
+    (path: string) => documentHeaderInputId("quote", path) ?? customFieldInputId("sales_quotes", path),
+    [],
+  );
+  const serverErrors = useServerFormErrors(inputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const customFields = useModuleCustomFields("sales_quotes", true);
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
   const currencies = useCompanyCurrencies(true);
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
   const totals = useMemo(() => calculateTransactionTotals(items), [items]);
+  const shippingCharge = shippingChargeAmount(form.header);
   const snapshot = useMemo(
     () => JSON.stringify([form, items, customValues]),
     [form, items, customValues],
@@ -291,7 +335,7 @@ function QuoteRecordFormEditor({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const payload = pickEnabledModulePayload(
         {
           quote_number: form.quote_number.trim() || null,
@@ -306,6 +350,7 @@ function QuoteRecordFormEditor({
           expiry_date: form.expiry_date || null,
           currency: form.currency,
           notes: form.notes.trim() || null,
+          ...documentHeaderPayload(form.header),
           custom_fields: customValues,
         },
         moduleFields,
@@ -328,11 +373,8 @@ function QuoteRecordFormEditor({
           }),
         },
       );
-      const body = (await res.json().catch(() => null)) as {
-        quote_id?: number;
-        detail?: string;
-      } | null;
-      if (!res.ok) throw new Error("The quote could not be saved.");
+      if (!res.ok) throw await apiErrorFromResponse(res, "Check the form and your connection, then try again.");
+      const body = (await res.json().catch(() => null)) as { quote_id?: number } | null;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
         queryClient.invalidateQueries({
@@ -343,8 +385,8 @@ function QuoteRecordFormEditor({
       toast.success(mode === "edit" ? "Quote updated." : "Quote created.");
       const targetId = body?.quote_id ?? (quoteId ? Number(quoteId) : null);
       router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
-    } catch {
-      setSubmitError("Check the form and your connection, then try again.");
+    } catch (error) {
+      serverErrors.report(error, "Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
@@ -371,9 +413,10 @@ function QuoteRecordFormEditor({
         </Button>
       }
     >
-      {submitError ? (
-        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this quote.`}>{submitError}</FormErrorBanner>
+      {serverErrors.message ? (
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this quote.`}>{serverErrors.message}</FormErrorBanner>
       ) : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={inputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? form.quote_number : "Create quote"}
         sidebar={
@@ -381,6 +424,7 @@ function QuoteRecordFormEditor({
             form={form}
             onChange={setForm}
             totals={totals}
+            shippingCharge={shippingCharge}
             currencies={currencies.data ?? ["USD"]}
             moduleFields={moduleFields}
             mode={mode}
@@ -576,8 +620,16 @@ function QuoteRecordFormEditor({
           error={itemsError}
           idPrefix="quote"
         />
+        <DocumentAddressesSection idPrefix="quote" value={form.header} onChange={(header) => setForm({ ...form, header })} />
+        <DocumentTermsSection
+          idPrefix="quote"
+          value={form.header}
+          onChange={(header) => setForm({ ...form, header })}
+          showLostReason={form.status === "declined"}
+          lostReasonLabel="Declined reason"
+        />
         <FormSection
-          title="Terms and notes"
+          title="Title and notes"
           description="Customer-facing context included with the quote."
         >
           <FieldGroup columns={2}>
@@ -596,7 +648,7 @@ function QuoteRecordFormEditor({
             ) : null}
             {enabled("notes") ? (
               <Field className="md:col-span-2">
-                <FieldLabel htmlFor="quote-notes">Terms and notes</FieldLabel>
+                <FieldLabel htmlFor="quote-notes">Notes</FieldLabel>
                 <Textarea
                   id="quote-notes"
                   rows={6}
@@ -624,6 +676,7 @@ function QuoteRecordFormEditor({
           </FormSection>
         ) : null}
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }
@@ -632,6 +685,7 @@ function QuoteSummary({
   form,
   onChange,
   totals,
+  shippingCharge,
   currencies,
   moduleFields,
   mode,
@@ -639,6 +693,7 @@ function QuoteSummary({
   form: QuoteForm;
   onChange: (form: QuoteForm) => void;
   totals: { subtotal: number; discount: number; tax: number; total: number };
+  shippingCharge: number;
   currencies: string[];
   moduleFields: ReturnType<typeof useModuleFieldConfigs>["fields"];
   mode: "create" | "edit";
@@ -653,7 +708,8 @@ function QuoteSummary({
           { label: "Subtotal", amount: totals.subtotal },
           { label: "Discount", amount: totals.discount, negative: true },
           { label: "Tax", amount: totals.tax },
-          { label: "Total", amount: totals.total, resolved: true },
+          ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
+          { label: "Total", amount: totals.total + shippingCharge, resolved: true },
         ]}
       />
       <FormSection

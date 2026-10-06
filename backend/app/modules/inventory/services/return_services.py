@@ -23,6 +23,7 @@ from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
 def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, delivery_id: int | None = None):
@@ -176,6 +177,8 @@ def save_return(db: Session, *, tenant_id: int, actor_user_id: int | None, paylo
         doc.lines.append(InventoryReturnLine(tenant_id=tenant_id, delivery_line_id=line.id, order_line_id=line.order_line_id,
             product_id=line.product_id, quantity=quantity, restock=int(restock)))
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="inventory_returns", record=doc, payload=payload, created=return_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, doc=doc, action="update" if return_id else "create",
         description=f"{'Updated' if return_id else 'Created'} return {doc.number} against {delivery.number}")
     return doc
@@ -308,6 +311,8 @@ def serialize_return(db: Session, *, tenant_id: int, doc: InventoryReturn, inclu
             "quantity": line.quantity, "restock": bool(line.restock), "shipped": shipped.get(line.delivery_line_id),
             "returnable": shipped.get(line.delivery_line_id, Decimal(0)) - back.get(line.delivery_line_id, Decimal(0)),
         } for line in doc.lines]
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="inventory_returns", record_id=doc.id)
     return result
 
 

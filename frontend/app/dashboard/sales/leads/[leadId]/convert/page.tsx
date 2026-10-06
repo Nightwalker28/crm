@@ -14,6 +14,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { picklistMeaning, usePicklist } from "@/hooks/usePicklists";
 import { apiFetch } from "@/lib/api";
 
 type LeadSummary = { lead: { lead_id: number; first_name?: string | null; last_name?: string | null; company?: string | null; primary_email: string; status?: string | null } };
@@ -30,6 +31,7 @@ export default function ConvertLeadPage() {
   // Converting refetches the lead, which then reads as converted; the form's own result
   // screen must stay rather than be replaced by "already converted" (13a H11).
   const [convertedHere, setConvertedHere] = useState(false);
+  const { picklist: statusList } = usePicklist("lead_status");
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const summaryQuery = useQuery({ queryKey: ["sales-lead-summary", params.leadId], queryFn: () => fetchLeadSummary(params.leadId), enabled: Boolean(params.leadId), refetchOnWindowFocus: false });
   // Convert is a trip off the record like Edit is, so it returns to the tab it left from.
@@ -58,7 +60,7 @@ export default function ConvertLeadPage() {
   const leadName = `${lead.first_name || ""} ${lead.last_name || ""}`.trim() || lead.primary_email;
   return (
     <PageShell title={`Convert ${leadName}`} description="Confirm the account, contact and deal this lead becomes." actions={<Button asChild variant="ghost" size="sm"><Link href={backHref}><ArrowLeft />Back to lead</Link></Button>}>
-      {lead.status === "converted" && !convertedHere ? (
+      {picklistMeaning(statusList, lead.status) === "converted" && !convertedHere ? (
         <Card className="p-6"><p className="text-sm text-copy-secondary">This lead is already converted. Its timeline links the account, contact and deal it became.</p><Button asChild className="mt-4"><Link href={backHref}>Return to lead</Link></Button></Card>
       ) : <LeadConversionForm leadId={lead.lead_id} leadName={leadName} company={lead.company} capabilities={capabilities} onConverted={() => setConvertedHere(true)} />}
     </PageShell>

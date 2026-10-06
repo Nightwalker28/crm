@@ -17,6 +17,9 @@ from app.modules.platform.services.custom_fields import (
     validate_custom_field_payload,
 )
 from app.modules.sales.models import SalesOrganization
+from app.modules.platform.services.custom_fields import export_extension
+from app.core.amounts import parse_amount
+from app.modules.platform.services.picklists import PicklistResolver, picklist_error_reason
 from app.modules.sales.repositories import organizations_repository
 from app.modules.sales.schema import SalesOrganizationCreate, SalesOrganizationUpdate
 from app.modules.sales.services.time_utils import utc_now
@@ -30,12 +33,12 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
     organization.primary_phone = payload.primary_phone
     organization.secondary_phone = payload.secondary_phone
     organization.industry = payload.industry
+    organization.account_type = payload.account_type
     organization.annual_revenue = payload.annual_revenue
-    organization.billing_address = payload.billing_address
-    organization.billing_city = payload.billing_city
-    organization.billing_state = payload.billing_state
-    organization.billing_postal_code = payload.billing_postal_code
-    organization.billing_country = payload.billing_country
+    organization.employee_count = payload.employee_count
+    for prefix in ("billing", "shipping"):
+        for part in ("address", "street2", "city", "state", "postal_code", "country"):
+            setattr(organization, f"{prefix}_{part}", getattr(payload, f"{prefix}_{part}"))
     organization.is_vendor = int(bool(getattr(payload, "is_vendor", False)))
     organization.payment_terms_days = getattr(payload, "payment_terms_days", None)
     organization.custom_data = payload.custom_fields or None
@@ -53,6 +56,15 @@ def create_organization(
     """Persist a new organization using the current user as the assignee."""
     if payload.assigned_to is not None and not organizations_repository.user_exists(db, tenant_id=current_user.tenant_id, user_id=payload.assigned_to):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Assigned user not found")
+    picked = PicklistResolver(db, current_user.tenant_id).normalize(
+        "sales_organizations",
+        {
+            "industry": payload.industry,
+            "account_type": payload.account_type,
+            "billing_country": payload.billing_country,
+            "shipping_country": payload.shipping_country,
+        },
+    )
     payload = payload.model_copy(
         update={
             "custom_fields": validate_custom_field_payload(
@@ -61,6 +73,7 @@ def create_organization(
                 module_key="sales_organizations",
                 payload=payload.custom_fields,
             ),
+            **picked,
         }
     )
     ensure_single_duplicate_action(
@@ -272,6 +285,7 @@ def update_existing_organization(
 ) -> SalesOrganization:
     """Update an already-loaded organization."""
     data = payload.model_dump(exclude_unset=True)
+    PicklistResolver(db, tenant_id).normalize("sales_organizations", data, existing=organization)
     if "is_vendor" in data:
         data["is_vendor"] = int(bool(data["is_vendor"]))
     if "assigned_to" in data:
@@ -381,10 +395,7 @@ def restore_organization(db: Session, org_id: int, *, tenant_id: int) -> SalesOr
     )
 
 
-REQUIRED_IMPORT_FIELDS = {
-    "org_name",
-    "primary_email",
-}
+REQUIRED_IMPORT_FIELDS = {"org_name"}
 
 
 def import_organizations_from_csv(
@@ -396,8 +407,10 @@ def import_organizations_from_csv(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
 ) -> dict:
     """Bulk import organizations from CSV content."""
+    resolver = PicklistResolver(db, current_user.tenant_id, allow_create=add_unknown_picklist_values)
     mode = resolve_duplicate_mode(
         duplicate_mode=duplicate_mode,
         default_mode=default_duplicate_mode,
@@ -423,12 +436,12 @@ def import_organizations_from_csv(
 
         org_name = data.get("org_name")
         primary_email = data.get("primary_email")
-        if not org_name or not primary_email:
+        if not org_name:
             failures.append(
                 {
                     "row_number": idx,
                     "record_identifier": org_name or primary_email,
-                    "reason": "Missing required fields 'org_name' and/or 'primary_email'.",
+                    "reason": "Missing required field 'org_name'.",
                 }
             )
             continue
@@ -490,18 +503,32 @@ def import_organizations_from_csv(
             "secondary_phone": data.get("secondary_phone"),
             "secondary_email": data.get("secondary_email"),
             "industry": data.get("industry"),
-            "annual_revenue": data.get("annual_revenue"),
+            "annual_revenue": parse_amount(data.get("annual_revenue")),
+            "employee_count": data.get("employee_count") or None,
+            "account_type": data.get("account_type"),
             "billing_address": data.get("billing_address"),
             "billing_city": data.get("billing_city"),
             "billing_state": data.get("billing_state"),
             "billing_postal_code": data.get("billing_postal_code"),
             "billing_country": data.get("billing_country"),
+            "billing_street2": data.get("billing_street2"),
+            "shipping_address": data.get("shipping_address"),
+            "shipping_street2": data.get("shipping_street2"),
+            "shipping_city": data.get("shipping_city"),
+            "shipping_state": data.get("shipping_state"),
+            "shipping_postal_code": data.get("shipping_postal_code"),
+            "shipping_country": data.get("shipping_country"),
         }
         payload_data = {
             field: value
             for field, value in payload_data.items()
-            if field in imported_fields or field in {"org_name", "primary_email"}
+            if field in imported_fields or field in {"org_name"}
         }
+        try:
+            resolver.normalize("sales_organizations", payload_data, existing=existing)
+        except HTTPException as exc:
+            failures.append({"row_number": row_number, "record_identifier": org_name, "reason": picklist_error_reason(exc)})
+            continue
 
         if existing and mode == DuplicateMode.overwrite:
             update_organization(
@@ -576,17 +603,32 @@ EXPORT_HEADERS = [
     "billing_state",
     "billing_postal_code",
     "billing_country",
+    "account_type",
+    "employee_count",
+    "shipping_address",
+    "shipping_city",
+    "shipping_state",
+    "shipping_postal_code",
+    "shipping_country",
     "assigned_to",
     "created_time",
 ]
 
 
-def _serialize_orgs_to_csv(rows: list[SalesOrganization], field_keys: list[str] | None = None) -> bytes:
+def _serialize_orgs_to_csv(
+    rows: list[SalesOrganization], field_keys: list[str] | None = None, labels: PicklistResolver | None = None
+) -> bytes:
     headers = [field for field in (field_keys or EXPORT_HEADERS) if field in EXPORT_HEADERS]
     if not headers:
         headers = ["org_id", "org_name", "primary_email"]
+    custom_headers, custom_cells = ([], {})
+    if labels is not None and rows:
+        custom_headers, custom_cells = export_extension(
+            labels.db, tenant_id=labels.tenant_id, module_key="sales_organizations", record_ids=[org.org_id for org in rows],
+            field_keys=[key for key in field_keys or [] if key.startswith("custom:")] or None,
+        )
     return dict_rows_to_csv_bytes(
-        headers=headers,
+        headers=[*headers, *custom_headers],
         rows=(
             {
                 "org_id": org.org_id,
@@ -596,15 +638,23 @@ def _serialize_orgs_to_csv(rows: list[SalesOrganization], field_keys: list[str] 
                 "primary_phone": org.primary_phone,
                 "secondary_phone": org.secondary_phone,
                 "secondary_email": org.secondary_email,
-                "industry": org.industry,
+                "industry": labels.label("industry", org.industry) if labels else org.industry,
                 "annual_revenue": org.annual_revenue,
                 "billing_address": org.billing_address,
                 "billing_city": org.billing_city,
                 "billing_state": org.billing_state,
                 "billing_postal_code": org.billing_postal_code,
-                "billing_country": org.billing_country,
+                "billing_country": labels.label("country", org.billing_country) if labels else org.billing_country,
+                "account_type": labels.label("account_type", org.account_type) if labels else org.account_type,
+                "employee_count": org.employee_count,
+                "shipping_address": org.shipping_address,
+                "shipping_city": org.shipping_city,
+                "shipping_state": org.shipping_state,
+                "shipping_postal_code": org.shipping_postal_code,
+                "shipping_country": labels.label("country", org.shipping_country) if labels else org.shipping_country,
                 "assigned_to": org.assigned_to,
                 "created_time": org.created_time.isoformat() if org.created_time else None,
+                **custom_cells.get(org.org_id, {}),
             }
             for org in rows
         ),
@@ -619,6 +669,7 @@ def export_organizations(
     field_keys: list[str] | None = None,
 ) -> tuple[Path, dict]:
     """Export organizations to a ZIP of CSV batches (1k rows per batch)."""
+    labels = PicklistResolver(db, tenant_id)
     query = (
         db.query(SalesOrganization)
         .filter(
@@ -634,7 +685,7 @@ def export_organizations(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",
-        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys),
+        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys, labels=labels),
     )
 
 
@@ -647,6 +698,7 @@ def export_organizations_for_view(
     any_filter_conditions: list[dict] | None = None,
     field_keys: list[str] | None = None,
 ) -> tuple[Path, dict]:
+    labels = PicklistResolver(db, tenant_id)
     query = (
         organizations_repository.build_organization_query(
             db,
@@ -661,5 +713,5 @@ def export_organizations_for_view(
         rows=query.yield_per(500),
         batch_size=EXPORT_BATCH_SIZE,
         file_prefix="organizations",
-        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys),
+        serialize_row=lambda rows: _serialize_orgs_to_csv(rows, field_keys=field_keys, labels=labels),
     )

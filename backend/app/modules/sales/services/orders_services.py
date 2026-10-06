@@ -9,6 +9,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.module_filters import apply_filter_conditions
+from app.modules.platform.services.custom_fields import sync_custom_fields
+from app.modules.sales.services.document_fields import carried_fields, fill_addresses_from_account, normalize_document_fields
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.catalog.services.line_links import normalize_catalog_line_links
 from app.modules.catalog.models import CatalogProduct
@@ -39,6 +41,7 @@ ORDER_SORT_FIELDS = {
     "delivery_status": SalesOrder.delivery_status,
     "invoice_status": SalesOrder.invoice_status,
     "priority": SalesOrder.priority,
+    "source": SalesOrder.source,
     "currency": SalesOrder.currency,
     "subtotal": SalesOrder.subtotal,
     "tax_total": SalesOrder.tax_total,
@@ -114,13 +117,14 @@ def _ensure_linked_records(db: Session, data: dict, *, tenant_id: int) -> None:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Owner not found")
 
 
-def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, current_user, partial: bool = False) -> dict:
+def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, current_user, partial: bool = False, existing: SalesOrder | None = None) -> dict:
     data = dict(payload)
+    normalize_document_fields(db, data, tenant_id=tenant_id, module_key="sales_orders", existing=existing)
     if "order_number" in data:
         data["order_number"] = _coerce_optional(data["order_number"])
         if not data["order_number"]:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order number is required")
-    for field in {"delivery_address", "payment_terms", "notes"}:
+    for field in {"payment_terms", "notes"}:
         if field in data:
             data[field] = _coerce_optional(data[field])
     for field in {"quote_id", "organization_id", "contact_id", "opportunity_id", "owner_id"}:
@@ -156,6 +160,7 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
     elif "warehouse_id" in data and not data["warehouse_id"]:
         data.pop("warehouse_id")
     _ensure_linked_records(db, data, tenant_id=tenant_id)
+    fill_addresses_from_account(db, data, tenant_id=tenant_id, existing=existing)
     if data.get("warehouse_id"):
         warehouse = db.query(InventoryWarehouse).filter(InventoryWarehouse.id == data["warehouse_id"], InventoryWarehouse.tenant_id == tenant_id, InventoryWarehouse.deleted_at.is_(None)).first()
         if warehouse is None:
@@ -163,6 +168,12 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
         if not warehouse.is_active:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{warehouse.name} is inactive")
     return data
+
+
+def _refresh_total(order: SalesOrder) -> None:
+    """Lines plus the shipping charge (13b §5 decision 8)."""
+    money = lambda value: Decimal(value or 0)  # noqa: E731
+    order.grand_total = (money(order.subtotal) - money(order.discount_total) + money(order.tax_total) + money(order.shipping_charge)).quantize(Decimal("0.01"))
 
 
 def _normalize_items(db: Session, items: list[dict], *, tenant_id: int) -> list[SalesOrderItem]:
@@ -275,6 +286,9 @@ def build_orders_query(
         "delivery_status": {"expression": SalesOrder.delivery_status, "type": "text"},
         "invoice_status": {"expression": SalesOrder.invoice_status, "type": "text"},
         "priority": {"expression": SalesOrder.priority, "type": "text"},
+        "source": {"expression": SalesOrder.source, "type": "text"},
+        "channel": {"expression": SalesOrder.channel, "type": "text"},
+        "external_reference": {"expression": SalesOrder.external_reference, "type": "text"},
         "waiting_for_stock": {"expression": _waiting_for_stock_expression(), "type": "boolean"},
     }
     query = apply_filter_conditions(query, conditions=all_filter_conditions, logic="all", field_map=field_map)
@@ -285,6 +299,7 @@ def build_orders_query(
             or_(
                 func.lower(SalesOrder.order_number).like(pattern),
                 func.lower(SalesOrder.status).like(pattern),
+                func.lower(func.coalesce(SalesOrder.external_reference, "")).like(pattern),
                 func.lower(func.coalesce(SalesQuote.customer_name, "")).like(pattern),
                 func.lower(func.coalesce(SalesQuote.quote_number, "")).like(pattern),
             )
@@ -348,6 +363,9 @@ def get_order_by_quote(db: Session, *, tenant_id: int, quote_id: int) -> SalesOr
 
 def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     items_payload = payload.pop("items", []) or []
+    # Quote conversion, the portal and website orders send none: required custom fields bind
+    # the order form only (13b §5 decision 9).
+    custom_payload = {"custom_fields": payload.pop("custom_fields")} if "custom_fields" in payload else {}
     data = _normalize_order_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
     normalized_items = _normalize_items(db, items_payload, tenant_id=current_user.tenant_id)
     if normalized_items:
@@ -361,6 +379,7 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
         )
     order = SalesOrder(tenant_id=current_user.tenant_id, **data)
     order.items = normalized_items
+    _refresh_total(order)
     db.add(order)
     try:
         db.flush()
@@ -369,6 +388,8 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
             deliver_remaining(db, tenant_id=order.tenant_id, actor_user_id=actor_user_id, order=order)
         reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
         refresh_delivery_status(db, order=order)
+        sync_custom_fields(db, tenant_id=order.tenant_id, module_key="sales_orders", record=order, payload=custom_payload,
+                           created=True, enforce_required=bool(custom_payload))
         # The caller commits (13a E5): the route's unit of work, quote conversion, the portal.
         db.flush()
     except IntegrityError as exc:
@@ -397,6 +418,7 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
         "tax_total": quote.tax_amount,
         "discount_total": quote.discount_amount,
         "grand_total": quote.total_amount,
+        **carried_fields(quote),
         "owner_id": quote.assigned_to or (current_user.id if current_user else None),
         "items": [
             {
@@ -429,6 +451,7 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
 
 
 def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_user_id: int | None = None) -> SalesOrder:
+    custom_payload = {"custom_fields": payload.pop("custom_fields")} if "custom_fields" in payload else {}
     previous_status = order.status
     next_status = payload.get("status", previous_status)
     if previous_status == "cancelled" and next_status != "cancelled":
@@ -452,7 +475,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
     if payload.get("warehouse_id") and payload["warehouse_id"] != order.warehouse_id and has_live_deliveries(db, tenant_id=order.tenant_id, order_id=order.id):
         raise HTTPException(status_code=409, detail="The warehouse cannot change once the order has deliveries")
     items_payload = payload.pop("items", None)
-    data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True)
+    data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True, existing=order)
     normalized_items = None
     removed_line_ids: list[int] = []
     if items_payload is not None:
@@ -491,6 +514,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         setattr(order, field, value)
     if normalized_items is not None:
         order.items = normalized_items
+    _refresh_total(order)
     db.add(order)
     try:
         db.flush()
@@ -500,6 +524,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         # Confirmed: hold what each line needs. Draft, fulfilled or cancelled: release everything.
         reserve_for_order(db, tenant_id=order.tenant_id, order=order, actor_user_id=actor_user_id)
         refresh_delivery_status(db, order=order)
+        sync_custom_fields(db, tenant_id=order.tenant_id, module_key="sales_orders", record=order, payload=custom_payload, created=False)
         db.flush()
     except IntegrityError as exc:
         db.rollback()

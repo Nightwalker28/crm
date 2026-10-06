@@ -33,6 +33,7 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type DraftLine = { key: number; productId: number | null; name: string; description: string; quantity: string; unitCost: string };
 let nextKey = 1;
@@ -75,6 +76,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [panel, setPanel] = useState<"close" | "cancel" | null>(null);
   const [reason, setReason] = useState("");
 
@@ -87,6 +89,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const seedKey = isNew ? "new" : order ? `order-${order.id}-${order.status}-${order.updated_at}` : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(order?.custom_fields ?? {});
     setVendorId(order?.vendor_id ?? null);
     setVendorName(order?.vendor_name ?? "");
     setWarehouseId(order?.warehouse_id ?? null);
@@ -115,6 +118,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       setError("Choose a product and enter a quantity above zero and a unit cost on every line."); return;
     }
     const payload = {
+      custom_fields: customValues,
       vendor_id: vendorId, warehouse_id: warehouseId, currency: currencyCode, exchange_rate: foreign && exchangeRate.trim() ? exchangeRate.trim() : null, expected_date: expectedDate || null,
       vendor_reference: vendorReference.trim() || null, notes: notes.trim() || null,
       lines: lines.map((line) => ({ product_id: line.productId!, description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost })),
@@ -252,6 +256,8 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             .catch((failure) => toast.error(failure instanceof Error ? failure.message : "The exchange rate could not be saved."))}>Save rate</Button>
         </div>
       ) : null}
+
+      {editable ? <RecordCustomFieldsSection moduleKey="purchase_orders" values={customValues} onChange={setCustomValues} /> : order ? <RecordCustomFieldsFacts moduleKey="purchase_orders" values={order.custom_fields} /> : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

@@ -1,17 +1,14 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, status
 from sqlalchemy.orm import Session
 
-from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.database import get_db
-from app.core.permissions import require_action_access
-from app.core.security import require_admin
+from app.core.permissions import require_action_access, require_module_access
 from app.modules.website_integrations.schema import (
     PublicWebsiteCatalogItemResponse,
     PublicWebsiteCatalogListResponse,
     PublicWebsiteOrderCreateRequest,
     WebsiteIntegrationApiKeyCreateRequest,
     WebsiteIntegrationApiKeyResponse,
-    WebsiteOrderStatusUpdateRequest,
     WebsiteOrderResponse,
 )
 from app.modules.website_integrations.services.website_integration_services import (
@@ -23,9 +20,6 @@ from app.modules.website_integrations.services.website_integration_services impo
     get_public_catalog_item_by_slug_or_404,
     list_api_keys,
     list_catalog_items,
-    list_orders,
-    list_orders_cursor,
-    create_pos_invoice_for_order,
     log_public_api_request,
     resolve_public_api_key,
     revoke_api_key,
@@ -33,11 +27,18 @@ from app.modules.website_integrations.services.website_integration_services impo
     serialize_api_key,
     serialize_catalog_item,
     serialize_order,
-    update_order_status,
 )
 
 
-router = APIRouter(prefix="/integrations", tags=["Website Integrations"])
+MODULE_KEY = "website_integrations"
+
+# CRM-user routes: the module's three access layers (13a B7). Keys are configuration; the
+# published catalog is a view. The public API below authenticates by integration key only.
+router = APIRouter(
+    prefix="/integrations",
+    tags=["Website Integrations"],
+    dependencies=[Depends(require_module_access(MODULE_KEY))],
+)
 public_router = APIRouter(prefix="/integrations/public", tags=["Website Integration Public API"])
 
 
@@ -97,7 +98,7 @@ def _public_order_key_context(
 @router.get("/api-keys", response_model=list[WebsiteIntegrationApiKeyResponse])
 def get_integration_api_keys(
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_action_access(MODULE_KEY, "configure")),
 ):
     keys = list_api_keys(db, tenant_id=current_user.tenant_id)
     return [WebsiteIntegrationApiKeyResponse.model_validate(serialize_api_key(key)) for key in keys]
@@ -107,7 +108,7 @@ def get_integration_api_keys(
 def create_integration_api_key_route(
     payload: WebsiteIntegrationApiKeyCreateRequest,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_action_access(MODULE_KEY, "configure")),
 ):
     key, raw_key = create_api_key(
         db,
@@ -122,7 +123,7 @@ def create_integration_api_key_route(
 def revoke_integration_api_key_route(
     key_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_action_access(MODULE_KEY, "configure")),
 ):
     key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
     key = revoke_api_key(db, key=key, actor_user_id=current_user.id)
@@ -133,7 +134,7 @@ def revoke_integration_api_key_route(
 def rotate_integration_api_key_route(
     key_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_action_access(MODULE_KEY, "configure")),
 ):
     key = get_api_key_or_404(db, tenant_id=current_user.tenant_id, key_id=key_id)
     key, raw_key = rotate_api_key(db, key=key, actor_user_id=current_user.id)
@@ -147,7 +148,7 @@ def get_published_catalog_items(
     limit: int = Query(default=25, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
+    current_user=Depends(require_action_access(MODULE_KEY, "view")),
 ):
     items, total = list_catalog_items(
         db,
@@ -164,72 +165,6 @@ def get_published_catalog_items(
         limit=limit,
         offset=offset,
     )
-
-
-@router.get("/orders", response_model=list[WebsiteOrderResponse])
-def get_website_orders(
-    limit: int = Query(default=50, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
-):
-    orders, _total = list_orders(db, tenant_id=current_user.tenant_id, limit=limit, offset=offset)
-    return [WebsiteOrderResponse.model_validate(serialize_order(order)) for order in orders]
-
-
-@router.get("/orders/cursor", response_model=dict)
-def get_website_orders_cursor(
-    pagination: CursorPagination = Depends(get_cursor_pagination),
-    db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
-):
-    orders = list_orders_cursor(
-        db,
-        tenant_id=current_user.tenant_id,
-        limit=pagination.limit,
-        cursor=pagination.cursor,
-    )
-    return build_cursor_response(
-        orders,
-        limit=pagination.limit,
-        id_attr="id",
-        serializer=lambda order: WebsiteOrderResponse.model_validate(serialize_order(order)).model_dump(mode="json"),
-    )
-
-
-@router.put("/orders/{order_id}/status", response_model=WebsiteOrderResponse)
-def update_website_order_status(
-    order_id: int,
-    payload: WebsiteOrderStatusUpdateRequest,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
-):
-    order = update_order_status(
-        db,
-        current_user=current_user,
-        order_id=order_id,
-        status_value=payload.status,
-    )
-    return WebsiteOrderResponse.model_validate(serialize_order(order))
-
-
-@router.post("/orders/{order_id}/create-pos-invoice")
-def create_website_order_pos_invoice(
-    order_id: int,
-    db: Session = Depends(get_db),
-    current_user=Depends(require_admin),
-    require_finance_permission=Depends(require_action_access("finance_pos", "create")),
-):
-    invoice, already_existing = create_pos_invoice_for_order(
-        db,
-        current_user=current_user,
-        order_id=order_id,
-    )
-    return {
-        "pos_invoice_id": invoice.id,
-        "invoice_number": invoice.invoice_number,
-        "already_existing": already_existing,
-    }
 
 
 @public_router.get("/catalog", response_model=PublicWebsiteCatalogListResponse)
@@ -289,12 +224,7 @@ def create_public_order_route(
     db: Session = Depends(get_db),
     key=Depends(_public_order_key_context),
 ):
-    order, replayed = create_public_order(
-        db,
-        tenant_id=key.tenant_id,
-        api_key_id=key.id,
-        payload=payload.model_dump(),
-    )
+    order, replayed = create_public_order(db, key=key, payload=payload.model_dump())
     log_public_api_request(
         db,
         key=key,

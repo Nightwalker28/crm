@@ -19,14 +19,11 @@ TABLE_PREFERENCE_MODULES = {
     "sales_opportunities",
     "sales_quotes",
     "admin_users",
-    "finance_io",
 }
 
 SAVED_VIEW_MODULES = {
     *TABLE_PREFERENCE_MODULES,
     "sales_orders",
-    "contracts",
-    "support_cases",
     "finance_pos",
     "finance_payments",
     "catalog_products",

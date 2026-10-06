@@ -28,14 +28,14 @@ class DealCurrencyTotalsTests(unittest.TestCase):
             CompanyProfile(id=1, tenant_id=10, name="Main", operating_currencies=["USD"], base_currency="USD"),
             # The tenant's last EUR rate, from an order: 1 EUR = 1.10 USD.
             SalesOrder(id=1, tenant_id=10, order_number="SO-1", currency="EUR", exchange_rate=Decimal("1.10")),
-            SalesOpportunity(opportunity_id=1, tenant_id=10, opportunity_name="A", client="A", sales_stage="lead",
-                             total_cost_of_project="1,000", currency_type="usd"),
-            SalesOpportunity(opportunity_id=2, tenant_id=10, opportunity_name="B", client="B", sales_stage="lead",
-                             total_cost_of_project="500", currency_type="EUR"),
-            SalesOpportunity(opportunity_id=3, tenant_id=10, opportunity_name="C", client="C", sales_stage="lead",
-                             total_cost_of_project="185000", currency_type="LKR"),
-            SalesOpportunity(opportunity_id=4, tenant_id=10, opportunity_name="D", client="D", sales_stage="lead",
-                             total_cost_of_project="20", currency_type=None),
+            SalesOpportunity(organization_id=1, opportunity_id=1, tenant_id=10, opportunity_name="A", sales_stage="lead",
+                             amount="1000", currency_type="usd"),
+            SalesOpportunity(organization_id=1, opportunity_id=2, tenant_id=10, opportunity_name="B", sales_stage="lead",
+                             amount="500", currency_type="EUR"),
+            SalesOpportunity(organization_id=1, opportunity_id=3, tenant_id=10, opportunity_name="C", sales_stage="lead",
+                             amount="185000", currency_type="LKR"),
+            SalesOpportunity(organization_id=1, opportunity_id=4, tenant_id=10, opportunity_name="D", sales_stage="lead",
+                             amount="20", currency_type=None),
         ])
         self.db.commit()
 

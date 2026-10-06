@@ -17,6 +17,7 @@ import { resolveMediaUrl } from "@/lib/media";
 import { formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { formatQuantity, formatQuantityWithUnit } from "@/lib/quantity";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 type Props = {
   kind: CatalogKind;
@@ -156,7 +157,7 @@ export default function CatalogRecordsTable({
         case "category_name":
           return <span className="text-sm text-copy-secondary">{record.category_name || "—"}</span>;
         case "unit":
-          return <span className="text-sm text-copy-secondary">{record.unit || "unit"}</span>;
+          return <span className="text-sm text-copy-secondary"><PicklistText listKey="unit" value={record.unit} /></span>;
         case "cost_price":
           return (
             <span className="text-sm tabular-nums text-copy-secondary">

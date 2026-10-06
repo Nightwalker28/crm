@@ -115,12 +115,16 @@ class LeadQuickCreateTests(unittest.TestCase):
         self.assertEqual(self.db.query(SalesLead).filter(SalesLead.tenant_id == 10).count(), 1)
         self.assertEqual(self.db.query(SalesLead).filter(SalesLead.tenant_id == 99).count(), 1)
 
-    def test_quick_create_requires_primary_email(self):
-        with self.assertRaises(HTTPException) as exc:
-            create_sales_lead(self.db, quick_create_payload(primary_email=None), self.current_user)
+    def test_quick_create_needs_an_email_or_a_phone(self):
+        # A walk-in or a caller has no email yet (13a A9): a phone is enough.
+        phone_only = create_sales_lead(self.db, quick_create_payload(primary_email=None), self.current_user)
+        self.assertIsNone(phone_only.primary_email)
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "primary_email is required")
+        with self.assertRaises(HTTPException) as exc:
+            create_sales_lead(self.db, quick_create_payload(primary_email=None, phone=None), self.current_user)
+
+        self.assertEqual(exc.exception.status_code, 422)
+        self.assertEqual(exc.exception.detail[0]["loc"], ["body", "primary_email"])
 
     def test_quick_create_reports_a_duplicate_email_as_a_recoverable_conflict(self):
         create_sales_lead(self.db, quick_create_payload(), self.current_user)
@@ -137,7 +141,8 @@ class LeadQuickCreateTests(unittest.TestCase):
         with self.assertRaises(HTTPException) as exc:
             create_sales_lead(self.db, quick_create_payload(status="won"), self.current_user)
 
-        self.assertEqual(exc.exception.status_code, 400)
+        # A status is a value from the tenant's list, refused on its field (13b §3.1).
+        self.assertEqual(exc.exception.status_code, 422)
         self.assertEqual(self.db.query(SalesLead).count(), 0)
 
 

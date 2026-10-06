@@ -9,7 +9,8 @@ import { toast } from "sonner";
 import OpportunitiesPipelineBoard from "@/components/opportunities/OpportunitiesPipelineBoard";
 import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQuickCreate";
 import OpportunitiesTable from "@/components/opportunities/OpportunitiesTable";
-import { orderedStages, selectableStages, UNSTAGED_LABEL } from "@/components/opportunities/opportunityStages";
+import { useLostReasonPrompt } from "@/components/opportunities/LostReasonDialog";
+import { findStage, orderedStages, selectableStages, UNSTAGED_LABEL } from "@/components/opportunities/opportunityStages";
 import { SegmentedControl, SegmentedItem } from "@/components/ui/SegmentedControl";
 import { Button } from "@/components/ui/button";
 import { StatGroup, StatTile } from "@/components/ui/StatTile";
@@ -106,7 +107,17 @@ export default function OpportunitiesPage() {
   const { opportunities, page, pageSize, totalPages, totalCount, rangeStart, rangeEnd, isLoading, isFetching, error, goToPage, onPageSizeChange, refresh, updateOpportunityStage } = useOpportunities(listColumns, activeFilters, activeSort);
   const [selectedIds, setSelectedIds] = useState<number[]>([]); const currentPageIds = useMemo(() => opportunities.map((item) => item.opportunity_id), [opportunities]);
   const { allConditions, anyConditions } = getConditionGroups(activeFilters); const activeFilterCount = allConditions.length + anyConditions.length; const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount); const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
-  async function changeStage(opportunityId: number, currentStage: string | null | undefined, nextStage: string) { if (currentStage === nextStage) return; try { await updateOpportunityStage(opportunityId, nextStage); toast.success("Deal stage updated."); } catch (error) { toast.error(stageMoveErrorMessage(error)); } }
+  const { askLostReason, lostReasonDialog } = useLostReasonPrompt();
+  // A lost stage asks why first (13a H13); cancelling leaves the card where it was.
+  async function changeStage(opportunity: { opportunity_id: number; opportunity_name?: string | null; sales_stage?: string | null }, nextStage: string) {
+    if (opportunity.sales_stage === nextStage) return;
+    let lostReason: string | null = null;
+    if (findStage(pipelineQuery.data, nextStage)?.semantic_type === "lost") {
+      lostReason = await askLostReason(opportunity.opportunity_name ?? undefined);
+      if (lostReason === null) return;
+    }
+    try { await updateOpportunityStage(opportunity.opportunity_id, nextStage, lostReason); toast.success("Deal stage updated."); } catch (error) { toast.error(stageMoveErrorMessage(error)); }
+  }
   // While totals load, the tiles are the pipeline's own active stages, so the row does not
   // reflow when the counts arrive.
   const loadingStages: PipelineSummary["stages"] = [
@@ -131,7 +142,8 @@ export default function OpportunitiesPage() {
       // panel, one group, the stat figure size (§4.7 archetype 5).
       <Card><StatGroup label="Pipeline by stage">{stages.map((stage) => <StatTile key={stage.stage_key} label={stage.label} value={summaryQuery.isLoading ? "—" : stage.count} context={stageValueLabel(stage, summaryQuery.data?.currency)} />)}</StatGroup></Card>
     )}
-    {displayMode === "table" ? <OpportunitiesTable opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} selectedIds={selectedIds} onToggleRow={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onToggleCurrentPage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null} onSortChange={(sort) => setDraftConfig((current) => ({ ...current, sort: sort ? { key: sort.column, direction: sort.direction } : null }))} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={refresh} onClearFilters={clearFilters} onCreateOpportunity={canCreate ? () => setQuickCreateOpen(true) : undefined} /> : <div className="space-y-3"><p className="text-sm text-copy-muted">Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. Drag a card to another stage, or use its stage menu for keyboard access.</p><OpportunitiesPipelineBoard opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={refresh} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={canCreate ? () => setQuickCreateOpen(true) : undefined} onStageChange={(opportunity, stage) => changeStage(opportunity.opportunity_id, opportunity.sales_stage, stage)} /></div>}
+    {displayMode === "table" ? <OpportunitiesTable opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} visibleColumns={visibleColumns} columnOptions={definition?.columns ?? []} selectedIds={selectedIds} onToggleRow={(id, checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, id])) : current.filter((item) => item !== id))} onToggleCurrentPage={(checked) => setSelectedIds((current) => checked ? Array.from(new Set([...current, ...currentPageIds])) : current.filter((id) => !currentPageIds.includes(id)))} sort={activeSort ? { column: activeSort.key, direction: activeSort.direction } : null} onSortChange={(sort) => setDraftConfig((current) => ({ ...current, sort: sort ? { key: sort.column, direction: sort.direction } : null }))} onEdit={(opportunity) => router.push(`/dashboard/sales/opportunities/${opportunity.opportunity_id}`)} hasActiveFilters={hasActiveFilters} hasError={Boolean(error)} onRetry={refresh} onClearFilters={clearFilters} onCreateOpportunity={canCreate ? () => setQuickCreateOpen(true) : undefined} /> : <div className="space-y-3"><p className="text-sm text-copy-muted">Showing loaded records {rangeStart}-{rangeEnd} of {totalCount}. Drag a card to another stage, or use its stage menu for keyboard access.</p><OpportunitiesPipelineBoard opportunities={opportunities} isLoading={isLoading} isRefreshing={isFetching && !isLoading} hasError={Boolean(error)} onRetry={refresh} hasActiveFilters={hasActiveFilters} onClearFilters={clearFilters} onCreate={canCreate ? () => setQuickCreateOpen(true) : undefined} onStageChange={(opportunity, stage) => changeStage(opportunity, stage)} /></div>}
+    {lostReasonDialog}
     <Pagination page={page} totalPages={totalPages} totalCount={totalCount} rangeStart={rangeStart} rangeEnd={rangeEnd} pageSize={pageSize} isRefreshing={isFetching && !isLoading} onPageChange={goToPage} onPageSizeChange={onPageSizeChange} />
   </PageShell>;
 }

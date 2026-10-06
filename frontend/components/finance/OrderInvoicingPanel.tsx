@@ -48,7 +48,7 @@ export function OrderInvoicingPanel({ orderId, canCreateInvoice, canViewInvoices
     try {
       setError(null);
       const draft = await draftFromSource({ order_id: orderId });
-      router.push(`${DASHBOARD_ROUTES.financePos}/${draft.id}`);
+      router.push(`${DASHBOARD_ROUTES.invoices}/${draft.id}`);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : "The invoice could not be drafted.");
     }
@@ -93,10 +93,10 @@ export function OrderInvoicingPanel({ orderId, canCreateInvoice, canViewInvoices
             label="Invoices for this order"
             rows={data.invoices}
             rowKey={(row) => row.id}
-            rowHref={(row) => `${DASHBOARD_ROUTES.financePos}/${row.id}`}
+            rowHref={(row) => `${DASHBOARD_ROUTES.invoices}/${row.id}`}
             emptyState={{ title: "No invoices yet" }}
             columns={[
-              { key: "number", label: "Invoice", size: "sm", rendersLink: true, render: (row) => <Link className="font-semibold text-copy-primary" href={`${DASHBOARD_ROUTES.financePos}/${row.id}`}>{row.invoice_number ?? "Draft"}</Link> },
+              { key: "number", label: "Invoice", size: "sm", rendersLink: true, render: (row) => <Link className="font-semibold text-copy-primary" href={`${DASHBOARD_ROUTES.invoices}/${row.id}`}>{row.invoice_number ?? "Draft"}</Link> },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPosInvoiceStatus(row.status)} /> },
               { key: "payment", label: "Payment", size: "sm", render: (row) => (row.status !== "issued" ? "—"
                 : row.due_date && Number(row.balance_due) > 0 && row.due_date < todayIsoDate() ? <StatusValue status={OVERDUE_STATUS} />

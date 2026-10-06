@@ -6,17 +6,14 @@ export const DASHBOARD_ROUTES = {
   deals: "/dashboard/sales/opportunities",
   quotes: "/dashboard/sales/quotes",
   orders: "/dashboard/sales/orders",
-  contracts: "/dashboard/contracts",
-  supportCases: "/dashboard/support/cases",
   clientPortal: "/dashboard/client-portal",
   documents: "/dashboard/documents",
   calendar: "/dashboard/calendar",
   mail: "/dashboard/mail",
   tasks: "/dashboard/tasks",
-  financePos: "/dashboard/finance/pos",
+  invoices: "/dashboard/finance/invoices",
   payments: "/dashboard/finance/payments",
   creditNotes: "/dashboard/finance/credit-notes",
-  insertionOrders: "/dashboard/finance/insertion-orders",
   products: "/dashboard/catalog/products",
   services: "/dashboard/catalog/services",
   inventoryStock: "/dashboard/inventory/stock",
@@ -48,6 +45,8 @@ export const SETTINGS_ROUTES = {
   moduleBuilder: "/dashboard/settings/module-builder",
   fields: "/dashboard/settings/fields",
   recordLayouts: "/dashboard/settings/record-layouts",
+  picklists: "/dashboard/settings/picklists",
+  picklist: (listKey: string) => `/dashboard/settings/picklists/${encodeURIComponent(listKey)}`,
   pipeline: "/dashboard/settings/pipeline",
   catalogCategories: "/dashboard/settings/catalog-categories",
   warehouses: "/dashboard/settings/warehouses",
@@ -59,42 +58,6 @@ export const SETTINGS_ROUTES = {
   recycleBin: "/dashboard/settings/recycle-bin",
   activityLog: "/dashboard/settings/activity-log",
 } as const;
-
-const LEGACY_DASHBOARD_ROUTE_REDIRECTS: Record<string, string> = {
-  "/dashboard/admin": SETTINGS_ROUTES.general,
-  "/dashboard/admin/users": SETTINGS_ROUTES.users,
-  "/dashboard/admin/teams": SETTINGS_ROUTES.teams,
-  "/dashboard/admin/roles-permissions": SETTINGS_ROUTES.permissions,
-  "/dashboard/admin/modules": SETTINGS_ROUTES.modules,
-  "/dashboard/admin/custom-fields": SETTINGS_ROUTES.fields,
-  "/dashboard/admin/integrations": SETTINGS_ROUTES.integrations,
-  "/dashboard/admin/message-templates": SETTINGS_ROUTES.templates,
-  "/dashboard/settings/company": SETTINGS_ROUTES.general,
-  "/dashboard/settings/roles-permissions": SETTINGS_ROUTES.permissions,
-  "/dashboard/settings/custom-fields": SETTINGS_ROUTES.fields,
-  "/dashboard/recycle-bin": SETTINGS_ROUTES.recycleBin,
-  "/dashboard/activity-log": SETTINGS_ROUTES.activityLog,
-  "/dashboard/finance/invoices": DASHBOARD_ROUTES.insertionOrders,
-};
-
-const LEGACY_DASHBOARD_ROUTE_PREFIX_REDIRECTS: Array<{ from: string; to: string }> = [
-  { from: "/dashboard/admin/modules", to: SETTINGS_ROUTES.modules },
-];
-
-export function canonicalizeDashboardHref(href: string): string {
-  const match = href.match(/^([^?#]*)([?#].*)?$/);
-  const path = match?.[1] ?? href;
-  const suffix = match?.[2] ?? "";
-  const exact = LEGACY_DASHBOARD_ROUTE_REDIRECTS[path];
-  if (exact) {
-    return `${exact}${suffix}`;
-  }
-  const prefix = LEGACY_DASHBOARD_ROUTE_PREFIX_REDIRECTS.find((item) => path.startsWith(`${item.from}/`));
-  if (prefix) {
-    return `${prefix.to}${path.slice(prefix.from.length)}${suffix}`;
-  }
-  return href;
-}
 
 /**
  * A9: the fallback was `SETTINGS_ROUTES.activityLog`, which is admin-only — so a
@@ -113,7 +76,7 @@ export function resolveNotificationHref(
   if (!candidate || !isDashboardPath || /[\u0000-\u001f\u007f\\]/.test(candidate)) {
     return fallback;
   }
-  return canonicalizeDashboardHref(candidate);
+  return candidate;
 }
 
 const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
@@ -122,10 +85,7 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   opportunities: "Deals",
   quotes: "Quotes",
   orders: "Orders",
-  contracts: "Contracts",
   contacts: "Contacts",
-  support: "Support",
-  cases: "Support Cases",
   documents: "Documents",
   calendar: "Calendar",
   mail: "Mail",
@@ -141,9 +101,8 @@ const FRIENDLY_ROUTE_LABELS: Record<string, string> = {
   warehouses: "Warehouses",
   sales: "Sales",
   finance: "Finance",
-  "insertion-orders": "Insertion orders",
-  pos: "Invoices",
   payments: "Payments",
+  invoices: "Invoices",
   "credit-notes": "Credit notes",
   bills: "Bills",
   company: "General",

@@ -117,7 +117,7 @@ class UsageTests(StageRefFixture):
         self.create(sales_stage="proposal")
         deleted = self.create(sales_stage="proposal")
         deleted.deleted_at = datetime.now(timezone.utc)
-        self.db.add(SalesOpportunity(opportunity_id=990, tenant_id=OTHER_TENANT, opportunity_name="Theirs", client="x", sales_stage="proposal"))
+        self.db.add(SalesOpportunity(organization_id=1, opportunity_id=990, tenant_id=OTHER_TENANT, opportunity_name="Theirs", sales_stage="proposal"))
         self.db.commit()
 
         usage = {row["stage_id"]: row["live_deal_count"] for row in pipelines_services.stage_usage(self.db, TENANT)["stages"]}

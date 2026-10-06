@@ -14,6 +14,8 @@ export type CreditNoteLine = {
 };
 
 export type CreditNote = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string | null; status: "draft" | "issued" | "void"; invoice_id: number; invoice_number: string | null;
   customer_name: string | null; customer_organization_id: number | null; customer_contact_id: number | null; return_id: number | null;
   reason: string | null; issue_date: string | null; currency: string; subtotal_amount: string; discount_amount: string; tax_amount: string;
@@ -23,6 +25,8 @@ export type CreditNote = {
 };
 
 export type CreditNoteDraft = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   reason?: string | null; notes?: string | null; issue_date?: string | null;
   lines?: Array<{ invoice_line_id: number; quantity: string; return_line_id?: number | null }>;
 };

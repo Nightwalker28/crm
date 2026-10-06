@@ -24,10 +24,7 @@ class PlatformQueryHardeningTests(unittest.TestCase):
                 "sales_orders",
                 "catalog_products",
                 "catalog_services",
-                "contracts",
                 "documents",
-                "support_cases",
-                "finance_io",
                 "finance_pos",
             }.issubset(module_keys)
         )

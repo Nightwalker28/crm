@@ -15,6 +15,7 @@ from fastapi import HTTPException
 from sqlalchemy import or_
 from sqlalchemy.orm import Session, selectinload
 
+from app.modules.sales.services.document_fields import format_address
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import (
@@ -26,6 +27,7 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.crm_events import stage_standard_crm_event
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesOrderItem
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
 def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, order_id: int | None = None):
@@ -188,6 +190,8 @@ def save_delivery(db: Session, *, tenant_id: int, actor_user_id: int | None, pay
     for line, quantity in lines:
         doc.lines.append(InventoryDeliveryLine(tenant_id=tenant_id, order_line_id=line.id, product_id=line.catalog_product_id, quantity=quantity))
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="inventory_deliveries", record=doc, payload=payload, created=delivery_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, doc=doc, order=order, action="update" if delivery_id else "create",
         description=f"{'Updated' if delivery_id else 'Created'} delivery {doc.number} for {order.order_number}")
     return doc
@@ -361,7 +365,7 @@ def serialize_delivery(db: Session, *, tenant_id: int, doc: InventoryDelivery, i
         "order_number": order.order_number if order else None,
         "customer_name": (order.organization_name or order.contact_name) if order else None,
         "contact_name": order.contact_name if order else None,
-        "delivery_address": order.delivery_address if order else None,
+        "delivery_address": format_address(order, "shipping") if order else None,
         "warehouse_id": doc.warehouse_id, "warehouse_name": warehouse.name if warehouse else None,
         "shipped_on": doc.shipped_on, "carrier": doc.carrier, "tracking_number": doc.tracking_number, "notes": doc.notes,
         "posted_at": doc.posted_at, "posted_by": doc.posted_by, "cancel_reason": doc.cancel_reason,
@@ -385,6 +389,8 @@ def serialize_delivery(db: Session, *, tenant_id: int, doc: InventoryDelivery, i
                 "returned": back.get(line.id, Decimal(0)),
                 "to_deliver": line_outstanding(db, item, order) if item is not None and order is not None else None,
             })
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="inventory_deliveries", record_id=doc.id)
     return result
 
 

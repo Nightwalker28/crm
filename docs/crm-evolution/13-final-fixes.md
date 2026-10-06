@@ -76,6 +76,7 @@ order, so it is a sales order with an attachment, not an invoice. The module rea
 | 8 | Role and team layout overrides: built (F3), as the 09 plan intended |
 | 9 | **The webhook contract `08a-webhook-event-contract.md` is approved** (2026-10-03), so F10 can start |
 | 10 | Order of work: by what breaks or blocks most, as §7 sets out |
+| 11 | **No users exist yet (2026-10-05), so anything retired goes outright**: code, tables, APIs, pages, in the same step. No CSV archive, no move into Documents, no deprecated API aliases, no redirects, no "drop the tables one release later". This overrides F1.1's aliases and F1.2's export, Documents move and delayed drop. **Contracts and support cases are deleted too**, with the client portal's Support and Messages pages built on them, and any older alias or leftover table found on the way |
 
 ## 3. Where Lynk differs from the major players, and the fix
 

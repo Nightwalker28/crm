@@ -44,21 +44,9 @@ import { useConfirm } from "@/hooks/useConfirm";
 import { usePageAddress } from "@/hooks/usePageAddress";
 import { useSidebarTabsAdmin, type SidebarTab } from "@/hooks/admin/useModulesAdmin";
 import { cn } from "@/lib/utils";
+import { EMPTY_FIELD_TYPE_DRAFT, FieldTypeSettings, fieldTypePayload, type FieldTypeDraft } from "@/components/fields/FieldTypeSettings";
+import { canBeRequired, canBeUnique, FIELD_TYPE_LABELS, fieldTypeKey } from "@/lib/fieldTypes";
 
-const FIELD_TYPES: CustomFieldType[] = [
-  "text",
-  "textarea",
-  "number",
-  "currency",
-  "date",
-  "datetime",
-  "boolean",
-  "email",
-  "phone",
-  "url",
-  "single_select",
-  "multi_select",
-];
 
 const HIDDEN_SIDEBAR_TAB: SidebarTab = {
   id: null,
@@ -82,7 +70,8 @@ type EditableField = {
   is_unique: boolean;
   display_in_list: boolean;
   default_value: string;
-  options_text: string;
+  /** The type and its settings, for a field not saved yet; a saved field's type is fixed. */
+  type_draft: FieldTypeDraft;
   is_active: boolean;
   is_protected: boolean;
 };
@@ -105,13 +94,13 @@ const EMPTY_FIELD: EditableField = {
   is_unique: false,
   display_in_list: true,
   default_value: "",
-  options_text: "",
+  type_draft: EMPTY_FIELD_TYPE_DRAFT,
   is_active: true,
   is_protected: false,
 };
 
 function fieldTypeLabel(value: string) {
-  return value.replaceAll("_", " ");
+  return FIELD_TYPE_LABELS[fieldTypeKey(value)] ?? value.replaceAll("_", " ");
 }
 
 function editableField(field: CustomModuleField): EditableField {
@@ -127,25 +116,28 @@ function editableField(field: CustomModuleField): EditableField {
     is_unique: field.is_unique,
     display_in_list: field.display_in_list,
     default_value: field.default_value == null ? "" : String(field.default_value),
-    options_text: (field.validation_json?.options ?? []).join("\n"),
+    type_draft: { ...EMPTY_FIELD_TYPE_DRAFT, field_type: field.field_type, is_unique: field.is_unique },
     is_active: field.is_active,
     is_protected: field.is_protected,
   };
 }
 
 function fieldPayload(field: EditableField, sortOrder: number): CustomModuleFieldPayload {
-  const supportsOptions = field.field_type === "single_select" || field.field_type === "multi_select";
-  const options = field.options_text.split("\n").map((option) => option.trim()).filter(Boolean);
+  const isNew = !field.serverId;
+  const typeFields = isNew ? fieldTypePayload(field.type_draft) : null;
+  const fieldType = typeFields?.field_type ?? field.field_type;
   return {
     label: field.label.trim(),
-    field_type: field.field_type,
+    field_type: fieldType,
     help_text: field.help_text.trim() || null,
     placeholder: field.placeholder.trim() || null,
-    is_required: field.is_required,
-    is_unique: field.field_type === "multi_select" ? false : field.is_unique,
+    is_required: canBeRequired(fieldType) ? field.is_required : false,
+    is_unique: typeFields ? typeFields.is_unique : canBeUnique(fieldType) && field.is_unique,
     display_in_list: field.display_in_list,
     default_value: field.default_value === "" ? null : field.default_value,
-    validation_json: supportsOptions && options.length ? { options } : null,
+    ...(typeFields
+      ? { picklist_key: typeFields.picklist_key, picklist_values: typeFields.picklist_values, lookup_module_key: typeFields.lookup_module_key, config: typeFields.config }
+      : {}),
     sort_order: sortOrder,
     is_active: field.is_active,
   };
@@ -177,7 +169,6 @@ function FieldInspector({
   if (!field) return null;
 
   const isNew = !field.serverId;
-  const supportsOptions = field.field_type === "single_select" || field.field_type === "multi_select";
 
   return (
     <FieldGroup>
@@ -200,29 +191,20 @@ function FieldInspector({
               required
             />
           </Field>
-          <Field>
-            <FieldLabel>Field type</FieldLabel>
-            {isNew ? (
-              <Select
-                value={field.field_type}
-                onValueChange={(value) => onChange({
-                  field_type: value as CustomFieldType,
-                  is_unique: value === "multi_select" ? false : field.is_unique,
-                })}
-                disabled={disabled}
-              >
-                <SelectTrigger aria-label="Field type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {FIELD_TYPES.map((type) => <SelectItem key={type} value={type}>{fieldTypeLabel(type)}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            ) : (
-              <>
-                <Input aria-label="Field type" value={fieldTypeLabel(field.field_type)} disabled />
-                <FieldDescription>Type is fixed after the field is created so stored values remain valid.</FieldDescription>
-              </>
-            )}
-          </Field>
+          {isNew ? (
+            <FieldTypeSettings
+              idPrefix="builder-field"
+              value={field.type_draft}
+              onChange={(type_draft) => onChange({ type_draft, field_type: type_draft.field_type, is_unique: type_draft.is_unique })}
+              disabled={disabled}
+            />
+          ) : (
+            <Field>
+              <FieldLabel htmlFor="builder-field-type">Field type</FieldLabel>
+              <Input id="builder-field-type" value={fieldTypeLabel(field.field_type)} disabled />
+              <FieldDescription>Type is fixed after the field is created so stored values remain valid.</FieldDescription>
+            </Field>
+          )}
           <Field>
             <FieldLabel htmlFor="builder-field-placeholder">Placeholder</FieldLabel>
             <Input id="builder-field-placeholder" value={field.placeholder} onChange={(event) => onChange({ placeholder: event.target.value })} disabled={disabled} />
@@ -235,20 +217,16 @@ function FieldInspector({
             <FieldLabel htmlFor="builder-field-default">Default value</FieldLabel>
             <Input id="builder-field-default" value={field.default_value} onChange={(event) => onChange({ default_value: event.target.value })} disabled={disabled} />
           </Field>
-          {supportsOptions ? (
-            <Field>
-              <FieldLabel htmlFor="builder-field-options">Options</FieldLabel>
-              <Textarea id="builder-field-options" value={field.options_text} onChange={(event) => onChange({ options_text: event.target.value })} placeholder="One option per line" disabled={disabled} />
-            </Field>
-          ) : null}
           {/* No `saveState`: the inspector edits a draft that commits with the module, so a
               `Saved` here would claim a write that has not happened (archetype 4). */}
-          <SettingsRow label="Required" description="Require a value when records are saved.">
+          {canBeRequired(field.field_type) ? <SettingsRow label="Required" description="Require a value when records are saved.">
             <SegmentedBoolean aria-label="Required" value={field.is_required} onValueChange={(checked) => onChange({ is_required: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled} />
-          </SettingsRow>
-          <SettingsRow label="Unique values" description="Prevent two records from using the same value.">
-            <SegmentedBoolean aria-label="Unique values" value={field.is_unique} onValueChange={(checked) => onChange({ is_unique: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled || field.field_type === "multi_select"} />
-          </SettingsRow>
+          </SettingsRow> : null}
+          {!isNew && canBeUnique(field.field_type) ? (
+            <SettingsRow label="Unique values" description="Prevent two records from using the same value.">
+              <SegmentedBoolean aria-label="Unique values" value={field.is_unique} onValueChange={(checked) => onChange({ is_unique: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled} />
+            </SettingsRow>
+          ) : null}
           <SettingsRow label="Include in initial system default view" description="Used only when the system default view is first created. Saved Views controls each user's ongoing column visibility and ordering.">
             <SegmentedBoolean aria-label="Include in initial system default view" value={field.display_in_list} onValueChange={(checked) => onChange({ display_in_list: checked })} trueLabel="Yes" falseLabel="No" disabled={disabled} />
           </SettingsRow>

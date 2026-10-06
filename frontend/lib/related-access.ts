@@ -9,8 +9,7 @@ export type RelatedRecordSection =
   | "opportunities"
   | "quotes"
   | "orders"
-  | "invoices"
-  | "insertion_orders";
+  | "invoices";
 
 export type RelatedRecordAccess = Partial<Record<RelatedRecordSection, boolean | null>>;
 

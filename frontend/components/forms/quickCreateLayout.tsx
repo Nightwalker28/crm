@@ -3,13 +3,14 @@
 import type { ReactNode } from "react";
 
 import { CustomFieldInput } from "@/components/customFields/CustomFieldInputs";
+import { PicklistSelect } from "@/components/picklists/PicklistSelect";
 import {
   ResolvedRecordLayout,
   type ResolvedRecordLayoutViewport,
 } from "@/components/forms/ResolvedRecordLayout";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
+import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
@@ -70,6 +71,7 @@ export function quickCreateInputType(fieldType: string) {
   if (fieldType === "url") return "url";
   if (fieldType === "date") return "date";
   if (fieldType === "datetime") return "datetime-local";
+  if (fieldType === "currency" || fieldType === "number" || fieldType === "decimal" || fieldType === "percent") return "number";
   return "text";
 }
 
@@ -121,17 +123,43 @@ export function QuickCreateField({
   );
 }
 
+/**
+ * A layout field whose values come from a picklist (`field_type: "picklist"`, 13b §3.3), for
+ * any module's quick create: the module supplies the value and the setter.
+ */
+export function QuickCreatePicklistField({
+  field,
+  context,
+  value,
+  onChange,
+}: {
+  field: ResolvedRecordLayoutField;
+  context: LayoutDrivenQuickCreateFieldContext;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  if (!field.picklist_key) return null;
+  return (
+    <QuickCreateField field={field} aria={context.aria} error={context.error}>
+      <PicklistSelect
+        id={context.inputId}
+        listKey={field.picklist_key}
+        label={field.label}
+        value={value}
+        onChange={onChange}
+        required={field.required}
+        disabled={context.disabled}
+        ariaInvalid={context.aria.invalid}
+        ariaDescribedBy={context.aria.describedBy}
+      />
+    </QuickCreateField>
+  );
+}
+
 export function invalidFieldKeys(errors: Record<string, string | null | undefined>) {
   return Object.entries(errors).filter(([, error]) => Boolean(error)).map(([fieldKey]) => fieldKey);
 }
 
-const QUICK_CREATE_CUSTOM_FIELD_TYPES = new Set<CustomFieldDefinition["field_type"]>([
-  "text",
-  "long_text",
-  "number",
-  "date",
-  "boolean",
-]);
 
 export function resolveQuickCreateFieldValue<TForm extends Record<string, unknown>>(
   field: ResolvedRecordLayoutField,
@@ -190,21 +218,25 @@ export function LayoutDrivenQuickCreateFields({
   ) => ReactNode;
 }) {
   const locked = new Set(lockedFieldKeys);
+  const { data: customDefinitions } = useModuleCustomFields(moduleKey);
 
   function renderField(field: ResolvedRecordLayoutField) {
     const error = errors[field.field_key] ?? null;
     if (field.field_source === "custom_field" && field.field_key.startsWith("custom:")) {
-      const fieldType = field.field_type as CustomFieldDefinition["field_type"];
-      if (!QUICK_CREATE_CUSTOM_FIELD_TYPES.has(fieldType)) return null;
       const fieldKey = field.field_key.slice("custom:".length);
+      // The full definition carries what the layout does not: its list, its lookup target.
+      const definition = customDefinitions?.find((item) => item.field_key === fieldKey);
       return (
         <CustomFieldInput
           definition={{
-            id: 0,
+            id: definition?.id ?? 0,
             module_key: moduleKey,
             field_key: fieldKey,
             label: field.label,
-            field_type: fieldType,
+            field_type: definition?.field_type ?? field.field_type,
+            picklist_key: definition?.picklist_key ?? field.picklist_key,
+            lookup_module_key: definition?.lookup_module_key,
+            config: definition?.config,
             placeholder: field.placeholder,
             help_text: field.help_text,
             is_required: field.required,

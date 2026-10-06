@@ -15,7 +15,7 @@ const contactId = 987655301;
 const orgId = 987655401;
 const moduleCacheKey = "lynk_modules:v4";
 
-type Access = Partial<Record<"contacts" | "opportunities" | "quotes" | "orders" | "invoices" | "insertion_orders", boolean>>;
+type Access = Partial<Record<"contacts" | "opportunities" | "quotes" | "orders" | "invoices", boolean>>;
 
 function json(body: unknown) {
   return { status: 200, contentType: "application/json", body: JSON.stringify(body) };
@@ -68,12 +68,10 @@ function contactSummary(access: Access, { withRecords }: { withRecords: boolean 
       : [],
     related_quotes: [],
     related_orders: access.orders === false ? [] : orders,
-    related_insertion_orders: [],
     inferred_services: [],
     opportunity_count: withRecords ? 2 : 0,
     quote_count: 0,
     order_count: access.orders === false ? 0 : withRecords ? 12 : 0,
-    insertion_order_count: 0,
   };
 }
 
@@ -94,14 +92,12 @@ function accountSummary(access: Access) {
     related_quotes: [],
     related_orders: [],
     related_invoices: [],
-    related_insertion_orders: [],
     inferred_services: [],
     contact_count: 0,
     opportunity_count: 0,
     quote_count: 0,
     order_count: 0,
     invoice_count: 0,
-    insertion_order_count: 0,
   };
 }
 
@@ -147,7 +143,7 @@ test.beforeEach(async ({ page }) => {
 test("A contact's deals carry its role, and its orders show a true total", async ({ page }) => {
   await stubShared(page, { canCreateDeals: true });
   await page.route(`**/sales/contacts/${contactId}/summary`, (route) =>
-    route.fulfill(json(contactSummary({ opportunities: true, quotes: true, orders: true, insertion_orders: true }, { withRecords: true }))),
+    route.fulfill(json(contactSummary({ opportunities: true, quotes: true, orders: true }, { withRecords: true }))),
   );
   await page.goto(`/dashboard/sales/contacts/${contactId}?tab=related`);
 
@@ -162,13 +158,12 @@ test("A contact's deals carry its role, and its orders show a true total", async
   await expect(orders.getByRole("link")).toHaveCount(8);
   await expect(orders.getByText("Showing the 8 most recent of 12.")).toBeVisible();
   await expect(spine(page).filter({ hasText: /^Orders/ })).toContainText("12");
-  await expect(spine(page).filter({ hasText: /^Insertion orders/ })).toContainText("0");
 });
 
 test("A hidden section is left out; an empty one says none and offers the create", async ({ page }) => {
   await stubShared(page, { canCreateDeals: true });
   await page.route(`**/sales/contacts/${contactId}/summary`, (route) =>
-    route.fulfill(json(contactSummary({ opportunities: true, quotes: false, orders: false, insertion_orders: false }, { withRecords: false }))),
+    route.fulfill(json(contactSummary({ opportunities: true, quotes: false, orders: false }, { withRecords: false }))),
   );
   await page.goto(`/dashboard/sales/contacts/${contactId}?tab=related`);
 
@@ -176,7 +171,7 @@ test("A hidden section is left out; an empty one says none and offers the create
   await expect(deals.getByText("This contact is on no deals yet. Add the first one")).toBeVisible();
   await expect(deals.getByRole("button", { name: "Deal" })).toBeVisible();
   // Hidden: no card, no spine count, not even a zero.
-  for (const title of ["Quotes", "Orders", "Insertion orders"]) {
+  for (const title of ["Quotes", "Orders"]) {
     await expect(relatedCard(page, title)).toHaveCount(0);
     await expect(spine(page).filter({ hasText: new RegExp(`^${title}`) })).toHaveCount(0);
   }
@@ -186,7 +181,7 @@ test("A hidden section is left out; an empty one says none and offers the create
 test("Without the create right, the empty deal list offers no create", async ({ page }) => {
   await stubShared(page, { canCreateDeals: false });
   await page.route(`**/sales/contacts/${contactId}/summary`, (route) =>
-    route.fulfill(json(contactSummary({ opportunities: true, quotes: true, orders: true, insertion_orders: true }, { withRecords: false }))),
+    route.fulfill(json(contactSummary({ opportunities: true, quotes: true, orders: true }, { withRecords: false }))),
   );
   await page.goto(`/dashboard/sales/contacts/${contactId}?tab=related`);
 
@@ -200,14 +195,14 @@ test("Without the create right, the empty deal list offers no create", async ({ 
 test("An account follows the server's access: hidden contacts are left out", async ({ page }) => {
   await stubShared(page, { canCreateDeals: true });
   await page.route(`**/sales/organizations/${orgId}/summary`, (route) =>
-    route.fulfill(json(accountSummary({ contacts: false, opportunities: true, quotes: true, orders: true, invoices: false, insertion_orders: false }))),
+    route.fulfill(json(accountSummary({ contacts: false, opportunities: true, quotes: true, orders: true, invoices: false }))),
   );
   await page.goto(`/dashboard/sales/organizations/${orgId}?tab=related`);
 
   await expect(relatedCard(page, "Deals").getByText("No deals with this account yet. Add the first one")).toBeVisible();
   await expect(relatedCard(page, "Deals").getByRole("button", { name: "Deal" })).toBeVisible();
   await expect(relatedCard(page, "Quotes").getByText("No quotes for this account yet.")).toBeVisible();
-  for (const title of ["Contacts", "Invoices", "Insertion orders"]) {
+  for (const title of ["Contacts", "Invoices"]) {
     await expect(relatedCard(page, title)).toHaveCount(0);
     await expect(spine(page).filter({ hasText: new RegExp(`^${title}`) })).toHaveCount(0);
   }

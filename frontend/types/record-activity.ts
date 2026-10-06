@@ -5,9 +5,6 @@ export type RecordModuleKey =
   | "sales_opportunities"
   | "sales_quotes"
   | "sales_orders"
-  | "support_cases"
-  | "contracts"
-  | "finance_io"
   | "finance_pos"
   | "catalog_products"
   | "catalog_services";
@@ -31,7 +28,6 @@ export type ActivityItem = {
  */
 export const RECORD_ACTIVITY_TYPES = [
   // Kept in the order the backend registers its adapters.
-  "case_reply",
   "call",
   "email",
   "follow_up",

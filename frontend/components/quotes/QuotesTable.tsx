@@ -63,7 +63,7 @@ const COLUMN_SIZES: Record<string, "sm" | "md" | "lg"> = {
 const MONEY_COLUMNS = new Set(["subtotal_amount", "discount_amount", "tax_amount", "total_amount"]);
 
 function renderCell(quote: Quote, column: string) {
-  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={quote.custom_fields} />;
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={quote.custom_fields} moduleKey="sales_quotes" />;
 
   switch (column) {
     case "quote_number":

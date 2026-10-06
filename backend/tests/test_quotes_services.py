@@ -38,7 +38,6 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
                     opportunity_id=40,
                     tenant_id=10,
                     opportunity_name="Acme Pilot",
-                    client="Ada",
                     contact_id=30,
                     organization_id=20,
                     sales_stage="proposal",
@@ -47,9 +46,8 @@ class QuoteOpportunityLinkTests(unittest.TestCase):
                     opportunity_id=41,
                     tenant_id=99,
                     opportunity_name="Other Pilot",
-                    client="Other",
                     contact_id=None,
-                    organization_id=None,
+                    organization_id=21,
                     sales_stage="proposal",
                 ),
             ]

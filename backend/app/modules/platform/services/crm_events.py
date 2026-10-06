@@ -45,14 +45,10 @@ CRM_EVENT_TYPES = {
     "opportunity.participant_added",
     "opportunity.participant_removed",
     "opportunity.primary_contact_changed",
-    "invoice.overdue",
     "quote.created",
     "quote.status_changed",
     "order.created",
     "order.status_changed",
-    "case.created",
-    "case.status_changed",
-    "contract.status_changed",
     "task.due_today",
     "task.overdue",
     "task.assigned",
@@ -63,7 +59,6 @@ CRM_EVENT_TYPES = {
 SLACK_ALERT_EVENT_TYPES = {
     "lead.created",
     "deal.assigned",
-    "invoice.overdue",
     "task.due_today",
     "task.assigned",
 }
@@ -140,17 +135,6 @@ def format_event_message(event_type: str, payload: dict[str, Any]) -> str:
                 ("Stage", payload.get("stage")),
             ],
             action=payload.get("action") or "Review deal",
-        )
-    if event_type == "invoice.overdue":
-        return _message_lines(
-            "Invoice overdue",
-            [
-                ("Invoice", payload.get("invoice_number")),
-                ("Company", payload.get("customer_name")),
-                ("Amount", payload.get("amount")),
-                ("Due Date", _format_date(payload.get("due_date"))),
-            ],
-            action=payload.get("action") or "Follow up on payment",
         )
     if event_type == "task.due_today":
         return _message_lines(

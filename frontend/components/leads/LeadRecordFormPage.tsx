@@ -79,6 +79,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       company: lead.company ?? "",
       primary_email: lead.primary_email ?? "",
       phone: lead.phone ?? "",
+      mobile_phone: lead.mobile_phone ?? "",
       title: lead.title ?? "",
       source: lead.source ?? "",
       status: lead.status ?? "new",
@@ -102,7 +103,7 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const emailError = validateLeadEmail(form.primary_email);
+    const emailError = validateLeadEmail(form);
     setEmailError(emailError);
     if (emailError) {
       document.getElementById("lead-primary-email")?.focus();

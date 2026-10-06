@@ -941,8 +941,8 @@ def _opportunity_token_values(opportunity: SalesOpportunity | None) -> dict[str,
         "name": opportunity.opportunity_name or "",
         # The stage's display label; the stable key is not something to put in an email.
         "stage": opportunity_stage_facts(opportunity).label if opportunity.sales_stage else "",
-        "client": opportunity.client or "",
-        "value": opportunity.total_cost_of_project or "",
+        "client": opportunity.organization_name or "",
+        "value": format(opportunity.amount, "f") if opportunity.amount is not None else "",
         "currency": opportunity.currency_type or "",
     }
 

@@ -21,6 +21,7 @@ from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.purchasing.models import PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.modules.sales.models import SalesOrganization
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
 def list_query(db: Session, *, tenant_id: int, status: str | None = None, vendor_id: int | None = None, search: str | None = None):
@@ -177,6 +178,8 @@ def save_order(db: Session, *, tenant_id: int, actor_user_id: int | None, payloa
     order.subtotal = sum((line.line_total for line in lines), Decimal(0))
     db.add(order)
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="purchase_orders", record=order, payload=payload, created=order_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, order=order, action="update" if order_id else "create",
         description=f"{'Updated' if order_id else 'Created'} purchase order {order.number} for {vendor.org_name}")
     return order
@@ -330,4 +333,6 @@ def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, includ
         result["receipts"] = [{"id": receipt.id, "number": receipt.number, "status": receipt.status, "received_on": receipt.received_on,
             "vendor_delivery_ref": receipt.vendor_delivery_ref, "total_quantity": sum((Decimal(line.quantity) for line in receipt.lines), Decimal(0))}
             for receipt in receipts]
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="purchase_orders", record_id=order.id)
     return result

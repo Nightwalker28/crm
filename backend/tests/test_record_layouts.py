@@ -8,7 +8,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modules.platform.models import CustomFieldDefinition, ModuleFieldConfig, RecordLayoutDefinition
+from app.modules.platform.models import FieldDefinition, ModuleFieldConfig, RecordLayoutDefinition
 from app.modules.platform.record_layout_schema import RecordLayoutDefinitionPayload
 from app.modules.platform.routes.record_layouts import get_resolved_record_layout, router as record_layouts_router
 from app.modules.platform.services.record_layouts import (
@@ -30,7 +30,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
             engine,
             tables=[
                 Tenant.__table__,
-                CustomFieldDefinition.__table__,
+                FieldDefinition.__table__,
                 ModuleFieldConfig.__table__,
                 RecordLayoutDefinition.__table__,
             ],
@@ -71,6 +71,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     is_required=True,
                     placeholder="Why is this lead qualified?",
                     help_text="Required by this workspace.",
+                    picklist_key=None,
                 )
             ],
         ):
@@ -90,7 +91,8 @@ class RecordLayoutResolverTests(unittest.TestCase):
         self.assertIn("primary_email", keys)
         self.assertIn("custom:qualification_note", keys)
         required = {field.field_key: field.required for field in fields}
-        self.assertTrue(required["primary_email"])
+        # An email or a phone (13a A9): neither is required alone.
+        self.assertFalse(required["primary_email"])
         self.assertTrue(required["custom:qualification_note"])
 
     def test_detail_fallback_appends_tenant_custom_fields_and_is_read_only(self):
@@ -103,6 +105,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     is_required=False,
                     placeholder=None,
                     help_text="Tenant one field.",
+                    picklist_key=None,
                 )
             ],
             2: [],
@@ -204,9 +207,11 @@ class RecordLayoutResolverTests(unittest.TestCase):
         self.assertIn("Stored layout is invalid; using the system fallback", result.warnings)
 
     def test_stored_quick_create_falls_back_when_required_field_is_hidden_or_read_only(self):
+        # A lead needs an email or a phone (13a A9): a layout with none of them usable is unsafe.
         stored = LEAD_LAYOUT_SEEDS["quick_create"].model_copy(deep=True)
-        email = next(field for section in stored.sections for field in section.fields if field.field_key == "primary_email")
-        email.visible = False
+        reach = [field for section in stored.sections for field in section.fields if field.field_key in ("primary_email", "phone", "mobile_phone")]
+        for field in reach:
+            field.visible = False
         record = RecordLayoutDefinition(
             tenant_id=1,
             module_key="sales_leads",
@@ -230,8 +235,9 @@ class RecordLayoutResolverTests(unittest.TestCase):
                 surface="quick_create",
             )
 
-            email.visible = True
-            email.readonly = True
+            for field in reach:
+                field.visible = True
+                field.readonly = True
             record.sections = [section.model_dump(mode="json") for section in stored.sections]
             record.version = 4
             self.db.commit()
@@ -258,8 +264,9 @@ class RecordLayoutResolverTests(unittest.TestCase):
             type(unknown.sections[0].fields[0])(field_key="custom:not_owned", position=20)
         )
         hidden = LEAD_LAYOUT_SEEDS["quick_create"].model_copy(deep=True)
-        email = next(field for section in hidden.sections for field in section.fields if field.field_key == "primary_email")
-        email.visible = False
+        for field in (field for section in hidden.sections for field in section.fields):
+            if field.field_key in ("primary_email", "phone", "mobile_phone"):
+                field.visible = False
 
         with patch(
             "app.modules.platform.services.record_layouts.list_custom_field_definitions",
@@ -267,7 +274,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "Unknown layout field keys"):
                 validate_layout_definition(self.db, tenant_id=1, definition=unknown)
-            with self.assertRaisesRegex(ValueError, "Required Quick Create fields must remain visible"):
+            with self.assertRaisesRegex(ValueError, "Quick Create needs at least one of Email, Phone or Mobile"):
                 validate_layout_definition(self.db, tenant_id=1, definition=hidden)
 
     def test_definition_schema_rejects_extra_properties_and_duplicate_positions(self):
@@ -305,16 +312,12 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     (module_key, surface),
                 )
         # Every module that adopts the record archetype's `Details` tab and nothing else.
-        # None of them has a Quick Create surface: a contract, a line-item document and a
-        # catalog record all keep an explicit save on `/new`, and a support case and an
-        # insertion order are created from their own forms.
+        # None of them has a Quick Create surface: a line-item document and a catalog record
+        # both keep an explicit save on `/new`.
         detail_only = (
-            "contracts",
             "sales_quotes",
             "sales_orders",
             "finance_pos",
-            "finance_io",
-            "support_cases",
             "catalog_products",
             "catalog_services",
         )

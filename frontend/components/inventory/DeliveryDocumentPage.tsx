@@ -31,6 +31,7 @@ import { TrackingNumber } from "@/components/inventory/TrackingNumber";
 import { getDeliveryStatus, getReturnStatus } from "@/lib/statusStyles";
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 
 function plural(count: number, word: string) {
@@ -67,6 +68,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   const [notes, setNotes] = useState("");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
 
@@ -80,6 +82,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   const seedKey = isNew ? (fulfilment.data ? `order-${fulfilment.data.order_id}` : null) : doc && fulfilment.data ? `delivery-${doc.id}-${doc.status}` : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(doc?.custom_fields ?? {});
     setShippedOn(doc?.shipped_on ?? "");
     setCarrier(doc?.carrier ?? "");
     setTracking(doc?.tracking_number ?? "");
@@ -104,6 +107,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
     if (invalidLine) { setError(`${invalidLine.name}: ship between 0 and ${quantity(invalidLine.to_deliver)}.`); return; }
     if (!shippingLines.length) { setError("Enter a quantity to ship on at least one line."); return; }
     const payload = {
+      custom_fields: customValues,
       shipped_on: shippedOn || null, carrier: carrier.trim() || null, tracking_number: tracking.trim() || null, notes: notes.trim() || null,
       lines: shippingLines.map((line) => ({ order_line_id: line.order_line_id, quantity: quantities[line.order_line_id] })),
     };
@@ -175,7 +179,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
           {/* E5 (12c §3.5): invoice exactly what this delivery shipped (Business Central's Get Shipment Lines). */}
           {doc?.status === "posted" && canInvoice ? (
             <Button variant="outline" disabled={invoicing.isSaving} onClick={() => void invoicing.draftFromSource({ order_id: doc.order_id, delivery_id: doc.id })
-              .then((draft) => router.push(`${DASHBOARD_ROUTES.financePos}/${draft.id}`))
+              .then((draft) => router.push(`${DASHBOARD_ROUTES.invoices}/${draft.id}`))
               .catch((failure: unknown) => setError(failure instanceof Error ? failure.message : "The invoice could not be drafted."))}>
               Create invoice
             </Button>
@@ -206,6 +210,8 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
           <Field className="lg:col-span-3"><FieldLabel htmlFor="delivery-notes">Notes</FieldLabel><Textarea id="delivery-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
         </div>
       ) : doc?.notes ? <p className="text-p-sm text-copy-secondary">{doc.notes}</p> : null}
+
+      {editable ? <RecordCustomFieldsSection moduleKey="inventory_deliveries" values={customValues} onChange={setCustomValues} /> : doc ? <RecordCustomFieldsFacts moduleKey="inventory_deliveries" values={doc.custom_fields} /> : null}
 
       <section className="flex flex-col gap-3">
         <SectionHeading description={editable ? `${plural(totalUnits, "unit")} on this delivery.` : undefined}>Lines</SectionHeading>

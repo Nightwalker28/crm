@@ -13,7 +13,9 @@ import type { Lead } from "@/hooks/sales/useLeads";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
-import { getLeadScoreGrade, getLeadStatus } from "@/lib/statusStyles";
+import { getLeadScoreGrade } from "@/lib/statusStyles";
+import { PicklistStatusValue } from "@/components/picklists/PicklistStatusValue";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 type LeadsTableProps = {
   leads: Lead[];
@@ -61,7 +63,7 @@ function leadName(lead: Lead) {
 }
 
 function renderCell(lead: Lead, column: string) {
-  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={lead.custom_fields} />;
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={lead.custom_fields} moduleKey="sales_leads" />;
 
   switch (column) {
     case "first_name":
@@ -75,10 +77,10 @@ function renderCell(lead: Lead, column: string) {
       );
     case "primary_email":
       return <span className="text-sm text-copy-secondary">{lead.primary_email || <span className="text-copy-disabled">-</span>}</span>;
-    case "status": {
-      const style = getLeadStatus(lead.status ?? "");
-      return <StatusValue status={style} />;
-    }
+    case "status":
+      return <PicklistStatusValue listKey="lead_status" value={lead.status} />;
+    case "source":
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="lead_source" value={lead.source} /></span>;
     case "score": {
       const style = getLeadScoreGrade(lead.score_grade ?? "cold");
       return <StatusValue status={{ ...style, label: String(lead.score ?? 0) }} />;

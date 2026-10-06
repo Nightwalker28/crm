@@ -53,10 +53,10 @@ class MailRecordAssociationTests(unittest.TestCase):
                 # Same contact id in another tenant, so isolation failures show.
                 SalesContact(contact_id=8, tenant_id=OTHER_TENANT, primary_email="other@example.com"),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=3,
                     tenant_id=TENANT,
                     opportunity_name="Renewal",
-                    client="Acme",
                 ),
                 UserMailConnection(
                     id=1,

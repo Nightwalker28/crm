@@ -40,12 +40,12 @@ function invoiceFixture() {
 test.beforeEach(async ({ page }) => {
   await loginAsAdmin(page);
   let invoice = invoiceFixture();
-  await page.route("**/finance/pos-invoices?**", async (route) => {
+  await page.route("**/finance/invoices?**", async (route) => {
     const url = new URL(route.request().url());
     const pageSize = Number(url.searchParams.get("page_size") ?? 10);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: [invoice], range_start: 1, range_end: 1, total_count: 1, total_pages: 1, page: 1, page_size: pageSize }) });
   });
-  await page.route(`**/finance/pos-invoices/${invoiceId}/payments`, async (route) => {
+  await page.route(`**/finance/invoices/${invoiceId}/payments`, async (route) => {
     const payload = route.request().postDataJSON() as { amount: number; payment_method?: string };
     invoice = { ...invoice, amount_paid: invoice.amount_paid + payload.amount, balance_due: invoice.balance_due - payload.amount, payment_method: payload.payment_method ?? invoice.payment_method };
     if (invoice.balance_due === 0) invoice = { ...invoice, status: "paid", payment_status: "paid" };
@@ -92,7 +92,7 @@ test("Payments says when there is nothing to list", async ({ page }) => {
 
 test("Payment recording provides a responsive routed workflow with bounded amounts", async ({ page }) => {
   let submittedPayload: { amount: number; payment_method?: string | null } | null = null;
-  await page.route(`**/finance/pos-invoices/${invoiceId}/payments`, async (route) => {
+  await page.route(`**/finance/invoices/${invoiceId}/payments`, async (route) => {
     submittedPayload = route.request().postDataJSON() as { amount: number; payment_method?: string | null };
     await route.fulfill({
       status: 200,
@@ -119,15 +119,17 @@ test("Payment recording provides a responsive routed workflow with bounded amoun
   await expect(page.getByText("Payment amount cannot exceed the outstanding balance.")).toBeVisible();
 
   await page.getByLabel("Payment amount").fill("750");
-  await page.getByLabel("Payment method").fill("Card");
+  // Payment method is the tenant's list (13b §3.2).
+  await page.getByRole("combobox", { name: "Payment method" }).click();
+  await page.getByRole("option", { name: "Card" }).click();
   await page.getByRole("button", { name: "Record payment", exact: true }).click();
 
   await expect(page).toHaveURL(new RegExp(`/dashboard/finance/payments\\?recordedInvoiceId=${invoiceId}$`));
-  expect(submittedPayload).toEqual(expect.objectContaining({ amount: 750, payment_method: "Card", reference: null }));
+  expect(submittedPayload).toEqual(expect.objectContaining({ amount: 750, payment_method: "card", reference: null }));
 });
 
 test("Payment recording hides backend failure details", async ({ page }) => {
-  await page.route(`**/finance/pos-invoices/${invoiceId}/payments`, (route) =>
+  await page.route(`**/finance/invoices/${invoiceId}/payments`, (route) =>
     route.fulfill({
       status: 409,
       contentType: "application/json",

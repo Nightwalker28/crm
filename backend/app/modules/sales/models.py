@@ -4,10 +4,12 @@ from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, D
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import expression
 
+from app.core.custom_field_cache import CustomFieldsMixin
 from app.core.database import Base
 from app.modules.catalog.models import CatalogProduct, CatalogService  # noqa: F401 - line items point at the catalog
-from app.modules.client_portal.models import CustomerGroup  # noqa: F401
+from app.modules.client_portal.models import ClientAccount, CustomerGroup  # noqa: F401 - portal orders name their account
 from app.modules.inventory.models import InventoryWarehouse  # noqa: F401 - orders hold stock in a warehouse
+from app.modules.website_integrations.models import WebsiteIntegrationApiKey  # noqa: F401 - website orders name their key
 from app.modules.sales.opportunity_contact_roles import (
     DEFAULT_OPPORTUNITY_CONTACT_ROLE,
     OPPORTUNITY_CONTACT_ROLE_CHECK_SQL,
@@ -19,18 +21,9 @@ from app.modules.sales.opportunity_stages import (
 )
 
 
-def _get_custom_field_cache(record) -> dict | None:
-    return getattr(record, "_custom_field_cache", None)
-
-
-def _set_custom_field_cache(record, value: dict | None) -> None:
-    # Custom fields are persisted in CustomFieldValue rows; model instances only carry hydrated response data.
-    record._custom_field_cache = value or None
-
-
 # organization model
 
-class SalesOrganization(Base):
+class SalesOrganization(CustomFieldsMixin, Base):
     __tablename__ = "sales_organizations"
     __table_args__ = (
         Index("ix_sales_organizations_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
@@ -47,7 +40,10 @@ class SalesOrganization(Base):
     secondary_email = Column(Text, nullable=True)
 
     industry = Column(Text, nullable=True)
-    annual_revenue = Column(Text, nullable=True)
+    account_type = Column(Text, nullable=True)
+    # In the company's base currency (13a A4, A11).
+    annual_revenue = Column(Numeric(18, 2), nullable=True)
+    employee_count = Column(Integer, nullable=True)
 
     assigned_to = Column(
         BigInteger,
@@ -65,11 +61,19 @@ class SalesOrganization(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     deleted_at = Column(DateTime(timezone=True), nullable=True)
 
+    # Structured addresses (13a C2): `*_address` is the street line.
     billing_address = Column(Text, nullable=True)
+    billing_street2 = Column(Text, nullable=True)
     billing_city = Column(Text, nullable=True)
     billing_state = Column(Text, nullable=True)
     billing_postal_code = Column(Text, nullable=True)
     billing_country = Column(Text, nullable=True)
+    shipping_address = Column(Text, nullable=True)
+    shipping_street2 = Column(Text, nullable=True)
+    shipping_city = Column(Text, nullable=True)
+    shipping_state = Column(Text, nullable=True)
+    shipping_postal_code = Column(Text, nullable=True)
+    shipping_country = Column(Text, nullable=True)
     # A vendor is an Account that sells to us (12-erp-inventory.md §7 decision 6); the same
     # company can be a customer too.
     is_vendor = Column(SmallInteger, nullable=False, server_default="0")
@@ -90,22 +94,6 @@ class SalesOrganization(Base):
     assigned_user = relationship("User", foreign_keys=[assigned_to], lazy="selectin")
 
     @property
-    def custom_data(self) -> dict | None:
-        return _get_custom_field_cache(self)
-
-    @custom_data.setter
-    def custom_data(self, value: dict | None) -> None:
-        _set_custom_field_cache(self, value)
-
-    @property
-    def custom_fields(self) -> dict | None:
-        return self.custom_data
-
-    @custom_fields.setter
-    def custom_fields(self, value: dict | None) -> None:
-        self.custom_data = value
-
-    @property
     def assigned_to_name(self) -> str | None:
         if not self.assigned_user:
             return None
@@ -114,21 +102,34 @@ class SalesOrganization(Base):
 
 # contacts model
 
-class SalesContact(Base):
+class SalesContact(CustomFieldsMixin, Base):
     __tablename__ = "sales_contacts"
     __table_args__ = (
         Index("ix_sales_contacts_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
+        CheckConstraint(
+            "primary_email IS NOT NULL OR contact_telephone IS NOT NULL OR mobile_phone IS NOT NULL",
+            name="ck_sales_contacts_reachable",
+        ),
     )
 
     contact_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    salutation = Column(Text, nullable=True)
     first_name = Column(Text, nullable=True)
     last_name = Column(Text, nullable=True)
+    # The work phone; the column keeps its first name (13b §3.5).
     contact_telephone = Column(Text, nullable=True)
+    mobile_phone = Column(Text, nullable=True)
     linkedin_url = Column(Text, nullable=True)
-    primary_email = Column(Text, nullable=False, index=True)
+    primary_email = Column(Text, nullable=True, index=True)
     current_title = Column(Text, nullable=True)
     region = Column(Text, nullable=True)
+    # The mailing address; `country` is its country (an ISO code).
+    mailing_address = Column(Text, nullable=True)
+    mailing_street2 = Column(Text, nullable=True)
+    mailing_city = Column(Text, nullable=True)
+    mailing_state = Column(Text, nullable=True)
+    mailing_postal_code = Column(Text, nullable=True)
     country = Column(Text, nullable=True)
     email_opt_out = Column(Boolean, nullable=False, server_default=expression.false())
     assigned_to = Column(
@@ -158,7 +159,7 @@ class SalesContact(Base):
         Text,
         Computed(
             "lower(coalesce(first_name, '') || ' ' || coalesce(last_name, '') || ' ' || "
-            "coalesce(contact_telephone, '') || ' ' || coalesce(primary_email, '') || ' ' || "
+            "coalesce(contact_telephone, '') || ' ' || coalesce(mobile_phone, '') || ' ' || coalesce(primary_email, '') || ' ' || "
             "coalesce(current_title, '') || ' ' || coalesce(region, '') || ' ' || "
             "coalesce(country, '') || ' ' || coalesce(linkedin_url, ''))",
             persisted=True,
@@ -179,32 +180,17 @@ class SalesContact(Base):
     customer_group = relationship("CustomerGroup", lazy="selectin")
 
     @property
-    def custom_data(self) -> dict | None:
-        return _get_custom_field_cache(self)
-
-    @custom_data.setter
-    def custom_data(self, value: dict | None) -> None:
-        _set_custom_field_cache(self, value)
-
-    @property
-    def custom_fields(self) -> dict | None:
-        return self.custom_data
-
-    @custom_fields.setter
-    def custom_fields(self, value: dict | None) -> None:
-        self.custom_data = value
-
-    @property
     def organization_name(self) -> str | None:
         return self.organization.org_name if self.organization else None
 
 
-class SalesLead(Base):
+class SalesLead(CustomFieldsMixin, Base):
     __tablename__ = "sales_leads"
     __table_args__ = (
+        # A lead can be phone-only (13a A9): it needs an email or a phone, not both.
         CheckConstraint(
-            "status IN ('new', 'contacted', 'qualified', 'unqualified', 'converted')",
-            name="ck_sales_leads_status",
+            "primary_email IS NOT NULL OR phone IS NOT NULL OR mobile_phone IS NOT NULL",
+            name="ck_sales_leads_reachable",
         ),
         Index("ix_sales_leads_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_leads_tenant_status_active", "tenant_id", "status", postgresql_where=text("deleted_at IS NULL")),
@@ -222,8 +208,9 @@ class SalesLead(Base):
     first_name = Column(Text, nullable=True)
     last_name = Column(Text, nullable=True)
     company = Column(Text, nullable=True)
-    primary_email = Column(Text, nullable=False, index=True)
+    primary_email = Column(Text, nullable=True, index=True)
     phone = Column(Text, nullable=True)
+    mobile_phone = Column(Text, nullable=True)
     title = Column(Text, nullable=True)
     source = Column(Text, nullable=True)
     status = Column(Text, nullable=False, server_default="new")
@@ -242,7 +229,7 @@ class SalesLead(Base):
         Computed(
             "lower(coalesce(first_name, '') || ' ' || coalesce(last_name, '') || ' ' || "
             "coalesce(company, '') || ' ' || coalesce(primary_email, '') || ' ' || "
-            "coalesce(phone, '') || ' ' || coalesce(title, '') || ' ' || "
+            "coalesce(phone, '') || ' ' || coalesce(mobile_phone, '') || ' ' || coalesce(title, '') || ' ' || "
             "coalesce(source, '') || ' ' || coalesce(status, ''))",
             persisted=True,
         ),
@@ -253,22 +240,6 @@ class SalesLead(Base):
     team = relationship("Team", foreign_keys=[team_id], lazy="selectin")
     last_contacted_by = relationship("User", foreign_keys=[last_contacted_by_user_id], lazy="selectin")
     score_record = relationship("SalesLeadScore", back_populates="lead", uselist=False, lazy="selectin", cascade="all, delete-orphan")
-
-    @property
-    def custom_data(self) -> dict | None:
-        return _get_custom_field_cache(self)
-
-    @custom_data.setter
-    def custom_data(self, value: dict | None) -> None:
-        _set_custom_field_cache(self, value)
-
-    @property
-    def custom_fields(self) -> dict | None:
-        return self.custom_data
-
-    @custom_fields.setter
-    def custom_fields(self, value: dict | None) -> None:
-        self.custom_data = value
 
     @property
     def assigned_to_name(self) -> str | None:
@@ -333,7 +304,7 @@ class SalesLeadScore(Base):
     lead = relationship("SalesLead", back_populates="score_record")
 
 
-class SalesQuote(Base):
+class SalesQuote(CustomFieldsMixin, Base):
     __tablename__ = "sales_quotes"
     __table_args__ = (
         CheckConstraint(
@@ -365,6 +336,25 @@ class SalesQuote(Base):
     tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     total_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     notes = Column(Text, nullable=True)
+    # Copied from the account when it is chosen, editable on the document (13a C3).
+    billing_address = Column(Text, nullable=True)
+    billing_street2 = Column(Text, nullable=True)
+    billing_city = Column(Text, nullable=True)
+    billing_state = Column(Text, nullable=True)
+    billing_postal_code = Column(Text, nullable=True)
+    billing_country = Column(Text, nullable=True)
+    shipping_address = Column(Text, nullable=True)
+    shipping_street2 = Column(Text, nullable=True)
+    shipping_city = Column(Text, nullable=True)
+    shipping_state = Column(Text, nullable=True)
+    shipping_postal_code = Column(Text, nullable=True)
+    shipping_country = Column(Text, nullable=True)
+    customer_po_reference = Column(Text, nullable=True)
+    terms_and_conditions = Column(Text, nullable=True)
+    shipping_method = Column(Text, nullable=True)
+    shipping_charge = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # Why the customer declined, from the `lost_reason` picklist.
+    lost_reason = Column(Text, nullable=True)
     assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -396,22 +386,6 @@ class SalesQuote(Base):
         ).strip() or self.assigned_user.email
     items = relationship("SalesQuoteItem", back_populates="quote", cascade="all, delete-orphan", order_by="SalesQuoteItem.sort_order")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
-
-    @property
-    def custom_data(self) -> dict | None:
-        return _get_custom_field_cache(self)
-
-    @custom_data.setter
-    def custom_data(self, value: dict | None) -> None:
-        _set_custom_field_cache(self, value)
-
-    @property
-    def custom_fields(self) -> dict | None:
-        return self.custom_data
-
-    @custom_fields.setter
-    def custom_fields(self, value: dict | None) -> None:
-        self.custom_data = value
 
 
 class SalesQuoteItem(Base):
@@ -531,6 +505,16 @@ class SalesOrder(Base):
         Index("ix_sales_orders_tenant_status", "tenant_id", "status"),
         Index("ix_sales_orders_tenant_quote", "tenant_id", "quote_id"),
         Index("ix_sales_orders_tenant_created", "tenant_id", "created_at"),
+        CheckConstraint("source IN ('crm', 'website', 'client_portal')", name="ck_sales_orders_source"),
+        # A shop's order reference is unique per tenant, so a retried submission finds its order.
+        Index(
+            "uq_sales_orders_tenant_external_reference",
+            "tenant_id",
+            "external_reference",
+            unique=True,
+            postgresql_where=text("external_reference IS NOT NULL"),
+            sqlite_where=text("external_reference IS NOT NULL"),
+        ),
     )
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
@@ -547,7 +531,6 @@ class SalesOrder(Base):
     discount_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     grand_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     delivery_date = Column(Date, nullable=True)
-    delivery_address = Column(Text, nullable=True)
     payment_terms = Column(Text, nullable=True)
     # Base-currency units per one unit of `currency`, for margin only (12d §3.3); NULL when
     # the order is in the base currency or no rate was given.
@@ -565,6 +548,35 @@ class SalesOrder(Base):
     remaining_closed_at = Column(DateTime(timezone=True), nullable=True)
     remaining_close_reason = Column(Text, nullable=True)
     notes = Column(Text, nullable=True)
+    # Copied from the account when it is chosen, editable on the document (13a C3).
+    billing_address = Column(Text, nullable=True)
+    billing_street2 = Column(Text, nullable=True)
+    billing_city = Column(Text, nullable=True)
+    billing_state = Column(Text, nullable=True)
+    billing_postal_code = Column(Text, nullable=True)
+    billing_country = Column(Text, nullable=True)
+    shipping_address = Column(Text, nullable=True)
+    shipping_street2 = Column(Text, nullable=True)
+    shipping_city = Column(Text, nullable=True)
+    shipping_state = Column(Text, nullable=True)
+    shipping_postal_code = Column(Text, nullable=True)
+    shipping_country = Column(Text, nullable=True)
+    customer_po_reference = Column(Text, nullable=True)
+    terms_and_conditions = Column(Text, nullable=True)
+    shipping_method = Column(Text, nullable=True)
+    shipping_charge = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # Why the order was cancelled, from the `lost_reason` picklist.
+    lost_reason = Column(Text, nullable=True)
+    # Where the order came from (13 F1.3): crm (staff, or a converted quote), website (the
+    # public integration API) or client_portal. `channel` names the shop platform the website
+    # sent; `external_reference` is its order reference and `request_hash` the submitted body,
+    # so a retried submission returns the same order instead of a second one.
+    source = Column(Text, nullable=False, server_default="crm", index=True)
+    channel = Column(Text, nullable=True)
+    external_reference = Column(Text, nullable=True)
+    request_hash = Column(Text, nullable=True)
+    integration_key_id = Column(BigInteger, ForeignKey("website_integration_api_keys.id", ondelete="SET NULL"), nullable=True, index=True)
+    client_account_id = Column(BigInteger, ForeignKey("client_accounts.id", ondelete="SET NULL"), nullable=True, index=True)
     owner_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_by_id = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -644,13 +656,16 @@ class SalesOrderItem(Base):
     order = relationship("SalesOrder", back_populates="items")
 
 
-class SalesOpportunity(Base):
+class SalesOpportunity(CustomFieldsMixin, Base):
     __tablename__ = "sales_opportunities"
     __table_args__ = (
         CheckConstraint(
             "probability_percent IS NULL OR (probability_percent >= 0 AND probability_percent <= 100)",
             name="ck_sales_opportunities_probability_range",
         ),
+        CheckConstraint("amount IS NULL OR amount >= 0", name="ck_sales_opportunities_amount"),
+        # A deal belongs to an account, a contact, or both (13a H13).
+        CheckConstraint("organization_id IS NOT NULL OR contact_id IS NOT NULL", name="ck_sales_opportunities_party"),
         Index("ix_sales_opportunities_tenant_stage_active", "tenant_id", "sales_stage", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_close_active", "tenant_id", "expected_close_date", postgresql_where=text("deleted_at IS NULL")),
         Index("ix_sales_opportunities_tenant_contact", "tenant_id", "contact_id"),
@@ -667,7 +682,6 @@ class SalesOpportunity(Base):
     opportunity_id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
     tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
     opportunity_name = Column(Text, nullable=False)
-    client = Column(Text, nullable=False)
     # The stage's stable key, mirrored from `pipeline_stage_id` by the pipeline service.
     # Kept for filters, search, export and the API's `sales_stage` field. Since Phase 4
     # it is no longer pinned to the six seeded keys; the stage row is what makes it valid.
@@ -696,18 +710,14 @@ class SalesOpportunity(Base):
     start_date = Column(Date, nullable=True)
     expected_close_date = Column(Date, nullable=True)
     probability_percent = Column(Numeric(5, 2), nullable=True)
-    campaign_type = Column(Text, nullable=True)
-    total_leads = Column(Text, nullable=True)
-    cpl = Column(Text, nullable=True)
-    total_cost_of_project = Column(Text, nullable=True)
+    # The deal's value in `currency_type` (13a A4, C1); the agency fields that were here are
+    # custom fields now, in the tenants that used them.
+    amount = Column(Numeric(18, 2), nullable=True)
     currency_type = Column(Text, nullable=True)
-    target_geography = Column(Text, nullable=True)
-    target_audience = Column(Text, nullable=True)
-    domain_cap = Column(Text, nullable=True)
-    tactics = Column(Text, nullable=True)
-    delivery_format = Column(Text, nullable=True)
-    attachments = Column(Text, nullable=True)
-
+    deal_type = Column(Text, nullable=True)
+    source = Column(Text, nullable=True)
+    next_step = Column(Text, nullable=True)
+    lost_reason = Column(Text, nullable=True)
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
     last_contacted_at = Column(DateTime(timezone=True), nullable=True, index=True)
@@ -726,22 +736,6 @@ class SalesOpportunity(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-
-    @property
-    def custom_data(self) -> dict | None:
-        return _get_custom_field_cache(self)
-
-    @custom_data.setter
-    def custom_data(self, value: dict | None) -> None:
-        _set_custom_field_cache(self, value)
-
-    @property
-    def custom_fields(self) -> dict | None:
-        return self.custom_data
-
-    @custom_fields.setter
-    def custom_fields(self, value: dict | None) -> None:
-        self.custom_data = value
 
     @property
     def assigned_to_name(self) -> str | None:

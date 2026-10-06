@@ -189,7 +189,6 @@ def _document_number_sources():
     from app.modules.inventory.models import InventoryDelivery, InventoryReturn
     from app.modules.purchasing.models import PurchaseReceipt
     from app.modules.sales.models import SalesOrder
-    from app.modules.website_integrations.models import WebsiteIntegrationOrder
 
     return {
         "inventory_adjustment": (InventoryAdjustment, InventoryAdjustment.number),
@@ -198,7 +197,6 @@ def _document_number_sources():
         "inventory_return": (InventoryReturn, InventoryReturn.number),
         "purchase_receipt": (PurchaseReceipt, PurchaseReceipt.number),
         "sales_order": (SalesOrder, SalesOrder.order_number),
-        "website_order": (WebsiteIntegrationOrder, WebsiteIntegrationOrder.external_reference),
     }
 
 
@@ -222,6 +220,6 @@ def document_numbers(db: Session, *, tenant_id: int, moves: list[InventoryStockM
 
 
 def serialize_move(move: InventoryStockMove, *, product_name: str, warehouse_name: str, actor_name: str | None = None, with_cost: bool = False, document_number: str | None = None) -> dict:
-    actor_label = actor_name or ("Website integration" if move.source_type == "website_order" else "System")
+    actor_label = actor_name or "System"
     cost = {"unit_cost": move.unit_cost, "value": move.value, "average_cost_after": move.average_cost_after, "cost_source": move.cost_source} if with_cost else {}
     return {**cost,"id": move.id, "product_id": move.product_id, "product_name": product_name, "warehouse_id": move.warehouse_id, "warehouse_name": warehouse_name, "quantity": move.quantity, "on_hand_after": move.on_hand_after, "move_type": move.move_type, "source_type": move.source_type, "source_id": move.source_id, "document_number": document_number, "document_number": document_number, "reason": move.reason, "note": move.note, "created_by": move.created_by, "actor_label": actor_label, "occurred_at": move.occurred_at}

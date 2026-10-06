@@ -236,18 +236,12 @@ class EnvelopeTests(unittest.TestCase):
         participant = build_webhook_envelope(
             recorded("opportunity.participant_added", "sales_opportunity", {"is_primary": "yes", "contact_id": "", "restored": True})
         )
-        invoice = build_webhook_envelope(
-            recorded("invoice.overdue", "finance_insertion_order", {"amount": "n/a", "due_date": "2026-09-01", "currency": "EUR"})
-        )
 
         self.assertIsNone(lead["data"]["score"])
         self.assertIsNone(lead["data"]["owner_user_id"])
         self.assertIsNone(participant["data"]["is_primary"])
         self.assertIsNone(participant["data"]["contact_id"])
         self.assertIs(participant["data"]["restored"], True)
-        self.assertIsNone(invoice["data"]["amount"])
-        self.assertEqual(invoice["data"]["due_date"], "2026-09-01")
-        self.assertEqual(invoice["record"]["type"], "invoice")
 
     def test_a_naive_timestamp_is_read_as_utc(self):
         event = recorded("lead.updated", "sales_lead", {"changed_fields": ["status", "company"], "before_status": "New"})
@@ -259,8 +253,8 @@ class EnvelopeTests(unittest.TestCase):
         self.assertEqual(envelope["data"]["previous_status"], "New")
 
     def test_events_without_an_external_form_are_not_built(self):
-        self.assertIsNone(build_webhook_envelope(recorded("case.created", "support_case", {})))
-        self.assertIsNone(build_webhook_envelope(recorded("contract.status_changed", "contract", {})))
+        # Insertion orders were retired with their `invoice.overdue` event (13 F1.2).
+        self.assertIsNone(build_webhook_envelope(recorded("invoice.overdue", "finance_insertion_order", {})))
         self.assertIsNone(build_webhook_envelope(recorded("lead.created", "custom_record", {})))
         self.assertIsNone(webhook_event_type_for(recorded("lead.created", "custom_record", {})))
 

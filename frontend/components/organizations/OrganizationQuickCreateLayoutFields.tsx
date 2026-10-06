@@ -5,20 +5,18 @@ import {
   LayoutDrivenQuickCreateFields,
   type LayoutDrivenQuickCreateFieldContext,
   QuickCreateField,
+  QuickCreatePicklistField,
   makeQuickCreateInputId,
   quickCreateInputType,
   validateLayoutDrivenQuickCreate,
 } from "@/components/forms/quickCreateLayout";
 import type { OrganizationFormValue } from "@/components/organizations/OrganizationFormFields";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import type { ResolvedRecordLayoutViewport } from "@/components/forms/ResolvedRecordLayout";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
-import { COUNTRIES } from "@/lib/countries";
 
 const TEXT_FIELD_KEYS = [
   "org_name",
@@ -27,12 +25,21 @@ const TEXT_FIELD_KEYS = [
   "primary_phone",
   "secondary_phone",
   "website",
-  "industry",
   "annual_revenue",
+  "employee_count",
+  "billing_address",
+  "billing_street2",
   "billing_city",
   "billing_state",
   "billing_postal_code",
+  "shipping_address",
+  "shipping_street2",
+  "shipping_city",
+  "shipping_state",
+  "shipping_postal_code",
 ] as const;
+
+const PICKLIST_FIELD_KEYS = ["industry", "account_type", "billing_country", "shipping_country"] as const;
 
 export const organizationQuickCreateInputId = makeQuickCreateInputId(
   "account-quick-create",
@@ -93,48 +100,16 @@ export function OrganizationQuickCreateLayoutFields({
       );
     }
 
-    if (field.field_key === "billing_country") {
+    const picklistKey = PICKLIST_FIELD_KEYS.find((key) => key === field.field_key);
+    if (picklistKey) {
+      const key = picklistKey;
       return (
-        <QuickCreateField field={field} aria={aria} error={error}>
-          <Select
-            value={value.billing_country || undefined}
-            onValueChange={(billing_country) => onChange({ ...value, billing_country })}
-            disabled={disabled}
-            required={field.required}
-          >
-            <SelectTrigger
-              id={inputId}
-              className="w-full"
-              aria-invalid={aria.invalid}
-              aria-describedby={aria.describedBy}
-            >
-              <SelectValue placeholder="Select country" />
-            </SelectTrigger>
-            <SelectContent className="max-h-72">
-              {COUNTRIES.map((country) => (
-                <SelectItem key={country} value={country}>{country}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </QuickCreateField>
-      );
-    }
-
-    if (field.field_key === "billing_address") {
-      return (
-        <QuickCreateField field={field} aria={aria} error={error}>
-          <Textarea
-            id={inputId}
-            rows={3}
-            required={field.required}
-            disabled={disabled}
-            aria-invalid={aria.invalid}
-            aria-describedby={aria.describedBy}
-            value={value.billing_address}
-            placeholder={field.placeholder ?? ""}
-            onChange={(event) => onChange({ ...value, billing_address: event.target.value })}
-          />
-        </QuickCreateField>
+        <QuickCreatePicklistField
+          field={field}
+          context={{ inputId, error, aria, disabled }}
+          value={value[key]}
+          onChange={(next) => onChange({ ...value, [key]: next })}
+        />
       );
     }
 

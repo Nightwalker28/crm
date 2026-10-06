@@ -58,6 +58,7 @@ import { apiFetch } from "@/lib/api";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 type RelatedContact = {
   contact_id: number;
@@ -71,7 +72,7 @@ type RelatedOpportunity = {
   opportunity_name: string;
   sales_stage?: string | null;
   expected_close_date?: string | null;
-  total_cost_of_project?: string | null;
+  amount?: number | string | null;
   currency_type?: string | null;
 };
 type RelatedQuote = {
@@ -82,15 +83,6 @@ type RelatedQuote = {
   status?: string | null;
   currency?: string | null;
   total_amount?: number | string | null;
-};
-type RelatedInsertionOrder = {
-  id: number;
-  io_number: string;
-  customer_name?: string | null;
-  status?: string | null;
-  total_amount?: number | null;
-  currency?: string | null;
-  updated_at?: string | null;
 };
 type RelatedOrder = {
   id: number;
@@ -139,14 +131,11 @@ type OrganizationSummary = {
   related_quotes: RelatedQuote[];
   related_orders: RelatedOrder[];
   related_invoices: RelatedInvoice[];
-  related_insertion_orders: RelatedInsertionOrder[];
-  inferred_services: string[];
   contact_count: number;
   opportunity_count: number;
   quote_count: number;
   order_count: number;
   invoice_count: number;
-  insertion_order_count: number;
   /** E5: open balances on issued invoices (receivables) and posted bills (payables), per currency. */
   receivables?: Array<{ currency: string; amount: number; count: number }>;
   payables?: Array<{ currency: string; amount: number; count: number }>;
@@ -334,7 +323,7 @@ export default function OrganizationDetailPage() {
             {fieldEnabled("primary_phone") && org.primary_phone ? (
               <span>{org.primary_phone}</span>
             ) : null}
-            {fieldEnabled("industry") && org.industry ? <span>{org.industry}</span> : null}
+            {fieldEnabled("industry") && org.industry ? <span><PicklistText listKey="industry" value={org.industry} /></span> : null}
           </>
         ) : null}
         actions={org ? (
@@ -467,22 +456,8 @@ export default function OrganizationDetailPage() {
                       href={relatedHref}
                     />
                   ) : null}
-                  {canViewRelated(summary.related_access, "insertion_orders") ? (
-                    <RecordSpineCollection
-                      label="Insertion orders"
-                      count={summary.insertion_order_count}
-                      href={relatedHref}
-                    />
-                  ) : null}
                 </RecordSpineBlock>
 
-                {summary.inferred_services.length ? (
-                  <RecordSpineBlock title="Services">
-                    <div className="text-sm text-copy-primary">
-                      {summary.inferred_services.join(", ")}
-                    </div>
-                  </RecordSpineBlock>
-                ) : null}
 
                 <RecordSpineMeta
                   createdLabel={
@@ -720,7 +695,11 @@ function RelatedRecords({
               key={deal.opportunity_id}
               href={`/dashboard/sales/opportunities/${deal.opportunity_id}`}
               title={deal.opportunity_name}
-              detail={`${stageLabel(deal.sales_stage)}${deal.expected_close_date ? ` · closes ${formatDateOnly(deal.expected_close_date)}` : ""}`}
+              detail={[
+                stageLabel(deal.sales_stage),
+                formatMoney(deal.amount, deal.currency_type),
+                deal.expected_close_date ? `closes ${formatDateOnly(deal.expected_close_date)}` : null,
+              ].filter(Boolean).join(" · ")}
             />
           ))}
         </RecordRelatedCard>
@@ -754,25 +733,9 @@ function RelatedRecords({
           {summary.related_invoices.map((invoice) => (
             <RecordRelatedLink
               key={invoice.id}
-              href={`/dashboard/finance/pos/${invoice.id}`}
+              href={`/dashboard/finance/invoices/${invoice.id}`}
               title={invoice.invoice_number ?? "Draft invoice"}
               detail={`${invoice.payment_status || invoice.status || "Unknown status"} · ${formatMoney(invoice.total_amount, invoice.currency) ?? EMPTY_CELL_VALUE}`}
-            />
-          ))}
-        </RecordRelatedCard>
-      ) : null}
-      {canViewRelated(summary.related_access, "insertion_orders") ? (
-        <RecordRelatedCard
-          title="Insertion orders"
-          total={summary.insertion_order_count}
-          empty="No insertion orders for this account yet."
-        >
-          {summary.related_insertion_orders.map((order) => (
-            <RecordRelatedLink
-              key={order.id}
-              href={`/dashboard/finance/insertion-orders/${order.id}`}
-              title={order.io_number}
-              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
             />
           ))}
         </RecordRelatedCard>

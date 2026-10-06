@@ -64,7 +64,7 @@ type RelatedOpportunity = {
   opportunity_name: string;
   sales_stage?: string | null;
   expected_close_date?: string | null;
-  total_cost_of_project?: string | null;
+  amount?: number | string | null;
   currency_type?: string | null;
   /** The role this contact plays on the deal; null for a legacy primary with no role. */
   contact_role_label?: string | null;
@@ -76,13 +76,6 @@ type RelatedOrder = {
   status: string;
   currency: string;
   grand_total: number | string;
-};
-type RelatedInsertionOrder = {
-  id: number;
-  io_number: string;
-  status?: string | null;
-  total_amount?: number | null;
-  currency?: string | null;
 };
 type RelatedQuote = {
   quote_id: number;
@@ -126,13 +119,10 @@ type ContactSummary = {
   related_opportunities: RelatedOpportunity[];
   related_quotes: RelatedQuote[];
   related_orders?: RelatedOrder[];
-  related_insertion_orders?: RelatedInsertionOrder[];
-  inferred_services: string[];
   // Totals; the lists above hold the most recent few.
   opportunity_count: number;
   quote_count: number;
   order_count?: number;
-  insertion_order_count?: number;
 };
 
 /**
@@ -438,22 +428,8 @@ export default function ContactDetailPage() {
                       href={relatedHref}
                     />
                   ) : null}
-                  {canViewRelated(summary.related_access, "insertion_orders") ? (
-                    <RecordSpineCollection
-                      label="Insertion orders"
-                      count={summary.insertion_order_count ?? 0}
-                      href={relatedHref}
-                    />
-                  ) : null}
                 </RecordSpineBlock>
   
-                {summary.inferred_services.length ? (
-                  <RecordSpineBlock title="Services">
-                    <div className="text-sm text-copy-primary">
-                      {summary.inferred_services.join(", ")}
-                    </div>
-                  </RecordSpineBlock>
-                ) : null}
   
                 <RecordSpineMeta
                   updatedLabel={
@@ -564,7 +540,6 @@ export default function ContactDetailPage() {
             defaults: {
               contact_id: summary.contact.contact_id,
               contact_name: contactName,
-              client: contactName,
               organization_id: summary.organization?.org_id ?? null,
               organization_name: summary.organization?.org_name ?? "",
               opportunity_name: summary.organization?.org_name
@@ -678,6 +653,7 @@ function RelatedRecords({
                 deal.contact_role_label,
                 deal.is_primary_contact ? "Primary contact" : null,
                 stageLabel(deal.sales_stage),
+                formatMoney(deal.amount, deal.currency_type),
                 deal.expected_close_date ? `closes ${formatDateOnly(deal.expected_close_date)}` : null,
               ].filter(Boolean).join(" · ")}
             />
@@ -704,22 +680,6 @@ function RelatedRecords({
               href={`/dashboard/sales/orders/${order.id}`}
               title={order.order_number}
               detail={`${order.status || "Unknown status"} · ${formatMoney(order.grand_total, order.currency) ?? EMPTY_CELL_VALUE}`}
-            />
-          ))}
-        </RecordRelatedCard>
-      ) : null}
-      {canViewRelated(summary.related_access, "insertion_orders") ? (
-        <RecordRelatedCard
-          title="Insertion orders"
-          total={summary.insertion_order_count}
-          empty="No insertion orders for this contact yet."
-        >
-          {(summary.related_insertion_orders ?? []).map((order) => (
-            <RecordRelatedLink
-              key={order.id}
-              href={`/dashboard/finance/insertion-orders/${order.id}`}
-              title={order.io_number}
-              detail={`${order.status || "Unknown status"} · ${formatMoney(order.total_amount, order.currency) ?? EMPTY_CELL_VALUE}`}
             />
           ))}
         </RecordRelatedCard>

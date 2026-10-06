@@ -100,7 +100,7 @@ async function stubDeal(page: Page, people: Person[], state: { sent: boolean } =
     organization: { org_id: 1, org_name: "Acme" },
     participant_contacts: participants,
     can_view_contacts: true,
-    related_quotes: [], related_insertion_orders: [], inferred_services: [], insertion_order_count: 0,
+    related_quotes: [], inferred_services: [],
   })));
   await page.route("**/record-layouts/**", (route) => route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "none" }) }));
   await page.route("**/linked-record-options/users?**", (route) => route.fulfill(json({ results: [{ id: 7, label: "Ada Owner", email: "ada@example.test" }], has_more: false })));

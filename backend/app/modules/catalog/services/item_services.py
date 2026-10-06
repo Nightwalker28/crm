@@ -39,7 +39,8 @@ def _option(record, *, kind: str) -> dict:
         "barcode": getattr(record, "barcode", None),
         "unit": record.unit or "unit",
         "currency": record.currency,
-        "unit_price": record.public_unit_price,
+        # Lines start from the list price; the website price is the public feed's (13a C4).
+        "unit_price": record.list_price if record.list_price is not None else record.public_unit_price,
         "category_name": category.full_name if category is not None else None,
     }
 

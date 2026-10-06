@@ -43,14 +43,6 @@ test.beforeEach(async ({ page }) => {
           actions: fullActions,
         },
         {
-          id: 4,
-          name: "contracts",
-          base_route: "/dashboard/contracts",
-          description: "Contracts",
-          is_enabled: true,
-          actions: fullActions,
-        },
-        {
           id: 5,
           name: "catalog_products",
           base_route: "/dashboard/catalog/products",
@@ -91,17 +83,9 @@ test.beforeEach(async ({ page }) => {
           actions: fullActions,
         },
         {
-          id: 10,
-          name: "finance_io",
-          base_route: "/dashboard/finance/insertion-orders",
-          description: "Insertion Orders",
-          is_enabled: true,
-          actions: fullActions,
-        },
-        {
           id: 11,
           name: "finance_pos",
-          base_route: "/dashboard/finance/pos",
+          base_route: "/dashboard/finance/invoices",
           description: "Invoices",
           is_enabled: true,
           actions: fullActions,
@@ -178,14 +162,6 @@ test.beforeEach(async ({ page }) => {
           is_enabled: true,
           actions: fullActions,
         },
-        {
-          id: 21,
-          name: "support_cases",
-          base_route: "/dashboard/support/cases",
-          description: "Support cases",
-          is_enabled: true,
-          actions: fullActions,
-        },
       ]),
     }),
   );
@@ -203,7 +179,7 @@ test("shows only permitted module actions and opens routed create workflows", as
   await expect(page.getByText("Upload document", { exact: true })).toBeVisible();
   await expect(page.getByText("Compose email", { exact: true })).toBeVisible();
   await expect(page.getByText("Create client page", { exact: true })).toBeVisible();
-  await expect(page.getByText("Create insertion order", { exact: true })).toBeVisible();
+  await expect(page.getByText("Create invoice", { exact: true })).toBeVisible();
   await expect(page.getByText("Record payment", { exact: true })).toBeVisible();
   await expect(page.getByText("Build report", { exact: true })).toBeVisible();
   await expect(page.getByText("Create message template", { exact: true })).toBeVisible();
@@ -228,17 +204,14 @@ test("exposes every accessible module destination and supports Arrow and Enter n
     "/dashboard/sales/opportunities",
     "/dashboard/sales/quotes",
     "/dashboard/sales/orders",
-    "/dashboard/contracts",
     "/dashboard/catalog/products",
     "/dashboard/catalog/services",
     "/dashboard/documents",
     "/dashboard/calendar",
     "/dashboard/mail",
     "/dashboard/tasks",
-    "/dashboard/support/cases",
     "/dashboard/client-portal",
-    "/dashboard/finance/insertion-orders",
-    "/dashboard/finance/pos",
+    "/dashboard/finance/invoices",
     "/dashboard/reports",
     "/dashboard/settings/message-templates",
     "/dashboard/settings/integrations",
@@ -398,26 +371,8 @@ test("opens client-page creation as a routed full-page workflow", async ({ page 
   await expect(page.getByRole("heading", { name: "Create client page", level: 1 })).toBeVisible();
 });
 
-test("opens insertion-order creation as a routed full-page workflow", async ({ page }) => {
-  await page.route("**/custom-fields/finance_io", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
-  );
-  await page.route("**/module-fields/finance_io", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: "[]" }),
-  );
-  await page.route("**/users/company", (route) =>
-    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ operating_currencies: ["USD"] }) }),
-  );
-
-  await page.keyboard.press("Control+K");
-  await page.getByText("Create insertion order", { exact: true }).click();
-
-  await expect(page).toHaveURL(/\/dashboard\/finance\/insertion-orders\/new$/);
-  await expect(page.getByRole("heading", { name: "Create insertion order", level: 1 })).toBeVisible();
-});
-
 test("opens payment recording as an edit-authorized routed workflow", async ({ page }) => {
-  await page.route("**/finance/pos-invoices?**", (route) =>
+  await page.route("**/finance/invoices?**", (route) =>
     route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -448,7 +403,7 @@ test("hides payment recording without invoice edit permission", async ({ page })
       body: JSON.stringify([{
         id: 11,
         name: "finance_pos",
-        base_route: "/dashboard/finance/pos",
+        base_route: "/dashboard/finance/invoices",
         description: "Invoices",
         is_enabled: true,
         actions: { ...fullActions, can_edit: false },

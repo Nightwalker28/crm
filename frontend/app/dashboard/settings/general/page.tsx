@@ -314,7 +314,7 @@ export default function CompanyPage() {
                 onChange={(event) => setForm((current) => ({ ...current, operating_currencies: event.target.value }))}
                 placeholder="USD, EUR, GBP"
               />
-              <FieldDescription>Comma-separated three-letter ISO codes used across opportunities, insertion orders, and other commercial records.</FieldDescription>
+              <FieldDescription>Comma-separated three-letter ISO codes used across deals, quotes, orders, invoices and other commercial records.</FieldDescription>
             </Field>
             <Field>
               <FieldLabel htmlFor="company-billing-address">Billing address</FieldLabel>

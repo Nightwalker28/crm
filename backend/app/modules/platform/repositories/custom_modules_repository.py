@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from sqlalchemy import or_
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import and_, or_
+from sqlalchemy.orm import Session
 
-from app.modules.platform.models import CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
+from app.modules.platform.models import CustomModuleDefinition, CustomModuleRecord, FieldValue
 
 
 CUSTOM_MODULE_RECORD_SORT_FIELDS = {
@@ -11,10 +11,6 @@ CUSTOM_MODULE_RECORD_SORT_FIELDS = {
     "created_at": CustomModuleRecord.created_at,
     "updated_at": CustomModuleRecord.updated_at,
 }
-
-
-def record_load_options():
-    return (selectinload(CustomModuleRecord.values).selectinload(CustomModuleRecordValue.field),)
 
 
 def build_records_query(
@@ -26,7 +22,6 @@ def build_records_query(
 ):
     query = (
         db.query(CustomModuleRecord)
-        .options(*record_load_options())
         .filter(
             CustomModuleRecord.tenant_id == definition.tenant_id,
             CustomModuleRecord.custom_module_id == definition.id,
@@ -36,9 +31,17 @@ def build_records_query(
         query = query.filter(CustomModuleRecord.deleted_at.is_(None))
     if search and search.strip():
         pattern = f"%{search.strip()}%"
+        module_key = definition.module.name if definition.module else f"custom_module_{definition.id}"
         query = (
-            query.outerjoin(CustomModuleRecordValue, CustomModuleRecordValue.record_id == CustomModuleRecord.id)
-            .filter(or_(CustomModuleRecord.title.ilike(pattern), CustomModuleRecordValue.text_value.ilike(pattern)))
+            query.outerjoin(
+                FieldValue,
+                and_(
+                    FieldValue.tenant_id == CustomModuleRecord.tenant_id,
+                    FieldValue.module_key == module_key,
+                    FieldValue.record_id == CustomModuleRecord.id,
+                ),
+            )
+            .filter(or_(CustomModuleRecord.title.ilike(pattern), FieldValue.value_text.ilike(pattern)))
             .distinct()
         )
     return query

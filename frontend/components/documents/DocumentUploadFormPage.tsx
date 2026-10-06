@@ -39,7 +39,7 @@ const ACCEPTED_DOCUMENT_TYPES = ".pdf,.doc,.docx,.txt,.rtf,.odt";
 const DEFAULT_EXTENSIONS = ["pdf", "doc", "docx", "txt", "rtf", "odt"];
 const LINKABLE_MODULES = [
   "sales_leads", "sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "sales_orders",
-  "support_cases", "finance_io", "finance_pos", "catalog_products", "catalog_services",
+  "finance_pos", "catalog_products", "catalog_services",
 ];
 const UPLOAD_CONCURRENCY = 2;
 

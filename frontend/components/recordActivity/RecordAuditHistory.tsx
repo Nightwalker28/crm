@@ -31,14 +31,14 @@ type Props = {
   moduleKey: RecordModuleKey;
   entityId: string | number;
   /**
-   * A module's own immutable event log — `contract_events`, a support case's events —
-   * interleaved into the audit list by timestamp (design.md §4.7).
+   * A module's own immutable event log — a quote's proposal events — interleaved into the
+   * audit list by timestamp (design.md §4.7).
    *
    * These arrive whole with the record, so this is not the two-cursor merge §4.7 rejects for
    * the interaction feed: nothing here paginates, and "load more" still belongs to one store.
    * Merging matters because the two stores answer the same question with different coverage —
-   * `activity_logs` records the contract's own columns, and only the domain table sees a
-   * signer sign.
+   * `activity_logs` records the quote's own columns, and only the domain table sees a client
+   * open the proposal.
    */
   moduleEvents?: RecordModuleEvent[];
 };

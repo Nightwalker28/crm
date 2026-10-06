@@ -8,16 +8,14 @@ from app.modules.calendar.repositories import calendar_repository
 from app.modules.catalog.repositories import catalog_item_repository
 from app.modules.client_portal.repositories import client_portal_repository
 from app.modules.documents.repositories import documents_repository
-from app.modules.finance.repositories import io_repository, pos_invoice_repository
+from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.mail.repositories import mail_repository
 from app.modules.platform.repositories import custom_modules_repository
 from app.modules.platform.services import activity_logs, crm_events, data_transfer_jobs, notifications, record_comments
 from app.modules.sales.repositories import contacts_repository, opportunities_repository, organizations_repository
 from app.modules.tasks.repositories import tasks_repository
 from app.modules.user_management.repositories import admin_users_repository
-from app.modules.website_integrations.repositories import website_integration_repository
 from scripts import seed_load_crm
-
 
 
 def list_products_cursor(db, **kwargs):
@@ -153,24 +151,6 @@ class CursorRepositoryOrderingTests(unittest.TestCase):
                     function(CursorDB(query), limit=2, cursor=9, **kwargs)
                 self._assert_strict_id_cursor_order(query)
 
-    def test_finance_io_cursor_repository_clears_existing_ordering_before_hydration(self):
-        query = CursorQuery()
-        with patch.object(io_repository, "build_insertion_orders_query", return_value=query), patch.object(
-            io_repository,
-            "hydrate_custom_field_records",
-            side_effect=lambda _db, **kwargs: kwargs["records"],
-        ):
-            io_repository.list_insertion_orders_cursor(
-                CursorDB(query),
-                tenant_id=10,
-                module_id=1,
-                user_id=None,
-                limit=2,
-                cursor=9,
-            )
-
-        self._assert_strict_id_cursor_order(query)
-
     def test_simple_cursor_repositories_use_strict_id_order(self):
         cases = [
             (
@@ -182,7 +162,6 @@ class CursorRepositoryOrderingTests(unittest.TestCase):
             (documents_repository.list_documents_cursor, {"tenant_id": 10}),
             (client_portal_repository.list_client_accounts_cursor, {"tenant_id": 10}),
             (client_portal_repository.list_client_pages_cursor, {"tenant_id": 10}),
-            (website_integration_repository.list_orders_cursor, {"tenant_id": 10}),
         ]
         for function, kwargs in cases:
             with self.subTest(function=function.__name__):

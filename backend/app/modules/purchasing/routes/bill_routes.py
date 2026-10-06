@@ -3,6 +3,8 @@
 from datetime import date
 from decimal import Decimal
 
+from typing import Any
+
 from fastapi import APIRouter, Depends, Query
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
@@ -32,6 +34,7 @@ class BillLinePayload(BaseModel):
 
 
 class BillPayload(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     vendor_id: int | None = Field(default=None, gt=0)
     vendor_invoice_number: str | None = Field(default=None, max_length=120)
     bill_date: date | None = None

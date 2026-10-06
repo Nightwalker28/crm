@@ -18,7 +18,9 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.uploads import delete_local_media_file, persist_media_file, read_image_upload
+from app.core.uploads import build_media_url, delete_local_media_file, persist_media_file, read_image_upload
+from app.modules.catalog.models import CatalogItemImage
+from app.modules.platform.services.custom_fields import sync_custom_fields
 from app.modules.catalog.repositories import catalog_item_repository as repository
 from app.modules.catalog.repositories.catalog_item_repository import CatalogItemQuerySpec
 from app.modules.catalog.services.common import (
@@ -102,6 +104,8 @@ def serialize(kind: CatalogKind, record) -> dict:
         **catalog_media_payload(record),
         "created_at": record.created_at,
         "updated_at": record.updated_at,
+        "custom_fields": getattr(record, "custom_fields", None),
+        "images": getattr(record, "images", None) or [],
     }
 
 
@@ -183,6 +187,8 @@ def create_item(db: Session, kind: CatalogKind, *, tenant_id: int, actor_user_id
         db.flush()
         kind.after_create(db, record, payload, actor_user_id)
         db.flush()
+        sync_custom_fields(db, tenant_id=tenant_id, module_key=kind.module_key, record=record, payload=payload, created=True,
+                           enforce_required="custom_fields" in payload)
         _log(db, kind, record, actor_user_id=actor_user_id, action="create", description=f"Created {kind.key} {record.name}")
     except IntegrityError as exc:
         db.rollback()
@@ -195,7 +201,7 @@ def create_item(db: Session, kind: CatalogKind, *, tenant_id: int, actor_user_id
 def update_item(db: Session, kind: CatalogKind, *, record, actor_user_id: int | None, payload: dict):
     before_state = _state(kind, record)
     payload, after_flush = kind.prepare_update(db, record, payload)
-    for name, value in normalize_catalog_detail_fields(db, tenant_id=record.tenant_id, payload=payload, partial=True).items():
+    for name, value in normalize_catalog_detail_fields(db, tenant_id=record.tenant_id, payload=payload, partial=True, existing=record).items():
         setattr(record, name, value)
     for group in kind.update_field_groups:
         for name, value in group(db, record.tenant_id, payload).items():
@@ -232,6 +238,7 @@ def update_item(db: Session, kind: CatalogKind, *, record, actor_user_id: int | 
         if after_flush is not None:
             after_flush(db)
             db.flush()
+        sync_custom_fields(db, tenant_id=record.tenant_id, module_key=kind.module_key, record=record, payload=payload, created=False)
         _log(db, kind, record, actor_user_id=actor_user_id, action="update", description=f"Updated {kind.key} {record.name}",
              before_state=before_state)
     except IntegrityError as exc:
@@ -269,6 +276,66 @@ async def upload_item_media(db: Session, kind: CatalogKind, *, record, actor_use
     db.refresh(record)
     delete_local_media_file(previous_media_path)
     return record
+
+
+MAX_GALLERY_IMAGES = 12
+
+
+def gallery(db: Session, kind: CatalogKind, record) -> list[dict]:
+    """The item's other pictures, after its main image (13a C4)."""
+    rows = (
+        db.query(CatalogItemImage)
+        .filter(CatalogItemImage.tenant_id == record.tenant_id, CatalogItemImage.item_kind == kind.key, CatalogItemImage.item_id == record.id)
+        .order_by(CatalogItemImage.position, CatalogItemImage.id)
+        .all()
+    )
+    return [
+        {"id": row.id, "url": build_media_url(row.media_path), "content_type": row.media_content_type,
+         "original_filename": row.media_original_filename, "position": row.position}
+        for row in rows
+    ]
+
+
+async def add_gallery_image(db: Session, kind: CatalogKind, *, record, actor_user_id: int | None, file: UploadFile) -> list[dict]:
+    existing = gallery(db, kind, record)
+    if len(existing) >= MAX_GALLERY_IMAGES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"An item keeps up to {MAX_GALLERY_IMAGES} more pictures; remove one first")
+    content, extension = await read_image_upload(file)
+    path = persist_media_file(
+        category=f"catalog-{kind.key}s", owner_key=f"tenant-{record.tenant_id}/{kind.key}-{record.id}/gallery",
+        extension=extension, content=content,
+    )
+    try:
+        db.add(CatalogItemImage(
+            tenant_id=record.tenant_id, item_kind=kind.key, item_id=record.id, media_path=path, media_content_type=file.content_type,
+            media_original_filename=(file.filename or f"{kind.key}-image")[:255], position=len(existing),
+        ))
+        db.flush()
+        _log(db, kind, record, actor_user_id=actor_user_id, action="media.update", description=f"Added a picture to {record.name}")
+        db.commit()
+    except Exception:
+        db.rollback()
+        delete_local_media_file(path)
+        raise
+    return gallery(db, kind, record)
+
+
+def remove_gallery_image(db: Session, kind: CatalogKind, *, record, actor_user_id: int | None, image_id: int) -> list[dict]:
+    image = (
+        db.query(CatalogItemImage)
+        .filter(CatalogItemImage.tenant_id == record.tenant_id, CatalogItemImage.item_kind == kind.key,
+                CatalogItemImage.item_id == record.id, CatalogItemImage.id == image_id)
+        .first()
+    )
+    if image is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Picture not found")
+    path = image.media_path
+    db.delete(image)
+    db.flush()
+    _log(db, kind, record, actor_user_id=actor_user_id, action="media.update", description=f"Removed a picture from {record.name}")
+    db.commit()
+    delete_local_media_file(path)
+    return gallery(db, kind, record)
 
 
 def soft_delete_item(db: Session, kind: CatalogKind, *, record, actor_user_id: int | None):

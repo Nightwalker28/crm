@@ -125,26 +125,26 @@ class OpportunityListTests(unittest.TestCase):
         self.db.add_all(
             [
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=103,
                     tenant_id=10,
                     opportunity_name="Zeta rollout",
-                    client="Zeta",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=104,
                     tenant_id=10,
                     opportunity_name="Ada renewal",
-                    client="Ada",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=105,
                     tenant_id=10,
                     opportunity_name="Mia expansion",
-                    client="Mia",
                     sales_stage="lead",
                     assigned_to=1,
                 ),
@@ -170,49 +170,49 @@ class OpportunityListTests(unittest.TestCase):
         self.db.add_all(
             [
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=301,
                     tenant_id=10,
                     opportunity_name="Lead deal",
-                    client="Ada",
                     sales_stage="lead",
-                    total_cost_of_project="1,200.50",
+                    amount="1200.50",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=302,
                     tenant_id=10,
                     opportunity_name="Won deal",
-                    client="Ada",
                     sales_stage="closed_won",
-                    total_cost_of_project="300",
+                    amount="300",
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=303,
                     tenant_id=10,
                     opportunity_name="No stage deal",
-                    client="Ada",
                     sales_stage=None,
-                    total_cost_of_project="not a number",
+                    amount=None,
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=304,
                     tenant_id=10,
                     opportunity_name="Deleted deal",
-                    client="Ada",
                     sales_stage="lead",
-                    total_cost_of_project="900",
+                    amount="900",
                     deleted_at=datetime.utcnow(),
                     assigned_to=1,
                 ),
                 SalesOpportunity(
+                    organization_id=1,
                     opportunity_id=305,
                     tenant_id=99,
                     opportunity_name="Other tenant deal",
-                    client="Other",
                     sales_stage="lead",
-                    total_cost_of_project="700",
+                    amount="700",
                     assigned_to=1,
                 ),
             ]
@@ -250,18 +250,18 @@ class OpportunityListTests(unittest.TestCase):
 
     def test_get_opportunity_include_deleted_returns_active_and_deleted_rows(self):
         active = SalesOpportunity(
+            organization_id=1,
             opportunity_id=201,
             tenant_id=10,
             opportunity_name="Active deal",
-            client="Ada",
             sales_stage="lead",
             assigned_to=1,
         )
         deleted = SalesOpportunity(
+            organization_id=1,
             opportunity_id=202,
             tenant_id=10,
             opportunity_name="Deleted deal",
-            client="Mia",
             sales_stage="lead",
             assigned_to=1,
             deleted_at=datetime.utcnow(),
@@ -297,18 +297,18 @@ class OpportunityListTests(unittest.TestCase):
 
     def test_get_deleted_opportunity_only_returns_recycle_bin_rows(self):
         active = SalesOpportunity(
+            organization_id=1,
             opportunity_id=203,
             tenant_id=10,
             opportunity_name="Active restore candidate",
-            client="Ada",
             sales_stage="lead",
             assigned_to=1,
         )
         deleted = SalesOpportunity(
+            organization_id=1,
             opportunity_id=204,
             tenant_id=10,
             opportunity_name="Deleted restore candidate",
-            client="Mia",
             sales_stage="lead",
             assigned_to=1,
             deleted_at=datetime.utcnow(),

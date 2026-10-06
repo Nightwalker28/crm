@@ -45,7 +45,8 @@ import {
 } from "@/hooks/useResolvedRecordLayout";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { getLeadScoreGrade, getLeadStatus } from "@/lib/statusStyles";
+import { getLeadScoreGrade } from "@/lib/statusStyles";
+import { picklistMeaning, picklistOptions, picklistStatus, usePicklist } from "@/hooks/usePicklists";
 
 type LeadScoreFactor = {
   key: string;
@@ -84,8 +85,6 @@ type LeadSummary = {
   };
 };
 
-const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "unqualified", "converted"] as const;
-
 /**
  * Fields the spine owns, which `Details` must not draw a second time (design.md §4.7).
  *
@@ -95,18 +94,12 @@ const LEAD_STATUS_VALUES = ["new", "contacted", "qualified", "unqualified", "con
  */
 const SPINE_OWNED_FIELDS = ["status", "assigned_to", "team_id", "next_follow_up_at"] as const;
 
-/** The track shows a pipeline, so the one status that leaves it is not a step on it. */
-const LEAD_TRACK_VALUES = ["new", "contacted", "qualified", "converted"] as const;
-
-const LEAD_STATUS_OPTIONS: InlineFieldEditOption[] = LEAD_STATUS_VALUES.map((value) => ({
-  value,
-  ...getLeadStatus(value),
-}));
-
-const LEAD_TRACK_STEPS = LEAD_TRACK_VALUES.map((value) => ({
-  id: value,
-  label: getLeadStatus(value).label,
-}));
+/**
+ * The track shows the path a lead walks, so the status that leaves it (one meaning
+ * *unqualified*) is not a step on it. Statuses are the tenant's `lead_status` picklist; the
+ * track follows their meanings, never their names (13b §3.1).
+ */
+const LEAD_TRACK_MEANINGS = new Set(["open", "working", "qualified", "converted"]);
 
 class LeadSummaryRequestError extends Error {
   constructor(
@@ -177,7 +170,17 @@ export default function LeadDetailPage() {
       || summary.lead.primary_email
       || "Lead"
     : "Lead";
-  const status = lead?.status || "new";
+  const { picklist: statusList } = usePicklist("lead_status");
+  const status = lead?.status || "";
+  const statusMeaning = picklistMeaning(statusList, status);
+  const statusOptions: InlineFieldEditOption[] = picklistOptions(statusList, status).map((option) => ({
+    value: option.value,
+    ...picklistStatus(statusList, option.value),
+    label: option.label,
+  }));
+  const trackSteps = (statusList?.values ?? [])
+    .filter((value) => value.is_active && LEAD_TRACK_MEANINGS.has(value.meaning ?? ""))
+    .map((value) => ({ id: value.key, label: value.label }));
   const summaryError = summaryQuery.error;
   const notFound = summaryError instanceof LeadSummaryRequestError && summaryError.status === 404;
 
@@ -255,7 +258,7 @@ export default function LeadDetailPage() {
           backLabel="Back to leads"
         />
       ) : undefined}
-      status={<StatusValue status={getLeadStatus(status)} context="record" />}
+      status={<StatusValue status={picklistStatus(statusList, status)} context="record" />}
       subtitle={lead ? (
         <>
           {fieldEnabled("company") && lead.company ? <span>{lead.company}</span> : null}
@@ -265,7 +268,7 @@ export default function LeadDetailPage() {
       ) : null}
       actions={lead ? (
         <>
-          {canConvertLead && lead.status !== "converted" ? (
+          {canConvertLead && statusMeaning !== "converted" ? (
             <Button asChild>
               <Link href={convertHref}>
                 <ArrowRightLeft />
@@ -310,8 +313,8 @@ export default function LeadDetailPage() {
         <RecordSpine>
           {lead ? (
             <>
-              {LEAD_TRACK_VALUES.includes(status as (typeof LEAD_TRACK_VALUES)[number]) ? (
-                <RecordSpineTrack steps={LEAD_TRACK_STEPS} currentId={status} label="Lead lifecycle" />
+              {LEAD_TRACK_MEANINGS.has(statusMeaning ?? "") && trackSteps.some((step) => step.id === status) ? (
+                <RecordSpineTrack steps={trackSteps} currentId={status} label="Lead lifecycle" />
               ) : null}
 
               <RecordSpineBlock title="State">
@@ -320,11 +323,11 @@ export default function LeadDetailPage() {
                     <InlineFieldEdit
                       fieldLabel="Status"
                       value={status}
-                      options={LEAD_STATUS_OPTIONS}
+                      options={statusOptions}
                       onCommit={(next) => updateStatus(next.value)}
                     />
                   ) : (
-                    <StatusValue status={getLeadStatus(status)} context="record" />
+                    <StatusValue status={picklistStatus(statusList, status)} context="record" />
                   )}
                 </RecordSpineField>
                 {fieldEnabled("assigned_to") ? (

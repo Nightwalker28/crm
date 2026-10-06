@@ -78,7 +78,7 @@ class TenantBackupRoundTripTests(unittest.TestCase):
         pipeline = ensure_default_opportunity_pipeline(self.db, 10)
         self.stage_key = pipeline.stages[1].key
         self.db.add(SalesOpportunity(
-            opportunity_id=3, tenant_id=10, opportunity_name="Cameras for Acme", client="Acme", organization_id=5,
+            opportunity_id=3, tenant_id=10, opportunity_name="Cameras for Acme", organization_id=5,
             contact_id=7, pipeline_id=pipeline.id, pipeline_stage_id=pipeline.stages[1].id, sales_stage=self.stage_key))
         self.db.add_all([
             SalesOpportunityContact(id=1, tenant_id=10, opportunity_id=3, contact_id=7, role_key="decision_maker", is_primary=True),

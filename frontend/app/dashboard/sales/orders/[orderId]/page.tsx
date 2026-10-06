@@ -44,7 +44,7 @@ import {
 import { apiFetch } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
-import { getOrderPriority, getOrderStatus } from "@/lib/statusStyles";
+import { getOrderPriority, getOrderSource, getOrderStatus } from "@/lib/statusStyles";
 
 const ORDER_STATUS_VALUES = ["draft", "confirmed", "fulfilled", "cancelled"] as const;
 
@@ -70,7 +70,7 @@ const ORDER_TRACK_STEPS = ORDER_TRACK_VALUES.map((value) => ({
  * Fields `Details` must not draw a second time (design.md §4.7): the header owns the order
  * number, and the spine owns status, owner and every relationship.
  */
-const SPINE_OWNED_FIELDS = ["order_number", "status", "owner_id", "priority"] as const;
+const SPINE_OWNED_FIELDS = ["order_number", "status", "owner_id", "priority", "source", "channel", "external_reference"] as const;
 
 /** Money fields in the seeded layout, which render through the order's own currency. */
 const MONEY_FIELDS = new Set(["subtotal", "discount_total", "tax_total", "grand_total"]);
@@ -264,6 +264,17 @@ export default function OrderDetailPage() {
                     <StatusValue status={getOrderPriority(order.priority ?? "normal")} context="record" />
                   )}
                 </RecordSpineField>
+                {order.source && order.source !== "crm" ? (
+                  // Website and portal orders say where they came from (13 F1.3); read-only.
+                  <RecordSpineField label="Source">
+                    <StatusValue status={getOrderSource(order.source)} context="record" />
+                    {order.channel || order.external_reference ? (
+                      <span className="block text-xs text-copy-muted">
+                        {[order.channel, order.external_reference].filter(Boolean).join(" · ")}
+                      </span>
+                    ) : null}
+                  </RecordSpineField>
+                ) : null}
                 <RecordOwnerField
                   moduleKey="sales_orders"
                   ownerId={order.owner_id}
@@ -414,6 +425,7 @@ function OrderOverview({
       <ReadOnlyRecordLayout
         layout={layout}
         values={order as unknown as Record<string, unknown>}
+        customValues={order.custom_fields ?? undefined}
         omitFieldKeys={SPINE_OWNED_FIELDS}
         renderValue={(field, value) =>
           MONEY_FIELDS.has(field.field_key)

@@ -13,7 +13,7 @@ import { apiFetch } from "@/lib/api";
 import { RecordMutationError } from "@/lib/apiErrors";
 
 /** Fields the backend requires regardless of tenant module-field configuration. */
-const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "custom_fields"];
+const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "phone", "mobile_phone", "custom_fields"];
 
 export function toDatetimeLocalValue(value?: string | null) {
   if (!value) return "";
@@ -30,14 +30,15 @@ export function toIsoOrNull(value: string) {
 }
 
 /**
- * Mirrors the backend's `primary_email is required` rule. Kept here so a surface cannot
- * invent a frontend-only requiredness that disagrees with the domain.
+ * Mirrors the backend's rule (13a A9): a lead needs an email or a phone — a walk-in or a
+ * caller has no email yet — and an email that is given must look like one. The message sits
+ * on the email field. Kept here so a surface cannot invent a frontend-only requiredness that
+ * disagrees with the domain.
  */
-export function validateLeadEmail(rawEmail: string): string | null {
-  const email = rawEmail.trim();
-  if (!email) return "Email is required.";
-  if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
-  return null;
+export function validateLeadEmail(form: Pick<LeadFormValue, "primary_email" | "phone" | "mobile_phone">): string | null {
+  const email = form.primary_email.trim();
+  if (email) return /^\S+@\S+\.\S+$/.test(email) ? null : "Enter a valid email address.";
+  return form.phone.trim() || form.mobile_phone.trim() ? null : "Add an email or a phone number.";
 }
 
 export function buildLeadPayload(
@@ -50,8 +51,9 @@ export function buildLeadPayload(
       first_name: form.first_name.trim() || null,
       last_name: form.last_name.trim() || null,
       company: form.company.trim() || null,
-      primary_email: form.primary_email.trim(),
+      primary_email: form.primary_email.trim() || null,
       phone: form.phone.trim() || null,
+      mobile_phone: form.mobile_phone.trim() || null,
       title: form.title.trim() || null,
       source: form.source.trim() || null,
       status: form.status,

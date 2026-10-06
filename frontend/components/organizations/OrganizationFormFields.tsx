@@ -6,12 +6,13 @@ import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
-import { COUNTRIES } from "@/lib/countries";
+import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
+import { AddressFields, addressFrom, flatAddress } from "@/components/forms/AddressFields";
 
 export type OrganizationFormValue = {
   org_name: string;
@@ -21,12 +22,22 @@ export type OrganizationFormValue = {
   primary_phone: string;
   secondary_phone: string;
   industry: string;
+  account_type: string;
+  /** In the company's base currency (13a A4). */
   annual_revenue: string;
+  employee_count: string;
   billing_address: string;
+  billing_street2: string;
   billing_city: string;
   billing_state: string;
   billing_postal_code: string;
   billing_country: string;
+  shipping_address: string;
+  shipping_street2: string;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_postal_code: string;
+  shipping_country: string;
   /** We buy from this account (E4). The same company can be a customer too. */
   is_vendor: boolean;
   /** Days to pay (E5): sets due dates on its invoices and bills. Blank uses the company default. */
@@ -43,12 +54,21 @@ export const EMPTY_ORGANIZATION_FORM: OrganizationFormValue = {
   primary_phone: "",
   secondary_phone: "",
   industry: "",
+  account_type: "",
   annual_revenue: "",
+  employee_count: "",
   billing_address: "",
+  billing_street2: "",
   billing_city: "",
   billing_state: "",
   billing_postal_code: "",
   billing_country: "",
+  shipping_address: "",
+  shipping_street2: "",
+  shipping_city: "",
+  shipping_state: "",
+  shipping_postal_code: "",
+  shipping_country: "",
   is_vendor: false,
   payment_terms_days: "",
   assigned_to: null,
@@ -72,17 +92,22 @@ type Props = {
 export const ORGANIZATION_FORM_INPUT_IDS: Record<string, string> = {
   org_name: "account-name",
   industry: "account-industry",
+  account_type: "account-type",
   website: "account-website",
   annual_revenue: "account-revenue",
+  employee_count: "account-employees",
   primary_email: "account-primary-email",
   secondary_email: "account-secondary-email",
   primary_phone: "account-primary-phone",
   secondary_phone: "account-secondary-phone",
-  billing_address: "account-billing-address",
-  billing_city: "account-billing-city",
-  billing_state: "account-billing-state",
-  billing_postal_code: "account-billing-postal",
-  billing_country: "account-country",
+  ...Object.fromEntries(
+    ["billing", "shipping"].flatMap((prefix) =>
+      ["address", "street2", "city", "state", "postal_code", "country"].map((part) => [
+        `${prefix}_${part}`,
+        `account-${prefix}-${part.replace("_", "-")}`,
+      ]),
+    ),
+  ),
   assigned_to: "account-owner",
   payment_terms_days: "account-payment-terms",
 };
@@ -90,34 +115,42 @@ export const organizationFormInputIdFor = inputIdLookup("sales_organizations", O
 
 export function OrganizationFormMainFields({ value, onChange, customFields, customFieldValues, onCustomFieldChange, moduleFields, nameError, emailError }: Props) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
+  const baseCurrency = useBaseCurrency().data;
   const update = (key: keyof OrganizationFormValue, nextValue: string) => onChange({ ...value, [key]: nextValue });
   return (
     <>
       <FormSection title="Account information" description="Identify the company and its primary commercial profile.">
         <FieldGroup columns={2}>
           {enabled("org_name") ? <TextField id="account-name" label="Account name" required value={value.org_name} onChange={(next) => update("org_name", next)} error={nameError} placeholder="Acme Inc." /> : null}
-          {enabled("industry") ? <TextField id="account-industry" label="Industry" value={value.industry} onChange={(next) => update("industry", next)} placeholder="Technology" /> : null}
+          {enabled("industry") ? <PicklistField id="account-industry" listKey="industry" label="Industry" value={value.industry} onChange={(next) => update("industry", next)} /> : null}
           {enabled("website") ? <TextField id="account-website" label="Website" type="url" value={value.website} onChange={(next) => update("website", next)} placeholder="https://acme.com" /> : null}
-          {enabled("annual_revenue") ? <TextField id="account-revenue" label="Annual revenue" value={value.annual_revenue} onChange={(next) => update("annual_revenue", next)} placeholder="$10M - $25M" /> : null}
+          {enabled("account_type") ? <PicklistField id="account-type" listKey="account_type" label="Type" value={value.account_type} onChange={(next) => update("account_type", next)} /> : null}
+          {enabled("annual_revenue") ? <TextField id="account-revenue" label={baseCurrency ? `Annual revenue (${baseCurrency})` : "Annual revenue"} type="number" inputMode="decimal" min="0" step="0.01" value={value.annual_revenue} onChange={(next) => update("annual_revenue", next)} /> : null}
+          {enabled("employee_count") ? <TextField id="account-employees" label="Employees" type="number" inputMode="numeric" min="0" step="1" value={value.employee_count} onChange={(next) => update("employee_count", next)} /> : null}
         </FieldGroup>
       </FormSection>
       <FormSection title="Contact details" description="Add the shared channels used to reach this account.">
         <FieldGroup columns={2}>
-          {enabled("primary_email") ? <TextField id="account-primary-email" label="Primary email" required type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="ops@acme.com" /> : null}
+          {enabled("primary_email") ? <TextField id="account-primary-email" label="Primary email" type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="ops@acme.com" /> : null}
           {enabled("secondary_email") ? <TextField id="account-secondary-email" label="Secondary email" type="email" value={value.secondary_email} onChange={(next) => update("secondary_email", next)} /> : null}
           {enabled("primary_phone") ? <TextField id="account-primary-phone" label="Primary phone" type="tel" value={value.primary_phone} onChange={(next) => update("primary_phone", next)} /> : null}
           {enabled("secondary_phone") ? <TextField id="account-secondary-phone" label="Secondary phone" type="tel" value={value.secondary_phone} onChange={(next) => update("secondary_phone", next)} /> : null}
         </FieldGroup>
       </FormSection>
-      <FormSection title="Billing address" description="Keep billing and transaction documents aligned to the correct address.">
-        <FieldGroup columns={2}>
-          {enabled("billing_address") ? <Field className="md:col-span-2"><FieldLabel htmlFor="account-billing-address">Address</FieldLabel><Textarea id="account-billing-address" rows={3} value={value.billing_address} onChange={(event) => update("billing_address", event.target.value)} /><ServerFieldError inputId="account-billing-address" /></Field> : null}
-          {enabled("billing_city") ? <TextField id="account-billing-city" label="City" value={value.billing_city} onChange={(next) => update("billing_city", next)} /> : null}
-          {enabled("billing_state") ? <TextField id="account-billing-state" label="State or province" value={value.billing_state} onChange={(next) => update("billing_state", next)} /> : null}
-          {enabled("billing_postal_code") ? <TextField id="account-billing-postal" label="Postal code" value={value.billing_postal_code} onChange={(next) => update("billing_postal_code", next)} /> : null}
-          {enabled("billing_country") ? <Field><FieldLabel htmlFor="account-country">Country</FieldLabel><Select value={value.billing_country || undefined} onValueChange={(billing_country) => onChange({ ...value, billing_country })}><SelectTrigger id="account-country"><SelectValue placeholder="Select country" /></SelectTrigger><SelectContent className="max-h-72">{COUNTRIES.map((country) => <SelectItem key={country} value={country}>{country}</SelectItem>)}</SelectContent></Select><ServerFieldError inputId="account-country" /></Field> : null}
-        </FieldGroup>
-      </FormSection>
+      {enabled("billing_address") ? (
+        <FormSection title="Billing address" description="Copied onto this account's quotes, orders and invoices.">
+          <AddressFields idPrefix="account-billing" value={addressFrom(value, "billing")} onChange={(billing) => onChange({ ...value, ...flatAddress("billing", billing) })} />
+        </FormSection>
+      ) : null}
+      {enabled("shipping_address") ? (
+        <FormSection
+          title="Shipping address"
+          description="Where orders ship. Left blank, documents ship to the billing address."
+          action={<Button type="button" variant="ghost" size="sm" onClick={() => onChange({ ...value, ...flatAddress("shipping", addressFrom(value, "billing")) })}>Same as billing</Button>}
+        >
+          <AddressFields idPrefix="account-shipping" value={addressFrom(value, "shipping")} onChange={(shipping) => onChange({ ...value, ...flatAddress("shipping", shipping) })} />
+        </FormSection>
+      ) : null}
       {customFields.length ? <FormSection title="Custom fields" description="Additional information configured for your workspace."><CustomFieldInputs definitions={customFields} values={customFieldValues} onChange={onCustomFieldChange} /></FormSection> : null}
     </>
   );

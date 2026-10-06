@@ -7,22 +7,30 @@
  */
 
 import type { ContactFormValue } from "@/components/contacts/ContactFormFields";
+import { addressPayload } from "@/components/forms/AddressFields";
+import { contactMailingAddress } from "@/components/contacts/ContactFormFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { RecordMutationError } from "@/lib/apiErrors";
 
-/** Fields the backend requires regardless of tenant module-field configuration. */
-const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "custom_fields"];
+/** Fields the backend reads regardless of tenant module-field configuration. */
+const ALWAYS_SUBMITTED_FIELDS = ["primary_email", "contact_telephone", "mobile_phone", "custom_fields"];
 
 /**
- * Mirrors the backend's `primary_email is required` rule. Kept here so a surface cannot
- * invent a frontend-only requiredness that disagrees with the domain.
+ * Mirrors the backend's rule (13a A9): a contact needs an email or a phone, and an email that
+ * is given must look like one. The message sits on the email field. Kept here so a surface
+ * cannot invent a frontend-only requiredness that disagrees with the domain.
  */
-export function validateContactEmail(rawEmail: string): string | null {
-  const email = rawEmail.trim();
-  if (!email) return "Email is required.";
-  if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
-  return null;
+export function validateContactEmail(form: Pick<ContactFormValue, "primary_email" | "contact_telephone" | "mobile_phone">): string | null {
+  const email = form.primary_email.trim();
+  if (email) return /^\S+@\S+\.\S+$/.test(email) ? null : "Enter a valid email address.";
+  return form.contact_telephone.trim() || form.mobile_phone.trim() ? null : "Add an email or a phone number.";
+}
+
+/** The mailing address's columns; its country is the contact's own `country`. */
+function mailingPayload(form: ContactFormValue) {
+  const { mailing_country, ...street } = addressPayload("mailing", contactMailingAddress(form));
+  return { ...street, country: mailing_country };
 }
 
 export function buildContactPayload(
@@ -35,12 +43,14 @@ export function buildContactPayload(
     {
       first_name: form.first_name.trim() || null,
       last_name: form.last_name.trim() || null,
-      primary_email: form.primary_email.trim(),
+      salutation: form.salutation || null,
+      primary_email: form.primary_email.trim() || null,
       contact_telephone: form.contact_telephone.trim() || null,
+      mobile_phone: form.mobile_phone.trim() || null,
       linkedin_url: form.linkedin_url.trim() || null,
       current_title: form.current_title.trim() || null,
       region: form.region || null,
-      country: form.country || null,
+      ...mailingPayload(form),
       email_opt_out: form.email_opt_out,
       // An edit that clears the owner would otherwise reassign the contact to the editor.
       assigned_to: mode === "edit" && form.assigned_to === null ? undefined : form.assigned_to,

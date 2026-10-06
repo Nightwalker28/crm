@@ -6,6 +6,7 @@ import {
   LayoutDrivenQuickCreateFields,
   type LayoutDrivenQuickCreateFieldContext,
   QuickCreateField,
+  QuickCreatePicklistField,
   makeQuickCreateInputId,
   quickCreateInputType,
   validateLayoutDrivenQuickCreate,
@@ -13,24 +14,29 @@ import {
 import type { ContactFormValue } from "@/components/contacts/ContactFormFields";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { COUNTRIES } from "@/lib/countries";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
 import type { ResolvedRecordLayoutViewport } from "@/components/forms/ResolvedRecordLayout";
 
-const REGIONS = ["APAC", "EMEA", "NA", "LATAM"];
 
 const TEXT_FIELD_KEYS = [
   "first_name",
   "last_name",
   "primary_email",
   "contact_telephone",
+  "mobile_phone",
   "current_title",
   "linkedin_url",
+  "mailing_address",
+  "mailing_street2",
+  "mailing_city",
+  "mailing_state",
+  "mailing_postal_code",
 ] as const;
+
+const PICKLIST_FIELD_KEYS = ["salutation", "region", "country"] as const;
 
 export const contactQuickCreateInputId = makeQuickCreateInputId("contact-quick-create", "sales_contacts");
 
@@ -126,32 +132,16 @@ export function ContactQuickCreateLayoutFields({
       );
     }
 
-    if (field.field_key === "region" || field.field_key === "country") {
-      const options = field.field_key === "region" ? REGIONS : COUNTRIES;
-      const selected = field.field_key === "region" ? value.region : value.country;
+    const picklistKey = PICKLIST_FIELD_KEYS.find((key) => key === field.field_key);
+    if (picklistKey) {
+      const key = picklistKey;
       return (
-        <QuickCreateField field={field} aria={aria} error={error}>
-          <Select
-            value={selected || undefined}
-            onValueChange={(next) => onChange({ ...value, [field.field_key]: next })}
-            disabled={disabled}
-            required={field.required}
-          >
-            <SelectTrigger
-              id={inputId}
-              className="w-full"
-              aria-invalid={aria.invalid}
-              aria-describedby={aria.describedBy}
-            >
-              <SelectValue placeholder={`Select ${field.label.toLocaleLowerCase()}`} />
-            </SelectTrigger>
-            <SelectContent className="max-h-72">
-              {options.map((option) => (
-                <SelectItem key={option} value={option}>{option}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </QuickCreateField>
+        <QuickCreatePicklistField
+          field={field}
+          context={{ inputId, error, aria, disabled }}
+          value={value[key]}
+          onChange={(next) => onChange({ ...value, [key]: next })}
+        />
       );
     }
 

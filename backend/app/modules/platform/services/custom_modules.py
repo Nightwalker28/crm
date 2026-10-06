@@ -2,9 +2,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime, timezone
-from decimal import Decimal, InvalidOperation
 from typing import Any
-from urllib.parse import urlparse
 
 from fastapi import HTTPException, status
 from sqlalchemy.exc import IntegrityError
@@ -12,6 +10,7 @@ from sqlalchemy.orm import Session, object_session, selectinload
 
 from app.core.access_control import ADMIN_MIN_ROLE_LEVEL, get_user_role_level, user_has_module_assignment
 from app.core.module_csv import build_import_summary, rows_from_csv_bytes
+from sqlalchemy import select
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.platform.custom_modules_schema import (
@@ -23,12 +22,10 @@ from app.modules.platform.custom_modules_schema import (
     CustomModuleResponse,
     CustomModuleUpdate,
 )
-from app.modules.platform.models import (
-    CustomModuleDefinition,
-    CustomModuleFieldDefinition,
-    CustomModuleRecord,
-    CustomModuleRecordValue,
-)
+from app.core import field_types
+from app.core.field_types import FieldContext
+from app.modules.platform.models import CustomModuleDefinition, CustomModuleRecord, FieldDefinition
+from app.modules.platform.services import custom_fields
 from app.modules.platform.repositories import custom_modules_repository
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.module_fields import is_protected_module_field
@@ -55,9 +52,6 @@ from app.modules.user_management.services.role_permissions import ROLE_TEMPLATES
 
 
 KEY_RE = re.compile(r"[^a-z0-9_]+")
-TEXT_TYPES = {"text", "textarea", "email", "phone", "url", "single_select"}
-NUMBER_TYPES = {"number", "currency"}
-DATE_TYPES = {"date", "datetime"}
 
 
 def slug_key(value: str) -> str:
@@ -69,23 +63,30 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def _is_protected_field(field: CustomModuleFieldDefinition) -> bool:
-    return is_protected_module_field(field.key)
+def _is_protected_field(field: FieldDefinition) -> bool:
+    return is_protected_module_field(field.field_key)
 
 
-def _serialize_field(field: CustomModuleFieldDefinition) -> dict[str, Any]:
+def module_key_of(definition: CustomModuleDefinition) -> str:
+    """The key its fields and values are stored under: the platform module's name."""
+    return definition.module.name if definition.module else f"custom_module_{definition.id}"
+
+
+def _serialize_field(field: FieldDefinition) -> dict[str, Any]:
     return {
         "id": field.id,
-        "key": field.key,
+        "key": field.field_key,
         "label": field.label,
         "field_type": field.field_type,
+        "picklist_key": field.picklist_key,
+        "lookup_module_key": field.lookup_module_key,
+        "config": field.config,
         "help_text": field.help_text,
         "placeholder": field.placeholder,
         "is_required": bool(field.is_required),
         "is_unique": bool(field.is_unique),
         "display_in_list": bool(field.display_in_list),
         "default_value": field.default_value,
-        "validation_json": field.validation_json,
         "sort_order": field.sort_order or 0,
         "is_active": bool(field.is_active),
         "is_protected": _is_protected_field(field),
@@ -143,7 +144,7 @@ def _get_module_definition(
 ) -> CustomModuleDefinition:
     query = (
         db.query(CustomModuleDefinition)
-        .options(selectinload(CustomModuleDefinition.fields), selectinload(CustomModuleDefinition.module))
+        .options(selectinload(CustomModuleDefinition.fields).selectinload(FieldDefinition.picklist), selectinload(CustomModuleDefinition.module))
         .filter(CustomModuleDefinition.tenant_id == tenant_id)
     )
     if module_id is not None:
@@ -272,89 +273,25 @@ def _set_tenant_module_enabled(db: Session, *, tenant_id: int, module: Module, e
     db.add(module)
 
 
-def _field_by_key(definition: CustomModuleDefinition) -> dict[str, CustomModuleFieldDefinition]:
-    return {field.key: field for field in definition.fields if field.deleted_at is None and field.is_active}
-
-
-def _parse_datetime(value: Any, *, date_only: bool) -> datetime | None:
-    if value in (None, ""):
-        return None
-    if isinstance(value, datetime):
-        return value
-    text = str(value).strip()
-    if date_only and len(text) == 10:
-        text = f"{text}T00:00:00+00:00"
-    parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
-def _coerce_value(field: CustomModuleFieldDefinition, raw: Any) -> tuple[Any, dict[str, Any]]:
-    if raw in (None, "", []):
-        if field.is_required:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} is required")
-        return None, {}
-
-    options = (field.validation_json or {}).get("options")
-    field_type = field.field_type
-    if field_type in TEXT_TYPES:
-        value = str(raw).strip()
-        if field_type == "email" and "@" not in value:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} must be a valid email")
-        if field_type == "url" and urlparse(value).scheme not in {"http", "https"}:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} must be a valid URL")
-        if field_type == "single_select" and options and value not in options:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} must use an allowed option")
-        return value, {"text_value": value}
-    if field_type in NUMBER_TYPES:
-        try:
-            value = Decimal(str(raw))
-        except (InvalidOperation, ValueError) as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} must be a number") from exc
-        return value, {"number_value": value}
-    if field_type in DATE_TYPES:
-        try:
-            value = _parse_datetime(raw, date_only=field_type == "date")
-        except ValueError as exc:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} must be a valid date") from exc
-        return value, {"datetime_value": value}
-    if field_type == "boolean":
-        value = bool(raw) if not isinstance(raw, str) else raw.lower() in {"true", "1", "yes", "on"}
-        return value, {"boolean_value": value}
-    if field_type == "multi_select":
-        value = raw if isinstance(raw, list) else [raw]
-        if options and any(item not in options for item in value):
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.label} contains an invalid option")
-        return value, {"json_value": value}
-    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported field type")
-
-
-def _check_unique(db: Session, *, field: CustomModuleFieldDefinition, storage: dict[str, Any], record_id: int | None) -> None:
-    if not field.is_unique or not storage:
-        return
-    attr, value = next(iter(storage.items()))
-    query = (
-        db.query(CustomModuleRecordValue)
-        .join(CustomModuleRecord, CustomModuleRecord.id == CustomModuleRecordValue.record_id)
-        .filter(
-            CustomModuleRecordValue.tenant_id == field.tenant_id,
-            CustomModuleRecordValue.custom_module_id == field.custom_module_id,
-            CustomModuleRecordValue.field_id == field.id,
-            CustomModuleRecord.deleted_at.is_(None),
-            getattr(CustomModuleRecordValue, attr) == value,
-        )
+def _live_fields(definition: CustomModuleDefinition) -> list[FieldDefinition]:
+    return sorted(
+        [field for field in definition.fields if field.deleted_at is None and field.is_active],
+        key=lambda field: (field.sort_order, field.id),
     )
-    if record_id is not None:
-        query = query.filter(CustomModuleRecordValue.record_id != record_id)
-    if query.first():
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=f"{field.label} must be unique")
+
+
+def _deleted_record_ids(definition: CustomModuleDefinition):
+    return select(CustomModuleRecord.id).where(
+        CustomModuleRecord.tenant_id == definition.tenant_id,
+        CustomModuleRecord.custom_module_id == definition.id,
+        CustomModuleRecord.deleted_at.is_not(None),
+    )
 
 
 def list_modules(db: Session, *, tenant_id: int, include_deleted: bool = False) -> list[CustomModuleResponse]:
     query = (
         db.query(CustomModuleDefinition)
-        .options(selectinload(CustomModuleDefinition.fields), selectinload(CustomModuleDefinition.module))
+        .options(selectinload(CustomModuleDefinition.fields).selectinload(FieldDefinition.picklist), selectinload(CustomModuleDefinition.module))
         .filter(CustomModuleDefinition.tenant_id == tenant_id)
     )
     if not include_deleted:
@@ -495,28 +432,41 @@ def update_module(db: Session, *, tenant_id: int, module_id: int, actor_user_id:
     return _serialize_module(definition)
 
 
-def _add_field(db: Session, *, definition: CustomModuleDefinition, payload: CustomModuleFieldCreate, sort_order: int | None = None) -> CustomModuleFieldDefinition:
+def _add_field(db: Session, *, definition: CustomModuleDefinition, payload: CustomModuleFieldCreate, sort_order: int | None = None) -> FieldDefinition:
     key = slug_key(payload.key or payload.label)
-    if any(field.key == key and field.deleted_at is None for field in definition.fields):
+    if any(field.field_key == key and field.deleted_at is None for field in definition.fields):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Field key already exists")
-    if payload.is_unique and payload.field_type.value == "multi_select":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Multi-select fields cannot be unique")
     is_protected = is_protected_module_field(key)
     if is_protected and payload.is_active is False:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Protected identifier fields cannot be disabled")
-    field = CustomModuleFieldDefinition(
+    kind, picklist_id = custom_fields.check_definition_shape(
+        db,
         tenant_id=definition.tenant_id,
+        field_type=payload.field_type,
+        label=payload.label,
+        picklist_key=payload.picklist_key,
+        picklist_values=payload.picklist_values,
+        lookup_module_key=payload.lookup_module_key,
+        config=payload.config,
+        is_unique=payload.is_unique,
+        is_required=payload.is_required,
+    )
+    field = FieldDefinition(
+        tenant_id=definition.tenant_id,
+        module_key=module_key_of(definition),
         custom_module_id=definition.id,
-        key=key,
+        field_key=key,
         label=payload.label.strip(),
-        field_type=payload.field_type.value,
+        field_type=kind,
+        picklist_id=picklist_id,
+        lookup_module_key=payload.lookup_module_key if kind == "lookup" else None,
+        config=payload.config or None,
         help_text=payload.help_text,
         placeholder=payload.placeholder,
         is_required=payload.is_required,
         is_unique=payload.is_unique,
         display_in_list=payload.display_in_list,
         default_value=payload.default_value,
-        validation_json=payload.validation_json,
         sort_order=payload.sort_order if sort_order is None else sort_order,
         is_active=True if is_protected else payload.is_active,
     )
@@ -542,8 +492,9 @@ def update_field(db: Session, *, tenant_id: int, module_id: int, field_id: int, 
     if not field:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Field not found")
     update_data = payload.model_dump(exclude_unset=True)
-    if update_data.get("is_unique") is True and field.field_type == "multi_select":
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Multi-select fields cannot be unique")
+    spec = field_types.field_type(field.field_type)
+    if update_data.get("is_unique") is True and not spec.can_be_unique:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{spec.label} fields cannot be unique")
     if update_data.get("is_active") is False and _is_protected_field(field):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Protected identifier fields cannot be disabled")
     for name, value in update_data.items():
@@ -617,33 +568,26 @@ def restore_module(db: Session, *, tenant_id: int, module_id: int, actor_user_id
     return _serialize_module(definition)
 
 
-def serialize_record(record: CustomModuleRecord) -> CustomModuleRecordResponse:
-    values = {}
-    for value in record.values:
-        field = value.field
-        if field.deleted_at is not None or not field.is_active:
-            continue
-        if field.field_type in TEXT_TYPES:
-            values[field.key] = value.text_value
-        elif field.field_type in NUMBER_TYPES:
-            values[field.key] = float(value.number_value) if value.number_value is not None else None
-        elif field.field_type in DATE_TYPES:
-            values[field.key] = value.datetime_value.isoformat() if value.datetime_value else None
-        elif field.field_type == "boolean":
-            values[field.key] = value.boolean_value
-        else:
-            values[field.key] = value.json_value
+def serialize_record(record: CustomModuleRecord, values: dict[str, Any] | None = None) -> CustomModuleRecordResponse:
     return CustomModuleRecordResponse(
         id=record.id,
         custom_module_id=record.custom_module_id,
         title=record.title,
-        values=values,
+        values=values or {},
         created_by_user_id=record.created_by_user_id,
         updated_by_user_id=record.updated_by_user_id,
         created_at=record.created_at,
         updated_at=record.updated_at,
         deleted_at=record.deleted_at,
     )
+
+
+def serialize_records(db: Session, definition: CustomModuleDefinition, records: list[CustomModuleRecord]) -> list[CustomModuleRecordResponse]:
+    """Records with their values, loaded in one query for the page."""
+    values = custom_fields.load_custom_field_values_bulk(
+        db, tenant_id=definition.tenant_id, module_key=module_key_of(definition), record_ids=[record.id for record in records]
+    )
+    return [serialize_record(record, values.get(record.id)) for record in records]
 
 
 def list_records(
@@ -669,7 +613,7 @@ def list_records(
         sort_by=sort_by,
         sort_direction=sort_direction,
     )
-    return build_paged_response([serialize_record(record) for record in records], total, pagination)
+    return build_paged_response(serialize_records(db, definition, records), total, pagination)
 
 
 def list_records_cursor(db: Session, *, module_key: str, current_user: User, limit: int, cursor: int | None = None, search: str | None = None):
@@ -682,14 +626,13 @@ def list_records_cursor(db: Session, *, module_key: str, current_user: User, lim
         cursor=cursor,
         search=search,
     )
-    return [serialize_record(record) for record in records]
+    return serialize_records(db, definition, records)
 
 
 def list_deleted_records_for_recycle(db: Session, *, tenant_id: int, module_key: str, pagination: Pagination):
     definition = _get_module_definition(db, tenant_id=tenant_id, key=module_key)
     query = (
         db.query(CustomModuleRecord)
-        .options(selectinload(CustomModuleRecord.values).selectinload(CustomModuleRecordValue.field))
         .filter(
             CustomModuleRecord.tenant_id == tenant_id,
             CustomModuleRecord.custom_module_id == definition.id,
@@ -705,9 +648,9 @@ def list_deleted_records_for_recycle(db: Session, *, tenant_id: int, module_key:
             "title": record.title,
             "subtitle": definition.name,
             "deleted_at": record.deleted_at,
-            "details": serialize_record(record).model_dump(mode="json"),
+            "details": serialized.model_dump(mode="json"),
         }
-        for record in records
+        for record, serialized in zip(records, serialize_records(db, definition, records))
     ]
     return build_paged_response(items, total, pagination)
 
@@ -732,27 +675,50 @@ def _write_values(
     record: CustomModuleRecord,
     payload_values: dict[str, Any],
     partial: bool = False,
+    context: FieldContext | None = None,
 ) -> None:
-    fields = _field_by_key(definition)
-    unknown_keys = set(payload_values) - set(fields)
-    if unknown_keys:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Unknown field: {sorted(unknown_keys)[0]}",
+    """Checks and saves a record's values through the one field system. A create fills
+    fields the payload leaves out from their defaults; an update keeps them."""
+    fields = _live_fields(definition)
+    module_key = module_key_of(definition)
+    payload = dict(payload_values)
+    if not partial:
+        for field in fields:
+            if field.field_key not in payload and field.default_value is not None:
+                payload[field.field_key] = field.default_value
+    existing = (
+        custom_fields.load_custom_field_values(db, tenant_id=record.tenant_id, module_key=module_key, record_id=record.id)
+        if partial else {}
+    )
+    try:
+        values = custom_fields.validate_custom_field_payload(
+            db, tenant_id=record.tenant_id, module_key=module_key, payload=payload, existing=existing,
+            context=context, definitions=fields,
         )
-    existing = {value.field_id: value for value in record.values}
-    for field in fields.values():
-        if partial and field.key not in payload_values:
-            continue
-        raw = payload_values[field.key] if field.key in payload_values else field.default_value
-        coerced, storage = _coerce_value(field, raw)
-        _check_unique(db, field=field, storage=storage, record_id=record.id)
-        value = existing.get(field.id) or CustomModuleRecordValue(tenant_id=record.tenant_id, custom_module_id=definition.id, record_id=record.id, field_id=field.id)
-        value.text_value = value.number_value = value.datetime_value = value.boolean_value = value.json_value = None
-        for attr, stored in storage.items():
-            setattr(value, attr, stored)
-        if coerced is not None or field.is_required or field.id in existing:
-            db.add(value)
+    except HTTPException as exc:
+        raise _as_values_error(exc) from exc
+    try:
+        custom_fields.save_custom_field_values(
+            db, tenant_id=record.tenant_id, module_key=module_key, record_id=record.id, values=values,
+            excluded_record_ids=_deleted_record_ids(definition),
+        )
+    except HTTPException as exc:
+        raise _as_values_error(exc) from exc
+
+
+def _as_values_error(exc: HTTPException) -> HTTPException:
+    """A custom module's payload keeps its values under `values`, not `custom_fields`."""
+    detail = exc.detail
+    if isinstance(detail, list):
+        detail = [
+            {**entry, "loc": ["body", "values", *entry["loc"][2:]]} if isinstance(entry, dict) and entry.get("loc", [])[1:2] == ["custom_fields"] else entry
+            for entry in detail
+        ]
+    return HTTPException(status_code=exc.status_code, detail=detail)
+
+
+def _record_response(db: Session, definition: CustomModuleDefinition, record: CustomModuleRecord) -> CustomModuleRecordResponse:
+    return serialize_records(db, definition, [record])[0]
 
 
 def create_record(db: Session, *, module_key: str, current_user: User, payload: CustomModuleRecordRequest) -> CustomModuleRecordResponse:
@@ -765,7 +731,7 @@ def create_record(db: Session, *, module_key: str, current_user: User, payload: 
     _write_values(db, definition=definition, record=record, payload_values=payload.values)
     db.commit()
     db.refresh(record)
-    response = serialize_record(_get_record(db, definition=definition, record_id=record.id))
+    response = _record_response(db, definition, _get_record(db, definition=definition, record_id=record.id))
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=definition.key, entity_type="custom_module_record", entity_id=record.id, action="create", after_state=response.model_dump(mode="json"))
     return response
 
@@ -785,20 +751,20 @@ def _get_record(db: Session, *, definition: CustomModuleDefinition, record_id: i
 def get_record(db: Session, *, module_key: str, record_id: int, current_user: User) -> CustomModuleRecordResponse:
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="view")
-    return serialize_record(_get_record(db, definition=definition, record_id=record_id))
+    return _record_response(db, definition, _get_record(db, definition=definition, record_id=record_id))
 
 
 def update_record(db: Session, *, module_key: str, record_id: int, current_user: User, payload: CustomModuleRecordRequest) -> CustomModuleRecordResponse:
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="edit")
     record = _get_record(db, definition=definition, record_id=record_id)
-    before = serialize_record(record).model_dump(mode="json")
+    before = _record_response(db, definition, record).model_dump(mode="json")
     if payload.title is not None:
         record.title = payload.title.strip() or record.title
     record.updated_by_user_id = current_user.id
     _write_values(db, definition=definition, record=record, payload_values=payload.values, partial=True)
     db.commit()
-    after = serialize_record(_get_record(db, definition=definition, record_id=record_id)).model_dump(mode="json")
+    after = _record_response(db, definition, _get_record(db, definition=definition, record_id=record_id)).model_dump(mode="json")
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=definition.key, entity_type="custom_module_record", entity_id=record.id, action="update", before_state=before, after_state=after)
     return CustomModuleRecordResponse.model_validate(after)
 
@@ -810,7 +776,7 @@ def delete_record(db: Session, *, module_key: str, record_id: int, current_user:
     record.deleted_at = _now()
     record.updated_by_user_id = current_user.id
     db.commit()
-    response = serialize_record(record)
+    response = _record_response(db, definition, record)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=definition.key, entity_type="custom_module_record", entity_id=record.id, action="delete", before_state=response.model_dump(mode="json"))
     return response
 
@@ -822,7 +788,7 @@ def restore_record(db: Session, *, module_key: str, record_id: int, current_user
     record.deleted_at = None
     record.updated_by_user_id = current_user.id
     db.commit()
-    response = serialize_record(record)
+    response = _record_response(db, definition, record)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key=definition.key, entity_type="custom_module_record", entity_id=record.id, action="restore", after_state=response.model_dump(mode="json"))
     return response
 
@@ -832,21 +798,21 @@ def export_records(db: Session, *, module_key: str, current_user: User) -> tuple
     _require_module_action(db, user=current_user, definition=definition, action="export")
     records = (
         db.query(CustomModuleRecord)
-        .options(selectinload(CustomModuleRecord.values).selectinload(CustomModuleRecordValue.field))
         .filter(CustomModuleRecord.tenant_id == current_user.tenant_id, CustomModuleRecord.custom_module_id == definition.id, CustomModuleRecord.deleted_at.is_(None))
         .order_by(CustomModuleRecord.id.asc())
         .all()
     )
-    fields = [
-        field
-        for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id))
-        if field.deleted_at is None and field.is_active
-    ]
-    headers = ["id", "title", *[field.key for field in fields], "created_at", "updated_at"]
+    fields = _live_fields(definition)
+    ctx = FieldContext(db, current_user.tenant_id)
+    values = custom_fields.load_custom_field_values_bulk(
+        db, tenant_id=current_user.tenant_id, module_key=module_key_of(definition), record_ids=[record.id for record in records]
+    )
+    headers = ["id", "title", *[field.field_key for field in fields], "created_at", "updated_at"]
     rows = []
     for record in records:
-        serialized = serialize_record(record)
-        rows.append({"id": record.id, "title": record.title, **serialized.values, "created_at": record.created_at, "updated_at": record.updated_at})
+        record_values = values.get(record.id, {})
+        cells = {field.field_key: field_types.to_csv(field, record_values.get(field.field_key), ctx) for field in fields}
+        rows.append({"id": record.id, "title": record.title, **cells, "created_at": record.created_at, "updated_at": record.updated_at})
     return dict_rows_to_csv_bytes(headers=headers, rows=rows), f"{definition.key}_export.csv"
 
 
@@ -860,7 +826,7 @@ def import_records_from_csv_bytes(
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="create")
     _, rows = rows_from_csv_bytes(file_bytes)
-    fields = _field_by_key(definition)
+    fields = {field.field_key: field for field in _live_fields(definition) if not field_types.field_type(field.field_type).system_assigned}
     failures = []
     new_rows = 0
 
@@ -921,13 +887,12 @@ def import_preview_for_csv_bytes(
 
 
 def import_target_headers_for_definition(definition: CustomModuleDefinition) -> list[str]:
-    fields = [field for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id)) if field.deleted_at is None and field.is_active]
-    return ["title", *[field.key for field in fields]]
+    fields = [field for field in _live_fields(definition) if not field_types.field_type(field.field_type).system_assigned]
+    return ["title", *[field.field_key for field in fields]]
 
 
 def import_required_headers_for_definition(definition: CustomModuleDefinition) -> list[str]:
-    fields = [field for field in sorted(definition.fields, key=lambda item: (item.sort_order, item.id)) if field.deleted_at is None and field.is_active]
-    return [field.key for field in fields if field.is_required]
+    return [field.field_key for field in _live_fields(definition) if field.is_required]
 
 
 def import_target_headers(

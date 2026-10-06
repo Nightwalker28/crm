@@ -8,13 +8,13 @@ import {
   LayoutDrivenQuickCreateFields,
   type LayoutDrivenQuickCreateFieldContext,
   QuickCreateField,
+  QuickCreatePicklistField,
   makeQuickCreateInputId,
   quickCreateInputType,
   validateLayoutDrivenQuickCreate,
 } from "@/components/forms/quickCreateLayout";
-import { LEAD_STATUSES, type LeadFormValue } from "@/components/leads/LeadFormFields";
+import { type LeadFormValue, useLeadStatusDefault } from "@/components/leads/LeadFormFields";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
@@ -51,29 +51,21 @@ export function LeadQuickCreateLayoutFields({
   errors = {},
   viewport = "auto",
 }: Props) {
+  useLeadStatusDefault(value, onChange);
+
   function renderField(
     field: ResolvedRecordLayoutField,
     { inputId, error, aria, disabled }: LayoutDrivenQuickCreateFieldContext,
   ) {
-    if (field.field_key === "status") {
+    if (field.field_key === "status" || field.field_key === "source") {
+      const key = field.field_key;
       return (
-        <QuickCreateField field={field} aria={aria} error={error}>
-          <Select
-            value={value.status}
-            onValueChange={(status) => onChange({ ...value, status })}
-            disabled={disabled}
-            required={field.required}
-          >
-            <SelectTrigger id={inputId} className="w-full" aria-invalid={aria.invalid} aria-describedby={aria.describedBy}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {LEAD_STATUSES.map((status) => (
-                <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </QuickCreateField>
+        <QuickCreatePicklistField
+          field={field}
+          context={{ inputId, error, aria, disabled }}
+          value={value[key]}
+          onChange={(next) => onChange({ ...value, [key]: next })}
+        />
       );
     }
 
@@ -159,7 +151,7 @@ export function LeadQuickCreateLayoutFields({
       );
     }
 
-    const textKeys = ["first_name", "last_name", "company", "primary_email", "phone", "title", "source", "next_follow_up_at"] as const;
+    const textKeys = ["first_name", "last_name", "company", "primary_email", "phone", "mobile_phone", "title", "next_follow_up_at"] as const;
     const textKey = textKeys.find((key) => key === field.field_key);
     if (!textKey) return null;
     return (

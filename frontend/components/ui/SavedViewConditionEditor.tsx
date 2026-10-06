@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { Plus, Trash2 } from "lucide-react";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
@@ -14,6 +15,23 @@ import type {
   SavedViewFilters,
 } from "@/hooks/useSavedViews";
 import type { ModuleFilterField } from "@/lib/moduleViewConfigs";
+import { MultiOptionSelect } from "@/components/picklists/MultiOptionSelect";
+import { picklistFilterOptions, usePicklists } from "@/hooks/usePicklists";
+
+/**
+ * Filter fields backed by a picklist get the tenant's values as their options (13b §3.3),
+ * deactivated ones included: a view may need to find records still holding one.
+ */
+export function useResolvedFilterFields(filterFields: ModuleFilterField[]): ModuleFilterField[] {
+  const { byKey } = usePicklists();
+  return useMemo(
+    () => filterFields.map((field) => (
+      field.picklistKey ? { ...field, type: "select" as const, options: picklistFilterOptions(byKey.get(field.picklistKey)) } : field
+    )),
+    [byKey, filterFields],
+  );
+}
+
 
 export const OPERATOR_LABELS: Record<SavedViewFilterOperator, string> = {
   is: "is",
@@ -81,7 +99,8 @@ function ConditionGroupsContent({
   title,
   description,
 }: Required<Pick<Props, "allConditions" | "anyConditions">> & Omit<Props, "wrapInCard" | "allConditions" | "anyConditions">) {
-  const selectedFieldMap = new Map(filterFields.map((field) => [field.key, field]));
+  const resolvedFields = useResolvedFilterFields(filterFields);
+  const selectedFieldMap = new Map(resolvedFields.map((field) => [field.key, field]));
 
   function updateGroup(
     group: "all" | "any",
@@ -247,6 +266,13 @@ function ConditionGroupsContent({
                           noResultsText={`No ${selectedField.label.toLowerCase()} matched this search.`}
                           sourceModuleKey={selectedField.sourceModuleKey}
                           sourceAction="view"
+                        />
+                      ) : selectedField?.type === "select" && selectedField.options && usesListValue ? (
+                        <MultiOptionSelect
+                          label={`Condition ${index + 1} value`}
+                          options={selectedField.options}
+                          values={Array.isArray(condition.values) ? condition.values.map(String) : []}
+                          onChange={(values) => updateCondition(groupKey, index, { values })}
                         />
                       ) : selectedField?.type === "select" && selectedField.options && !usesListValue ? (
                         <Select

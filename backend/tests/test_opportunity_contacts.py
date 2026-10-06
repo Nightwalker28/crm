@@ -137,11 +137,13 @@ class OpportunityContactFixture(unittest.TestCase):
         self.db.close()
 
     def make_opportunity(self, opportunity_id=40, *, contact_id=30, tenant_id=TENANT, **kwargs):
+        if contact_id is None:
+            # A deal needs an account or a contact (13a H13).
+            kwargs.setdefault("organization_id", 1)
         opportunity = SalesOpportunity(
             opportunity_id=opportunity_id,
             tenant_id=tenant_id,
             opportunity_name=kwargs.pop("opportunity_name", "Acme Pilot"),
-            client=kwargs.pop("client", "Ada Byron"),
             contact_id=contact_id,
             **kwargs,
         )
@@ -478,7 +480,6 @@ class TenantIsolationTests(OpportunityContactFixture):
                 opportunity_id=41,
                 tenant_id=OTHER_TENANT,
                 opportunity_name="Rival deal",
-                client="Rival",
                 contact_id=60,
             )
         )

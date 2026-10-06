@@ -104,7 +104,6 @@ class ParticipantFixture(unittest.TestCase):
             opportunity_id=DEAL,
             tenant_id=TENANT,
             opportunity_name="Acme Pilot",
-            client="Ada Byron",
             contact_id=30,
             organization_id=20,
         )
@@ -246,7 +245,6 @@ class AddParticipantTests(ParticipantFixture):
 
         self.assertTrue(link.is_primary)
         self.assertEqual(self.opportunity.contact_id, 32)
-        self.assertEqual(self.opportunity.client, "Alan")
         self.assertFalse(self.link_for(30).is_primary)
         # The old primary stays on the deal; it only lost the flag.
         self.assertEqual({item.contact_id for item in self.participants()}, {30, 31, 32})
@@ -325,7 +323,6 @@ class ChangeRoleTests(ParticipantFixture):
                 opportunity_id=OTHER_DEAL,
                 tenant_id=TENANT,
                 opportunity_name="Second deal",
-                client="Alan",
                 contact_id=32,
             )
         )
@@ -358,7 +355,6 @@ class PrimaryContactTests(ParticipantFixture):
 
         self.assertTrue(link.is_primary)
         self.assertEqual(self.opportunity.contact_id, 31)
-        self.assertEqual(self.opportunity.client, "Grace")
         self.assertFalse(self.link_for(30).is_primary)
         # Exactly one primary, and it is the contact the legacy field points at.
         primaries = [item for item in self.participants() if item.is_primary]
@@ -581,7 +577,6 @@ class TenantIsolationTests(ParticipantFixture):
                 opportunity_id=OTHER_DEAL,
                 tenant_id=OTHER_TENANT,
                 opportunity_name="Rival deal",
-                client="Rival",
                 contact_id=60,
             )
         )
@@ -852,7 +847,6 @@ class ParticipantRouteTests(ParticipantFixture):
                 opportunity_id=OTHER_DEAL,
                 tenant_id=OTHER_TENANT,
                 opportunity_name="Rival deal",
-                client="Rival",
                 contact_id=60,
             )
         )

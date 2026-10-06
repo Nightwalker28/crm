@@ -34,31 +34,31 @@ import {
   type CustomModuleRecord,
 } from "@/hooks/useModuleBuilder";
 import { formatDateTime } from "@/lib/datetime";
+import { FieldValue } from "@/components/fields/FieldValue";
+import { customModuleFieldShape } from "@/components/customModules/CustomModuleFieldInput";
+import { picklistOptions, usePicklists, type Picklist } from "@/hooks/usePicklists";
+import { isWideType } from "@/lib/fieldTypes";
 
 /**
  * The field types the rail edits (design.md §4.7).
  *
- * `single_select` is R2's shape rule read literally, and `boolean` is the two-value closed
+ * `picklist` is R2's shape rule read literally, and `boolean` is the two-value closed
  * set the same rule covers once you read it as "a set the operator picks from" — the catalog
  * record's `Active` / `Inactive` in a tenant-defined form. Everything else is content and
  * lives read-only in `Details` until `/[id]/edit`.
  */
-const STATE_FIELD_TYPES = new Set(["single_select", "boolean"]);
+const STATE_FIELD_TYPES = new Set(["picklist", "boolean"]);
 
 const BOOLEAN_OPTIONS: InlineFieldEditOption[] = [
   { value: "true", tone: null, label: "Yes" },
   { value: "false", tone: null, label: "No" },
 ];
 
-function selectOptions(field: CustomModuleField): InlineFieldEditOption[] {
+function selectOptions(field: CustomModuleField, lists: Map<string, Picklist>, current: string): InlineFieldEditOption[] {
   if (field.field_type === "boolean") return BOOLEAN_OPTIONS;
-  // A tenant's option list is a category, never a status: nothing here can be classified as
+  // A tenant's value list is a category here, never a status: nothing can be classified as
   // an outcome or a deviation from the outside, so no value takes a tone (R5).
-  return (field.validation_json?.options ?? []).map((option) => ({
-    value: option,
-    tone: null,
-    label: option,
-  }));
+  return picklistOptions(lists.get(field.picklist_key ?? ""), current).map((option) => ({ ...option, tone: null }));
 }
 
 function currentValue(field: CustomModuleField, values: Record<string, unknown>): string {
@@ -75,6 +75,7 @@ export default function CustomModuleRecordDetailPage() {
   const recordId = params.recordId;
 
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  const { byKey: picklistsByKey } = usePicklists();
   const schema = useCustomModuleSchema(moduleKey);
   const recordQuery = useCustomModuleRecord(moduleKey, recordId);
   const moduleFields = useModuleFieldConfigs(moduleKey);
@@ -196,7 +197,7 @@ export default function CustomModuleRecordDetailPage() {
                         <InlineFieldEdit
                           fieldLabel={field.label}
                           value={currentValue(field, record.values)}
-                          options={selectOptions(field)}
+                          options={selectOptions(field, picklistsByKey, currentValue(field, record.values))}
                           onCommit={(next) => commitStateField(field, next)}
                         />
                       ) : (
@@ -204,7 +205,7 @@ export default function CustomModuleRecordDetailPage() {
                           status={{
                             tone: null,
                             label:
-                              selectOptions(field).find(
+                              selectOptions(field, picklistsByKey, currentValue(field, record.values)).find(
                                 (option) => option.value === currentValue(field, record.values),
                               )?.label ?? "—",
                           }}
@@ -276,7 +277,8 @@ function CustomRecordOverview({
         label: field.label,
         fieldType: field.field_type,
         value: record.values[field.key],
-        width: field.field_type === "textarea" || field.field_type === "multi_select" ? "full" : "half",
+        width: isWideType(field.field_type) ? "full" : "half",
+        display: <FieldValue field={customModuleFieldShape(field)} value={record.values[field.key]} />,
       }))}
     />
   );

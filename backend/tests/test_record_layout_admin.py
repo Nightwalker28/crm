@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 from app.core.database import Base
 from app.modules.platform.models import (
     ActivityLog,
-    CustomFieldDefinition,
+    FieldDefinition,
     ModuleFieldConfig,
     RecordLayoutDefinition,
 )
@@ -56,7 +56,7 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
                 Tenant.__table__,
                 User.__table__,
                 ActivityLog.__table__,
-                CustomFieldDefinition.__table__,
+                FieldDefinition.__table__,
                 ModuleFieldConfig.__table__,
                 RecordLayoutDefinition.__table__,
             ],
@@ -100,12 +100,13 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
         self.assertEqual(state.definition.model_dump(), state.system_definition.model_dump())
         # Positions are dense so the builder can move fields by index without gaps.
         self.assertEqual([section.position for section in state.definition.sections], [0, 1])
-        self.assertEqual([field.position for field in state.definition.sections[0].fields], [0, 1, 2, 3, 4])
+        self.assertEqual([field.position for field in state.definition.sections[0].fields], [0, 1, 2, 3, 4, 5])
 
         catalog = {field.field_key: field for field in state.available_fields}
         self.assertIn("notes", catalog)
-        self.assertTrue(catalog["primary_email"].locked)
-        self.assertIsNotNone(catalog["primary_email"].locked_reason)
+        # An email or a phone (13a A9): none of them is locked alone; the rule is checked on
+        # the whole layout instead.
+        self.assertFalse(catalog["primary_email"].locked)
         self.assertFalse(catalog["notes"].locked)
 
     def test_admin_state_reports_field_config_state_without_blocking(self):
@@ -160,7 +161,8 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
 
     def test_preview_separates_blocking_errors_from_warnings(self):
         draft = _quick_create_draft()
-        _field(draft, "primary_email").visible = False
+        for key in ("primary_email", "phone", "mobile_phone"):
+            _field(draft, key).visible = False
 
         preview = preview_record_layout(
             self.db,
@@ -173,7 +175,7 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
         self.assertFalse(preview.validation.valid)
         self.assertIsNone(preview.resolved)
         self.assertTrue(
-            any("must remain visible and writable" in error for error in preview.validation.errors),
+            any("at least one of Email, Phone or Mobile" in error for error in preview.validation.errors),
             preview.validation.errors,
         )
         # The hidden field is also worth a warning, but warnings never carry the blocking reason.
@@ -181,7 +183,7 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
 
     def test_quick_create_length_produces_a_warning_but_still_publishes(self):
         draft = _quick_create_draft()
-        extras = ["title", "source", "team_id", "next_follow_up_at", "tags", "notes"]
+        extras = ["title", "team_id", "next_follow_up_at", "tags", "notes"]
         for index, field_key in enumerate(extras):
             draft.sections[1].fields.append(
                 RecordLayoutFieldDefinition(field_key=field_key, position=10 + index, width="full")
@@ -225,7 +227,7 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
         self.assertEqual(runtime.source, "tenant")
         self.assertEqual(
             [field.field_key for field in runtime.sections[0].fields][:2],
-            ["phone", "primary_email"],
+            ["mobile_phone", "phone"],
         )
 
         second = self._publish(draft, expected_version=1)
@@ -258,7 +260,8 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
 
     def test_publish_rejects_blocking_errors_with_a_structured_detail(self):
         draft = _quick_create_draft()
-        _field(draft, "primary_email").readonly = True
+        for key in ("primary_email", "phone", "mobile_phone"):
+            _field(draft, key).readonly = True
 
         with self.assertRaises(HTTPException) as blocked:
             self._publish(draft)

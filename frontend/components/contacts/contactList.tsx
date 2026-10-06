@@ -11,6 +11,7 @@ import type { Contact } from "@/hooks/sales/useContacts";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateTime } from "@/lib/datetime";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 interface ContactListProps {
   contacts: Contact[];
@@ -86,7 +87,7 @@ function emptyValue() {
 }
 
 function renderCell(contact: Contact, column: string) {
-  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={contact.custom_fields} />;
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={contact.custom_fields} moduleKey="sales_contacts" />;
 
   switch (column) {
     case "first_name":
@@ -117,9 +118,9 @@ function renderCell(contact: Contact, column: string) {
     case "created_time":
       return <span className="text-sm text-copy-muted">{contact.created_time ? formatDateTime(contact.created_time) : "-"}</span>;
     case "region":
-      return contact.region ? <Chip>{contact.region}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
+      return contact.region ? <Chip><PicklistText listKey="region" value={contact.region} /></Chip> : <span className="text-sm text-copy-disabled">—</span>;
     case "country":
-      return <span className="text-sm text-copy-muted">{contact.country || emptyValue()}</span>;
+      return <span className="text-sm text-copy-muted"><PicklistText listKey="country" value={contact.country} /></span>;
     case "linkedin_url":
       return contact.linkedin_url ? (
         <a

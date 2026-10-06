@@ -214,14 +214,17 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
         self.assertNotIn(rotated_raw_key, str(activity.before_state))
         self.assertNotIn(rotated_raw_key, str(activity.after_state))
 
-    def test_public_order_is_idempotent_and_decrements_stock_once(self):
+    def _order_key(self):
         key, _raw_key = services.create_api_key(
             self.db,
             tenant_id=10,
             actor_user_id=None,
-            payload={"name": "Bookings", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
+            payload={"name": "Shop", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
         )
-        item = product_services.create_product(
+        return key
+
+    def _room(self):
+        return product_services.create_product(
             self.db,
             tenant_id=10,
             actor_user_id=None,
@@ -237,190 +240,64 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
                 "is_active": True,
             },
         )
+
+    def test_public_order_becomes_a_confirmed_sales_order_once(self):
+        # 13 F1.3: a website order is a sales order with source `website`; it holds stock
+        # like any confirmed order, and a resubmission returns the same order.
+        from app.modules.inventory.models import InventoryReservation
+        from app.modules.sales.models import SalesContact, SalesOrder
+
+        key = self._order_key()
+        item = self._room()
         payload = {
             "external_reference": "wp-order-100",
             "source_platform": "wordpress",
-            "customer_name": "Buyer",
-            "customer_email": "buyer@example.com",
+            "customer_name": "Buyer Person",
+            "customer_email": "Buyer@Example.com",
             "line_items": [{"slug": "room-a", "quantity": "2"}],
-            "metadata": {"checkout_url": "https://example.com/order/100"},
         }
 
-        order, replayed = services.create_public_order(
-            self.db,
-            tenant_id=10,
-            api_key_id=key.id,
-            payload=payload,
-        )
-        second_order, second_replayed = services.create_public_order(
-            self.db,
-            tenant_id=10,
-            api_key_id=key.id,
-            payload=payload,
-        )
+        order, replayed = services.create_public_order(self.db, key=key, payload=payload)
+        second_order, second_replayed = services.create_public_order(self.db, key=key, payload=payload)
         self.db.refresh(item)
 
+        self.assertIsInstance(order, SalesOrder)
         self.assertFalse(replayed)
         self.assertTrue(second_replayed)
         self.assertEqual(order.id, second_order.id)
-        self.assertEqual(order.status, "submitted")
-        self.assertEqual(str(item.stock_quantity), "2.0000")
-        self.assertEqual(str(order.subtotal_amount), "100.0000")
-        activity = (
+        self.assertEqual(self.db.query(SalesOrder).count(), 1)
+        self.assertEqual(
+            (order.source, order.channel, order.external_reference, order.status, order.integration_key_id),
+            ("website", "wordpress", "wp-order-100", "confirmed", key.id),
+        )
+        self.assertEqual(Decimal(order.grand_total), Decimal("100"))
+        held = sum(Decimal(row.quantity) for row in self.db.query(InventoryReservation).filter_by(order_id=order.id))
+        self.assertEqual(held, Decimal("2"))
+        self.assertEqual(Decimal(item.stock_quantity), Decimal("4"))
+        contact = self.db.get(SalesContact, order.contact_id)
+        self.assertEqual((contact.primary_email, contact.first_name, contact.last_name), ("buyer@example.com", "Buyer", "Person"))
+        self.assertEqual(
             self.db.query(platform_models.ActivityLog)
-            .filter(platform_models.ActivityLog.action == "website_order.submitted")
-            .one()
+            .filter(platform_models.ActivityLog.module_key == "sales_orders", platform_models.ActivityLog.entity_id == str(order.id))
+            .count(),
+            1,
         )
-        self.assertEqual(activity.after_state["status"], "submitted")
 
-    def test_website_order_can_be_converted_to_pos_invoice_once(self):
-        key, _raw_key = services.create_api_key(
-            self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={"name": "Bookings", "scopes": ["catalog:read", "orders:write"], "allowed_origins": []},
-        )
-        product_services.create_product(
-            self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={
-                "slug": "starter",
-                "name": "Starter",
-                "currency": "USD",
-                "public_unit_price": "25.00",
-                "stock_status": "in_stock",
-                "stock_quantity": "5",
-                "is_public": True,
-                "is_active": True,
-            },
-        )
-        order, _replayed = services.create_public_order(
-            self.db,
-            tenant_id=10,
-            api_key_id=key.id,
-            payload={
-                "external_reference": "wp-order-200",
-                "source_platform": "wordpress",
-                "customer_name": "Buyer",
-                "customer_email": "buyer@example.com",
-                "line_items": [{"slug": "starter", "quantity": "2"}],
-            },
-        )
-        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
+    def test_public_order_reuses_the_buyers_contact(self):
+        from app.modules.sales.models import SalesContact
 
-        invoice, already_existing = services.create_pos_invoice_for_order(self.db, current_user=current_user, order_id=order.id)
-        second_invoice, second_existing = services.create_pos_invoice_for_order(self.db, current_user=current_user, order_id=order.id)
-
-        self.assertFalse(already_existing)
-        self.assertTrue(second_existing)
-        self.assertEqual(invoice.id, second_invoice.id)
-        self.assertEqual(str(invoice.total_amount), "50.00")
-        self.assertEqual(invoice.customer_email, "buyer@example.com")
-
-    def test_update_order_status_persists_and_logs_activity(self):
-        key, _raw_key = services.create_api_key(
-            self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={"name": "Portal", "scopes": ["orders:write"], "allowed_origins": []},
-        )
-        product_services.create_product(
-            self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={
-                "slug": "review-item",
-                "name": "Review Item",
-                "currency": "USD",
-                "public_unit_price": "20.00",
-                "stock_status": "in_stock",
-                "stock_quantity": "5",
-                "is_public": True,
-                "is_active": True,
-            },
-        )
-        order, _replayed = services.create_public_order(
-            self.db,
-            tenant_id=10,
-            api_key_id=key.id,
-            payload={
-                "external_reference": "portal-order-200",
-                "source_platform": "client_portal",
-                "customer_email": "buyer@example.com",
-                "line_items": [{"slug": "review-item", "quantity": "1"}],
-            },
-        )
-        order.status = "submitted"
-        self.db.add(order)
+        self.db.add(SalesContact(contact_id=501, tenant_id=10, first_name="Known", primary_email="known@example.com"))
         self.db.commit()
-        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
+        self._room()
 
-        updated = services.update_order_status(self.db, current_user=current_user, order_id=order.id, status_value="under_review")
-
-        self.assertEqual(updated.status, "under_review")
-        activity = (
-            self.db.query(platform_models.ActivityLog)
-            .filter(platform_models.ActivityLog.action == "website_order.status_updated")
-            .one()
-        )
-        self.assertEqual(activity.tenant_id, 10)
-        self.assertEqual(activity.actor_user_id, 7)
-        self.assertEqual(activity.before_state["status"], "submitted")
-        self.assertEqual(activity.after_state["status"], "under_review")
-
-    def test_cancelling_or_rejecting_an_order_returns_its_stock_and_closes_it(self):
-        from app.modules.catalog.models import CatalogProduct
-        from app.modules.inventory.models import InventoryStockMove
-
-        key, _raw_key = services.create_api_key(
+        order, _replayed = services.create_public_order(
             self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={"name": "Shop", "scopes": ["orders:write"], "allowed_origins": []},
+            key=self._order_key(),
+            payload={"external_reference": "wp-order-300", "customer_email": "KNOWN@example.com", "line_items": [{"sku": "ROOM-A", "quantity": "1"}]},
         )
-        product = product_services.create_product(
-            self.db,
-            tenant_id=10,
-            actor_user_id=None,
-            payload={
-                "slug": "stocked-item",
-                "name": "Stocked Item",
-                "currency": "USD",
-                "public_unit_price": "10.00",
-                "stock_status": "in_stock",
-                "stock_quantity": "5",
-                "is_public": True,
-                "is_active": True,
-            },
-        )
-        current_user = type("UserCtx", (), {"id": 7, "tenant_id": 10, "role_id": None, "team_id": None})()
-        orders = []
-        for reference in ("shop-cancel", "shop-reject"):
-            order, _replayed = services.create_public_order(
-                self.db,
-                tenant_id=10,
-                api_key_id=key.id,
-                payload={"external_reference": reference, "line_items": [{"slug": "stocked-item", "quantity": "2"}]},
-            )
-            orders.append(order)
-        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("1"))
 
-        services.update_order_status(self.db, current_user=current_user, order_id=orders[0].id, status_value="cancelled")
-        services.update_order_status(self.db, current_user=current_user, order_id=orders[1].id, status_value="rejected")
-
-        self.db.expire_all()
-        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("5"))
-        reversals = self.db.query(InventoryStockMove).filter(InventoryStockMove.move_type == "reversal").all()
-        self.assertEqual(sorted(move.source_id for move in reversals), sorted(order.id for order in orders))
-        self.assertTrue(all(move.quantity == Decimal("2") and move.created_by == 7 for move in reversals))
-
-        for order, next_status in ((orders[0], "confirmed"), (orders[1], "cancelled")):
-            with self.assertRaises(Exception) as exc:
-                services.update_order_status(self.db, current_user=current_user, order_id=order.id, status_value=next_status)
-            self.assertEqual(exc.exception.status_code, 409)
-        self.db.rollback()
-        self.assertEqual(self.db.get(CatalogProduct, product.id).stock_quantity, Decimal("5"))
+        self.assertEqual(order.contact_id, 501)
+        self.assertEqual(self.db.query(SalesContact).count(), 1)
 
     def test_public_order_rejects_duplicate_reference_with_different_payload(self):
         key, _raw_key = services.create_api_key(
@@ -448,15 +325,30 @@ class WebsiteIntegrationServiceTests(unittest.TestCase):
             "external_reference": "wp-order-101",
             "line_items": [{"slug": "starter-package", "quantity": "1"}],
         }
-        services.create_public_order(self.db, tenant_id=10, api_key_id=key.id, payload=payload)
+        services.create_public_order(self.db, key=key, payload=payload)
 
         with self.assertRaises(Exception):
             services.create_public_order(
                 self.db,
-                tenant_id=10,
-                api_key_id=key.id,
+                key=key,
                 payload={**payload, "line_items": [{"slug": "starter-package", "quantity": "2"}]},
             )
+
+    def test_crm_routes_use_module_permissions_not_admin(self):
+        # 13a B7: the CRM-user routes clear the module's access layers, not an admin check.
+        import inspect
+
+        self.assertNotIn("require_admin", inspect.getsource(website_integration_routes))
+        self.assertEqual(len(website_integration_routes.router.dependencies), 1)
+        for route in website_integration_routes.router.routes:
+            closures = [dep.call for dep in route.dependant.dependencies if getattr(dep.call, "__closure__", None)]
+            actions = {
+                cell.cell_contents
+                for call in closures
+                for cell in call.__closure__
+                if isinstance(cell.cell_contents, str)
+            }
+            self.assertTrue(actions & {"view", "configure"}, route.path)
 
     def test_hash_payload_preserves_decimal_scale(self):
         self.assertNotEqual(

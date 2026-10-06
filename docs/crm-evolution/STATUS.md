@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-04 (Step 4).
+Last updated 2026-10-06 (Step 5 and 13b Phases 1–3 tested and committed together; next: 13b Phase 4).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -31,7 +31,232 @@ Last updated 2026-10-04 (Step 4).
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
 | ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 done and committed (`2e3bd7f`). §7 Step 4 (FQ code foundations) implemented and verified (2026-10-04): E5, E1/A5/G3, E2, E8/H15, B6, H9, H10. Next: §7 Step 5** (F1 names, retirement, one order model; B7 joins it). See below | `13-final-fixes.md`, `13a-final-fixes-audit.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 done and committed (`2e3bd7f`). §7 Step 4 (FQ code foundations) implemented and verified (2026-10-04): E5, E1/A5/G3, E2, E8/H15, B6, H9, H10. §7 Step 5 built (2026-10-05), tested and committed with 13b Phases 1–3 (2026-10-06): insertion orders, contracts and support removed outright (owner decision 11), invoices at `/invoices`, website and portal orders are sales orders, B7. Step 6 research and plan written (2026-10-05): `13b-picklists-and-fields.md`, benchmark of Salesforce, Dynamics, HubSpot, Zoho and Odoo, five phases, owner accepted all twelve §5 decisions and chose to build Step 6 on top of the untested Step 5: the first test pass, after 13b Phase 3, covers Step 5 too. 13b Phases 1–3 (picklists, one field system, standard records) built, tested and committed 2026-10-06. Next: 13b Phase 4 (layouts and rules)**. See below | `13-final-fixes.md`, `13a-final-fixes-audit.md`, `13b-picklists-and-fields.md` |
+
+## Final fixes §7 Step 6 — picklists, standard records, one field system (in progress)
+
+Plan `13b-picklists-and-fields.md` (benchmark + design, owner accepted all §5 decisions on
+2026-10-05). Built on top of the untested Step 5: the first test pass, after 13b Phase 3, covers
+Step 5 too. That pass ran on 2026-10-06 (below); Step 5 and Phases 1–3 are committed together.
+
+**Phase 1 — picklists: built (2026-10-05/06), backend and frontend. Phase 2 (one field system): built 2026-10-06. Phase 3 (standard records): built 2026-10-06. First test pass done and committed 2026-10-06. Next: Phase 4 (layouts and rules), then Phase 5, then the second test pass.**
+
+**First test pass (2026-10-06), Step 5 + Phases 1–3.**
+- Backend: 1503 unit tests green (the four rate-limit tests run with Redis up). `verify_migrations`
+  replays the chain to `20261010_standard_records`; the dev database (real data) migrated on
+  boot without error; `verify_openapi` passes (449 paths); generated contracts have no drift.
+- Frontend: tsc clean, lint 0 problems, check-design 21/21. Browser: 28 touched specs on the
+  production build pass (131 tests after fixes), the two dev-server harness specs pass, and the
+  full design-rules + scroll-containers walk passes except two findings on one lead record
+  that a scoped rerun on the same seeded data did not reproduce (load during the 13-minute
+  walk; recorded, not fixed).
+- Found and fixed by the pass: a deal's probability is now *empty = follows the stage* instead
+  of a copy (a copy stopped an admin's stage-probability change reaching existing deals);
+  converted deals start in the base currency; a refused picklist change no longer stays
+  half-applied in the session; new Boolean columns get a Python default (SQLite read
+  `'false'` as true); a required Yes/No custom field sends No again (lost in Phase 2);
+  account email is optional in the form as it already was in the API; layout validation and
+  the runtime fallback know the "one of" rule (`QUICK_CREATE_ONE_OF`).
+- Spec fixes: about 300 backend fixtures used `client`/`total_cost_of_project` or deals with
+  no party; browser specs moved to `/finance/invoices`, the picklist and field-system
+  contracts, the lost-reason prompt and the new copy. New `tests/e2e/helpers/api.ts` calls
+  the API from the page (the production server serves HTML at `/api/v1` on its own origin).
+- `picklists` / `picklist_values` (`platform/models.py`), service `platform/services/picklists.py`
+  (system lists seeded lazily like pipelines, `PicklistResolver` for key/label/country matching,
+  admin add/rename/tone/meaning/activate/default/reorder, merge that rewrites records, saved
+  views and automation conditions, *values not in the list*), routes `/picklists` (read, any user)
+  and `/admin/picklists/*` (`require_admin`). Country is a locked list of ISO codes from the
+  bundled `app/core/data/iso_3166_1.json` (+ `iso_3166_2.json` for Phase 4), generated once from
+  Debian iso-codes.
+- Bound fields (`PICKLIST_BINDINGS`): lead status and source, account industry and billing
+  country, contact region and country, invoice payment method, payment method, product and
+  service unit. Their services, imports (row failure instead of abort; *add unknown values* for
+  `configure` users, through the job payload too), exports (labels), reports (`picklist:<key>`
+  labels, options, list order), dashboard buckets, global search, automation (options per tenant,
+  new *Status meaning* condition from `_lead_extras`), layout fields (`field_type: "picklist"` +
+  `picklist_key`), the demo and load seeds, and bootstrap seed.
+- Lead status by meaning: `LEAD_STATUSES` and `ck_sales_leads_status` gone; scoring, conversion
+  guard and the converted status read the meaning. Booking-page leads use `booking_link` (seeded).
+- Backups write `picklists.json` / `picklist_values.json` into every archive; restore upserts
+  them by key before any set.
+- Migration `20261008_picklists` (seeds every tenant, adopts free-text values, matches countries,
+  prints unmatched ones; downgrade refuses).
+- **Deviation from 13b §3.1:** merge is one set-based `UPDATE` per bound field inside the request
+  instead of a Celery job over 5,000 records; nothing is done row by row, so a job buys nothing.
+- Frontend: `hooks/usePicklists.ts` (one cached `/picklists` read; label, options, status,
+  meaning helpers), `components/picklists/` (`PicklistSelect`/`PicklistField` on
+  `SearchableSelect`, `PicklistText`, `PicklistStatusValue`, the settings row and merge dialog),
+  Settings → Picklists (`/dashboard/settings/picklists`, `/[listKey]`, in the Customization
+  group). Lead, contact and account forms and quick creates, payment-method inputs (invoice,
+  payment dialog and page, bill, credit-note refund) and the catalog unit use the lists; list
+  cells, record headers, read-only layouts (`field_type: "picklist"`), the payments and invoice
+  pages show labels. Lead status reads meanings (track, inline edit, *Convert*, convert page);
+  `LEAD_STATUSES`, `getLeadStatus` and `lib/countries.ts` are gone. Filter fields carry
+  `picklistKey`; the condition editor resolves options and has an *is any of* chip picker.
+  Imports offer *Unknown list values: add / refuse* to users who can configure the module.
+  Layout contract regenerated (`picklist_key` only). Guard route lists and the census updated.
+- Tests written, not run: `tests/test_picklists.py`, `tests/e2e/picklists.spec.ts`.
+- Static: pyflakes clean on every changed backend file, the app imports; `tsc --noEmit` clean
+  (ignoring stale `.next` stubs of routes Step 5 removed), lint 0 errors (one old warning),
+  `check-design.sh` 21/21.
+- Known, left for later: quantities still print the unit *key* ("5 box"); F6.2 (units) owns
+  unit display.
+
+**Phase 2 — one field system: built (2026-10-06), backend and frontend.**
+- `app/core/field_types.py`: the 18 types (text, long text, number, decimal, currency, percent,
+  yes/no, date, date-time, email, phone, URL, picklist, multi-select picklist, user, record lookup,
+  file, auto-number) with storage column, filter and report type, normalize/refuse, CSV form,
+  reference labels (references read back as `{id, label}`); `LOOKUP_TARGETS` (contacts, accounts,
+  deals, quotes, orders); file = a Documents record.
+- `field_definitions` / `field_values` (`FieldDefinition`, `FieldValue`) replace
+  `custom_field_*` and `custom_module_field_definitions` / `custom_module_record_values`;
+  migration `20261009_field_system` moves both (old custom-field numbers → `decimal`; selects →
+  local picklists, option text → keys) and drops the four tables. `CustomFieldsMixin`
+  (`app/core/custom_field_cache.py`) replaced the copy-pasted properties on the sales models.
+- `custom_fields.py` rewritten: 18 modules (CRM 6, products, services, invoices, credit notes,
+  payments, POs, receipts, bills, deliveries, returns, adjustments, transfers), bulk loads,
+  required/unique/auto-number, `apply_custom_fields` / `sync_custom_fields`, filters, export
+  cells; `GET /custom-fields/types`. Required custom fields bind forms only: system writes
+  (order invoicing, portal/website orders, reorder POs, invoice-recorded payments) pass
+  `enforce_required=False` (13b §5 decision 9).
+- Every ERP document save and detail carries `custom_fields`; the seven document exports and
+  the lead, contact and account exports add `custom:<key>` columns (picklists as labels);
+  reports read custom fields on the CRM and the seven ERP sources through one helper;
+  custom modules run on the same service (values loaded per page, search joins
+  `field_values`); backups carry definitions and values, restored after their set; the recycle
+  purge deletes values with their records.
+- Tests written, not run: `tests/test_field_system.py`; `test_custom_modules.py` updated (its
+  three value tests moved to the new file), three other tests renamed to the new models.
+- Frontend: `lib/fieldTypes.ts` (keys, labels, lookup targets, filter builder) and
+  `components/fields/` (`FieldControl`, `FieldValue`, `FieldTypeSettings`);
+  `CustomFieldInputs`, list cells (`CustomFieldValue`, now by module), quick creates (every
+  type, from the full definition), read-only layouts, custom module forms, list and record page
+  all draw through them. Settings → Fields offers the 18 types with their settings (own or
+  shared list, lookup target, limits, prefix, unique) on all 18 modules; the module builder uses
+  the same editor. `RecordCustomFieldsSection` / `RecordCustomFieldsFacts` put custom fields on
+  every ERP document page (POs, receipts, bills, deliveries, returns, adjustments, transfers,
+  credit notes), the invoice, order and catalog forms, the invoice payment page and the payment
+  page; issued invoices keep custom fields editable. Shared `MultiOptionSelect` replaced the
+  filter editor's local copy. Spec written: `tests/e2e/field-system.spec.ts`.
+- Static: pyflakes clean, app imports; `tsc` clean, lint 0 errors, `check-design.sh` 21/21.
+
+**Phase 3 — standard records: built (2026-10-06), backend and frontend. Tested 2026-10-06.**
+- Migration `20261010_standard_records`: leads and contacts may have no email (a check needs an
+  email or a phone; mobile added; contacts get salutation and a mailing address); accounts get
+  type, employee count, numeric annual revenue (`LKR 75M` → 75000000) and billing + shipping
+  addresses (accounts with orders or invoices become customers); deals get numeric `amount`
+  (parsed from `total_cost_of_project`), type, source, next step, lost reason; the agency columns
+  become custom fields with their data where used (`campaign_type` a picklist field); `client`
+  is dropped (a party-less deal gets the account its client text names) and a deal needs an
+  account or a contact; quotes and orders get billing/shipping snapshots, PO reference, terms,
+  shipping method and charge, lost reason (orders' `delivery_address` → shipping street);
+  products/services get list price and tax category, products weight/dimensions, and
+  `catalog_item_images`. Search columns rebuilt with the mobile number.
+- **Deviation from 13b §3.5:** `currency_type`, `contact_telephone` and `billing_address` keep
+  their column names (relabelled *Currency*, *Work phone*, *Street*); renaming them touched ~70
+  files for no behaviour change.
+- Deals: `amount` everywhere (lists, board totals, forecast, dashboards, reports, mail tokens,
+  automation), currency defaults to the base currency, an empty probability follows the stage
+  (read from the stage, so an admin's change to a stage's probability reaches every deal that
+  has none of its own; a stored copy would not). **Deviation from 13b
+  §3.5 (recorded there):** *Mark won/lost* are the stage, not header buttons — design.md §4.7
+  rules a `Won`/`Lost` pair out. Any move into a lost stage (rail, board, form, API) needs a
+  `lost_reason` (422 on `lost_reason` otherwise), reopening drops it; the rail and board ask in
+  `LostReasonDialog`. The `/won` and `/lost` routes written earlier in this phase were removed. The deal
+  attachment upload (`opportunities_api.py`, its routes and test) and *inferred services* (built
+  from agency fields) are removed; files belong in the record's Files tab.
+- `document_fields.py`: quote/order addresses copied from the account (shipping falls back to
+  billing), carried quote → order, formatted onto the invoice; shipping charge in the document
+  total and invoiced once as a *Shipping* line on the order's first invoice. Website orders
+  put their address in the shipping street. Lines start from the list price. Catalog gallery:
+  `POST/DELETE /catalog/{products,services}/{id}/images`.
+- New picklist bindings (account type, salutation, deal type/source/lost reason, quote/order
+  shipping method, lost reason, countries, catalog tax category); imports/exports, filters,
+  reports and default layouts carry the new fields; lead quick create shows *Source*.
+- Record layouts: a lead or contact Quick Create must keep one of email/phone/mobile, a deal's
+  one of account/contact (`QUICK_CREATE_ONE_OF`); lead email alone is no longer domain-required.
+- Frontend: deal record (Amount, *Create quote*/*Create order*, *+ Quote* on the Quotes card,
+  lost reason on the way into a lost stage), deals list/board/filters (Amount, type, source,
+  next step, lost reason; `client` gone everywhere incl. the picker and mail), related deal
+  amounts on contact and account pages; account form (type, numeric revenue in the base
+  currency, employees, billing + shipping via the shared `forms/AddressFields`); contact form
+  (salutation, work phone + mobile, mailing address; email optional); lead form (mobile; email
+  optional; *Add an email or a phone number.*); quote and order forms
+  (`transactions/DocumentHeaderFields`: addresses, PO reference, shipping method and charge in
+  the total, terms, declined/cancellation reason only in that status; prefilled from
+  `?opportunity_id=`; field-level server errors); product form (list price, tax category,
+  weight and dimensions, `catalog/CatalogGallery` saved per picture).
+- Tests written, not run: `tests/test_standard_records.py`, `frontend/tests/e2e/deal-record.spec.ts`;
+  specs updated for the new email rule and removed deal fields.
+- Static: pyflakes clean on touched files, app imports, tsc clean, lint 0 problems, check-design 21/21.
+
+## Final fixes §7 Step 5 — names, retirement, one order model (2026-10-05)
+
+**Built 2026-10-05; tested and committed with 13b Phases 1–3 on 2026-10-06** (see Step 6 above).
+
+**Owner decision 11 (2026-10-05, `13-final-fixes.md` §2):** no users exist yet, so anything
+retired goes outright — code, tables, APIs, pages — with no archive, no alias, no redirect and
+no delayed drop. That overrides F1.1's deprecated aliases and F1.2's CSV export, move into
+Documents and one-release-later drop. Contracts and support cases (on hold since 2026-08-20)
+were deleted in the same step.
+
+- **F1.2, insertion orders removed.** Backend `io_repository`, `io_search_*`, the IO schemas
+  and model, the deal's `POST /sales/opportunities/{id}/create_finance_io`, the IO cards and
+  counts on contact, account and deal summaries, and `finance_io` in search, reports, recycle
+  bin, comments, layouts, custom fields, field configs, exports and imports, automation
+  (trigger, conditions, record source), webhooks (`invoice.overdue` left the 08a catalogue;
+  `08a` notes it) and the seeds. The "Chase overdue invoices" template now fires on
+  `finance.invoice_overdue`. Frontend pages, list, form, hook, registries, status styles.
+  `python-docx` and `pdfplumber` are gone from `requirements.in`; the lock was recompiled
+  (it only dropped them and their four sub-dependencies).
+- **Contracts and support cases removed.** `modules/contracts`, `modules/support`, their
+  routes, the support-case automation action and triggers, the timeline's `case_reply`
+  adapter and the composer's reply mode, backups, search, comments, layouts, field configs,
+  saved views, the dashboard pages and the client portal's **Support** and **Messages** pages
+  and routes (`/client-support/*`, `/client-messages/*`). Portal messages were support cases
+  answered only from the support UI, so they could not outlive it. The booking page now says
+  to reply to the confirmation email.
+- **F1.1, invoices at invoices.** API `/finance/pos-invoices*` → `/finance/invoices*`, pages
+  `/dashboard/finance/pos/*` → `/dashboard/finance/invoices/*`, every href, export link,
+  search href, notification link and spec. No alias either way. The internal key `finance_pos`
+  stays (as the plan says). `DASHBOARD_ROUTES.financePos` → `invoices`.
+- **F1.3 (C5, A3), one order model.** `sales_orders` gains `source` (`crm`, `website`,
+  `client_portal`), `channel`, `external_reference` (unique per tenant), `request_hash`,
+  `integration_key_id` and `client_account_id`. The public `POST /integrations/public/orders`
+  creates a **confirmed** sales order (it holds stock through the ordinary reservation path)
+  for a contact matched on email or created; a resubmission with the same body returns the
+  same order. A portal order is a **draft** sales order for the client's contact and account;
+  staff confirm it on the order page. `website_integration_orders`, its lines and the old
+  `/integrations/orders*` admin routes (list, status, *Create POS invoice*) are gone: website
+  orders are invoiced from the order page through order invoicing, which is A3's lasting fix,
+  and the separate `_guard_website_invoice` went with it. Orders list and saved views have
+  Source, Channel and External reference columns and filters; the order page's rail shows the
+  source for website and portal orders; automation has a Source condition on orders. The
+  portal shows `draft` as *Awaiting confirmation*. The WordPress plugin sends `notes` instead
+  of `metadata`, and its README says where orders land.
+- **B7.** The website-integration CRM routes clear `website_integrations`'s three access
+  layers (module access on the router; `configure` for keys, `view` for the published
+  catalog) instead of `require_admin`. The module is in `DEFAULT_MODULES` so departments and
+  teams get it.
+- **Old leftovers removed on the way.** `website_catalog_items` (a pre-E1 catalog nothing read,
+  plus its `catalog_item_id` order lookup and the `bundle` item type), the frontend's legacy
+  route redirects (`LEGACY_DASHBOARD_ROUTE_REDIRECTS`, including `/dashboard/finance/invoices`
+  → insertion orders, and the old `/dashboard/admin/*` paths), the `website_order` move type
+  and invoice source, `check-design.sh`'s and `design-rules.spec.ts`'s contracts/support
+  exemptions, and stored rows under the removed module keys and entity types. The dev
+  database has no other table without a model.
+- **Migration `20261007_retire_modules`** drops the 11 tables, deletes the three module rows
+  (permissions and tenant configs cascade) and every row stored under their module keys or
+  entity types, moves `finance_pos`'s `base_route`, narrows the invoice `source` check and adds
+  the order columns. Its downgrade refuses: the data is gone for good.
+- **Tests updated, not run:** portal and website order tests rewritten for sales orders
+  (`test_client_portal`, `test_website_integrations` with a B7 test, `test_e3_followups`); the
+  IO, contract and support tests and fixtures removed from 20 other modules; the specs that
+  mocked or walked the removed routes updated.
+
+**Checked so far (static only):** `compileall` clean; the app and every router import;
+pyflakes reports no undefined names. **Not yet run:** the backend suite, `verify_migrations`,
+`verify_openapi`, contract drift, lint, build, `check-design.sh`, the browser specs.
 
 ## Final fixes §7 Step 4 — FQ code foundations (2026-10-04)
 

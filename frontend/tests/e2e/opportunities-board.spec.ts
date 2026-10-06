@@ -103,6 +103,11 @@ test.describe("the deal board", () => {
     await page.goto("/dashboard/sales/opportunities?display=pipeline");
     await page.getByRole("combobox", { name: "Change stage for Alpha deal" }).click();
     await page.getByRole("option", { name: "Closed lost" }).click();
+    // A lost stage asks why first (13a H13).
+    const lost = page.getByRole("dialog", { name: "Mark deal lost" });
+    await lost.getByRole("combobox", { name: "Lost reason" }).click();
+    await page.getByRole("option", { name: "Price" }).click();
+    await lost.getByRole("button", { name: "Mark lost" }).click();
     await expect.poll(() => store.moves.at(-1)).toBe("987655001 closed_lost");
     await expect(page.getByText("Deal stage was not changed: Pipeline stage is inactive.")).toBeVisible();
     await expect(column(page, "proposal").getByText("Alpha deal")).toBeVisible();

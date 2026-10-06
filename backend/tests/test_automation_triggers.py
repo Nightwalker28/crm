@@ -123,7 +123,7 @@ class AutomationTriggerTests(unittest.TestCase):
         self.assertNotIn("tenant_id", snapshot)
 
     def test_every_condition_field_is_readable_from_its_record(self):
-        extras = {"sales_leads": {"score", "score_grade"}, "sales_opportunities": {"stage_semantic_type"}}
+        extras = {"sales_leads": {"score", "score_grade", "status_meaning"}, "sales_opportunities": {"stage_semantic_type"}}
         sources = {source.module_key: source for source in automation_records.AUTOMATION_RECORD_SOURCES.values()}
         for field in AUTOMATION_CONDITION_FIELDS:
             source = sources.get(field.module_key)
@@ -235,18 +235,17 @@ class AutomationTriggerTests(unittest.TestCase):
 
     def test_triggers_nothing_emits_are_not_offered_and_cannot_be_enabled(self):
         offered = {trigger["key"] for group in grouped_trigger_registry() for trigger in group["triggers"]}
-        self.assertNotIn("ticket.replied", offered)
         self.assertNotIn("booking.cancelled", offered)
         self.assertIn("booking.created", offered)
         self.assertIn("quote.accepted", offered)
 
         with self.assertRaises(HTTPException) as raised:
-            self._rule("ticket.replied", [{"type": "create_task", "title": "x"}])
+            self._rule("booking.cancelled", [{"type": "create_task", "title": "x"}])
         self.assertEqual(raised.exception.status_code, 400)
 
-        draft = self._rule("ticket.replied", [], enabled=False)
+        draft = self._rule("booking.cancelled", [], enabled=False)
         self.assertFalse(draft.enabled)
-        preview = preview_automation_rule({"name": "x", "trigger_event": "ticket.replied", "actions_json": [{"type": "create_task", "title": "x"}]})
+        preview = preview_automation_rule({"name": "x", "trigger_event": "booking.cancelled", "actions_json": [{"type": "create_task", "title": "x"}]})
         self.assertFalse(preview["can_enable"])
 
     def test_every_template_is_a_valid_enabled_rule(self):
@@ -267,10 +266,10 @@ class AutomationTriggerTests(unittest.TestCase):
                 )
                 self.assertTrue(rule.enabled)
 
-    def test_every_trigger_offered_names_a_module_with_a_record_or_is_support(self):
+    def test_every_trigger_offered_names_a_module_with_a_record(self):
         sources = {source.module_key for source in automation_records.AUTOMATION_RECORD_SOURCES.values()}
         for trigger in AUTOMATION_TRIGGERS:
-            if trigger.available and trigger.module_key != "support_cases":
+            if trigger.available:
                 self.assertIn(trigger.module_key, sources, trigger.key)
 
     def test_stage_condition_lists_the_tenants_own_stages(self):

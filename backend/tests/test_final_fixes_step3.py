@@ -54,16 +54,17 @@ class LeadConversionDealTests(StageRefFixture):
             current_user=self.current_user,
         )
         deal = self.db.get(SalesOpportunity, result["deal_id"])
-        self.assertEqual(deal.total_cost_of_project, "1250.5")
+        self.assertEqual(deal.amount, Decimal("1250.50"))
         self.assertEqual(deal.currency_type, "USD")
         self.assertEqual(deal.expected_close_date, date(2026, 12, 31))
 
     def test_without_money_fields_the_deal_is_made_as_before(self):
-        # Automation conversions send no amount or currency; nothing about them changes.
+        # Automation conversions send no amount or currency: the deal has no amount and starts in
+        # the base currency, like any other deal (13b §3.5).
         result = convert_sales_lead(self.db, self.make_lead(), {"create_deal": True, "assigned_to": 1}, current_user=self.current_user)
         deal = self.db.get(SalesOpportunity, result["deal_id"])
-        self.assertIsNone(deal.total_cost_of_project)
-        self.assertIsNone(deal.currency_type)
+        self.assertIsNone(deal.amount)
+        self.assertTrue(deal.currency_type)
         self.assertIsNone(deal.expected_close_date)
 
     def test_each_record_gets_a_lifecycle_entry_and_the_timeline_links_its_siblings(self):
@@ -100,7 +101,7 @@ class LeadConversionDealTests(StageRefFixture):
         self.assertIn("lifecycle", ACTIVITY_TYPES)
         adapter = next(adapter for adapter in ADAPTERS if adapter.type == "lifecycle")
         self.assertTrue(adapter.applies("sales_opportunities"))
-        self.assertFalse(adapter.applies("support_cases"))
+        self.assertFalse(adapter.applies("catalog_products"))
 
 
 class InventoryListTests(StageRefFixture):

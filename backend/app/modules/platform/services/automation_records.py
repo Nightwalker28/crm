@@ -26,7 +26,7 @@ from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryAdjustment, InventoryDelivery, InventoryReturn, InventoryRevaluation
 from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseReceipt
 from app.modules.documents.models import Document
-from app.modules.finance.models import FinanceCreditNote, FinanceIO, FinancePayment, FinancePosInvoice
+from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePosInvoice
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrder, SalesQuote
 from app.modules.tasks.models import Task
 
@@ -44,7 +44,14 @@ _HIDDEN_COLUMNS = frozenset({
 
 
 def _lead_extras(lead: SalesLead) -> dict[str, Any]:
-    return {"score": lead.score, "score_grade": lead.score_grade}
+    from sqlalchemy.orm import object_session
+
+    from app.modules.platform.services.picklists import LEAD_STATUS_LIST, PicklistResolver
+
+    session = object_session(lead)
+    meaning = PicklistResolver(session, lead.tenant_id).meaning(LEAD_STATUS_LIST, lead.status) if session is not None else None
+    # Rules read the status's meaning (13b §3.1), so renaming a status never breaks one.
+    return {"score": lead.score, "score_grade": lead.score_grade, "status_meaning": meaning}
 
 
 def _opportunity_extras(opportunity: SalesOpportunity) -> dict[str, Any]:
@@ -110,29 +117,19 @@ AUTOMATION_RECORD_SOURCES: dict[str, AutomationRecordSource] = {
         AutomationRecordSource("purchase_receipt", "purchase_receipts", PurchaseReceipt, "id", "/dashboard/purchasing/receipts/{id}", owner_field="posted_by", label_fields=(("number",),)),
         AutomationRecordSource("inventory_revaluation", "inventory_valuation", InventoryRevaluation, "id", "/dashboard/inventory/valuation?tab=revaluations", owner_field="created_by", label_fields=(("number",),)),
         AutomationRecordSource("purchase_bill", "purchase_bills", PurchaseBill, "id", "/dashboard/purchasing/bills/{id}", owner_field="owner_id", label_fields=(("number",), ("vendor_invoice_number",))),
-        AutomationRecordSource("finance_pos_invoice", "finance_pos", FinancePosInvoice, "id", "/dashboard/finance/pos/{id}", owner_field="user_id", label_fields=(("invoice_number",), ("customer_name",))),
+        AutomationRecordSource("finance_pos_invoice", "finance_pos", FinancePosInvoice, "id", "/dashboard/finance/invoices/{id}", owner_field="user_id", label_fields=(("invoice_number",), ("customer_name",))),
         AutomationRecordSource("finance_credit_note", "finance_credit_notes", FinanceCreditNote, "id", "/dashboard/finance/credit-notes/{id}", owner_field="created_by", label_fields=(("number",),)),
         AutomationRecordSource("finance_payment", "finance_payments", FinancePayment, "id", "/dashboard/finance/payments/{id}", owner_field="created_by", label_fields=(("number",), ("party_name",))),
         AutomationRecordSource("sales_lead", "sales_leads", SalesLead, "lead_id", "/dashboard/sales/leads/{id}", owner_field="assigned_to", extras=_lead_extras, label_fields=(("first_name", "last_name"), ("company",), ("primary_email",))),
         AutomationRecordSource("sales_contact", "sales_contacts", SalesContact, "contact_id", "/dashboard/sales/contacts/{id}", owner_field="assigned_to", label_fields=(("first_name", "last_name"), ("primary_email",))),
-        AutomationRecordSource("sales_opportunity", "sales_opportunities", SalesOpportunity, "opportunity_id", "/dashboard/sales/opportunities/{id}", owner_field="assigned_to", extras=_opportunity_extras, label_fields=(("opportunity_name",), ("client",))),
+        AutomationRecordSource("sales_opportunity", "sales_opportunities", SalesOpportunity, "opportunity_id", "/dashboard/sales/opportunities/{id}", owner_field="assigned_to", extras=_opportunity_extras, label_fields=(("opportunity_name",),)),
         AutomationRecordSource("sales_quote", "sales_quotes", SalesQuote, "quote_id", "/dashboard/sales/quotes/{id}", owner_field="assigned_to", label_fields=(("quote_number",), ("title",))),
         AutomationRecordSource("sales_order", "sales_orders", SalesOrder, "id", "/dashboard/sales/orders/{id}", owner_field="owner_id", label_fields=(("order_number",),)),
-        AutomationRecordSource("finance_insertion_order", "finance_io", FinanceIO, "id", "/dashboard/finance/insertion-orders/{id}", owner_field="user_id", label_fields=(("io_number",), ("customer_name",))),
         AutomationRecordSource("task", "tasks", Task, "id", "/dashboard/tasks?taskId={id}", owner_resolver=_task_owner, label_fields=(("title",),)),
         AutomationRecordSource("document", "documents", Document, "id", "/dashboard/documents", owner_field="uploaded_by_user_id", label_fields=(("title",), ("original_filename",))),
         AutomationRecordSource("meeting_booking", "calendar", MeetingBooking, "id", "/dashboard/calendar", owner_resolver=_booking_owner, label_fields=(("guest_name",), ("guest_email",)), soft_delete=False),
     )
 }
-
-# Entity types whose events exist but whose records automation does not load (support is
-# out of scope; contracts emit no automation trigger). Mapped so notes and tasks still land
-# on the right module.
-_MODULE_KEY_FALLBACK = {
-    "support_case": "support_cases",
-    "contract": "contracts",
-}
-
 
 def get_record_source(entity_type: str | None) -> AutomationRecordSource | None:
     return AUTOMATION_RECORD_SOURCES.get((entity_type or "").strip())
@@ -147,9 +144,7 @@ def module_key_for_entity(entity_type: str | None) -> str | None:
     source = AUTOMATION_RECORD_SOURCES.get(key)
     if source is not None:
         return source.module_key
-    if key in _MODULE_KEY_FALLBACK:
-        return _MODULE_KEY_FALLBACK[key]
-    known_modules = {item.module_key for item in AUTOMATION_RECORD_SOURCES.values()} | set(_MODULE_KEY_FALLBACK.values())
+    known_modules = {item.module_key for item in AUTOMATION_RECORD_SOURCES.values()}
     return key if key in known_modules else None
 
 

@@ -17,13 +17,14 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.pagination import Pagination, build_paged_response
+from app.modules.platform.services.custom_fields import sync_custom_fields
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.catalog.services.line_links import PRODUCT_LINK_FIELD, SERVICE_LINK_FIELD, normalize_catalog_line_links
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso, finance_datetime_to_iso
 from app.modules.finance.services.document_amounts import ZERO, line_amounts, money
 from app.modules.finance.services.invoice_balances import default_due_date, is_overdue, refresh_invoice_balance
-from app.modules.finance.services.io_search_services import _normalize_allowed_currency, parse_human_date
 from app.modules.platform.models import ActivityLog
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesContact, SalesOrganization
@@ -32,10 +33,11 @@ POS_MODULE_KEY = "finance_pos"
 INVOICE_NUMBER_SCOPE = "finance_invoices"
 INVOICE_NUMBER_PREFIX = "INV"
 VALID_TEMPLATES = {"modern", "classic", "compact"}
-VALID_SOURCES = {"manual", "pos", "sales_order", "website_order"}
+VALID_SOURCES = {"manual", "pos", "sales_order"}
 MAX_TAX_RATE = Decimal("100")
 # What an issued invoice still lets you change (12c §3.3 decision 3).
-ISSUED_EDITABLE_FIELDS = {"due_date", "notes", "payment_terms", "template_id", "accent_color"}
+# Custom fields describe the invoice, not its money, so they stay editable after issue (13b §3.4).
+ISSUED_EDITABLE_FIELDS = {"due_date", "notes", "payment_terms", "template_id", "accent_color", "custom_fields"}
 
 
 def _normalize_text(value: Any) -> str | None:
@@ -61,10 +63,23 @@ def _money(value: Decimal) -> Decimal:
 
 
 def _currency(db: Session, current_user, value) -> str:
+    from app.modules.user_management.services.profile import get_company_operating_currencies
+
+    allowed = get_company_operating_currencies(db, current_user)
+    normalized = (str(value or "").strip() or allowed[0]).upper()
+    if normalized not in allowed:
+        raise HTTPException(status_code=400, detail=f"Currency must be one of: {', '.join(allowed)}")
+    return normalized
+
+
+def _date(value) -> date | None:
+    text_value = str(value or "").strip()
+    if not text_value:
+        return None
     try:
-        return _normalize_allowed_currency(db, current_user, value)
+        return date.fromisoformat(text_value)
     except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(status_code=400, detail="Enter dates as YYYY-MM-DD") from exc
 
 
 def _assign_sqlite_test_ids(db: Session, invoice: FinancePosInvoice) -> None:
@@ -440,14 +455,16 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any], *, commit
         status="draft",
         payment_status="unpaid",
         source=source,
-        payment_method=_normalize_text(payload.get("payment_method")),
+        payment_method=PicklistResolver(db, current_user.tenant_id).resolve(
+            "payment_method", payload.get("payment_method"), field_key="payment_method", field_label="Payment method"
+        ),
         template_id=template,
         accent_color=_normalize_text(payload.get("accent_color")) or "#14b8a6",
         customer_name=customer_name,
         customer_email=_normalize_text(payload.get("customer_email")),
         customer_address=_normalize_text(payload.get("customer_address")),
-        issue_date=parse_human_date(payload["issue_date"]) if payload.get("issue_date") else None,
-        due_date=parse_human_date(payload["due_date"]) if payload.get("due_date") else None,
+        issue_date=_date(payload.get("issue_date")),
+        due_date=_date(payload.get("due_date")),
         currency=_currency(db, current_user, payload.get("currency")),
         payment_terms=_normalize_text(payload.get("payment_terms")),
         notes=_normalize_text(payload.get("notes")),
@@ -461,6 +478,9 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any], *, commit
     _assign_sqlite_test_ids(db, invoice)
     db.add(invoice)
     db.flush()
+    # An invoice made from an order is a system write; required custom fields bind the form (13b §5 decision 9).
+    sync_custom_fields(db, tenant_id=current_user.tenant_id, module_key=POS_MODULE_KEY, record=invoice, payload=payload, created=True,
+                       enforce_required="custom_fields" in payload)
     _add_invoice_activity(
         db,
         current_user=current_user,
@@ -503,9 +523,14 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
         invoice.customer_name = customer_name
     if any(key in payload for key in {"customer_contact_id", "customer_organization_id", "customer_email", "create_customer_if_missing"}) and invoice.status == "draft":
         _apply_customer(db, current_user, invoice, payload, customer_name=payload.get("customer_name", invoice.customer_name))
-    for key in {"customer_email", "customer_address", "payment_method", "payment_terms", "notes", "accent_color"}:
+    for key in {"customer_email", "customer_address", "payment_terms", "notes", "accent_color"}:
         if key in payload:
             setattr(invoice, key, _normalize_text(payload.get(key)))
+    if "payment_method" in payload:
+        invoice.payment_method = PicklistResolver(db, current_user.tenant_id).resolve(
+            "payment_method", payload.get("payment_method"), current=invoice.payment_method,
+            field_key="payment_method", field_label="Payment method",
+        )
     if "template_id" in payload:
         template = _normalize_text(payload.get("template_id"))
         if template not in VALID_TEMPLATES:
@@ -513,7 +538,7 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
         invoice.template_id = template
     for key in {"issue_date", "due_date"}:
         if key in payload:
-            setattr(invoice, key, parse_human_date(payload[key]) if payload.get(key) else None)
+            setattr(invoice, key, _date(payload.get(key)))
     if "currency" in payload:
         invoice.currency = _currency(db, current_user, payload.get("currency"))
     if invoice.status == "draft":
@@ -531,6 +556,7 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
         invoicing_services.check_order_lines(db, invoice=invoice, issuing=False)
     if invoice.status == "issued":
         refresh_invoice_balance(db, invoice)
+    sync_custom_fields(db, tenant_id=current_user.tenant_id, module_key=POS_MODULE_KEY, record=invoice, payload=payload, created=False)
     _add_invoice_activity(
         db,
         current_user=current_user,
@@ -665,6 +691,7 @@ def record_invoice_payment(
     payment_method: str | None = None,
     paid_on: date | None = None,
     reference: str | None = None,
+    custom_fields: dict[str, Any] | None = None,
 ) -> FinancePosInvoice:
     """The pre-E5 route, kept as a thin wrapper: one payment record for this invoice."""
     from app.modules.finance.services import payment_services
@@ -673,6 +700,8 @@ def record_invoice_payment(
     payment_services.record_payment(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, payload={
         "direction": "received", "kind": "payment", "method": payment_method, "paid_on": paid_on, "reference": reference,
         "allocations": [{"invoice_id": invoice.id, "amount": amount}],
+        # The payment form sends its custom fields; it is a user write (13b §5 decision 9).
+        "custom_fields": custom_fields or {},
     }, finance_user=current_user)
     db.commit()
     db.refresh(invoice)

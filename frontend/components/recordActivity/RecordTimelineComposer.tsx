@@ -67,13 +67,6 @@ type FollowUpConfig = {
   onLogged?: () => Promise<void> | void;
 };
 
-type ReplyConfig = {
-  endpoint: string;
-  label: string;
-  placeholder: string;
-  onReplied?: () => Promise<void> | void;
-};
-
 /** A person who may have been on a call logged on this record (a deal's participant). */
 export type CallPerson = {
   contactId: number;
@@ -112,8 +105,6 @@ type Props = {
   followUp?: FollowUpConfig;
   /** Call mode: a call log (07). Omitted where calls are not logged or the operator cannot. */
   call?: CallConfig;
-  /** The support case's customer-facing reply. Appended as its own mode. */
-  reply?: ReplyConfig;
   /**
    * Replaces the generic WhatsApp channel mode with the tracked one (§4.7).
    *
@@ -152,7 +143,6 @@ export default function RecordTimelineComposer({
   canAddNote = false,
   followUp,
   call,
-  reply,
   whatsApp,
   className,
 }: Props) {
@@ -161,7 +151,6 @@ export default function RecordTimelineComposer({
   const { canOpenExternally } = useWhatsAppCapabilities();
   const modes: { id: string; label: string; icon: typeof StickyNote }[] = [
     ...(canAddNote ? [{ id: "note", label: "Note", icon: StickyNote }] : []),
-    ...(reply ? [{ id: "reply", label: reply.label, icon: Mail }] : []),
     ...(call ? [{ id: "call", label: "Call", icon: Phone }] : []),
     ...(followUp ? [{ id: "email", label: "Email", icon: Mail }] : []),
     ...((followUp || whatsApp) && canOpenExternally
@@ -204,8 +193,6 @@ export default function RecordTimelineComposer({
       <div className="px-4 py-4">
         {activeMode === "note" ? (
           <NoteMode moduleKey={moduleKey} entityId={entityId} />
-        ) : activeMode === "reply" && reply ? (
-          <ReplyMode moduleKey={moduleKey} entityId={entityId} config={reply} />
         ) : activeMode === "call" && call ? (
           <CallMode moduleKey={moduleKey} entityId={entityId} config={call} />
         ) : activeMode === "whatsapp" && whatsApp ? (
@@ -948,79 +935,5 @@ function WhatsAppMode({
         it was sent, delivered or read.
       </p>
     </div>
-  );
-}
-
-/** The support case's customer-facing reply, now writing into the same feed it reads from. */
-function ReplyMode({
-  moduleKey,
-  entityId,
-  config,
-}: {
-  moduleKey: RecordModuleKey;
-  entityId: string | number;
-  config: ReplyConfig;
-}) {
-  const queryClient = useQueryClient();
-  const [draft, setDraft] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [failed, setFailed] = useState(false);
-  const fieldId = `record-reply-${moduleKey}-${entityId}`;
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const body = draft.trim();
-    if (!body || submitting) return;
-
-    try {
-      setSubmitting(true);
-      setFailed(false);
-      const res = await apiFetch(config.endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body, is_internal: false }),
-      });
-      if (!res.ok) throw new Error("not-sent");
-      setDraft("");
-      await queryClient.invalidateQueries({
-        queryKey: [recordActivityQueryKeyPrefix, moduleKey, String(entityId)],
-      });
-      await config.onReplied?.();
-      toast.success("Reply added.");
-    } catch {
-      setFailed(true);
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  return (
-    <form className="grid gap-3" onSubmit={handleSubmit}>
-      <Field>
-        <FieldLabel htmlFor={fieldId}>{config.label}</FieldLabel>
-        <Textarea
-          id={fieldId}
-          rows={3}
-          value={draft}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            if (failed) setFailed(false);
-          }}
-          placeholder={config.placeholder}
-          aria-invalid={failed}
-          aria-describedby={failed ? `${fieldId}-error` : undefined}
-        />
-        {failed ? (
-          <p id={`${fieldId}-error`} role="alert" className="text-sm text-state-danger">
-            The reply could not be added. Try again.
-          </p>
-        ) : null}
-      </Field>
-      <div className="flex justify-end">
-        <Button type="submit" size="sm" disabled={submitting || !draft.trim()}>
-          {submitting ? "Adding…" : "Add reply"}
-        </Button>
-      </div>
-    </form>
   );
 }

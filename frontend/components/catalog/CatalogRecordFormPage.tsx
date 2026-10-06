@@ -31,8 +31,12 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { formatDateTime } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
+import { PicklistField, PicklistSelect } from "@/components/picklists/PicklistSelect";
+import { CatalogGallery } from "@/components/catalog/CatalogGallery";
+import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type FormState = {
+  custom_fields: Record<string, unknown>;
   name: string;
   slug: string;
   description: string;
@@ -42,7 +46,15 @@ type FormState = {
   unit: string;
   currency: string;
   public_unit_price: string;
+  list_price: string;
+  tax_category: string;
   cost_price: string;
+  weight: string;
+  weight_unit: string;
+  length: string;
+  width: string;
+  height: string;
+  dimension_unit: string;
   stock_status: string;
   stock_quantity: string;
   reorder_point: string;
@@ -58,7 +70,21 @@ type FormState = {
 
 const NO_CATEGORY = "none";
 
+// The backend's fixed lists (13b §3.5): small enough not to be picklists.
+const WEIGHT_UNITS = [
+  { value: "kg", label: "Kilograms (kg)" },
+  { value: "g", label: "Grams (g)" },
+  { value: "lb", label: "Pounds (lb)" },
+  { value: "oz", label: "Ounces (oz)" },
+];
+const DIMENSION_UNITS = [
+  { value: "cm", label: "Centimetres (cm)" },
+  { value: "m", label: "Metres (m)" },
+  { value: "in", label: "Inches (in)" },
+];
+
 const EMPTY_FORM: FormState = {
+  custom_fields: {},
   name: "",
   slug: "",
   description: "",
@@ -68,7 +94,15 @@ const EMPTY_FORM: FormState = {
   unit: "unit",
   currency: "USD",
   public_unit_price: "0",
+  list_price: "",
+  tax_category: "",
   cost_price: "",
+  weight: "",
+  weight_unit: "kg",
+  length: "",
+  width: "",
+  height: "",
+  dimension_unit: "cm",
   stock_status: "untracked",
   stock_quantity: "",
   reorder_point: "0",
@@ -85,6 +119,7 @@ const EMPTY_FORM: FormState = {
 function formSeed(record?: CatalogRecord): FormState {
   if (!record) return EMPTY_FORM;
   return {
+    custom_fields: record.custom_fields ?? {},
     name: record.name ?? "",
     slug: record.slug ?? "",
     description: record.description ?? "",
@@ -94,7 +129,15 @@ function formSeed(record?: CatalogRecord): FormState {
     unit: record.unit ?? "unit",
     currency: record.currency ?? "USD",
     public_unit_price: String(record.public_unit_price ?? "0"),
+    list_price: record.list_price == null ? "" : String(record.list_price),
+    tax_category: record.tax_category ?? "",
     cost_price: record.cost_price == null ? "" : String(record.cost_price),
+    weight: record.weight == null ? "" : String(record.weight),
+    weight_unit: record.weight_unit ?? "kg",
+    length: record.length == null ? "" : String(record.length),
+    width: record.width == null ? "" : String(record.width),
+    height: record.height == null ? "" : String(record.height),
+    dimension_unit: record.dimension_unit ?? "cm",
     stock_status: record.stock_status ?? "untracked",
     stock_quantity: record.stock_quantity == null ? "" : String(record.stock_quantity),
     reorder_point: String(record.reorder_point ?? 0),
@@ -180,6 +223,8 @@ function CatalogRecordFormEditor({
   const [reorderError, setReorderError] = useState<string | null>(null);
   const [costError, setCostError] = useState<string | null>(null);
   const [unitError, setUnitError] = useState<string | null>(null);
+  const [listPriceError, setListPriceError] = useState<string | null>(null);
+  const [physicalError, setPhysicalError] = useState<string | null>(null);
   const categories = useCatalogCategories();
   const categoryOptions = useMemo(
     () => [
@@ -216,7 +261,13 @@ function CatalogRecordFormEditor({
       : null;
     const nextReorderError = isProduct && (requiredDecimal(form.reorder_point) === null || requiredDecimal(form.reorder_quantity) === null) ? "Reorder values must be zero or greater." : null;
     const nextCostError = optionalDecimal(form.cost_price) === null ? "Cost must be blank or zero or greater." : null;
-    const nextUnitError = form.unit.trim() ? null : "Enter the unit this is sold in, such as unit, hour or box.";
+    const nextUnitError = form.unit ? null : "Choose the unit this is sold in.";
+    const nextListPriceError = optionalDecimal(form.list_price) === null ? "List price must be blank or zero or greater." : null;
+    const nextPhysicalError = isProduct && [form.weight, form.length, form.width, form.height].some((value) => optionalDecimal(value) === null)
+      ? "Weight and dimensions must be blank or zero or greater."
+      : null;
+    setListPriceError(nextListPriceError);
+    setPhysicalError(nextPhysicalError);
     setNameError(nextNameError);
     setCurrencyError(nextCurrencyError);
     setPriceError(nextPriceError);
@@ -228,10 +279,12 @@ function CatalogRecordFormEditor({
     else if (nextUnitError) document.getElementById("catalog-unit")?.focus();
     else if (nextCurrencyError) document.getElementById("catalog-currency")?.focus();
     else if (nextPriceError) document.getElementById("catalog-price")?.focus();
+    else if (nextListPriceError) document.getElementById("catalog-list-price")?.focus();
     else if (nextCostError) document.getElementById("catalog-cost")?.focus();
     else if (nextStockError) document.getElementById("catalog-stock-quantity")?.focus();
     else if (nextReorderError) document.getElementById("catalog-reorder-point")?.focus();
-    return !nextNameError && !nextUnitError && !nextCurrencyError && !nextPriceError && !nextCostError && !nextStockError && !nextReorderError;
+    else if (nextPhysicalError) document.getElementById("catalog-weight")?.focus();
+    return !nextNameError && !nextUnitError && !nextCurrencyError && !nextPriceError && !nextListPriceError && !nextCostError && !nextStockError && !nextReorderError && !nextPhysicalError;
   }
 
   async function submit() {
@@ -247,10 +300,19 @@ function CatalogRecordFormEditor({
       sku: form.sku.trim() || null,
       barcode: isProduct ? form.barcode.trim() || null : undefined,
       category_id: form.category_id === NO_CATEGORY ? null : Number(form.category_id),
-      unit: form.unit.trim(),
+      unit: form.unit,
       cost_price: costIsAverage ? undefined : cost ?? null,
       currency: form.currency.trim().toUpperCase(),
       public_unit_price: price,
+      // Blank on a new item takes the website price (13a C4).
+      list_price: optionalDecimal(form.list_price) ?? null,
+      tax_category: form.tax_category || null,
+      weight: isProduct ? optionalDecimal(form.weight) ?? null : undefined,
+      weight_unit: isProduct ? form.weight_unit : undefined,
+      length: isProduct ? optionalDecimal(form.length) ?? null : undefined,
+      width: isProduct ? optionalDecimal(form.width) ?? null : undefined,
+      height: isProduct ? optionalDecimal(form.height) ?? null : undefined,
+      dimension_unit: isProduct ? form.dimension_unit : undefined,
       stock_status: isProduct && !form.track_inventory ? form.stock_status : undefined,
       stock_quantity: isProduct && !(mode === "edit" && record?.track_inventory) && form.track_inventory ? stockQuantity ?? null : undefined,
       track_inventory: isProduct ? form.track_inventory : undefined,
@@ -261,6 +323,7 @@ function CatalogRecordFormEditor({
       lead_time_days: isProduct ? (form.lead_time_days.trim() && Number.isInteger(Number(form.lead_time_days)) && Number(form.lead_time_days) >= 0 ? Number(form.lead_time_days) : null) : undefined,
       is_public: form.is_public,
       is_active: form.is_active,
+      custom_fields: form.custom_fields,
     };
 
     try {
@@ -320,6 +383,7 @@ function CatalogRecordFormEditor({
                   <Input id="catalog-media" type="file" accept="image/*" onChange={(event) => setMediaFile(event.target.files?.[0] ?? null)} />
                   {mediaFile ? <FieldDescription>{mediaFile.name}</FieldDescription> : null}
                 </Field>
+                <CatalogGallery kind={kind} recordId={mode === "edit" ? recordId : undefined} initialImages={record?.images ?? []} />
               </div>
             </Card>
           </div>
@@ -365,8 +429,8 @@ function CatalogRecordFormEditor({
             </Field>
             <Field>
               <FieldLabel htmlFor="catalog-unit">Unit <RequiredMark /></FieldLabel>
-              <Input id="catalog-unit" value={form.unit} maxLength={40} onChange={(event) => { setForm((current) => ({ ...current, unit: event.target.value })); if (unitError) setUnitError(null); }} aria-invalid={Boolean(unitError)} aria-describedby={unitError ? "catalog-unit-error" : "catalog-unit-description"} placeholder={isProduct ? "unit" : "hour"} />
-              {unitError ? <FieldError id="catalog-unit-error">{unitError}</FieldError> : <FieldDescription id="catalog-unit-description">What one of this is: unit, box, hour, session.</FieldDescription>}
+              <PicklistSelect id="catalog-unit" listKey="unit" label="Unit" required value={form.unit} onChange={(unit) => { setForm((current) => ({ ...current, unit })); if (unitError) setUnitError(null); }} ariaInvalid={Boolean(unitError)} ariaDescribedBy={unitError ? "catalog-unit-error" : "catalog-unit-description"} />
+              {unitError ? <FieldError id="catalog-unit-error">{unitError}</FieldError> : <FieldDescription id="catalog-unit-description">What one of this is. Administrators manage units under Settings → Picklists.</FieldDescription>}
             </Field>
             <Field className={isProduct ? "md:col-span-2" : undefined}>
               <FieldLabel htmlFor="catalog-slug">Public slug</FieldLabel>
@@ -379,8 +443,14 @@ function CatalogRecordFormEditor({
           </FieldGroup>
         </FormSection>
 
-        <FormSection title="Pricing" description="Set the public base price used before customer-group pricing rules are applied.">
+        <FormSection title="Pricing" description="The list price is what quotes and orders start from; the public price is what the website feed shows.">
           <FieldGroup columns={2}>
+            <Field>
+              <FieldLabel htmlFor="catalog-list-price">List price</FieldLabel>
+              <Input id="catalog-list-price" value={form.list_price} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, list_price: event.target.value })); if (listPriceError) setListPriceError(null); }} aria-invalid={Boolean(listPriceError)} aria-describedby={listPriceError ? "catalog-list-price-error" : "catalog-list-price-description"} />
+              {listPriceError ? <FieldError id="catalog-list-price-error">{listPriceError}</FieldError> : <FieldDescription id="catalog-list-price-description">{mode === "create" ? "Blank uses the public unit price." : "New quote and order lines start at this price."}</FieldDescription>}
+            </Field>
+            <PicklistField id="catalog-tax-category" listKey="tax_category" label="Tax category" value={form.tax_category} onChange={(tax_category) => setForm((current) => ({ ...current, tax_category }))} />
             <Field>
               <FieldLabel htmlFor="catalog-currency">Currency <RequiredMark /></FieldLabel>
               <Input id="catalog-currency" value={form.currency} maxLength={3} onChange={(event) => { setForm((current) => ({ ...current, currency: event.target.value.toUpperCase() })); if (currencyError) setCurrencyError(null); }} aria-invalid={Boolean(currencyError)} aria-describedby={currencyError ? "catalog-currency-error" : undefined} />
@@ -401,11 +471,53 @@ function CatalogRecordFormEditor({
               <Field>
                 <FieldLabel htmlFor="catalog-cost">Cost</FieldLabel>
                 <Input id="catalog-cost" value={form.cost_price} inputMode="decimal" onChange={(event) => { setForm((current) => ({ ...current, cost_price: event.target.value })); if (costError) setCostError(null); }} aria-invalid={Boolean(costError)} aria-describedby={costError ? "catalog-cost-error" : "catalog-cost-description"} />
-                {costError ? <FieldError id="catalog-cost-error">{costError}</FieldError> : <FieldDescription id="catalog-cost-description">What one {form.unit.trim() || "unit"} costs you, in {baseCurrency.data ?? "the base currency"}{isProduct && form.track_inventory ? "; the starting average cost once stock arrives" : ""}. Internal only: never shown to customers.</FieldDescription>}
+                {costError ? <FieldError id="catalog-cost-error">{costError}</FieldError> : <FieldDescription id="catalog-cost-description">What one {form.unit || "unit"} costs you, in {baseCurrency.data ?? "the base currency"}{isProduct && form.track_inventory ? "; the starting average cost once stock arrives" : ""}. Internal only: never shown to customers.</FieldDescription>}
               </Field>
             )}
           </FieldGroup>
         </FormSection>
+
+        {isProduct ? (
+          <FormSection title="Shipping details" description="Weight and size, for shipping quotes and carriers.">
+            <FieldGroup columns={2}>
+              <Field>
+                <FieldLabel htmlFor="catalog-weight">Weight</FieldLabel>
+                <Input id="catalog-weight" type="number" min="0" step="0.001" inputMode="decimal" value={form.weight} onChange={(event) => { setForm((current) => ({ ...current, weight: event.target.value })); setPhysicalError(null); }} aria-invalid={Boolean(physicalError)} aria-describedby={physicalError ? "catalog-physical-error" : undefined} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-weight-unit">Weight unit</FieldLabel>
+                <Select value={form.weight_unit} onValueChange={(weight_unit) => setForm((current) => ({ ...current, weight_unit }))}>
+                  <SelectTrigger id="catalog-weight-unit"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {WEIGHT_UNITS.map((unit) => <SelectItem key={unit.value} value={unit.value}>{unit.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-length">Length</FieldLabel>
+                <Input id="catalog-length" type="number" min="0" step="0.01" inputMode="decimal" value={form.length} onChange={(event) => { setForm((current) => ({ ...current, length: event.target.value })); setPhysicalError(null); }} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-width">Width</FieldLabel>
+                <Input id="catalog-width" type="number" min="0" step="0.01" inputMode="decimal" value={form.width} onChange={(event) => { setForm((current) => ({ ...current, width: event.target.value })); setPhysicalError(null); }} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-height">Height</FieldLabel>
+                <Input id="catalog-height" type="number" min="0" step="0.01" inputMode="decimal" value={form.height} onChange={(event) => { setForm((current) => ({ ...current, height: event.target.value })); setPhysicalError(null); }} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="catalog-dimension-unit">Dimension unit</FieldLabel>
+                <Select value={form.dimension_unit} onValueChange={(dimension_unit) => setForm((current) => ({ ...current, dimension_unit }))}>
+                  <SelectTrigger id="catalog-dimension-unit"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    {DIMENSION_UNITS.map((unit) => <SelectItem key={unit.value} value={unit.value}>{unit.label}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+              {physicalError ? <FieldError id="catalog-physical-error" className="md:col-span-2">{physicalError}</FieldError> : null}
+            </FieldGroup>
+          </FormSection>
+        ) : null}
 
         {isProduct ? (
           <FormSection title="Inventory" description="Tracked stock changes through audited movements. Untracked availability stays a manual status.">
@@ -468,6 +580,11 @@ function CatalogRecordFormEditor({
             </FieldGroup>
           </FormSection>
         ) : null}
+        <RecordCustomFieldsSection
+          moduleKey={isProduct ? "catalog_products" : "catalog_services"}
+          values={form.custom_fields}
+          onChange={(custom_fields) => setForm((current) => ({ ...current, custom_fields }))}
+        />
       </RecordFormLayout>
     </PageShell>
   );

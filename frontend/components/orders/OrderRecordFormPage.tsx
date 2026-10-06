@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
@@ -10,6 +10,7 @@ import { toast } from "sonner";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { customFieldInputId, ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import {
   FormSection,
   RecordFormLayout,
@@ -25,6 +26,16 @@ import {
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
+import {
+  DocumentAddressesSection,
+  documentHeaderFrom,
+  documentHeaderInputId,
+  documentHeaderPayload,
+  DocumentTermsSection,
+  EMPTY_DOCUMENT_HEADER,
+  shippingChargeAmount,
+  type DocumentHeaderValue,
+} from "@/components/transactions/DocumentHeaderFields";
 import { Button } from "@/components/ui/button";
 import {
   Field,
@@ -53,7 +64,10 @@ import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 import { formatDateTime } from "@/lib/datetime";
+import { fetchDealForDocument, type DealForDocument } from "@/components/transactions/dealPrefill";
+import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type OrderForm = {
   order_number: string;
@@ -70,11 +84,12 @@ type OrderForm = {
   /** E6: base units per one order-currency unit, for margin (12d §3.3). */
   exchange_rate: string;
   delivery_date: string;
-  delivery_address: string;
+  header: DocumentHeaderValue;
   payment_terms: string;
   notes: string;
   warehouse_id: number | null;
   priority: string;
+  custom_fields: Record<string, unknown>;
 };
 const EMPTY_FORM: OrderForm = {
   order_number: "",
@@ -90,9 +105,10 @@ const EMPTY_FORM: OrderForm = {
   currency: "USD",
   exchange_rate: "",
   delivery_date: "",
-  delivery_address: "",
+  header: EMPTY_DOCUMENT_HEADER,
   payment_terms: "",
   notes: "",
+  custom_fields: {},
   warehouse_id: null,
   priority: "normal",
 };
@@ -112,9 +128,24 @@ async function fetchOrderForEdit(orderId: string) {
   return body as Order;
 }
 
-function orderSeed(order?: Order): OrderSeed {
+function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
   if (!order)
-    return { form: EMPTY_FORM, items: [createTransactionLineItem("order")] };
+    return {
+      // *Create order* on a deal (13a H13): the deal's customer, currency and link.
+      form: deal
+        ? {
+            ...EMPTY_FORM,
+            organization_id: deal.organization_id ?? null,
+            organization_name: deal.organization_name ?? "",
+            contact_id: deal.contact_id ?? null,
+            contact_name: deal.contact_name ?? "",
+            opportunity_id: deal.opportunity_id,
+            opportunity_name: deal.opportunity_name,
+            currency: deal.currency_type || EMPTY_FORM.currency,
+          }
+        : EMPTY_FORM,
+      items: [createTransactionLineItem("order")],
+    };
   return {
     form: {
       order_number: order.order_number,
@@ -130,11 +161,12 @@ function orderSeed(order?: Order): OrderSeed {
       currency: order.currency,
       exchange_rate: order.exchange_rate ?? order.suggested_exchange_rate ?? "",
       delivery_date: order.delivery_date ?? "",
-      delivery_address: order.delivery_address ?? "",
+      header: documentHeaderFrom(order as unknown as Record<string, unknown>),
       payment_terms: order.payment_terms ?? "",
       notes: order.notes ?? "",
       warehouse_id: order.warehouse_id ?? null,
       priority: order.priority ?? "normal",
+      custom_fields: order.custom_fields ?? {},
     },
     items: order.items?.length
       ? order.items.map((item) => ({
@@ -165,7 +197,15 @@ export default function OrderRecordFormPage({
     enabled: mode === "edit" && Boolean(orderId),
     staleTime: 30_000,
   });
+  const dealId = useSearchParams().get("opportunity_id");
+  const dealQuery = useQuery({
+    queryKey: ["document-deal-prefill", dealId],
+    queryFn: () => fetchDealForDocument(dealId as string),
+    enabled: mode === "create" && Boolean(dealId),
+    staleTime: 30_000,
+  });
   if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
+  if (mode === "create" && dealId && dealQuery.isLoading) return <RouteLoadingState />;
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
@@ -175,10 +215,10 @@ export default function OrderRecordFormPage({
         backLabel="Back to orders"
       />
     );
-  const seed = orderSeed(query.data);
+  const seed = orderSeed(query.data, dealQuery.data);
   return (
     <OrderRecordFormEditor
-      key={`${mode}:${orderId ?? "new"}:${query.data?.updated_at ?? ""}`}
+      key={`${mode}:${orderId ?? "new"}:${query.data?.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}`}
       mode={mode}
       orderId={orderId}
       seed={seed}
@@ -220,9 +260,14 @@ function OrderRecordFormEditor({
   );
   const [customerError, setCustomerError] = useState<string | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const inputIdFor = useCallback(
+    (path: string) => documentHeaderInputId("order", path) ?? customFieldInputId("sales_orders", path),
+    [],
+  );
+  const serverErrors = useServerFormErrors(inputIdFor);
   const [submitting, setSubmitting] = useState(false);
   const totals = useMemo(() => calculateTransactionTotals(items), [items]);
+  const shippingCharge = shippingChargeAmount(form.header);
   const snapshot = useMemo(() => JSON.stringify([form, items]), [form, items]);
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
@@ -248,7 +293,7 @@ function OrderRecordFormEditor({
     if (!validate()) return;
     try {
       setSubmitting(true);
-      setSubmitError(null);
+      serverErrors.clear();
       const res = await apiFetch(
         mode === "edit" ? `/sales/orders/${orderId}` : "/sales/orders",
         {
@@ -264,25 +309,22 @@ function OrderRecordFormEditor({
             currency: form.currency,
             exchange_rate: form.currency !== baseCurrency && Number(form.exchange_rate) > 0 ? form.exchange_rate : null,
             delivery_date: form.delivery_date || null,
-            delivery_address: form.delivery_address.trim() || null,
+            ...documentHeaderPayload(form.header),
             payment_terms: form.payment_terms.trim() || null,
             notes: form.notes.trim() || null,
             ...(form.warehouse_id ? { warehouse_id: form.warehouse_id } : {}),
             priority: form.priority,
+            custom_fields: form.custom_fields,
             items: serializeTransactionItems(items),
           }),
         },
       );
-      const body = (await res.json().catch(() => null)) as {
-        id?: number;
-        detail?: string;
-      } | null;
       if (!res.ok) {
         // A stock refusal ("Insufficient available stock … short by 2") is the operator's
         // next step, so it is shown as the server wrote it.
-        setSubmitError(typeof body?.detail === "string" ? body.detail : "Check the form and your connection, then try again.");
-        return;
+        throw await apiErrorFromResponse(res, "Check the form and your connection, then try again.");
       }
+      const body = (await res.json().catch(() => null)) as { id?: number } | null;
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
         queryClient.invalidateQueries({ queryKey: ["sales-order-fulfilment"] }),
@@ -293,8 +335,8 @@ function OrderRecordFormEditor({
       toast.success(mode === "edit" ? "Order updated." : "Order created.");
       const targetId = body?.id ?? (orderId ? Number(orderId) : null);
       router.push(mode === "edit" ? backHref : (targetId ? `${listHref}/${targetId}` : listHref));
-    } catch {
-      setSubmitError("Check the form and your connection, then try again.");
+    } catch (error) {
+      serverErrors.report(error, "Check the form and your connection, then try again.");
     } finally {
       setSubmitting(false);
     }
@@ -321,9 +363,10 @@ function OrderRecordFormEditor({
         </Button>
       }
     >
-      {submitError ? (
-        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this order.`}>{submitError}</FormErrorBanner>
+      {serverErrors.message ? (
+        <FormErrorBanner title={`We could not ${mode === "edit" ? "update" : "create"} this order.`}>{serverErrors.message}</FormErrorBanner>
       ) : null}
+      <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={inputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? form.order_number : "Create order"}
         sidebar={
@@ -331,6 +374,7 @@ function OrderRecordFormEditor({
             form={form}
             onChange={setForm}
             totals={totals}
+            shippingCharge={shippingCharge}
             currencies={currencies.data ?? ["USD"]}
             baseCurrency={baseCurrency}
             mode={mode}
@@ -567,21 +611,16 @@ function OrderRecordFormEditor({
                 placeholder="Net 30"
               />
             </Field>
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="order-delivery-address">
-                Delivery address
-              </FieldLabel>
-              <Textarea
-                id="order-delivery-address"
-                rows={4}
-                value={form.delivery_address}
-                onChange={(event) =>
-                  setForm({ ...form, delivery_address: event.target.value })
-                }
-              />
-            </Field>
           </FieldGroup>
         </FormSection>
+        <DocumentAddressesSection idPrefix="order" value={form.header} onChange={(header) => setForm({ ...form, header })} />
+        <DocumentTermsSection
+          idPrefix="order"
+          value={form.header}
+          onChange={(header) => setForm({ ...form, header })}
+          showLostReason={form.status === "cancelled"}
+          lostReasonLabel="Cancellation reason"
+        />
         <FormSection
           title="Terms and notes"
           description="Internal or fulfilment notes associated with this order."
@@ -599,6 +638,7 @@ function OrderRecordFormEditor({
           </Field>
         </FormSection>
       </RecordFormLayout>
+      </ServerFieldErrorsProvider>
     </PageShell>
   );
 }
@@ -607,6 +647,7 @@ function OrderSidebar({
   form,
   onChange,
   totals,
+  shippingCharge,
   currencies,
   baseCurrency,
   mode,
@@ -614,6 +655,7 @@ function OrderSidebar({
   form: OrderForm;
   onChange: (form: OrderForm) => void;
   totals: ReturnType<typeof calculateTransactionTotals>;
+  shippingCharge: number;
   currencies: string[];
   baseCurrency: string;
   mode: "create" | "edit";
@@ -627,7 +669,8 @@ function OrderSidebar({
           { label: "Subtotal", amount: totals.subtotal },
           { label: "Discount", amount: totals.discount, negative: true },
           { label: "Tax", amount: totals.tax },
-          { label: "Total", amount: totals.total, resolved: true },
+          ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
+          { label: "Total", amount: totals.total + shippingCharge, resolved: true },
         ]}
       />
       <FormSection
@@ -720,6 +763,7 @@ function OrderSidebar({
           />
         </Field>
       </FormSection>
+      <RecordCustomFieldsSection moduleKey="sales_orders" values={form.custom_fields} onChange={(custom_fields) => onChange({ ...form, custom_fields })} />
     </>
   );
 }

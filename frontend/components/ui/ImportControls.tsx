@@ -29,6 +29,7 @@ import {
 import { useConfirm } from "@/hooks/useConfirm";
 import { useJobPoller, type DataTransferJobResponse } from "@/hooks/useJobPoller";
 import { apiFetch } from "@/lib/api";
+import { SegmentedBoolean } from "@/components/ui/SegmentedControl";
 
 type Props = {
   importEndpoint: string;
@@ -43,6 +44,11 @@ type Props = {
    */
   fileInputRef?: RefObject<HTMLInputElement | null>;
   hideTrigger?: boolean;
+  /**
+   * Offer *Add values the lists do not have* (13b §3.3). Only for people who can configure
+   * the module; without it, a row whose picklist value is unknown is refused.
+   */
+  allowAddingListValues?: boolean;
 };
 
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
@@ -59,7 +65,7 @@ function duplicateModeLabel(mode: DuplicateMode) {
   return "Skip duplicates";
 }
 
-export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess, fileInputRef, hideTrigger = false }: Props) {
+export function ImportControls({ importEndpoint, importLabel, fileAccept, disabled, onImportSuccess, fileInputRef, hideTrigger = false, allowAddingListValues = false }: Props) {
   const { confirm } = useConfirm();
   const ownInputRef = useRef<HTMLInputElement>(null);
   const inputRef = fileInputRef ?? ownInputRef;
@@ -70,6 +76,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
   const [preview, setPreview] = useState<ImportPreviewResponse | null>(null);
   const [mapping, setMapping] = useState<Record<string, string | null>>({});
   const [duplicateMode, setDuplicateMode] = useState<DuplicateMode>("skip");
+  const [addListValues, setAddListValues] = useState(false);
   const [importSummary, setImportSummary] = useState<ImportSummaryResponse | null>(null);
   const [importJobId, setImportJobId] = useState<number | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
@@ -166,6 +173,7 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
       formData.append("file", selectedFile);
       formData.append("mapping_json", JSON.stringify(mapping));
       const params = new URLSearchParams({ duplicate_mode: duplicateMode });
+      if (allowAddingListValues && addListValues) params.set("add_unknown_picklist_values", "true");
       const response = await apiFetch(`${importEndpoint}?${params.toString()}`, {
         method: "POST",
         body: formData,
@@ -285,6 +293,21 @@ export function ImportControls({ importEndpoint, importLabel, fileAccept, disabl
                       </Select>
                       <FieldDescription>Overwrite and merge require confirmation before the import starts.</FieldDescription>
                     </Field>
+                    {allowAddingListValues ? (
+                      <Field>
+                        <FieldLabel>Unknown list values</FieldLabel>
+                        <SegmentedBoolean
+                          aria-label="Unknown list values"
+                          value={addListValues}
+                          onValueChange={setAddListValues}
+                          trueLabel="Add to the list"
+                          falseLabel="Refuse the row"
+                        />
+                        <FieldDescription>
+                          A value such as an industry or source that the list does not have yet is either added to it, or its row is reported and skipped.
+                        </FieldDescription>
+                      </Field>
+                    ) : null}
                   </div>
 
                   {preview ? <ImportMapping preview={preview} mapping={mapping} onMappingChange={(update) => {

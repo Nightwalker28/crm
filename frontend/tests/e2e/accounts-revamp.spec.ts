@@ -29,14 +29,12 @@ const fakeAccountSummary = {
   related_quotes: [],
   related_orders: [{ id: 71, order_number: "SO-BROWSER", status: "confirmed", currency: "USD", grand_total: 1250, updated_at: "2099-07-20T09:30:00Z" }],
   related_invoices: [{ id: 72, invoice_number: "INV-BROWSER", status: "issued", payment_status: "unpaid", currency: "USD", total_amount: 1250, updated_at: "2099-07-20T09:30:00Z" }],
-  related_insertion_orders: [],
   inferred_services: [],
   contact_count: 0,
   opportunity_count: 0,
   quote_count: 0,
   order_count: 1,
   invoice_count: 1,
-  insertion_order_count: 0,
 };
 
 test.beforeEach(async ({ page }) => {
@@ -102,7 +100,6 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByRole("heading", { name: "Create account", level: 1 })).toBeVisible();
   await page.getByRole("button", { name: "Create account" }).click();
   await expect(page.getByText("Account name is required.")).toBeVisible();
-  await expect(page.getByText("Primary email is required.")).toBeVisible();
   await expect(page.getByLabel("Account name")).toBeFocused();
   const ownerPicker = page.getByRole("combobox", { name: "Owner" });
   await ownerPicker.click();
@@ -120,8 +117,6 @@ test("Account create, detail, edit, and related-record tabs use the shared workf
   await expect(page.getByRole("tab", { name: "Audit history" })).toHaveCount(0);
   await page.getByRole("tab", { name: "Related records" }).click();
   await expect(page).toHaveURL(new RegExp(`/dashboard/sales/organizations/${fakeAccountId}\\?tab=related$`));
-  // The spine also counts insertion orders, so target the related-records card.
-  await expect(page.getByRole("heading", { name: "Insertion orders" })).toBeVisible();
   await expect(page.getByText("SO-BROWSER", { exact: true })).toBeVisible();
   await expect(page.getByText("INV-BROWSER", { exact: true })).toBeVisible();
 

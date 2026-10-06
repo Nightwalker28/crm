@@ -160,6 +160,7 @@ export function parseResolvedRecordLayout(body: unknown): ResolvedRecordLayout {
         readonly: field.readonly,
         placeholder: typeof field.placeholder === "string" ? field.placeholder : null,
         help_text: typeof field.help_text === "string" ? field.help_text : null,
+        picklist_key: typeof field.picklist_key === "string" ? field.picklist_key : null,
       };
     });
 

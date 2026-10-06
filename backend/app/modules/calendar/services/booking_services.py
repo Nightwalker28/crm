@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.cache import cache_get_json, cache_set_json
 from app.core.config import settings
+from app.modules.platform.services.picklists import LEAD_STATUS_LIST, PicklistResolver
 from app.modules.calendar.models import (
     CalendarEvent,
     CalendarEventParticipant,
@@ -637,8 +638,9 @@ def _resolve_booking_crm_source(
         last_name=last_name,
         company=company,
         primary_email=guest_email,
+        # System writes use the list keys directly (13b §5 decision 9); `booking_link` is seeded.
         source="booking_link",
-        status="new",
+        status=PicklistResolver(db, booking_type.tenant_id).default_key(LEAD_STATUS_LIST) or "new",
         notes=guest_note,
         assigned_to=booking_type.owner_id,
     )

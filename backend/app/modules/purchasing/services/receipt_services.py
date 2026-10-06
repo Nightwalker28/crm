@@ -24,6 +24,7 @@ from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt, Purcha
 from app.modules.purchasing.services.purchase_order_services import (
     _units, order_or_404, received_by_line, refresh_receipt_status, to_receive,
 )
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
 def list_query(db: Session, *, tenant_id: int, status: str | None = None, order_id: int | None = None, search: str | None = None):
@@ -127,6 +128,8 @@ def save_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, payl
     for line, quantity in lines:
         receipt.lines.append(PurchaseReceiptLine(tenant_id=tenant_id, order_line_id=line.id, product_id=line.product_id, quantity=quantity))
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="purchase_receipts", record=receipt, payload=payload, created=receipt_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, receipt=receipt, order=order, action="update" if receipt_id else "create",
         description=f"{'Updated' if receipt_id else 'Created'} receipt {receipt.number} for {order.number}")
     return receipt
@@ -250,4 +253,6 @@ def serialize_receipt(db: Session, *, tenant_id: int, receipt: PurchaseReceipt, 
             "unit_cost": lines[line.order_line_id].unit_cost if line.order_line_id in lines else None,
             "to_receive": to_receive(order, lines[line.order_line_id], received.get(line.order_line_id, Decimal(0))) if line.order_line_id in lines else None,
         } for line in receipt.lines]
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="purchase_receipts", record_id=receipt.id)
     return result

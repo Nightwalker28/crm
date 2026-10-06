@@ -41,8 +41,8 @@ The backend is FastAPI + SQLAlchemy + Alembic on PostgreSQL, with Redis and Cele
   all start from the same builder, so an export holds exactly the rows the list shows:
   - repositories (`build_*_query` in `modules/<area>/repositories/`): leads, contacts,
     accounts, deals, quotes, tasks, documents, calendar, mail, custom module records, admin
-    users, invoices, insertion orders, catalog items (`catalog_item_repository`), client
-    portal, website integrations, WhatsApp, call logs, inventory documents;
+    users, invoices, catalog items (`catalog_item_repository`), client portal, website
+    integrations, WhatsApp, call logs, inventory documents;
   - services: deliveries, returns, purchase orders, receipts, bills, credit notes and
     payments (`list_query`), sales orders (`build_orders_query`). The document exports go through
     `platform/services/document_exports.py`, and the export-job routes take the list's own

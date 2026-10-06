@@ -1,8 +1,7 @@
 """Seed a couple of sample records for the modules the demo seed does not cover.
 
 `seed_demo_crm.py` populates organizations, contacts, opportunities, catalog, finance
-and tasks, but leaves leads, quotes, orders, contracts, support cases and inventory
-documents empty. That is
+and tasks, but leaves leads, quotes, orders and inventory documents empty. That is
 fine for a demo walkthrough, but it means every `[id]` detail route for those modules is
 unreachable — so UI audits and browser tests silently skip them.
 
@@ -23,18 +22,15 @@ from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 
-# Contract carries a foreign key to documents; the model must be registered on the
-# shared metadata before any mapper is configured, even though nothing here uses it.
+# Registered on the shared metadata before any mapper is configured: quotes point at documents.
 from app.modules.documents import models as _documents_models  # noqa: F401
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.services.costing import base_currency
-from app.modules.contracts.models import Contract
 from app.modules.inventory.models import (
     InventoryAdjustment, InventoryAdjustmentLine, InventoryStockLevel,
     InventoryTransfer, InventoryTransferLine, InventoryWarehouse,
 )
 from app.modules.sales.models import SalesLead, SalesOrder, SalesQuote, SalesQuoteDocument
-from app.modules.support.models import SupportCase
 from app.modules.user_management.models import Tenant, User
 
 SAMPLE_COUNT = 3
@@ -132,36 +128,6 @@ def seed(db: Session, tenant: Tenant, owner: User) -> dict[str, int]:
             },
         )
         bump("sales_orders", made)
-
-        _, made = get_or_create(
-            db,
-            Contract,
-            tenant_id=tenant.id,
-            contract_number=f"SAMPLE-CT-{i:04d}",
-            defaults={
-                "title": f"Sample Service Agreement {i}",
-                "status": ["draft", "review", "sent"][i % 3],
-                "owner_id": owner.id,
-                "created_by_id": owner.id,
-            },
-        )
-        bump("contracts", made)
-
-        _, made = get_or_create(
-            db,
-            SupportCase,
-            tenant_id=tenant.id,
-            case_number=f"SAMPLE-CASE-{i:04d}",
-            defaults={
-                "subject": f"Sample support request {i}",
-                "status": ["new", "open", "resolved"][i % 3],
-                "priority": ["low", "medium", "high"][i % 3],
-                "description": f"Sample case body {i}.",
-                "assigned_to_id": owner.id,
-                "created_by_id": owner.id,
-            },
-        )
-        bump("support_cases", made)
 
     seed_inventory_drafts(db, tenant, bump)
     seed_fulfilment_samples(db, tenant, owner, bump)

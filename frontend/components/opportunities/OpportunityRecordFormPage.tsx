@@ -21,7 +21,7 @@ import {
 import {
   buildOpportunityPayload,
   saveOpportunity,
-  validateOpportunityContact,
+  validateOpportunityParty,
   validateOpportunityName,
 } from "@/components/opportunities/opportunityMutation";
 import { Button } from "@/components/ui/button";
@@ -104,7 +104,6 @@ export default function OpportunityRecordFormPage({
         .filter(Boolean)
         .join(" ") ||
       summaryQuery.data.contact?.primary_email ||
-      opportunity.client ||
       "";
     const next: OpportunityFormValue = {
       ...formValuesFromRecord(EMPTY_OPPORTUNITY_FORM, opportunity),
@@ -117,7 +116,7 @@ export default function OpportunityRecordFormPage({
       probability_percent: opportunity.probability_percent?.toString() ?? "",
       start_date: opportunity.start_date ?? "",
       expected_close_date: opportunity.expected_close_date ?? "",
-      attachments: opportunity.attachments ?? [],
+      amount: opportunity.amount != null ? String(opportunity.amount) : "",
     };
     const values = opportunity.custom_fields ?? {};
     setForm(next);
@@ -132,11 +131,12 @@ export default function OpportunityRecordFormPage({
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
     const nextNameError = validateOpportunityName(form.opportunity_name);
-    const nextContactError = validateOpportunityContact(form.contact_id);
+    const nextPartyError = validateOpportunityParty(form);
     setNameError(nextNameError);
-    setContactError(nextContactError);
+    setContactError(nextPartyError);
     if (nextNameError) document.getElementById("deal-name")?.focus();
-    return !nextNameError && !nextContactError;
+    else if (nextPartyError) document.getElementById("deal-account")?.focus();
+    return !nextNameError && !nextPartyError;
   }
   async function submit() {
     if (!validate()) return;
@@ -248,7 +248,7 @@ export default function OpportunityRecordFormPage({
           }
           moduleFields={moduleFields}
           nameError={nameError}
-          contactError={contactError}
+          partyError={contactError}
           mode={mode}
         />
       </RecordFormLayout>

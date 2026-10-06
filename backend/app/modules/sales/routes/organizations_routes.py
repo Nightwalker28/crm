@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.core.cursor_pagination import CursorPagination, build_cursor_response, get_cursor_pagination
 from app.core.pagination import Pagination, get_pagination, build_paged_response
 from app.core.database import get_db
+from app.core.permissions import require_access
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
@@ -526,11 +527,14 @@ async def import_sales_organizations(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_organizations')),
     require_permission = Depends(require_action_access("sales_organizations", "create")),
 ):
+    if add_unknown_picklist_values:
+        require_access(db, current_user, "sales_organizations", "configure", detail="Only users who can configure accounts can add list values during an import.")
     content = await read_upload_bytes(file, allowed_extensions={"csv"})
     target_headers = _enabled_organization_import_fields(db, current_user.tenant_id)
     mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
@@ -557,6 +561,7 @@ async def import_sales_organizations(
         job.payload = {
             **(job.payload or {}),
             "source_file_path": stored_path,
+            "add_unknown_picklist_values": add_unknown_picklist_values,
         }
         db.add(job)
         db.commit()
@@ -579,6 +584,7 @@ async def import_sales_organizations(
             replace_duplicates=replace_duplicates,
             skip_duplicates=skip_duplicates,
             create_new_records=create_new_records,
+            add_unknown_picklist_values=add_unknown_picklist_values,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))

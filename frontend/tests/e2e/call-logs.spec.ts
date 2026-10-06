@@ -146,7 +146,7 @@ async function stubDeal(page: Page, people: Person[]) {
       organization: { org_id: 1, org_name: "Acme" },
       participant_contacts: participants,
       can_view_contacts: true,
-      related_quotes: [], related_insertion_orders: [], inferred_services: [], insertion_order_count: 0,
+      related_quotes: [], inferred_services: [],
     })),
   );
 }

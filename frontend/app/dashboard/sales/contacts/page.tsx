@@ -75,7 +75,7 @@ export default function ContactsPage() {
         selectionNoun="contact"
         onClearSelection={() => setSelectedIds([])}
         viewControls={<SavedViewSelector moduleKey="sales_contacts" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
-        actionControls={<ModuleImportExportControls importEndpoint="/sales/contacts/import" exportEndpoint="/sales/contacts/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />}
+        actionControls={<ModuleImportExportControls picklistModuleKey="sales_contacts" importEndpoint="/sales/contacts/import" exportEndpoint="/sales/contacts/export" exportMethod="POST" exportBody={buildSavedViewExportPayload(activeFilters)} onImportSuccess={refresh} selectedIds={selectedIds} currentPageIds={currentPageIds} />}
         primaryAction={canCreate ? (
           <Button ref={quickCreateTriggerRef} type="button" onClick={() => setQuickCreateOpen(true)}>
             <Plus />Create contact

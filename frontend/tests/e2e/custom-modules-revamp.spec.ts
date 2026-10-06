@@ -48,14 +48,31 @@ const schemaFixture = {
   fields: [
     { id: 1, key: "project_name", label: "Project name", field_type: "text", is_required: true, is_unique: false, display_in_list: true, default_value: "", validation_json: null, sort_order: 10, is_active: true, is_protected: false },
     { id: 2, key: "budget", label: "Budget", field_type: "currency", is_required: false, is_unique: false, display_in_list: true, default_value: "", validation_json: null, sort_order: 20, is_active: true, is_protected: false },
-    { id: 3, key: "status", label: "Status", field_type: "single_select", is_required: true, is_unique: false, display_in_list: true, default_value: "planned", validation_json: { options: ["planned", "active"] }, sort_order: 30, is_active: true, is_protected: false },
-    { id: 4, key: "tags", label: "Tags", field_type: "multi_select", is_required: false, is_unique: false, display_in_list: false, default_value: [], validation_json: { options: ["priority", "renewal"] }, sort_order: 40, is_active: true, is_protected: false },
+    { id: 3, key: "status", label: "Status", field_type: "picklist", picklist_key: "custom_projects_status", is_required: true, is_unique: false, display_in_list: true, default_value: "planned", validation_json: null, sort_order: 30, is_active: true, is_protected: false },
+    { id: 4, key: "tags", label: "Tags", field_type: "multi_picklist", picklist_key: "custom_projects_tags", is_required: false, is_unique: false, display_in_list: false, default_value: [], validation_json: null, sort_order: 40, is_active: true, is_protected: false },
     { id: 5, key: "billable", label: "Billable", field_type: "boolean", is_required: false, is_unique: false, display_in_list: true, default_value: false, validation_json: null, sort_order: 50, is_active: true, is_protected: false },
     { id: 6, key: "notes", label: "Notes", field_type: "textarea", help_text: "Visible to internal project operators.", is_required: false, is_unique: false, display_in_list: false, default_value: "", validation_json: null, sort_order: 60, is_active: true, is_protected: false },
   ],
 };
 
+/** A field's own list (13b §3.4): the values live in `/picklists`, the field names the list. */
+function localPicklist(key: string, label: string, values: string[]) {
+  return {
+    id: key.length, key, label, scope: "local", meaning_set: null, meanings: [], is_system: false, is_locked: false, used_by: [],
+    values: values.map((value, position) => ({ key: value, label: value, position, is_active: true, is_default: false, tone: null, meaning: null })),
+  };
+}
+
 test.beforeEach(async ({ page }) => {
+  await page.route("**/api/v1/picklists", async (route) => {
+    const response = await route.fetch();
+    const body = (await response.json()) as { results: unknown[] };
+    body.results.push(
+      localPicklist("custom_projects_status", "Status", ["planned", "active"]),
+      localPicklist("custom_projects_tags", "Tags", ["priority", "renewal"]),
+    );
+    await route.fulfill({ response, json: body });
+  });
   await page.route("**/users/me/modules", (route) =>
     route.fulfill({
       status: 200,
@@ -192,8 +209,9 @@ test("creates a custom-module record from the responsive routed form", async ({ 
   await page.getByLabel("Record title").fill("Renewal rollout");
   await page.getByLabel("Project name").fill("Renewal rollout");
   await page.getByLabel("Budget").fill("25000");
-  await page.getByLabel("Tags").getByLabel("priority").click();
-  await page.getByLabel("Billable").click();
+  await page.getByRole("combobox", { name: "Tags" }).click();
+  await page.getByRole("option", { name: "priority" }).click();
+  await page.getByRole("group", { name: "Billable" }).getByRole("radio", { name: "Yes" }).click();
   await page.getByLabel("Notes").fill("Coordinate the tenant renewal.");
   await page.getByRole("button", { name: "Create record" }).click();
 
@@ -374,7 +392,7 @@ test("custom-module state fields autosave from the rail", async ({ page }) => {
 
   await page.goto("/dashboard/custom/custom_projects/91");
   const spine = page.locator('[data-slot="record-spine"]');
-  // `single_select` is R2's shape rule read literally; `boolean` is the same rule read as
+  // A picklist is R2's shape rule read literally; `boolean` is the same rule read as
   // "a closed set the operator picks from" (design.md §4.7). Everything else is content.
   await expect(spine.getByRole("combobox", { name: "Status" })).toBeVisible();
   await expect(spine.getByRole("combobox", { name: "Billable" })).toBeVisible();

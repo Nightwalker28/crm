@@ -4,20 +4,18 @@ import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Copy, ExternalLink, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2 } from "lucide-react";
+import { Copy, KeyRound, Package, Plus, RefreshCw, ShoppingCart, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { StatusValue } from "@/components/ui/StatusValue";
 import { PanelError } from "@/components/ui/PanelStates";
 import { Button } from "@/components/ui/button";
-import { TextLink } from "@/components/ui/TextLink";
 import { Card } from "@/components/ui/Card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { RequiredMark } from "@/components/ui/RequiredMark";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Textarea } from "@/components/ui/textarea";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -39,7 +37,7 @@ type IntegrationApiKey = {
 
 type WebsiteCatalogItem = {
   id: number;
-  item_type: "product" | "service" | "bundle";
+  item_type: "product" | "service";
   catalog_product_id: number | null;
   catalog_service_id: number | null;
   slug: string;
@@ -50,36 +48,6 @@ type WebsiteCatalogItem = {
   stock_status: string;
   stock_quantity: string | number | null;
   updated_at: string;
-};
-
-type WebsiteOrderLine = {
-  id: number;
-  catalog_item_id: number | null;
-  catalog_product_id: number | null;
-  catalog_service_id: number | null;
-  item_type: "product" | "service";
-  name: string;
-  quantity: string | number;
-  currency: string;
-  line_total: string | number;
-  stock_quantity_before: string | number | null;
-  stock_quantity_after: string | number | null;
-};
-
-type WebsiteOrder = {
-  id: number;
-  pos_invoice_id: number | null;
-  /** A confirmed client-portal order's CRM sales order, which holds and ships its stock. */
-  sales_order_id?: number | null;
-  external_reference: string;
-  source_platform: string | null;
-  status: string;
-  customer_name: string | null;
-  customer_email: string | null;
-  currency: string;
-  subtotal_amount: string | number;
-  created_at: string;
-  line_items: WebsiteOrderLine[];
 };
 
 type ApiKeyDraft = {
@@ -95,16 +63,6 @@ const emptyApiKeyDraft: ApiKeyDraft = {
   allowOrdersWrite: false,
   allowedOrigins: "",
 };
-
-const orderStatusOptions = [
-  { value: "submitted", label: "Submitted" },
-  { value: "under_review", label: "Under review" },
-  { value: "confirmed", label: "Confirmed" },
-  { value: "in_progress", label: "In progress" },
-  { value: "completed", label: "Completed" },
-  { value: "cancelled", label: "Cancelled" },
-  { value: "rejected", label: "Rejected" },
-];
 
 function money(value: string | number | null | undefined, currency: string) {
   const amount = Number(value);
@@ -124,18 +82,16 @@ async function readJson(res: Response) {
 }
 
 async function fetchWebsiteIntegrations() {
-  const [keysRes, catalogRes, ordersRes] = await Promise.all([
+  const [keysRes, catalogRes] = await Promise.all([
     apiFetch("/integrations/api-keys"),
     apiFetch("/integrations/catalog/published?limit=10&offset=0"),
-    apiFetch("/integrations/orders?limit=10&offset=0"),
   ]);
-  const [keysBody, catalogBody, ordersBody] = await Promise.all([readJson(keysRes), readJson(catalogRes), readJson(ordersRes)]);
-  if (!keysRes.ok || !catalogRes.ok || !ordersRes.ok) throw new Error("website-integrations-unavailable");
+  const [keysBody, catalogBody] = await Promise.all([readJson(keysRes), readJson(catalogRes)]);
+  if (!keysRes.ok || !catalogRes.ok) throw new Error("website-integrations-unavailable");
   return {
     apiKeys: Array.isArray(keysBody) ? keysBody as IntegrationApiKey[] : [],
     publishedCatalog: Array.isArray(catalogBody?.results) ? catalogBody.results as WebsiteCatalogItem[] : [],
     publishedCatalogTotal: typeof catalogBody?.total_count === "number" ? catalogBody.total_count : 0,
-    websiteOrders: Array.isArray(ordersBody) ? ordersBody as WebsiteOrder[] : [],
   };
 }
 
@@ -154,7 +110,6 @@ export function IntegrationWebsiteWorkspace() {
   const apiKeys = websiteQuery.data?.apiKeys ?? [];
   const publishedCatalog = websiteQuery.data?.publishedCatalog ?? [];
   const publishedCatalogTotal = websiteQuery.data?.publishedCatalogTotal ?? 0;
-  const websiteOrders = websiteQuery.data?.websiteOrders ?? [];
   const loading = websiteQuery.isLoading || websiteQuery.isFetching;
   const apiKeyDirty = JSON.stringify(apiKeyDraft) !== JSON.stringify(emptyApiKeyDraft);
   useUnsavedChangesGuard(apiKeyEditorOpen && (apiKeyDirty || Boolean(latestApiKey)), saving);
@@ -281,70 +236,12 @@ export function IntegrationWebsiteWorkspace() {
     }
   }
 
-  async function createPosInvoice(order: WebsiteOrder) {
-    const confirmed = await confirm({
-      title: `Create a POS invoice for ${order.external_reference}?`,
-      description: "This creates a finance record from the reviewed website order.",
-      confirmLabel: "Create invoice",
-    });
-    if (!confirmed) return;
-    try {
-      setSaving(true);
-      const res = await apiFetch(`/integrations/orders/${order.id}/create-pos-invoice`, { method: "POST" });
-      const body = await readJson(res);
-      if (!res.ok) {
-        // A 409 says why (already invoiced from its sales order, nothing left to invoice).
-        const detail = typeof body?.detail === "string" ? body.detail : null;
-        toast.error(detail ?? "The invoice could not be created. Try again.");
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
-      // An order confirmed into a sales order is invoiced through it, as a draft to review.
-      toast.success(body?.already_existing ? "This order already has an invoice." : body?.invoice_number ? `Invoice ${body.invoice_number} created.` : "Draft invoice created from the sales order.");
-    } catch {
-      toast.error("The invoice could not be created. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function updateOrderStatus(order: WebsiteOrder, nextStatus: string) {
-    if (order.status === nextStatus) return;
-    if (nextStatus === "cancelled" || nextStatus === "rejected") {
-      const confirmed = await confirm({
-        title: `${nextStatus === "cancelled" ? "Cancel" : "Reject"} ${order.external_reference}?`,
-        description: "Any stock this order took goes back to the warehouse, and any it holds is released. The order cannot be reopened afterwards.",
-        confirmLabel: nextStatus === "cancelled" ? "Cancel order" : "Reject order",
-        variant: "destructive",
-      });
-      if (!confirmed) return;
-    }
-    try {
-      setSaving(true);
-      const res = await apiFetch(`/integrations/orders/${order.id}/status`, {
-        method: "PUT",
-        body: JSON.stringify({ status: nextStatus }),
-      });
-      if (!res.ok) {
-        const body = await readJson(res);
-        toast.error(typeof body?.detail === "string" ? body.detail : "The order status could not be updated. Try again.");
-        return;
-      }
-      await queryClient.invalidateQueries({ queryKey: ["integrations", "website"] });
-      toast.success("Order status updated.");
-    } catch {
-      toast.error("The order status could not be updated. Try again.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
   return (
     <section id="website-apis" aria-labelledby="website-apis-heading" className="flex scroll-mt-5 flex-col gap-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div className="flex flex-col gap-1">
           <h2 id="website-apis-heading" className="text-lg font-semibold text-copy-primary">Website APIs</h2>
-          <p className="text-sm text-copy-muted">Manage API keys, public catalog items, and incoming website orders for WordPress or custom sites.</p>
+          <p className="text-sm text-copy-muted">Manage API keys and the public catalog for WordPress or custom sites; their orders arrive as sales orders.</p>
         </div>
         <Button type="button" variant="outline" size="sm" disabled={loading} onClick={() => void websiteQuery.refetch()}>
           <RefreshCw size={14} />
@@ -353,7 +250,7 @@ export function IntegrationWebsiteWorkspace() {
       </div>
       {websiteQuery.isError ? (
         <PanelError
-          message="Website integration data could not be loaded. Existing API keys, catalog settings, and orders are unchanged."
+          message="Website integration data could not be loaded. Existing API keys and catalog settings are unchanged."
           onRetry={() => void websiteQuery.refetch()}
         />
       ) : null}
@@ -552,118 +449,23 @@ export function IntegrationWebsiteWorkspace() {
         ))}
       </div>
 
-      <div>
-        <h3 className="text-base font-semibold text-copy-primary">Website and client orders</h3>
-        <p className="mt-1 text-sm text-copy-muted">Incoming website orders stay separate from internal POS invoices until reviewed or converted.</p>
-      </div>
-
-      <RecordTable
-        label="Website and client orders"
-        rows={websiteOrders}
-        rowKey={(order) => order.id}
-        isLoading={loading}
-        emptyState={{
-          title: "No website orders captured yet",
-          description: "Orders posted by your website through the integration API arrive here.",
-        }}
-        columns={[
-          {
-            key: "order",
-            label: "Order",
-            size: "lg",
-            interactive: true,
-            render: (order) => (
-              <>
-                <div className="flex items-center gap-2 font-medium text-copy-primary">
-                  <ShoppingCart size={14} className="text-copy-muted" />
-                  {order.external_reference}
-                </div>
-                <div className="mt-1 text-xs text-copy-muted">{order.source_platform || "external site"}</div>
-                {order.sales_order_id ? (
-                  <div className="mt-1 text-xs"><TextLink href={`/dashboard/sales/orders/${order.sales_order_id}?tab=fulfilment`}>Sales order</TextLink></div>
-                ) : null}
-                <div className="mt-2 max-w-[180px]">
-                  <Select value={order.status} onValueChange={(value) => void updateOrderStatus(order, value)} disabled={saving || order.status === "cancelled" || order.status === "rejected"}>
-                    <SelectTrigger size="sm" className="bg-surface-muted text-xs" aria-label={`Status for order ${order.external_reference}`}>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {orderStatusOptions.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </>
-            ),
-          },
-          {
-            key: "customer",
-            label: "Customer",
-            render: (order) => (
-              <>
-                <div className="text-copy-secondary">{order.customer_name || "-"}</div>
-                <div className="text-xs text-copy-muted">{order.customer_email || "-"}</div>
-              </>
-            ),
-          },
-          {
-            key: "items",
-            label: "Items",
-            size: "lg",
-            render: (order) => (
-              <>
-                <div className="max-w-[320px] truncate text-copy-secondary">
-                  {order.line_items.map((line) => `${line.name} x ${line.quantity}`).join(", ")}
-                </div>
-                <div className="text-xs text-copy-muted">
-                  {order.line_items.length} line{order.line_items.length === 1 ? "" : "s"}
-                </div>
-              </>
-            ),
-          },
-          {
-            key: "total",
-            label: "Total",
-            render: (order) => <span className="whitespace-nowrap text-copy-secondary">{money(order.subtotal_amount, order.currency)}</span>,
-          },
-          {
-            key: "invoice",
-            label: "Invoice",
-            interactive: true,
-            render: (order) => (
-              order.pos_invoice_id ? (
-                <Button asChild variant="outline" size="sm">
-                  <Link href={`/dashboard/finance/pos/${order.pos_invoice_id}/print`}>
-                    <ExternalLink size={14} />
-                    POS #{order.pos_invoice_id}
-                  </Link>
-                </Button>
-              ) : (
-                <span className="text-sm text-copy-muted">Not created</span>
-              )
-            ),
-          },
-          {
-            key: "created",
-            label: "Created",
-            render: (order) => <span className="whitespace-nowrap text-copy-muted">{formatDateTime(order.created_at)}</span>,
-          },
-        ]}
-        rowActions={(order) => (
-          <div className="flex justify-end">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={saving || Boolean(order.pos_invoice_id)}
-              onClick={() => createPosInvoice(order)}
-            >
-              Create POS invoice
+      <Card className="p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[var(--radius-control)] border border-line-default bg-surface-muted">
+            <ShoppingCart size={17} className="text-copy-secondary" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-base font-semibold text-copy-primary">Website orders</h3>
+            <p className="mt-1 text-sm text-copy-muted">
+              An order your website sends becomes a sales order: confirmed, holding stock, and delivered and invoiced from the order page.
+              Client-portal orders arrive the same way, as drafts to confirm. Filter Orders by Source to see them.
+            </p>
+            <Button type="button" variant="outline" size="sm" className="mt-4" asChild>
+              <Link href="/dashboard/sales/orders">Open orders</Link>
             </Button>
           </div>
-        )}
-      />
+        </div>
+      </Card>
     </section>
   );
 }

@@ -122,7 +122,7 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await page.getByRole("button", { name: "Create contact" }).click();
   // A bare getByRole("alert") also matches Next's route announcer, and a bare "Email" label
   // also matches the "Email opt-out" checkbox. Target the field slot and the input itself.
-  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Email is required.");
+  await expect(page.locator('[data-slot="field-error"]')).toHaveText("Add an email or a phone number.");
   await expect(page.getByRole("textbox", { name: "Email", exact: true })).toBeFocused();
 
   const ownerPicker = page.getByRole("combobox", { name: "Owner" });

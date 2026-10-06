@@ -6,6 +6,7 @@ import { Board, type BoardColumn } from "@/components/ui/Board";
 import { Button } from "@/components/ui/button";
 import { EmptyValue } from "@/components/ui/EmptyValue";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
+import { formatMoney } from "@/lib/currency";
 import { formatDateOnly } from "@/lib/datetime";
 import {
   isClosedSemantic,
@@ -80,12 +81,11 @@ export default function OpportunitiesPipelineBoard({
       onMove={onStageChange}
       renderCardBody={(opportunity) => (
         <>
-          <div className="truncate">{opportunity.organization_name || opportunity.client || <EmptyValue />}</div>
+          <div className="truncate">{opportunity.organization_name || opportunity.contact_name || <EmptyValue />}</div>
           <div className="truncate">{opportunity.assigned_to_name ? `Owner ${opportunity.assigned_to_name}` : "Unassigned"}</div>
           <div>Close {opportunity.expected_close_date ? formatDateOnly(opportunity.expected_close_date) : "not set"}</div>
-          {/* Free text in the schema (`Text`, not a number), so it is printed as written, not through `<Money>`. */}
           <div className="tabular-nums text-copy-secondary">
-            {opportunity.total_cost_of_project?.trim() ? `${opportunity.total_cost_of_project} ${opportunity.currency_type || ""}`.trim() : "No value"}
+            {formatMoney(opportunity.amount, opportunity.currency_type) ?? "No amount"}
           </div>
           {isOverdue(opportunity) ? (
             <div className="inline-flex items-center gap-1 text-state-warning">

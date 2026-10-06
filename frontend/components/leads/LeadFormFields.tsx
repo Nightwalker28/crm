@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { OwnerSelect } from "@/components/forms/OwnerSelect";
@@ -8,10 +10,11 @@ import { FormSection } from "@/components/forms/RecordFormLayout";
 import { TextField } from "@/components/forms/TextField";
 import { Field, FieldDescription, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { isModuleFieldEnabled, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { inputIdLookup, ServerFieldError } from "@/components/forms/ServerFieldErrors";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { picklistDefault, usePicklist } from "@/hooks/usePicklists";
 
 export type LeadFormValue = {
   first_name: string;
@@ -19,6 +22,7 @@ export type LeadFormValue = {
   company: string;
   primary_email: string;
   phone: string;
+  mobile_phone: string;
   title: string;
   source: string;
   status: string;
@@ -37,9 +41,12 @@ export const EMPTY_LEAD_FORM: LeadFormValue = {
   company: "",
   primary_email: "",
   phone: "",
+  mobile_phone: "",
   title: "",
   source: "",
-  status: "new",
+  // Filled from the tenant's default lead status when the form opens; the server applies the
+  // same default when none is sent.
+  status: "",
   notes: "",
   assigned_to: null,
   assigned_to_name: "",
@@ -49,13 +56,14 @@ export const EMPTY_LEAD_FORM: LeadFormValue = {
   tags: [],
 };
 
-export const LEAD_STATUSES = [
-  { value: "new", label: "New" },
-  { value: "contacted", label: "Contacted" },
-  { value: "qualified", label: "Qualified" },
-  { value: "unqualified", label: "Unqualified" },
-  { value: "converted", label: "Converted" },
-];
+/** A new lead starts in the tenant's default status, as the server would put it. */
+export function useLeadStatusDefault<T extends { status: string }>(value: T, onChange: (value: T) => void) {
+  const { picklist } = usePicklist("lead_status");
+  const fallback = picklistDefault(picklist);
+  useEffect(() => {
+    if (!value.status && fallback) onChange({ ...value, status: fallback });
+  }, [fallback, onChange, value]);
+}
 
 type CustomFieldDefinition = React.ComponentProps<typeof CustomFieldInputs>["definitions"];
 
@@ -77,6 +85,7 @@ export const LEAD_FORM_INPUT_IDS: Record<string, string> = {
   title: "lead-job-title",
   primary_email: "lead-primary-email",
   phone: "lead-phone",
+  mobile_phone: "lead-mobile",
   notes: "lead-notes",
   assigned_to: "lead-owner",
   team_id: "lead-team",
@@ -102,12 +111,13 @@ export function LeadFormMainFields({ value, onChange, customFields, customFieldV
         </FieldGroup>
       </FormSection>
 
-      <FormSection title="Contact details" description="Add the best details for follow-up and qualification.">
+      <FormSection title="Contact details" description="An email or a phone number is required.">
         <FieldGroup columns={2}>
           {enabled("primary_email") ? (
-            <TextField id="lead-primary-email" label="Email" required type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="person@company.com" />
+            <TextField id="lead-primary-email" label="Email" type="email" value={value.primary_email} onChange={(next) => update("primary_email", next)} error={emailError} placeholder="person@company.com" />
           ) : null}
           {enabled("phone") ? <TextField id="lead-phone" label="Phone" type="tel" value={value.phone} onChange={(next) => update("phone", next)} /> : null}
+          {enabled("mobile_phone") ? <TextField id="lead-mobile" label="Mobile" type="tel" value={value.mobile_phone} onChange={(next) => update("mobile_phone", next)} /> : null}
         </FieldGroup>
       </FormSection>
 
@@ -131,6 +141,7 @@ export function LeadFormMainFields({ value, onChange, customFields, customFieldV
 
 export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: Pick<Props, "value" | "onChange" | "moduleFields"> & { mode: "create" | "edit" }) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
+  useLeadStatusDefault(value, onChange);
   return (
     <FormSection title="Qualification" description="Set the lead's current state and acquisition source.">
       <FieldGroup>
@@ -169,15 +180,11 @@ export function LeadFormSidebarFields({ value, onChange, moduleFields, mode }: P
           <ServerFieldError inputId="lead-team" /></Field>
         ) : null}
         {enabled("status") ? (
-          <Field>
-            <FieldLabel htmlFor="lead-status">Status</FieldLabel>
-            <Select value={value.status} onValueChange={(status) => onChange({ ...value, status })}>
-              <SelectTrigger id="lead-status"><SelectValue /></SelectTrigger>
-              <SelectContent>{LEAD_STATUSES.map((status) => <SelectItem key={status.value} value={status.value}>{status.label}</SelectItem>)}</SelectContent>
-            </Select>
-          <ServerFieldError inputId="lead-status" /></Field>
+          <PicklistField id="lead-status" listKey="lead_status" label="Status" required value={value.status} onChange={(status) => onChange({ ...value, status })} />
         ) : null}
-        {enabled("source") ? <TextField id="lead-source" label="Source" value={value.source} onChange={(source) => onChange({ ...value, source })} placeholder="Referral, website, event…" /> : null}
+        {enabled("source") ? (
+          <PicklistField id="lead-source" listKey="lead_source" label="Source" value={value.source} onChange={(source) => onChange({ ...value, source })} />
+        ) : null}
         {enabled("next_follow_up_at") ? (
           <Field>
             <FieldLabel htmlFor="lead-next-follow-up">Next follow-up</FieldLabel>

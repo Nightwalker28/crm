@@ -24,7 +24,7 @@ from app.core.security import require_user
 from app.main import app
 from app.modules.catalog import models as catalog_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
-from app.modules.finance.models import FinanceIO, FinancePosInvoice
+from app.modules.finance.models import FinancePosInvoice
 from app.modules.sales.models import (
     SalesContact,
     SalesOpportunity,
@@ -55,7 +55,6 @@ EVERYTHING = {
     "sales_quotes",
     "sales_orders",
     "finance_pos",
-    "finance_io",
 }
 
 
@@ -103,7 +102,6 @@ class SummaryFixture(unittest.TestCase):
                 opportunity_id=opportunity_id,
                 tenant_id=tenant_id,
                 opportunity_name=name,
-                client=name,
                 contact_id=contact_id,
                 organization_id=organization_id,
                 **kwargs,
@@ -130,7 +128,6 @@ class SummaryFixture(unittest.TestCase):
                 SalesOrder(id=81, tenant_id=TENANT, order_number="SO-81", organization_id=None, contact_id=GRACE, status="confirmed", currency="USD", grand_total=Decimal("50")),
                 SalesOrder(id=82, tenant_id=OTHER_TENANT, order_number="SO-82", organization_id=ACME, contact_id=GRACE, status="confirmed", currency="USD", grand_total=Decimal("100")),
                 FinancePosInvoice(id=85, tenant_id=TENANT, invoice_number="INV-85", customer_name="Acme", customer_organization_id=ACME, status="issued", payment_status="unpaid", currency="USD", total_amount=Decimal("100")),
-                FinanceIO(id=88, tenant_id=TENANT, module_id=1, io_number="IO-88", file_name="io.pdf", customer_contact_id=GRACE, customer_name="Acme", status="draft", currency="USD", updated_at=now),
             ]
         )
         self.db.flush()
@@ -212,7 +209,6 @@ class ContactDealTests(SummaryFixture):
                     opportunity_id=200 + index,
                     tenant_id=TENANT,
                     opportunity_name=f"Extra {index}",
-                    client="Grace",
                     contact_id=GRACE,
                     organization_id=ACME,
                 )
@@ -230,7 +226,6 @@ class ContactDealTests(SummaryFixture):
         self.assertEqual({order.id for order in summary.related_orders}, {80, 81})
         self.assertEqual(summary.order_count, 2)
         self.assertEqual([quote.quote_id for quote in summary.related_quotes], [70])
-        self.assertEqual(summary.insertion_order_count, 1)
 
 
 class PermissionTests(SummaryFixture):
@@ -242,7 +237,6 @@ class PermissionTests(SummaryFixture):
         for section, items, count in (
             ("quotes", summary.related_quotes, summary.quote_count),
             ("orders", summary.related_orders, summary.order_count),
-            ("insertion_orders", summary.related_insertion_orders, summary.insertion_order_count),
         ):
             with self.subTest(section=section):
                 self.assertFalse(getattr(summary.related_access, section))
@@ -256,8 +250,6 @@ class PermissionTests(SummaryFixture):
         visible = self.contact_summary()
         hidden = self.contact_summary(viewable={"sales_contacts"})
 
-        self.assertEqual(visible.inferred_services, ["Webinar"])
-        self.assertEqual(hidden.inferred_services, [])
         self.assertEqual(hidden.related_opportunities, [])
 
     def test_no_reader_means_no_related_records(self):

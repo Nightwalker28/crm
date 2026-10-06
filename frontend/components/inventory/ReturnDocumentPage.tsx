@@ -30,6 +30,7 @@ import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getReturnStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 
 function plural(count: number, word: string) {
@@ -66,6 +67,7 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const [warehouseId, setWarehouseId] = useState<number | null>(null);
   const [drafts, setDrafts] = useState<Record<number, Draft>>({});
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [cancelOpen, setCancelOpen] = useState(false);
   const [cancelReason, setCancelReason] = useState("");
 
@@ -80,6 +82,7 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const seedKey = isNew ? (delivery.data ? `delivery-${delivery.data.id}` : null) : doc && delivery.data ? `return-${doc.id}-${doc.status}` : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(doc?.custom_fields ?? {});
     setReason(doc?.reason ?? "");
     setNotes(doc?.notes ?? "");
     setWarehouseId(doc?.warehouse_id ?? delivery.data?.warehouse_id ?? null);
@@ -103,6 +106,7 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
     if (invalidLine) { setError(`${invalidLine.name}: return between 0 and ${quantity(returnable(invalidLine))}.`); return; }
     if (!chosen.length) { setError("Enter a quantity on at least one line."); return; }
     const payload = {
+      custom_fields: customValues,
       reason: reason.trim(), notes: notes.trim() || null, warehouse_id: warehouseId,
       lines: chosen.map((line) => ({ delivery_line_id: line.id, quantity: drafts[line.id].quantity, restock: drafts[line.id].restock })),
     };
@@ -211,6 +215,8 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
               <Field className="lg:col-span-2"><FieldLabel htmlFor="return-notes">Notes</FieldLabel><Textarea id="return-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
             </div>
           ) : doc?.notes ? <p className="text-p-sm text-copy-secondary">{doc.notes}</p> : null}
+
+          {editable ? <RecordCustomFieldsSection moduleKey="inventory_returns" values={customValues} onChange={setCustomValues} /> : doc ? <RecordCustomFieldsFacts moduleKey="inventory_returns" values={doc.custom_fields} /> : null}
 
           <section className="flex flex-col gap-3">
             <SectionHeading description={editable ? "Turn Restock off for damaged goods: the return is recorded, but nothing goes back into sellable stock." : undefined}>Lines</SectionHeading>

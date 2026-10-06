@@ -28,7 +28,7 @@ const quickCreateLayout = {
         { field_key: "first_name", label: "First name", field_type: "text", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
         { field_key: "last_name", label: "Last name", field_type: "text", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: false },
         { field_key: "company", label: "Company", field_type: "text", field_source: "system", position: 2, width: "full", visible: true, required: false, readonly: false },
-        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 3, width: "full", visible: true, required: true, readonly: false },
+        { field_key: "primary_email", label: "Email", field_type: "email", field_source: "system", position: 3, width: "full", visible: true, required: false, readonly: false },
         { field_key: "phone", label: "Phone", field_type: "phone", field_source: "system", position: 4, width: "half", visible: true, required: false, readonly: false },
       ],
     },
@@ -39,7 +39,7 @@ const quickCreateLayout = {
       region: "main",
       collapsed_by_default: false,
       fields: [
-        { field_key: "status", label: "Status", field_type: "select", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "status", label: "Status", field_type: "picklist", picklist_key: "lead_status", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
         { field_key: "assigned_to", label: "Owner", field_type: "user_reference", field_source: "system", position: 1, width: "half", visible: true, required: false, readonly: false },
         { field_key: "custom:renewal_tier", label: "Renewal tier", field_type: "text", field_source: "custom_field", position: 2, width: "full", visible: true, required: false, readonly: false },
       ],
@@ -269,7 +269,7 @@ test("recovers from validation and duplicate responses without losing entered da
   // 1. Nothing entered: the required field is reported and focused, and nothing is posted.
   await panel.getByRole("button", { name: "Create", exact: true }).click();
   await expect(panel.getByText("Complete 1 required field to create this lead.")).toBeVisible();
-  await expect(panel.getByText("Email is required.")).toBeVisible();
+  await expect(panel.getByText("Add an email or a phone number.")).toBeVisible();
   await expect(panel.getByLabel("Email")).toBeFocused();
   expect(createAttempts).toBe(0);
 

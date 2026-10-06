@@ -15,6 +15,7 @@ def import_contacts_from_csv(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
 ):
     return contacts_services.import_contacts_from_csv(
         db,
@@ -26,5 +27,6 @@ def import_contacts_from_csv(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+        add_unknown_picklist_values=add_unknown_picklist_values,
     )
 

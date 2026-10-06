@@ -14,6 +14,8 @@ export type DeliveryLine = {
 };
 
 export type Delivery = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: DeliveryStatus; order_id: number; order_number: string | null; customer_name: string | null;
   contact_name: string | null; delivery_address: string | null;
   warehouse_id: number; warehouse_name: string | null; shipped_on: string | null; carrier: string | null; tracking_number: string | null;

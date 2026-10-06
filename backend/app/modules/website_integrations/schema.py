@@ -1,7 +1,6 @@
 from datetime import datetime
 from decimal import Decimal
 from enum import Enum
-from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -9,7 +8,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 class WebsiteCatalogItemType(str, Enum):
     product = "product"
     service = "service"
-    bundle = "bundle"
 
 
 class WebsiteCatalogStockStatus(str, Enum):
@@ -65,7 +63,6 @@ class PublicWebsiteCatalogItemResponse(BaseModel):
     stock_status: WebsiteCatalogStockStatus
     stock_quantity: Decimal | None = None
     media_url: str | None = None
-    metadata: dict[str, Any] | None = None
     updated_at: datetime
 
 
@@ -77,7 +74,6 @@ class PublicWebsiteCatalogListResponse(BaseModel):
 
 
 class PublicWebsiteOrderLineRequest(BaseModel):
-    catalog_item_id: int | None = None
     catalog_product_id: int | None = None
     catalog_service_id: int | None = None
     item_type: WebsiteCatalogItemType | None = None
@@ -95,8 +91,8 @@ class PublicWebsiteOrderLineRequest(BaseModel):
 
     @model_validator(mode="after")
     def validate_lookup(self):
-        if not self.catalog_item_id and not self.catalog_product_id and not self.catalog_service_id and not self.slug and not self.sku:
-            raise ValueError("order line requires catalog_product_id, catalog_service_id, catalog_item_id, slug, or sku")
+        if not self.catalog_product_id and not self.catalog_service_id and not self.slug and not self.sku:
+            raise ValueError("order line requires catalog_product_id, catalog_service_id, slug, or sku")
         return self
 
 
@@ -107,8 +103,9 @@ class PublicWebsiteOrderCreateRequest(BaseModel):
     customer_email: str | None = Field(default=None, max_length=180)
     customer_phone: str | None = Field(default=None, max_length=80)
     currency: str | None = Field(default=None, min_length=3, max_length=3)
+    delivery_address: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=4000)
     line_items: list[PublicWebsiteOrderLineRequest] = Field(min_length=1)
-    metadata: dict[str, Any] | None = None
 
     @field_validator("external_reference", mode="after")
     @classmethod
@@ -118,7 +115,7 @@ class PublicWebsiteOrderCreateRequest(BaseModel):
             raise ValueError("external_reference is required")
         return normalized
 
-    @field_validator("source_platform", "customer_name", "customer_email", "customer_phone", mode="after")
+    @field_validator("source_platform", "customer_name", "customer_email", "customer_phone", "delivery_address", "notes", mode="after")
     @classmethod
     def strip_optional_strings(cls, value: str | None) -> str | None:
         if value is None:
@@ -137,55 +134,26 @@ class PublicWebsiteOrderCreateRequest(BaseModel):
         return normalized
 
 
-WebsiteOrderStatus = Literal[
-    "submitted",
-    "under_review",
-    "confirmed",
-    "in_progress",
-    "completed",
-    "cancelled",
-    "rejected",
-]
-
-
-class WebsiteOrderStatusUpdateRequest(BaseModel):
-    status: WebsiteOrderStatus
-
-
 class WebsiteOrderLineResponse(BaseModel):
     id: int
-    catalog_item_id: int | None = None
     catalog_product_id: int | None = None
     catalog_service_id: int | None = None
-    item_type: WebsiteCatalogItemType
-    slug: str | None = None
-    sku: str | None = None
     name: str
     quantity: Decimal
-    currency: str
-    unit_price_snapshot: Decimal
+    unit_price: Decimal
     line_total: Decimal
-    stock_quantity_before: Decimal | None = None
-    stock_quantity_after: Decimal | None = None
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class WebsiteOrderResponse(BaseModel):
+    """The sales order a website order became."""
+
     id: int
-    pos_invoice_id: int | None = None
-    sales_order_id: int | None = None
+    order_number: str
     external_reference: str
-    source_platform: str | None = None
+    channel: str | None = None
     status: str
-    customer_name: str | None = None
-    customer_email: str | None = None
-    customer_phone: str | None = None
     currency: str
-    subtotal_amount: Decimal
-    metadata: dict[str, Any] | None = None
+    grand_total: Decimal
     created_at: datetime
     line_items: list[WebsiteOrderLineResponse]
     idempotent_replayed: bool = False
-
-    model_config = ConfigDict(from_attributes=True)

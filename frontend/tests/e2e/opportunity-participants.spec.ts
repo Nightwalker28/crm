@@ -54,7 +54,7 @@ function json(body: unknown, status = 200) {
 }
 
 function modulePermissions(opportunityActions: Record<string, boolean>) {
-  return ["sales_contacts", "sales_organizations", "sales_opportunities", "tasks", "documents"].map((name, index) => ({
+  return ["sales_contacts", "sales_organizations", "sales_opportunities", "sales_quotes", "tasks", "documents"].map((name, index) => ({
     id: 300 + index,
     name,
     is_enabled: true,
@@ -103,7 +103,7 @@ async function stubDeal(page: Page, initial: Participant[], options: { canViewCo
       organization: { org_id: accountId, org_name: "Acme" },
       participant_contacts: options.canViewContacts === false ? [] : store.participants,
       can_view_contacts: options.canViewContacts !== false,
-      related_quotes: [], related_insertion_orders: [], inferred_services: [], insertion_order_count: 0,
+      related_quotes: [],
     }));
   });
   await page.route("**/sales/opportunities/participant-roles", (route) => route.fulfill(json({ results: roles })));
@@ -324,6 +324,6 @@ test("a reader without Contacts access gets no participant panel at all", async 
   await stubDeal(page, [grace()], { canViewContacts: false });
   await page.goto(`/dashboard/sales/opportunities/${dealId}?tab=related`);
   await expect(page.locator("[data-record-workspace-title]")).toHaveText("Participant Deal");
-  await expect(page.getByRole("heading", { name: "Insertion orders" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Quotes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Participants" })).toHaveCount(0);
 });

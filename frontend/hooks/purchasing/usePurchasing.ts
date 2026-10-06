@@ -15,6 +15,8 @@ export type PurchaseOrderLine = {
 };
 
 export type PurchaseOrder = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: PurchaseOrderStatus; receipt_status: "none" | "partial" | "received";
   bill_status?: "none" | "to_bill" | "partial" | "billed";
   vendor_id: number; vendor_name: string | null; vendor_email?: string | null; vendor_address?: string | null;
@@ -39,6 +41,8 @@ export type PurchaseBillLine = {
 };
 
 export type PurchaseBill = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: "draft" | "posted" | "void"; payment_status: "unpaid" | "partial" | "paid";
   match_status: "none" | "matched" | "variance"; is_overdue: boolean; vendor_id: number; vendor_name: string | null;
   order_id: number | null; order_number: string | null; receipt_id: number | null; vendor_invoice_number: string;
@@ -66,6 +70,8 @@ export type ReceiptLine = {
 };
 
 export type PurchaseReceipt = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: "draft" | "posted" | "cancelled"; order_id: number; order_number: string | null;
   vendor_id: number | null; vendor_name: string | null; warehouse_id: number; warehouse_name: string | null;
   received_on: string | null; vendor_delivery_ref: string | null; notes: string | null; posted_at: string | null; cancel_reason: string | null;

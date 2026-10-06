@@ -30,13 +30,17 @@ import { SETTINGS_ROUTES } from "@/lib/routes";
 import { TextLink } from "@/components/ui/TextLink";
 import { formatSnakeCaseLabel, getModuleDisplayName } from "@/lib/module-display";
 import {
+  CUSTOM_FIELD_MODULE_LABELS,
   CUSTOM_FIELD_SUPPORTED_MODULES,
   MODULE_VIEW_DEFINITIONS,
   getCustomFieldColumnKey,
   getModuleViewDefinition,
 } from "@/lib/moduleViewConfigs";
+import { EMPTY_FIELD_TYPE_DRAFT, FieldTypeSettings, fieldTypeDraftProblem, fieldTypePayload, type FieldTypeDraft } from "@/components/fields/FieldTypeSettings";
+import { picklistErrorMessage } from "@/hooks/usePicklistAdmin";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
+import { FIELD_TYPE_LABELS } from "@/lib/fieldTypes";
 
-const FIELD_TYPE_OPTIONS: Array<CustomFieldDefinition["field_type"]> = ["text", "long_text", "number", "date", "boolean"];
 const FILTERS = ["all", "system", "custom", "required", "disabled"] as const;
 
 type FieldFilter = typeof FILTERS[number];
@@ -45,7 +49,7 @@ type PanelMode = "create" | "inspect";
 type DraftField = {
   field_key: string;
   label: string;
-  field_type: CustomFieldDefinition["field_type"];
+  type: FieldTypeDraft;
   placeholder: string;
   help_text: string;
   is_required: boolean;
@@ -78,7 +82,7 @@ type FieldCatalogItem = {
 const emptyDraft: DraftField = {
   field_key: "",
   label: "",
-  field_type: "text",
+  type: EMPTY_FIELD_TYPE_DRAFT,
   placeholder: "",
   help_text: "",
   is_required: false,
@@ -97,6 +101,7 @@ function makeFieldKey(value: string) {
 }
 
 function friendlyFieldType(value?: string | null) {
+  if (value && value in FIELD_TYPE_LABELS) return FIELD_TYPE_LABELS[value as keyof typeof FIELD_TYPE_LABELS];
   return (value || "field").replaceAll("_", " ");
 }
 
@@ -193,10 +198,14 @@ export default function FieldsPage() {
     error: customModulesError,
     refresh: refreshCustomModules,
   } = useModuleBuilder();
-  const builtInOptions = useMemo(
-    () => Object.values(MODULE_VIEW_DEFINITIONS).map((definition) => ({ key: definition.key, label: definition.label })),
-    [],
-  );
+  const builtInOptions = useMemo(() => {
+    const options = Object.values(MODULE_VIEW_DEFINITIONS).map((definition) => ({ key: definition.key, label: definition.label }));
+    // Every module that takes custom fields is offered, list view or not (13b §3.4, F3.2).
+    for (const [key, label] of Object.entries(CUSTOM_FIELD_MODULE_LABELS)) {
+      if (!options.some((option) => option.key === key)) options.push({ key, label });
+    }
+    return options;
+  }, []);
   const moduleOptions = useMemo(
     () => [
       ...builtInOptions,
@@ -253,13 +262,16 @@ export default function FieldsPage() {
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const problem = fieldTypeDraftProblem(draft.type);
+      if (problem) throw new Error(problem);
+      const { type, ...rest } = draft;
       const res = await apiFetch(`/admin/custom-fields/${moduleKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
+        body: JSON.stringify({ ...rest, ...fieldTypePayload(type) }),
       });
       if (!res.ok) {
-        throw new Error(res.status === 400 ? "Check that the field key is unique and the values are valid." : "The custom field could not be created.");
+        throw new Error(picklistErrorMessage(await apiErrorFromResponse(res, "The custom field could not be created."), "The custom field could not be created."));
       }
       return res.json() as Promise<CustomFieldDefinition>;
     },
@@ -704,13 +716,7 @@ export default function FieldsPage() {
               <Input id="create-field-key" value={draft.field_key} onChange={(event) => { setFieldKeyEdited(true); setDraft((current) => ({ ...current, field_key: makeFieldKey(event.target.value) })); }} placeholder="contract_term" disabled={createMutation.isPending} required />
               <FieldDescription>Auto-generated from the label unless edited.</FieldDescription>
             </Field>
-            <Field>
-              <FieldLabel>Field type</FieldLabel>
-              <Select value={draft.field_type} onValueChange={(value) => setDraft((current) => ({ ...current, field_type: value as DraftField["field_type"] }))} disabled={createMutation.isPending}>
-                <SelectTrigger aria-label="Field type"><SelectValue /></SelectTrigger>
-                <SelectContent>{FIELD_TYPE_OPTIONS.map((option) => <SelectItem key={option} value={option}>{friendlyFieldType(option)}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
+            <FieldTypeSettings idPrefix="create-field" value={draft.type} onChange={(type) => setDraft((current) => ({ ...current, type }))} disabled={createMutation.isPending} />
             <Field>
               <FieldLabel htmlFor="create-field-placeholder">Placeholder</FieldLabel>
               <Input id="create-field-placeholder" value={draft.placeholder} onChange={(event) => setDraft((current) => ({ ...current, placeholder: event.target.value }))} disabled={createMutation.isPending} />

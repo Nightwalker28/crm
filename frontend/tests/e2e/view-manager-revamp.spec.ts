@@ -181,8 +181,6 @@ test("failed delete keeps the selected user view", async ({ page }) => {
 test("loads view management and filter controls for every extended built-in module", async ({ page }) => {
   const modules = [
     { key: "sales_orders", label: "Orders", fieldConfigKey: "sales_orders" },
-    { key: "contracts", label: "Contracts", fieldConfigKey: "contracts" },
-    { key: "support_cases", label: "Support Cases", fieldConfigKey: "support_cases" },
     { key: "finance_pos", label: "Invoices", fieldConfigKey: "finance_pos" },
     { key: "finance_payments", label: "Payments", fieldConfigKey: "finance_pos" },
     { key: "catalog_products", label: "Products", fieldConfigKey: "catalog_products" },

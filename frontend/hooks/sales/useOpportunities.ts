@@ -13,7 +13,6 @@ import { OPPORTUNITY_PIPELINE_QUERY_KEY } from "@/hooks/sales/useOpportunityPipe
 export type Opportunity = {
   opportunity_id: number;
   opportunity_name: string;
-  client?: string | null;
   sales_stage?: string | null;
   pipeline_id?: number | null;
   pipeline_stage_id?: number | null;
@@ -28,17 +27,13 @@ export type Opportunity = {
   start_date?: string | null;
   expected_close_date?: string | null;
   probability_percent?: number | string | null;
-  campaign_type?: string | null;
-  total_leads?: string | null;
-  cpl?: string | null;
-  total_cost_of_project?: string | null;
+  /** The deal's value (13a A4); a decimal string from the API. */
+  amount?: number | string | null;
   currency_type?: string | null;
-  target_geography?: string | null;
-  target_audience?: string | null;
-  domain_cap?: string | null;
-  tactics?: string | null;
-  delivery_format?: string | null;
-  attachments?: string[] | null;
+  deal_type?: string | null;
+  source?: string | null;
+  next_step?: string | null;
+  lost_reason?: string | null;
   custom_fields?: Record<string, unknown> | null;
   created_time?: string | null;
 };
@@ -106,11 +101,11 @@ async function updateOpportunity(opportunityId: number, payload: Partial<Opportu
   return res.json();
 }
 
-async function updateOpportunityStage(opportunityId: number, salesStage: string) {
+async function updateOpportunityStage(opportunityId: number, salesStage: string, lostReason?: string | null) {
   const res = await apiFetch(`/sales/opportunities/${opportunityId}/stage`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sales_stage: salesStage }),
+    body: JSON.stringify({ sales_stage: salesStage, lost_reason: lostReason ?? null }),
   });
   if (!res.ok) {
     const body = await res.json().catch(() => null);
@@ -122,12 +117,6 @@ async function updateOpportunityStage(opportunityId: number, salesStage: string)
 async function deleteOpportunity(opportunityId: number) {
   const res = await apiFetch(`/sales/opportunities/${opportunityId}`, { method: "DELETE" });
   if (!res.ok) throw new Error(`Failed with ${res.status}`);
-}
-
-async function createFinanceIo(opportunityId: number) {
-  const res = await apiFetch(`/sales/opportunities/${opportunityId}/create_finance_io`, { method: "POST" });
-  if (!res.ok) throw new Error(`Failed with ${res.status}`);
-  return res.json();
 }
 
 export function useOpportunities(
@@ -166,8 +155,8 @@ export function useOpportunities(
     onSuccess: refreshLists,
   });
   const stageMutation = useMutation({
-    mutationFn: ({ opportunityId, salesStage }: { opportunityId: number; salesStage: string }) =>
-      updateOpportunityStage(opportunityId, salesStage),
+    mutationFn: ({ opportunityId, salesStage, lostReason }: { opportunityId: number; salesStage: string; lostReason?: string | null }) =>
+      updateOpportunityStage(opportunityId, salesStage, lostReason),
     onMutate: async ({ opportunityId, salesStage }) => {
       await queryClient.cancelQueries({ queryKey: ["sales-opportunities"] });
       const previous = queryClient.getQueriesData<OpportunitiesResponse>({ queryKey: ["sales-opportunities"] });
@@ -190,9 +179,6 @@ export function useOpportunities(
     mutationFn: deleteOpportunity,
     onSuccess: refreshLists,
   });
-  const financeMutation = useMutation({
-    mutationFn: createFinanceIo,
-  });
 
   return {
     opportunities: paged.items,
@@ -211,12 +197,10 @@ export function useOpportunities(
     createOpportunity: (payload: OpportunityPayload) => createMutation.mutateAsync(payload),
     updateOpportunity: (opportunityId: number, payload: Partial<OpportunityPayload>) =>
       updateMutation.mutateAsync({ opportunityId, payload }),
-    updateOpportunityStage: (opportunityId: number, salesStage: string) =>
-      stageMutation.mutateAsync({ opportunityId, salesStage }),
+    updateOpportunityStage: (opportunityId: number, salesStage: string, lostReason?: string | null) =>
+      stageMutation.mutateAsync({ opportunityId, salesStage, lostReason }),
     deleteOpportunity: (opportunityId: number) => deleteMutation.mutateAsync(opportunityId),
-    createFinanceIo: (opportunityId: number) => financeMutation.mutateAsync(opportunityId),
     isSaving: createMutation.isPending || updateMutation.isPending || stageMutation.isPending,
     isDeleting: deleteMutation.isPending,
-    isCreatingFinanceIo: financeMutation.isPending,
   };
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useParams } from "next/navigation";
 import { ExternalLink } from "lucide-react";
 
@@ -85,16 +84,8 @@ export default function ClientBookingDetailPage() {
             <Card className="flex min-w-0 flex-col gap-4 p-6">
               <PanelHeader
                 title="Need to change this?"
-                description="Rescheduling and cancelling from the portal are not available yet — send a message and the team will move it for you."
+                description="Rescheduling and cancelling from the portal are not available yet — reply to your booking confirmation email and the team will move it for you."
               />
-              <div className="flex flex-wrap gap-3">
-                <Button asChild variant="outline">
-                  <Link href="/client/messages">Send a message</Link>
-                </Button>
-                <Button asChild variant="outline">
-                  <Link href="/client/support">Open a ticket</Link>
-                </Button>
-              </div>
             </Card>
           </div>
         ) : null

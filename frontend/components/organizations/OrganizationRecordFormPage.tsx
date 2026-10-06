@@ -25,6 +25,7 @@ import {
   isOrganizationQuickCreateHandoff,
 } from "@/components/organizations/organizationQuickCreateDraft";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { addressFrom, flatAddress, type AddressPart } from "@/components/forms/AddressFields";
 import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
@@ -111,12 +112,11 @@ export default function OrganizationRecordFormPage({
       primary_phone: organization.primary_phone ?? "",
       secondary_phone: organization.secondary_phone ?? "",
       industry: organization.industry ?? "",
-      annual_revenue: organization.annual_revenue ?? "",
-      billing_address: organization.billing_address ?? "",
-      billing_city: organization.billing_city ?? "",
-      billing_state: organization.billing_state ?? "",
-      billing_postal_code: organization.billing_postal_code ?? "",
-      billing_country: organization.billing_country ?? "",
+      account_type: organization.account_type ?? "",
+      annual_revenue: organization.annual_revenue != null ? String(organization.annual_revenue) : "",
+      employee_count: organization.employee_count != null ? String(organization.employee_count) : "",
+      ...(flatAddress("billing", addressFrom(organization as unknown as Record<string, unknown>, "billing")) as Pick<OrganizationFormValue, `billing_${AddressPart}`>),
+      ...(flatAddress("shipping", addressFrom(organization as unknown as Record<string, unknown>, "shipping")) as Pick<OrganizationFormValue, `shipping_${AddressPart}`>),
       is_vendor: Boolean(organization.is_vendor),
       payment_terms_days: organization.payment_terms_days != null ? String(organization.payment_terms_days) : "",
       assigned_to: organization.assigned_to ?? null,

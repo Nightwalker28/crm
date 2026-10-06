@@ -16,20 +16,20 @@ from dataclasses import dataclass, field as dataclass_field
 from typing import Any, Callable
 
 from fastapi import HTTPException, status
-from sqlalchemy import Date, Numeric, String, and_, case, cast, func, or_, select
+from sqlalchemy import Date, String, and_, case, cast, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.core.access_control import get_finance_user_scope, require_role_module_action_access
-from app.modules.finance.models import FinanceCreditNote, FinanceIO, FinancePayment, FinancePosInvoice, FinancePosInvoiceLine
+from app.modules.platform.services.picklists import PicklistResolver
+from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryReturn, InventoryReturnLine,
     InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
-from app.modules.finance.repositories import io_repository
 from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
-from app.modules.finance.services.io_search_services import get_finance_module_id
-from app.modules.platform.models import CustomFieldValue, CustomModuleDefinition, CustomModuleRecord, CustomModuleRecordValue
+from app.core import field_types
+from app.modules.platform.models import CustomModuleDefinition, CustomModuleRecord, FieldValue
 from app.modules.platform.services import custom_modules
 from app.modules.platform.services.custom_fields import CUSTOM_FIELD_FILTER_PREFIX, list_custom_field_definitions
 from app.modules.platform.services.module_fields import module_field_enabled_map
@@ -140,41 +140,54 @@ def _full_name(first, last):
     return func.trim(func.coalesce(first, "") + " " + func.coalesce(last, ""))
 
 
+# Lookups whose targets the report engine can label.
+_LOOKUP_LABELS = {"sales_organizations": "organization", "sales_contacts": "contact"}
+
+
+def _field_report_field(definition, *, tenant_id: int, module_key: str, record_id_expression, key: str) -> ReportField | None:
+    """A report field for a field of the one field system (13b §3.4): its type decides the
+    report type, the stored column, and how its values are labelled."""
+    spec = field_types.field_type(definition.field_type)
+    column = getattr(FieldValue, field_types.storage_column(definition.field_type))
+    report_type, labels, groupable = spec.report_type, None, True
+    if spec.storage == "json":
+        column, report_type, groupable = cast(column, String), "text", False
+    elif spec.key == "picklist":
+        labels = f"picklist:{definition.picklist_key}" if definition.picklist_key else None
+    elif spec.key == "user":
+        labels = "user"
+    elif spec.storage == "record":
+        labels = _LOOKUP_LABELS.get(definition.lookup_module_key or "")
+        if labels is None:
+            report_type = "number"
+    elif spec.storage == "datetime" and report_type == "date":
+        column = cast(column, Date)
+    if spec.key in {"long_text", "email", "phone", "url", "auto_number"}:
+        groupable = False
+    expression = (
+        select(column)
+        .where(
+            FieldValue.tenant_id == tenant_id,
+            FieldValue.module_key == module_key,
+            FieldValue.record_id == record_id_expression,
+            FieldValue.field_definition_id == definition.id,
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    return ReportField(key, definition.label, report_type, expression, labels=labels, groupable=groupable)
+
+
 def _custom_fields(db: Session, *, tenant_id: int, module_key: str, record_id_expression) -> list[ReportField]:
-    fields: list[ReportField] = []
     definitions = list_custom_field_definitions(db, tenant_id=tenant_id, module_key=module_key, include_inactive=False)
-    for definition in definitions:
-        if definition.field_type in {"text", "long_text"}:
-            value_column, field_type = CustomFieldValue.value_text, "text"
-        elif definition.field_type == "number":
-            value_column, field_type = cast(cast(CustomFieldValue.value_number, String), Numeric(18, 6)), "number"
-        elif definition.field_type == "date":
-            value_column, field_type = cast(CustomFieldValue.value_date, Date), "date"
-        elif definition.field_type == "boolean":
-            value_column, field_type = CustomFieldValue.value_boolean, "boolean"
-        else:
-            continue
-        expression = (
-            select(value_column)
-            .where(
-                CustomFieldValue.module_key == module_key,
-                CustomFieldValue.tenant_id == tenant_id,
-                CustomFieldValue.record_id == record_id_expression,
-                CustomFieldValue.field_definition_id == definition.id,
-            )
-            .limit(1)
-            .scalar_subquery()
+    fields = [
+        _field_report_field(
+            definition, tenant_id=tenant_id, module_key=module_key, record_id_expression=record_id_expression,
+            key=f"{CUSTOM_FIELD_FILTER_PREFIX}{definition.field_key}",
         )
-        fields.append(
-            ReportField(
-                f"{CUSTOM_FIELD_FILTER_PREFIX}{definition.field_key}",
-                definition.label,
-                field_type,
-                expression,
-                groupable=definition.field_type != "long_text",
-            )
-        )
-    return fields
+        for definition in definitions
+    ]
+    return [item for item in fields if item is not None]
 
 
 def _team_member_ids(db: Session, current_user):
@@ -219,8 +232,8 @@ def _lead_fields(db: Session, user) -> list[ReportField]:
         ReportField("name", "Name", "text", _full_name(SalesLead.first_name, SalesLead.last_name), groupable=False),
         ReportField("company", "Company", "text", SalesLead.company),
         ReportField("primary_email", "Email", "text", SalesLead.primary_email, groupable=False),
-        ReportField("status", "Status", "select", SalesLead.status, labels="humanize"),
-        ReportField("source", "Source", "select", SalesLead.source, labels="humanize"),
+        ReportField("status", "Status", "select", SalesLead.status, labels="picklist:lead_status"),
+        ReportField("source", "Source", "select", SalesLead.source, labels="picklist:lead_source"),
         ReportField("assigned_to", "Owner", "user", SalesLead.assigned_to, labels="user"),
         ReportField("team_id", "Team", "reference", SalesLead.team_id, labels="team"),
         ReportField("title", "Job title", "text", SalesLead.title),
@@ -237,8 +250,8 @@ def _contact_fields(db: Session, user) -> list[ReportField]:
         ReportField("primary_email", "Email", "text", SalesContact.primary_email, groupable=False),
         ReportField("organization_id", "Account", "reference", SalesContact.organization_id, labels="organization"),
         ReportField("current_title", "Job title", "text", SalesContact.current_title),
-        ReportField("region", "Region", "text", SalesContact.region),
-        ReportField("country", "Country", "text", SalesContact.country),
+        ReportField("region", "Region", "select", SalesContact.region, labels="picklist:region"),
+        ReportField("country", "Country", "select", SalesContact.country, labels="picklist:country"),
         ReportField("assigned_to", "Owner", "user", SalesContact.assigned_to, labels="user"),
         ReportField("email_opt_out", "Email opt-out", "boolean", SalesContact.email_opt_out),
         ReportField("created_time", "Created", "datetime", SalesContact.created_time),
@@ -250,8 +263,11 @@ def _contact_fields(db: Session, user) -> list[ReportField]:
 def _organization_fields(db: Session, user) -> list[ReportField]:
     return _enabled(db, tenant_id=user.tenant_id, module_key="sales_organizations", fields=[
         ReportField("org_name", "Name", "text", SalesOrganization.org_name, groupable=False),
-        ReportField("industry", "Industry", "text", SalesOrganization.industry),
-        ReportField("billing_country", "Country", "text", SalesOrganization.billing_country),
+        ReportField("industry", "Industry", "select", SalesOrganization.industry, labels="picklist:industry"),
+        ReportField("account_type", "Type", "select", SalesOrganization.account_type, labels="picklist:account_type"),
+        ReportField("annual_revenue", "Annual revenue", "money", SalesOrganization.annual_revenue),
+        ReportField("employee_count", "Employees", "number", SalesOrganization.employee_count),
+        ReportField("billing_country", "Country", "select", SalesOrganization.billing_country, labels="picklist:country"),
         ReportField("billing_city", "City", "text", SalesOrganization.billing_city),
         ReportField("assigned_to", "Owner", "user", SalesOrganization.assigned_to, labels="user"),
         ReportField("created_time", "Created", "datetime", SalesOrganization.created_time),
@@ -262,7 +278,6 @@ def _organization_fields(db: Session, user) -> list[ReportField]:
 def _opportunity_fields(db: Session, user) -> list[ReportField]:
     return _enabled(db, tenant_id=user.tenant_id, module_key="sales_opportunities", fields=[
         ReportField("opportunity_name", "Name", "text", SalesOpportunity.opportunity_name, groupable=False),
-        ReportField("client", "Client", "text", SalesOpportunity.client),
         ReportField("organization_id", "Account", "reference", SalesOpportunity.organization_id, labels="organization"),
         ReportField("contact_id", "Primary contact", "reference", SalesOpportunity.contact_id, labels="contact"),
         ReportField("pipeline_id", "Pipeline", "reference", SalesOpportunity.pipeline_id, labels="pipeline"),
@@ -271,7 +286,9 @@ def _opportunity_fields(db: Session, user) -> list[ReportField]:
         ReportField("amount", "Amount", "money", opportunities_repository.opportunity_value_expression(db)),
         ReportField("probability_percent", "Probability", "number", SalesOpportunity.probability_percent),
         ReportField("currency_type", "Currency", "text", SalesOpportunity.currency_type),
-        ReportField("target_geography", "Target geography", "text", SalesOpportunity.target_geography),
+        ReportField("deal_type", "Type", "select", SalesOpportunity.deal_type, labels="picklist:deal_type"),
+        ReportField("source", "Source", "select", SalesOpportunity.source, labels="picklist:lead_source"),
+        ReportField("lost_reason", "Lost reason", "select", SalesOpportunity.lost_reason, labels="picklist:lost_reason"),
         ReportField("expected_close_date", "Expected close", "date", SalesOpportunity.expected_close_date),
         ReportField("start_date", "Start date", "date", SalesOpportunity.start_date),
         ReportField("created_time", "Created", "datetime", SalesOpportunity.created_time),
@@ -311,40 +328,6 @@ def _task_fields(db: Session, user) -> list[ReportField]:
         ReportField("completed_at", "Completed", "datetime", Task.completed_at),
         ReportField("created_at", "Created", "datetime", Task.created_at),
     ])
-
-
-def _finance_fields(db: Session, user) -> list[ReportField]:
-    return _enabled(db, tenant_id=user.tenant_id, module_key="finance_io", fields=[
-        ReportField("io_number", "Number", "text", FinanceIO.io_number, groupable=False),
-        ReportField("customer_name", "Customer", "text", FinanceIO.customer_name),
-        ReportField("status", "Status", "select", FinanceIO.status, labels="humanize"),
-        ReportField("user_id", "Owner", "user", FinanceIO.user_id, labels="user"),
-        ReportField("currency", "Currency", "text", FinanceIO.currency),
-        ReportField("issue_date", "Issue date", "date", FinanceIO.issue_date),
-        ReportField("effective_date", "Effective date", "date", FinanceIO.effective_date),
-        ReportField("due_date", "Due date", "date", FinanceIO.due_date),
-        ReportField("start_date", "Start date", "date", FinanceIO.start_date),
-        ReportField("end_date", "End date", "date", FinanceIO.end_date),
-        ReportField("subtotal_amount", "Subtotal", "money", FinanceIO.subtotal_amount),
-        ReportField("tax_amount", "Tax", "money", FinanceIO.tax_amount),
-        ReportField("total_amount", "Total", "money", FinanceIO.total_amount),
-        ReportField("created_at", "Created", "datetime", FinanceIO.created_at),
-        ReportField("updated_at", "Updated", "datetime", FinanceIO.updated_at),
-        *_custom_fields(db, tenant_id=user.tenant_id, module_key="finance_io", record_id_expression=FinanceIO.id),
-    ])
-
-
-def _finance_base_query(db: Session, user, search: str | None):
-    scope = get_finance_user_scope(db, user)
-    return io_repository.build_insertion_orders_query(
-        db,
-        tenant_id=user.tenant_id,
-        module_id=get_finance_module_id(db),
-        user_id=scope.user_id_filter,
-        search=search,
-        all_filter_conditions=[],
-        any_filter_conditions=[],
-    )
 
 
 def _inventory_levels_query(db: Session, user, search: str | None):
@@ -409,7 +392,7 @@ def _can_view_valuation(db: Session, user) -> bool:
 
 # --- E6 costing (12d-erp-costing.md §3.7) --------------------------------------------------
 
-_COGS_SOURCES = ("inventory_delivery", "sales_order", "website_order", "inventory_return")
+_COGS_SOURCES = ("inventory_delivery", "sales_order", "inventory_return")
 
 
 def _product_column(column, product_id):
@@ -544,6 +527,7 @@ def _delivery_fields(db: Session, user) -> list[ReportField]:
         ReportField("carrier", "Carrier", "text", InventoryDelivery.carrier),
         ReportField("shipped_on", "Shipped on", "date", InventoryDelivery.shipped_on),
         ReportField("units", "Units", "number", units),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="inventory_deliveries", record_id_expression=InventoryDelivery.id),
     ]
 
 
@@ -599,6 +583,7 @@ def _return_fields(db: Session, user) -> list[ReportField]:
         ReportField("received_at", "Received", "datetime", InventoryReturn.received_at),
         ReportField("units", "Units", "number", units),
         ReportField("restocked", "Restocked", "number", restocked),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="inventory_returns", record_id_expression=InventoryReturn.id),
     ]
 
 
@@ -620,6 +605,7 @@ def _purchase_order_fields(db: Session, user) -> list[ReportField]:
         ReportField("subtotal", "Total", "number", PurchaseOrder.subtotal),
         ReportField("expected_date", "Expected", "date", PurchaseOrder.expected_date),
         ReportField("ordered_at", "Ordered", "datetime", PurchaseOrder.ordered_at),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="purchase_orders", record_id_expression=PurchaseOrder.id),
     ]
 
 
@@ -692,6 +678,7 @@ def _invoice_fields(db: Session, user) -> list[ReportField]:
         ReportField("amount_paid", "Paid", "money", FinancePosInvoice.amount_paid),
         ReportField("amount_credited", "Credited", "money", FinancePosInvoice.amount_credited),
         ReportField("balance_due", "Balance due", "money", FinancePosInvoice.balance_due),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="finance_pos", record_id_expression=FinancePosInvoice.id),
     ]
 
 
@@ -741,6 +728,7 @@ def _credit_note_fields(db: Session, user) -> list[ReportField]:
         ReportField("currency", "Currency", "text", FinanceCreditNote.currency),
         ReportField("total_amount", "Total", "money", FinanceCreditNote.total_amount),
         ReportField("refund_due", "Refund due", "money", FinanceCreditNote.refund_due),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="finance_credit_notes", record_id_expression=FinanceCreditNote.id),
     ]
 
 
@@ -759,11 +747,12 @@ def _payment_fields(db: Session, user) -> list[ReportField]:
         ReportField("kind", "Kind", "select", FinancePayment.kind, labels="humanize"),
         ReportField("status", "Status", "select", FinancePayment.status, labels="humanize"),
         ReportField("party_name", "Customer or vendor", "text", FinancePayment.party_name),
-        ReportField("method", "Method", "text", FinancePayment.method),
+        ReportField("method", "Method", "select", FinancePayment.method, labels="picklist:payment_method"),
         ReportField("paid_on", "Paid on", "date", FinancePayment.paid_on),
         ReportField("currency", "Currency", "text", FinancePayment.currency),
         ReportField("amount", "Amount", "money", FinancePayment.amount),
         ReportField("created_by", "Recorded by", "user", FinancePayment.created_by, labels="user"),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="finance_payments", record_id_expression=FinancePayment.id),
     ]
 
 
@@ -787,6 +776,7 @@ def _bill_fields(db: Session, user) -> list[ReportField]:
         ReportField("due_date", "Due date", "date", PurchaseBill.due_date),
         ReportField("total", "Total", "money", PurchaseBill.total),
         ReportField("balance_due", "Balance due", "money", PurchaseBill.balance_due),
+        *_custom_fields(db, tenant_id=user.tenant_id, module_key="purchase_bills", record_id_expression=PurchaseBill.id),
     ]
 
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
@@ -810,7 +800,7 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         label_field="product", permission_module_key="purchase_orders"),
     "finance_pos": ReportSource(
         "finance_pos", "Invoices", FinancePosInvoice, FinancePosInvoice.id, lambda db: FinancePosInvoice.invoice_number,
-        _invoices_query, _invoice_fields, "/dashboard/finance/pos/{id}",
+        _invoices_query, _invoice_fields, "/dashboard/finance/invoices/{id}",
         ("customer_name", "status", "payment_status", "due_date", "total_amount", "balance_due"), default_date_field="issue_date",
         label_field="invoice_number"),
     "finance_invoice_lines": ReportSource(
@@ -915,15 +905,6 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         default_date_field="due_at", scope_clause=_task_scope,
         label_field="title",
     ),
-    "finance_io": ReportSource(
-        "finance_io", "Insertion orders", FinanceIO, FinanceIO.id,
-        lambda db: func.coalesce(FinanceIO.io_number, FinanceIO.customer_name),
-        _finance_base_query,
-        _finance_fields, "/dashboard/finance/insertion-orders/{id}",
-        ("io_number", "customer_name", "status", "total_amount", "issue_date"),
-        default_date_field="issue_date", scope_clause=_owner_scope(FinanceIO.user_id),
-        label_field="io_number",
-    ),
 }
 
 
@@ -931,32 +912,10 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
 
 
 def _custom_module_field(field, definition: CustomModuleDefinition) -> ReportField | None:
-    if field.field_type == "single_select":
-        value_column, field_type = CustomModuleRecordValue.text_value, "select"
-    elif field.field_type in custom_modules.TEXT_TYPES:
-        value_column, field_type = CustomModuleRecordValue.text_value, "text"
-    elif field.field_type in custom_modules.NUMBER_TYPES:
-        value_column = CustomModuleRecordValue.number_value
-        field_type = "money" if field.field_type == "currency" else "number"
-    elif field.field_type in custom_modules.DATE_TYPES:
-        value_column, field_type = cast(CustomModuleRecordValue.datetime_value, Date), "date"
-    elif field.field_type == "boolean":
-        value_column, field_type = CustomModuleRecordValue.boolean_value, "boolean"
-    else:
-        return None
-    expression = (
-        select(value_column)
-        .where(
-            CustomModuleRecordValue.tenant_id == definition.tenant_id,
-            CustomModuleRecordValue.custom_module_id == definition.id,
-            CustomModuleRecordValue.record_id == CustomModuleRecord.id,
-            CustomModuleRecordValue.field_id == field.id,
-        )
-        .limit(1)
-        .scalar_subquery()
+    return _field_report_field(
+        field, tenant_id=definition.tenant_id, module_key=custom_modules.module_key_of(definition),
+        record_id_expression=CustomModuleRecord.id, key=field.field_key,
     )
-    groupable = field.field_type not in {"textarea", "email", "phone", "url"}
-    return ReportField(field.key, field.label, field_type, expression, groupable=groupable)
 
 
 def _custom_source(db: Session, current_user, module_key: str) -> tuple[ReportSource, list[ReportField]]:
@@ -983,8 +942,13 @@ def _custom_source(db: Session, current_user, module_key: str) -> tuple[ReportSo
         if search and search.strip():
             pattern = f"%{search.strip()}%"
             query = (
-                query.outerjoin(CustomModuleRecordValue, CustomModuleRecordValue.record_id == CustomModuleRecord.id)
-                .filter(or_(CustomModuleRecord.title.ilike(pattern), CustomModuleRecordValue.text_value.ilike(pattern)))
+                query.outerjoin(FieldValue, and_(
+                    FieldValue.tenant_id == CustomModuleRecord.tenant_id,
+                    FieldValue.module_key == custom_modules.module_key_of(definition),
+                    FieldValue.record_id == CustomModuleRecord.id,
+                ))
+                .filter(or_(CustomModuleRecord.title.ilike(pattern), FieldValue.value_text.ilike(pattern)))
+                .distinct()
             )
         return query
 
@@ -1065,7 +1029,15 @@ def field_options(db: Session, tenant_id: int, item: ReportField) -> list[dict[s
     if item.labels == "pipeline":
         rows = db.query(SalesPipeline.id, SalesPipeline.name).filter(SalesPipeline.tenant_id == tenant_id).order_by(SalesPipeline.name)
         return [{"value": str(pid), "label": name or f"Pipeline {pid}"} for pid, name in rows]
+    list_key = _picklist_key(item)
+    if list_key:
+        return [{"value": value.key, "label": value.label} for value in PicklistResolver(db, tenant_id).picklist(list_key).values]
     return None
+
+
+def _picklist_key(item: ReportField) -> str | None:
+    """`picklist:<list key>` labels a field whose stored values are that list's keys."""
+    return item.labels.split(":", 1)[1] if item.labels and item.labels.startswith("picklist:") else None
 
 
 def source_payload(source: ReportSource, fields: list[ReportField], db: Session | None = None, tenant_id: int | None = None) -> dict[str, Any]:
@@ -1217,6 +1189,10 @@ def resolve_labels(db: Session, tenant_id: int, item: ReportField, keys: set[str
     present = {key for key in keys if key != EMPTY_KEY}
     resolver = LABEL_RESOLVERS.get(item.labels or "")
     labels = resolver(db, tenant_id, present) if resolver and present else {}
+    list_key = _picklist_key(item)
+    if list_key and present:
+        picklist = PicklistResolver(db, tenant_id)
+        labels = {key: picklist.label(list_key, key) or key for key in present}
     if item.field_type == "user":
         empty = "Unassigned"
     elif item.field_type == "boolean":
@@ -1234,4 +1210,7 @@ def field_rank(db: Session, tenant_id: int, item: ReportField) -> dict[str, int]
     """A natural order for a field's groups, where one exists (pipeline stages)."""
     if item.labels == "stage":
         return stage_order(db, tenant_id)[1]
+    list_key = _picklist_key(item)
+    if list_key:
+        return {value.key: index for index, value in enumerate(PicklistResolver(db, tenant_id).picklist(list_key).values)}
     return None

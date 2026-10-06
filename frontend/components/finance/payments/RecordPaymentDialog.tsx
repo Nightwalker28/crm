@@ -11,6 +11,7 @@ import type { PosInvoice, RecordPaymentPayload } from "@/hooks/finance/usePosInv
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
 import { todayIsoDate } from "@/lib/datetime";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
 
 type Props = {
   open: boolean;
@@ -46,7 +47,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
     }
     try {
       setError(null);
-      await onSubmit({ amount: parsedAmount, payment_method: paymentMethod.trim() || null, paid_on: paidOn || null, reference: reference.trim() || null });
+      await onSubmit({ amount: parsedAmount, payment_method: paymentMethod || null, paid_on: paidOn || null, reference: reference.trim() || null });
       onClose();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "We could not record this payment.");
@@ -80,10 +81,7 @@ export default function RecordPaymentDialog({ open, invoice, isSubmitting, onClo
                   <FieldDescription>Maximum available balance: {money(invoice.balance_due, invoice.currency)}.</FieldDescription>
                   {error ? <FieldError>{error}</FieldError> : null}
                 </Field>
-                <Field>
-                  <FieldLabel htmlFor="payment-method">Payment method</FieldLabel>
-                  <Input id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)} placeholder="Bank transfer, card, cash…" maxLength={100} />
-                </Field>
+                <PicklistField id="payment-method" listKey="payment_method" label="Payment method" value={paymentMethod} onChange={setPaymentMethod} />
                 <Field>
                   <FieldLabel htmlFor="payment-date">Paid on</FieldLabel>
                   <Input id="payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} />

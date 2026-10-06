@@ -19,6 +19,7 @@ from app.modules.finance.schema import (
     ReasonRequest,
 )
 from app.modules.finance.services import credit_note_services, invoicing_services, payment_services, pos_invoice_services
+from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(tags=["Finance POS"])
@@ -30,6 +31,7 @@ INVOICES = "finance_pos"
 
 def _detail(db: Session, current_user, invoice) -> dict:
     data = pos_invoice_services.serialize_invoice(invoice, current_user=current_user)
+    data["custom_fields"] = load_custom_field_values(db, tenant_id=current_user.tenant_id, module_key=INVOICES, record_id=invoice.id) or None
     if can_access(db, current_user, "finance_payments"):
         data["payments"] = jsonable_encoder(payment_services.payments_for(db, tenant_id=current_user.tenant_id, invoice_id=invoice.id))
     if can_access(db, current_user, "finance_credit_notes"):
@@ -46,7 +48,7 @@ def _detail(db: Session, current_user, invoice) -> dict:
     return data
 
 
-@router.get("/pos-invoices", response_model=PosInvoiceListResponse)
+@router.get("/invoices", response_model=PosInvoiceListResponse)
 def list_pos_invoices(
     pagination: Pagination = Depends(get_pagination),
     search: str | None = Query(default=None, max_length=100),
@@ -82,7 +84,7 @@ def list_pos_invoices(
     )
 
 
-@router.get("/pos-invoices/cursor")
+@router.get("/invoices/cursor")
 def list_pos_invoices_cursor(
     pagination: CursorPagination = Depends(get_cursor_pagination),
     search: str | None = Query(default=None, max_length=100),
@@ -121,7 +123,7 @@ def list_pos_invoices_cursor(
     )
 
 
-@router.post("/pos-invoices", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/invoices", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
 def create_pos_invoice(
     payload: PosInvoiceCreateRequest,
     db: Session = Depends(get_db),
@@ -139,7 +141,7 @@ def create_pos_invoice(
     return _detail(db, current_user, invoice)
 
 
-@router.post("/pos-invoices/from-order", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/invoices/from-order", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
 def create_invoice_from_order(
     payload: InvoiceFromSourcesRequest,
     db: Session = Depends(get_db),
@@ -155,7 +157,7 @@ def create_invoice_from_order(
     return _detail(db, current_user, invoice)
 
 
-@router.post("/pos-invoices/export-job", status_code=status.HTTP_202_ACCEPTED)
+@router.post("/invoices/export-job", status_code=status.HTTP_202_ACCEPTED)
 def export_pos_invoices(
     search: str | None = Query(default=None, max_length=100),
     status_filter: str | None = Query(default=None, alias="status"),
@@ -181,7 +183,7 @@ def export_pos_invoices(
     })
 
 
-@router.get("/pos-invoices/{invoice_id}", response_model=PosInvoiceResponse)
+@router.get("/invoices/{invoice_id}", response_model=PosInvoiceResponse)
 def get_pos_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -193,7 +195,7 @@ def get_pos_invoice(
     return _detail(db, current_user, invoice)
 
 
-@router.put("/pos-invoices/{invoice_id}", response_model=PosInvoiceResponse)
+@router.put("/invoices/{invoice_id}", response_model=PosInvoiceResponse)
 def update_pos_invoice(
     invoice_id: int,
     payload: PosInvoiceUpdateRequest,
@@ -210,7 +212,7 @@ def update_pos_invoice(
     return _detail(db, current_user, invoice)
 
 
-@router.post("/pos-invoices/{invoice_id}/issue", response_model=PosInvoiceResponse)
+@router.post("/invoices/{invoice_id}/issue", response_model=PosInvoiceResponse)
 def issue_pos_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),
@@ -222,7 +224,7 @@ def issue_pos_invoice(
     return _detail(db, current_user, invoice)
 
 
-@router.post("/pos-invoices/{invoice_id}/void", response_model=PosInvoiceResponse)
+@router.post("/invoices/{invoice_id}/void", response_model=PosInvoiceResponse)
 def void_pos_invoice(
     invoice_id: int,
     payload: ReasonRequest,
@@ -235,7 +237,7 @@ def void_pos_invoice(
     return _detail(db, current_user, invoice)
 
 
-@router.post("/pos-invoices/{invoice_id}/void-and-copy", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
+@router.post("/invoices/{invoice_id}/void-and-copy", response_model=PosInvoiceResponse, status_code=status.HTTP_201_CREATED)
 def void_and_copy_pos_invoice(
     invoice_id: int,
     payload: ReasonRequest,
@@ -250,7 +252,7 @@ def void_and_copy_pos_invoice(
     return _detail(db, current_user, copy)
 
 
-@router.post("/pos-invoices/{invoice_id}/payments", response_model=PosInvoiceResponse)
+@router.post("/invoices/{invoice_id}/payments", response_model=PosInvoiceResponse)
 def record_pos_invoice_payment(
     invoice_id: int,
     payload: PosInvoicePaymentRequest,
@@ -269,11 +271,12 @@ def record_pos_invoice_payment(
         payment_method=payload.payment_method,
         paid_on=payload.paid_on,
         reference=payload.reference,
+        custom_fields=payload.custom_fields,
     )
     return _detail(db, current_user, invoice)
 
 
-@router.delete("/pos-invoices/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/invoices/{invoice_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_pos_invoice(
     invoice_id: int,
     db: Session = Depends(get_db),

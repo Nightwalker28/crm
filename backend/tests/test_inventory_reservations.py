@@ -120,7 +120,7 @@ class ReservationTests(unittest.TestCase):
     def test_planned_outbound_moves_cannot_take_held_stock(self):
         self.stock(3)
         self.order((1, 2))
-        for move_type in ("website_order", "transfer_out", "sales_order"):
+        for move_type in ("delivery", "transfer_out", "sales_order"):
             with self.assertRaises(HTTPException) as error:
                 post_moves(self.db, tenant_id=10, actor_user_id=None, moves=[MoveSpec(
                     product_id=1, warehouse_id=self.main.id, quantity=Decimal(-2), move_type=move_type,
@@ -129,7 +129,7 @@ class ReservationTests(unittest.TestCase):
             self.assertIn("short by 1", error.exception.detail)
             self.db.rollback()
         post_moves(self.db, tenant_id=10, actor_user_id=None, moves=[MoveSpec(
-            product_id=1, warehouse_id=self.main.id, quantity=Decimal(-1), move_type="website_order",
+            product_id=1, warehouse_id=self.main.id, quantity=Decimal(-1), move_type="sales_order",
             source_type="test", source_id=1, source_line_id=1)])
         self.db.commit()
         self.assert_invariant()

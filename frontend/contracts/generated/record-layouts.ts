@@ -49,6 +49,8 @@ export interface components {
             help_text?: string | null;
             /** Label */
             label: string;
+            /** Picklist Key */
+            picklist_key?: string | null;
             /** Placeholder */
             placeholder?: string | null;
             /** Position */

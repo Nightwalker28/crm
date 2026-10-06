@@ -112,8 +112,8 @@ test("H11 and H12: conversion opens a deal with its value and the new records' t
   await expect(page.getByText(/already converted/)).toHaveCount(0);
   const dealHref = await page.getByRole("link", { name: "Open deal" }).first().getAttribute("href");
   const dealId = Number(dealHref?.split("/").pop());
-  const deal = await api<{ total_cost_of_project: string | null; expected_close_date: string | null; currency_type: string | null }>(page, `/sales/opportunities/${dealId}`);
-  expect(Number(deal.total_cost_of_project)).toBe(1250);
+  const deal = await api<{ amount: string | null; expected_close_date: string | null; currency_type: string | null }>(page, `/sales/opportunities/${dealId}`);
+  expect(Number(deal.amount)).toBe(1250);
   expect(deal.expected_close_date).toBe("2026-12-31");
   expect(deal.currency_type).toBeTruthy();
 

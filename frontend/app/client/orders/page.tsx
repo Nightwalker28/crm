@@ -8,7 +8,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientOrders, type ClientPortalOrder } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-import { getOrderStatus } from "@/lib/statusStyles";
+import { getClientOrderStatus } from "@/lib/statusStyles";
 
 function firstLine(order: ClientPortalOrder) {
   const line = order.line_items[0];
@@ -42,11 +42,11 @@ export default function ClientOrdersPage() {
                 key={order.id}
                 title={firstLine(order)}
                 href={`/client/orders/${order.id}`}
-                meta={`${order.external_reference} · ${formatDateTime(order.created_at)}`}
+                meta={`${order.order_number} · ${formatDateTime(order.created_at)}`}
                 trailing={
                   <span className="flex items-center gap-3">
-                    <StatusValue status={getOrderStatus(order.status)} />
-                    <Money amount={order.subtotal_amount} currency={order.currency} className="font-medium text-copy-primary" />
+                    <StatusValue status={getClientOrderStatus(order.status)} />
+                    <Money amount={order.grand_total} currency={order.currency} className="font-medium text-copy-primary" />
                   </span>
                 }
               />

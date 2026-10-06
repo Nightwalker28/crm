@@ -1,38 +1,28 @@
 from __future__ import annotations
 
 from datetime import datetime
-from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class CustomModuleFieldType(str, Enum):
-    text = "text"
-    textarea = "textarea"
-    number = "number"
-    currency = "currency"
-    date = "date"
-    datetime = "datetime"
-    boolean = "boolean"
-    email = "email"
-    phone = "phone"
-    url = "url"
-    single_select = "single_select"
-    multi_select = "multi_select"
-
-
 class CustomModuleFieldBase(BaseModel):
+    """A custom module's field, on the one field system (13b §3.4): `field_type` is a key of
+    `app.core.field_types.FIELD_TYPES`."""
+
     label: str = Field(min_length=1, max_length=150)
     key: str | None = Field(default=None, max_length=100)
-    field_type: CustomModuleFieldType
+    field_type: str
+    picklist_key: str | None = None
+    picklist_values: list[str] | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     help_text: str | None = None
     placeholder: str | None = None
     is_required: bool = False
     is_unique: bool = False
     display_in_list: bool = True
     default_value: Any | None = None
-    validation_json: dict[str, Any] | None = None
     sort_order: int = 0
     is_active: bool = True
 
@@ -49,7 +39,7 @@ class CustomModuleFieldUpdate(BaseModel):
     is_unique: bool | None = None
     display_in_list: bool | None = None
     default_value: Any | None = None
-    validation_json: dict[str, Any] | None = None
+    config: dict[str, Any] | None = None
     sort_order: int | None = None
     is_active: bool | None = None
 
@@ -58,14 +48,16 @@ class CustomModuleFieldResponse(BaseModel):
     id: int
     key: str
     label: str
-    field_type: CustomModuleFieldType
+    field_type: str
+    picklist_key: str | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     help_text: str | None = None
     placeholder: str | None = None
     is_required: bool = False
     is_unique: bool = False
     display_in_list: bool = True
     default_value: Any | None = None
-    validation_json: dict[str, Any] | None = None
     sort_order: int = 0
     is_active: bool = True
     is_protected: bool = False

@@ -223,7 +223,7 @@ async function searchLinkedRecords(
 
     if (recordType === "opportunity") {
       const name = typeof record.opportunity_name === "string" ? record.opportunity_name : "Unnamed deal";
-      const client = typeof record.client === "string" ? record.client : null;
+      const account = typeof record.organization_name === "string" ? record.organization_name : null;
       const stageRef = record.pipeline_stage as { label?: unknown } | null | undefined;
       const stage =
         typeof stageRef?.label === "string"
@@ -234,7 +234,7 @@ async function searchLinkedRecords(
       return {
         id: Number(record.opportunity_id),
         label: name,
-        description: [client, stage].filter(Boolean).join(" · ") || null,
+        description: [account, stage].filter(Boolean).join(" · ") || null,
         contact_id: typeof record.contact_id === "number" ? record.contact_id : null,
         organization_id: typeof record.organization_id === "number" ? record.organization_id : null,
         opportunity_id: Number(record.opportunity_id),

@@ -35,6 +35,9 @@ import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getBillMatchStatus, getBillStatus, getPaymentRecordStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { PicklistText } from "@/components/picklists/PicklistText";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 type DraftLine = {
   key: number; orderLineId: number | null; receiptLineId: number | null; name: string; description: string;
@@ -75,6 +78,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [fieldErrors, setFieldErrors] = useState<{ vendor?: string; reference?: string }>({});
   const [panel, setPanel] = useState<"void" | "pay" | null>(null);
   const [voidReason, setVoidReason] = useState("");
@@ -92,6 +96,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const seedKey = ready ? (isNew ? `new-${effectiveOrderId ?? "blank"}-${receiptId ?? ""}` : `bill-${bill!.id}-${bill!.status}-${bill!.updated_at}`) : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(bill?.custom_fields ?? {});
     setVendorId(bill?.vendor_id ?? order.data?.vendor_id ?? null);
     setVendorName(bill?.vendor_name ?? order.data?.vendor_name ?? "");
     setReference(bill?.vendor_invoice_number ?? "");
@@ -133,6 +138,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
     const over = chosen.find((line) => line.billable != null && Number(line.quantity) > line.billable);
     if (over) { setError(`${over.name}: only ${quantity(over.billable)} received and not yet billed.`); return; }
     const payload = {
+      custom_fields: customValues,
       vendor_id: fromOrder ? null : vendorId, vendor_invoice_number: reference.trim(), bill_date: billDate || null, due_date: dueDate || null,
       currency: fromOrder ? null : currencyCode, notes: notes.trim() || null,
       lines: chosen.map((line) => ({ order_line_id: line.orderLineId, receipt_line_id: line.receiptLineId, description: line.description.trim() || null,
@@ -185,7 +191,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         toast.success(`${bill.number} voided.`);
       } else {
         if (!(Number(payAmount) > 0) || Number(payAmount) > Number(bill.balance_due)) { setError("Enter an amount above zero and no more than the balance due."); return; }
-        await money.recordPayment({ direction: "made", kind: "payment", paid_on: payDate || null, method: payMethod.trim() || null,
+        await money.recordPayment({ direction: "made", kind: "payment", paid_on: payDate || null, method: payMethod || null,
           reference: payReference.trim() || null, allocations: [{ bill_id: bill.id, amount: payAmount }] });
         toast.success("Payment recorded.");
       }
@@ -276,6 +282,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         </FactList>
       ) : null}
 
+      {editable ? <RecordCustomFieldsSection moduleKey="purchase_bills" values={customValues} onChange={setCustomValues} /> : bill ? <RecordCustomFieldsFacts moduleKey="purchase_bills" values={bill.custom_fields} /> : null}
+
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
           <SectionHeading description={editable ? `Total ${formatMoney(total, currencyCode, { maximumFractionDigits: 2 }) ?? total}` : undefined}>Lines</SectionHeading>
@@ -350,7 +358,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
             columns={[
               { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
               { key: "paid_on", label: "Paid on", size: "sm", render: (row) => formatDateOnly(row.paid_on) },
-              { key: "method", label: "Method", size: "sm", render: (row) => row.method ?? "—" },
+              { key: "method", label: "Method", size: "sm", render: (row) => <PicklistText listKey="payment_method" value={row.method} /> },
               { key: "reference", label: "Reference", size: "md", render: (row) => row.reference ?? "—" },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPaymentRecordStatus(row.status)} /> },
               { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.amount} currency={row.currency} /> },
@@ -381,7 +389,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
           <>
             <Field><FieldLabel htmlFor="bill-pay-amount">Amount</FieldLabel><Input id="bill-pay-amount" type="number" min="0.01" step="0.01" inputMode="decimal" value={payAmount} onChange={(event) => setPayAmount(event.target.value)} /></Field>
             <Field><FieldLabel htmlFor="bill-pay-date">Paid on</FieldLabel><Input id="bill-pay-date" type="date" max={todayIsoDate()} value={payDate} onChange={(event) => setPayDate(event.target.value)} /></Field>
-            <Field><FieldLabel htmlFor="bill-pay-method">Method</FieldLabel><Input id="bill-pay-method" maxLength={100} value={payMethod} onChange={(event) => setPayMethod(event.target.value)} placeholder="Bank transfer, card…" /></Field>
+            <PicklistField id="bill-pay-method" listKey="payment_method" label="Method" value={payMethod} onChange={setPayMethod} />
             <Field><FieldLabel htmlFor="bill-pay-reference">Reference</FieldLabel><Input id="bill-pay-reference" maxLength={200} value={payReference} onChange={(event) => setPayReference(event.target.value)} /></Field>
           </>
         ) : (

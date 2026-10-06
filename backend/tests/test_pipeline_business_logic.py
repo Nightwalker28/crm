@@ -30,7 +30,7 @@ class BusinessLogicFixture(StageRefFixture):
         self.close = date.today() + timedelta(days=3)
 
     def deal(self, stage_key, *, value="1000", **extra):
-        data = {"sales_stage": stage_key, "total_cost_of_project": value, "assigned_to": 1, "expected_close_date": self.close}
+        data = {"sales_stage": stage_key, "amount": value, "assigned_to": 1, "expected_close_date": self.close}
         data.update(extra)
         return self.create(**data)
 
@@ -80,7 +80,7 @@ class ClosedSemanticsTests(BusinessLogicFixture):
         self.deal("lead", value="100")
         self.deal("closed_won", value="200")
         self.deal("closed_lost", value="400")
-        self.create(total_cost_of_project="800", assigned_to=1)
+        self.create(amount="800", assigned_to=1)
         summary = self.dashboard()
         self.assertEqual((summary["won_deals"], summary["lost_deals"]), (1, 1))
         self.assertEqual(summary["pipeline_value"], 900.0)
@@ -111,7 +111,7 @@ class ClosedSemanticsTests(BusinessLogicFixture):
         won_deal = self.deal("closed_won", last_contacted_at=long_ago)
         unstaged = self.create(assigned_to=1, last_contacted_at=long_ago)
         # A row written outside the service keeps its legacy key's meaning.
-        self.db.add(SalesOpportunity(opportunity_id=900, tenant_id=TENANT, opportunity_name="Raw", client="x", sales_stage="closed_lost", assigned_to=1, last_contacted_at=long_ago))
+        self.db.add(SalesOpportunity(organization_id=1, opportunity_id=900, tenant_id=TENANT, opportunity_name="Raw", sales_stage="closed_lost", assigned_to=1, last_contacted_at=long_ago))
         self.db.commit()
 
         ids = {row.opportunity_id for row in reminder_scans._inactive_opportunities(self.db, cutoff=datetime.now(timezone.utc))}
@@ -160,7 +160,7 @@ class PipelineSummaryTests(BusinessLogicFixture):
     def test_counts_are_keyed_by_stage_row(self):
         self.deal("proposal", value="10")
         self.deal("proposal", value="5")
-        self.create(total_cost_of_project="7")
+        self.create(amount="7")
         summary = self.summary()
         stages = {row["stage_key"]: row for row in summary["stages"]}
         self.assertEqual((stages["proposal"]["count"], stages["proposal"]["total_value"]), (2, 15.0))
@@ -172,7 +172,9 @@ class StageEventTests(BusinessLogicFixture):
     def emitted(self, before_key, after_key):
         opportunity = self.deal(before_key) if before_key else self.create()
         before_state = opportunities_routes._serialize_opportunity(opportunity)
-        opportunities_services.update_opportunity_stage(self.db, opportunity, sales_stage=after_key)
+        # Entering a lost stage records why (13a H13).
+        lost_reason = "price" if after_key == "closed_lost" else None
+        opportunities_services.update_opportunity_stage(self.db, opportunity, sales_stage=after_key, lost_reason=lost_reason)
         with patch.object(opportunities_routes, "safe_emit_crm_event") as emit:
             opportunities_routes._emit_stage_events(self.db, current_user=self.user, before_state=before_state, opportunity=opportunity)
         return {call.kwargs["event_type"]: call.kwargs["payload"] for call in emit.call_args_list}

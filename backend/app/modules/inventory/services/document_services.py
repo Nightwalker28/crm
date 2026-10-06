@@ -17,6 +17,7 @@ from app.modules.inventory.services.inventory_services import get_warehouse_or_4
 from app.modules.inventory.services.stock_ledger import MoveSpec, post_moves, reverse_moves
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
+from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
 def _decimal(value, *, positive: bool = False, nonnegative: bool = False) -> Decimal:
@@ -107,6 +108,8 @@ def save_adjustment(db: Session, *, tenant_id: int, actor_user_id: int, payload:
             unit_cost = None
         doc.lines.append(InventoryAdjustmentLine(tenant_id=tenant_id, product_id=product_id, expected=expected, counted=counted, delta=delta, unit_cost=unit_cost))
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="inventory_adjustments", record=doc, payload=payload, created=document_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, kind="adjustments", doc=doc, action="update" if document_id else "create")
     db.commit(); db.refresh(doc)
     return doc
@@ -175,6 +178,8 @@ def save_transfer(db: Session, *, tenant_id: int, actor_user_id: int, payload: d
     for line in lines:
         doc.lines.append(InventoryTransferLine(tenant_id=tenant_id, product_id=int(line["product_id"]), quantity=_decimal(line["quantity"], positive=True)))
     db.flush()
+    sync_custom_fields(db, tenant_id=tenant_id, module_key="inventory_transfers", record=doc, payload=payload, created=document_id is None,
+                       enforce_required="custom_fields" in payload)
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, kind="transfers", doc=doc, action="update" if document_id else "create")
     db.commit(); db.refresh(doc)
     return doc
@@ -279,4 +284,6 @@ def serialize_document(db: Session, *, tenant_id: int, kind: str, doc, include_l
                 if kind == "adjustments" else {"quantity": line.quantity})}
             for line in sorted(doc.lines, key=lambda item: item.id)
         ]
+    if include_lines:
+        result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key=f"inventory_{kind}", record_id=doc.id)
     return result

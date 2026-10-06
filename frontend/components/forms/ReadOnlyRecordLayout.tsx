@@ -12,6 +12,8 @@ import type {
   ResolvedRecordLayoutField,
 } from "@/hooks/useResolvedRecordLayout";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { PicklistText } from "@/components/picklists/PicklistText";
+import { FieldValue } from "@/components/fields/FieldValue";
 
 /**
  * The `Details` tab's field renderer — the read-only half of the record layout the three
@@ -83,7 +85,8 @@ export function ReadOnlyFieldSection({
   fields,
 }: {
   title: string;
-  fields: { key: string; label: string; fieldType: string; value: unknown; width?: "half" | "full" }[];
+  /** `display` draws a value the type formatter cannot, such as a picklist's label. */
+  fields: { key: string; label: string; fieldType: string; value: unknown; width?: "half" | "full"; display?: ReactNode }[];
 }) {
   if (!fields.length) return null;
   return (
@@ -92,7 +95,7 @@ export function ReadOnlyFieldSection({
       <div className="mt-4 grid gap-x-6 gap-y-4 md:grid-cols-2">
         {fields.map((field) => (
           <div key={field.key} className={field.width === "full" ? "sm:col-span-2" : undefined}>
-            <ReadOnlyField label={field.label} fieldType={field.fieldType} value={field.value} />
+            <ReadOnlyField label={field.label} fieldType={field.fieldType} value={field.value}>{field.display}</ReadOnlyField>
           </div>
         ))}
       </div>
@@ -128,9 +131,16 @@ export function ReadOnlyRecordLayout({
       ? field.field_key.slice("custom:".length)
       : null;
     const value = rawCustomKey ? customValues[rawCustomKey] : values[field.field_key];
+    const override = renderValue?.(field, value);
+    // A custom field draws by its type (13b §3.4); a standard picklist field by its label (§3.3).
+    const typed = rawCustomKey
+      ? <FieldValue field={{ field_key: rawCustomKey, label: field.label, field_type: field.field_type, picklist_key: field.picklist_key }} value={value} />
+      : field.field_type === "picklist" && field.picklist_key
+        ? <PicklistText listKey={field.picklist_key} value={typeof value === "string" ? value : null} context="field" />
+        : undefined;
     return (
       <ReadOnlyField label={field.label} fieldType={field.field_type} value={value}>
-        {renderValue?.(field, value)}
+        {override !== undefined ? override : typed}
       </ReadOnlyField>
     );
   }

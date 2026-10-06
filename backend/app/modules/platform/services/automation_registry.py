@@ -44,6 +44,8 @@ class AutomationConditionField:
     field_type: str
     operators: tuple[str, ...]
     options: tuple[tuple[str, str], ...] = ()
+    # A picklist whose values are the options, resolved per tenant (13b §3.3).
+    picklist_key: str | None = None
 
 
 @dataclass(frozen=True)
@@ -82,7 +84,7 @@ AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("purchase.receipt_posted", "purchase_receipts", "Receipt posted", "Stock is received against a purchase order."),
     # E6 (12d-erp-costing.md §3.7).
     AutomationTrigger("inventory.revalued", "inventory_valuation", "Stock revalued", "A product's average cost is revalued, by hand or by a bill's price difference."),
-    # E5 (12c-erp-invoicing.md §3.6). `invoice.overdue` below is the insertion-order trigger.
+    # E5 (12c-erp-invoicing.md §3.6).
     AutomationTrigger("finance.invoice_issued", "finance_pos", "Invoice issued", "An invoice is issued to a customer."),
     AutomationTrigger("finance.invoice_overdue", "finance_pos", "Invoice past due", "An issued invoice passes its due date with a balance."),
     AutomationTrigger("finance.payment_recorded", "finance_payments", "Payment recorded", "A payment or refund is recorded."),
@@ -112,18 +114,11 @@ AUTOMATION_TRIGGERS: tuple[AutomationTrigger, ...] = (
     AutomationTrigger("booking.created", "calendar", "Booking created", "A calendar booking is created."),
     AutomationTrigger("booking.cancelled", "calendar", "Booking cancelled", "A calendar booking is cancelled.", available=False),
     AutomationTrigger("booking.rescheduled", "calendar", "Booking rescheduled", "A calendar booking is rescheduled.", available=False),
-    AutomationTrigger("ticket.created", "support_cases", "Ticket created", "A support ticket is created.", available=False),
-    AutomationTrigger("ticket.status_changed", "support_cases", "Ticket status changed", "A support ticket status changes.", available=False),
-    AutomationTrigger("ticket.priority_changed", "support_cases", "Ticket priority changed", "A support ticket priority changes.", available=False),
-    AutomationTrigger("ticket.replied", "support_cases", "Ticket replied", "A support ticket receives a reply.", available=False),
-    AutomationTrigger("case.created", "support_cases", "Support case created", "A support case is created."),
-    AutomationTrigger("case.status_changed", "support_cases", "Support case status changed", "A support case status changes."),
     AutomationTrigger("document.uploaded", "documents", "Document uploaded", "A document is uploaded."),
     AutomationTrigger("document.shared", "documents", "Document shared", "A document is shared."),
     AutomationTrigger("task.due_today", "tasks", "Task due today", "A task becomes due today."),
     AutomationTrigger("task.overdue", "tasks", "Task overdue", "A task becomes overdue."),
     AutomationTrigger("task.assigned", "tasks", "Task assigned", "A task is assigned."),
-    AutomationTrigger("invoice.overdue", "finance_io", "Invoice overdue", "An invoice becomes overdue."),
 )
 
 AUTOMATION_TRIGGERS_BY_KEY = {trigger.key: trigger for trigger in AUTOMATION_TRIGGERS}
@@ -153,7 +148,7 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("primary_email", "sales_leads", "Email", "text", TEXT_OPERATORS),
     AutomationConditionField("phone", "sales_leads", "Phone", "text", TEXT_OPERATORS),
     AutomationConditionField("title", "sales_leads", "Job Title", "text", TEXT_OPERATORS),
-    AutomationConditionField("source", "sales_leads", "Source", "text", TEXT_OPERATORS),
+    AutomationConditionField("source", "sales_leads", "Source", "select", SELECT_OPERATORS, picklist_key="lead_source"),
     AutomationConditionField("score", "sales_leads", "Score", "number", NUMBER_OPERATORS),
     AutomationConditionField(
         "score_grade",
@@ -169,12 +164,22 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
         "Status",
         "select",
         SELECT_OPERATORS,
-        (("new", "New"), ("contacted", "Contacted"), ("qualified", "Qualified"), ("unqualified", "Unqualified"), ("converted", "Converted")),
+        picklist_key="lead_status",
+    ),
+    AutomationConditionField(
+        "status_meaning",
+        "sales_leads",
+        "Status meaning",
+        "select",
+        SELECT_OPERATORS,
+        (("open", "Open"), ("working", "Working"), ("qualified", "Qualified"), ("unqualified", "Unqualified"), ("converted", "Converted")),
     ),
     AutomationConditionField("created_time", "sales_leads", "Created Time", "date", DATE_OPERATORS),
     AutomationConditionField("assigned_to", "sales_leads", "Owner", "user", USER_OPERATORS),
     AutomationConditionField("opportunity_name", "sales_opportunities", "Deal", "text", TEXT_OPERATORS),
-    AutomationConditionField("client", "sales_opportunities", "Client", "text", TEXT_OPERATORS),
+    AutomationConditionField("deal_type", "sales_opportunities", "Type", "select", SELECT_OPERATORS, picklist_key="deal_type"),
+    AutomationConditionField("source", "sales_opportunities", "Source", "select", SELECT_OPERATORS, picklist_key="lead_source"),
+    AutomationConditionField("lost_reason", "sales_opportunities", "Lost reason", "select", SELECT_OPERATORS, picklist_key="lost_reason"),
     AutomationConditionField(
         "sales_stage",
         "sales_opportunities",
@@ -200,7 +205,7 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     ),
     AutomationConditionField("expected_close_date", "sales_opportunities", "Expected Close", "date", DATE_OPERATORS),
     AutomationConditionField("probability_percent", "sales_opportunities", "Probability", "number", NUMBER_OPERATORS),
-    AutomationConditionField("total_cost_of_project", "sales_opportunities", "Project Cost", "number", NUMBER_OPERATORS),
+    AutomationConditionField("amount", "sales_opportunities", "Amount", "number", NUMBER_OPERATORS),
     AutomationConditionField("currency_type", "sales_opportunities", "Currency", "text", TEXT_OPERATORS),
     AutomationConditionField("assigned_to", "sales_opportunities", "Owner", "user", USER_OPERATORS),
     AutomationConditionField("quote_number", "sales_quotes", "Quote Number", "text", TEXT_OPERATORS),
@@ -231,25 +236,14 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("grand_total", "sales_orders", "Total", "number", NUMBER_OPERATORS),
     AutomationConditionField("created_at", "sales_orders", "Created", "date", DATE_OPERATORS),
     AutomationConditionField("owner_id", "sales_orders", "Owner", "user", USER_OPERATORS),
-    AutomationConditionField("subject", "support_cases", "Subject", "text", TEXT_OPERATORS),
     AutomationConditionField(
-        "status",
-        "support_cases",
-        "Status",
+        "source",
+        "sales_orders",
+        "Source",
         "select",
         SELECT_OPERATORS,
-        (("new", "New"), ("open", "Open"), ("pending", "Pending"), ("resolved", "Resolved"), ("closed", "Closed")),
+        (("crm", "CRM"), ("website", "Website"), ("client_portal", "Client portal")),
     ),
-    AutomationConditionField(
-        "priority",
-        "support_cases",
-        "Priority",
-        "select",
-        SELECT_OPERATORS,
-        (("low", "Low"), ("medium", "Medium"), ("high", "High"), ("urgent", "Urgent")),
-    ),
-    AutomationConditionField("source", "support_cases", "Source", "text", TEXT_OPERATORS),
-    AutomationConditionField("sla_due_at", "support_cases", "SLA Due", "date", DATE_OPERATORS),
     AutomationConditionField("title", "documents", "Title", "text", TEXT_OPERATORS),
     AutomationConditionField("original_filename", "documents", "File Name", "text", TEXT_OPERATORS),
     AutomationConditionField("extension", "documents", "File Type", "text", TEXT_OPERATORS),
@@ -275,10 +269,6 @@ AUTOMATION_CONDITION_FIELDS: tuple[AutomationConditionField, ...] = (
     AutomationConditionField("guest_name", "calendar", "Guest Name", "text", TEXT_OPERATORS),
     AutomationConditionField("guest_email", "calendar", "Guest Email", "text", TEXT_OPERATORS),
     AutomationConditionField("start_at", "calendar", "Meeting Start", "date", DATE_OPERATORS),
-    AutomationConditionField("io_number", "finance_io", "Invoice Number", "text", TEXT_OPERATORS),
-    AutomationConditionField("customer_name", "finance_io", "Customer", "text", TEXT_OPERATORS),
-    AutomationConditionField("total_amount", "finance_io", "Total", "number", NUMBER_OPERATORS),
-    AutomationConditionField("due_date", "finance_io", "Due Date", "date", DATE_OPERATORS),
 )
 
 AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
@@ -286,10 +276,10 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
     for module_key in {field.module_key for field in AUTOMATION_CONDITION_FIELDS}
 }
 
-RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "documents", "tasks", "calendar", "finance_io", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills", "inventory_valuation")
+RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "documents", "tasks", "calendar", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills", "inventory_valuation")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
 # note on a task or a document had nowhere to render.
-NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "support_cases", "finance_io")
+NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders")
 
 AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
     AutomationAction(
@@ -355,18 +345,6 @@ AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
         "Create a sales order from the triggering quote.",
         ("sales_quotes",),
         (),
-    ),
-    AutomationAction(
-        "assign_support_case",
-        "workflow",
-        "Assign support case",
-        "Assign the triggering support case and notify the assignee.",
-        ("support_cases",),
-        (
-            AutomationActionField("assignee_user_id", "Assign to", "user", True, "owner"),
-            AutomationActionField("notification_title", "Notification title", "text", False, "Support case assigned"),
-            AutomationActionField("notification_message", "Notification message", "textarea", False, "{{payload.subject}} needs attention."),
-        ),
     ),
 )
 
@@ -454,6 +432,7 @@ def serialize_condition_field(field: AutomationConditionField) -> dict[str, obje
         "field_type": field.field_type,
         "operators": list(field.operators),
         "options": [{"value": value, "label": label} for value, label in field.options],
+        "picklist_key": field.picklist_key,
     }
 
 
@@ -589,7 +568,7 @@ AUTOMATION_TEMPLATES: tuple[AutomationTemplate, ...] = (
         "Chase overdue invoices",
         "Give the invoice owner a task to collect payment.",
         "Finance",
-        "invoice.overdue",
+        "finance.invoice_overdue",
         ({"type": "create_task", "title": "Collect payment for {{payload.record_label}}", "priority": "high", "due_in_days": 1, "assignee_user_id": "owner"},),
     ),
     AutomationTemplate(

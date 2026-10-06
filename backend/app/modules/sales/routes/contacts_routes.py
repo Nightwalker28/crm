@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.permissions import require_access
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
@@ -369,11 +370,14 @@ async def import_contacts(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
     db: Session = Depends(get_db),
     current_user = Depends(require_user),
     require_module = Depends(require_module_access('sales_contacts')),
     require_permission = Depends(require_action_access("sales_contacts", "create")),
 ):
+    if add_unknown_picklist_values:
+        require_access(db, current_user, "sales_contacts", "configure", detail="Only users who can configure contacts can add list values during an import.")
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
     target_headers = _enabled_contact_import_fields(db, current_user.tenant_id)
     mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
@@ -403,6 +407,7 @@ async def import_contacts(
         job.payload = {
             **(job.payload or {}),
             "source_file_path": stored_path,
+            "add_unknown_picklist_values": add_unknown_picklist_values,
         }
         db.add(job)
         db.commit()
@@ -424,6 +429,7 @@ async def import_contacts(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+        add_unknown_picklist_values=add_unknown_picklist_values,
     )
     return ImportExecutionResponse(
         mode="inline",

@@ -12,6 +12,7 @@ import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatWebsiteDisplay, normalizeWebsiteHref } from "@/lib/urlDisplay";
 import { formatDateTime } from "@/lib/datetime";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 type Props = {
   organizations: Organization[];
@@ -75,7 +76,7 @@ function emptyValue() {
 }
 
 function renderCell(org: Organization, column: string) {
-  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={org.custom_fields} />;
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={org.custom_fields} moduleKey="sales_organizations" />;
 
   switch (column) {
     case "org_name":
@@ -105,15 +106,22 @@ function renderCell(org: Organization, column: string) {
     case "is_vendor":
       return <span className="text-sm text-copy-secondary">{org.is_vendor ? "Vendor" : "—"}</span>;
     case "industry":
-      return org.industry ? <Chip className="max-w-36">{org.industry}</Chip> : <span className="text-sm text-copy-disabled">—</span>;
+      return org.industry ? <Chip className="max-w-36"><PicklistText listKey="industry" value={org.industry} /></Chip> : <span className="text-sm text-copy-disabled">—</span>;
     case "annual_revenue":
-      return org.annual_revenue
-        ? <span className="text-sm font-medium text-state-success">{org.annual_revenue}</span>
+      // A figure in the base currency, not good news (5.7 ruling 2): ink, not the success hue.
+      return org.annual_revenue !== null && org.annual_revenue !== undefined && org.annual_revenue !== ""
+        ? <span className="text-sm font-medium tabular-nums text-copy-primary">{Number(org.annual_revenue).toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
         : <span className="text-sm text-copy-disabled">—</span>;
+    case "employee_count":
+      return org.employee_count !== null && org.employee_count !== undefined
+        ? <span className="text-sm tabular-nums text-copy-secondary">{org.employee_count.toLocaleString()}</span>
+        : <span className="text-sm text-copy-disabled">—</span>;
+    case "account_type":
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="account_type" value={org.account_type} /></span>;
     case "primary_phone":
       return <span className="text-sm text-copy-muted">{org.primary_phone || emptyValue()}</span>;
     case "billing_country":
-      return <span className="text-sm text-copy-muted">{org.billing_country || emptyValue()}</span>;
+      return <span className="text-sm text-copy-muted"><PicklistText listKey="country" value={org.billing_country} /></span>;
     case "assigned_to_name":
       return <span className="text-sm text-copy-secondary">{org.assigned_to_name || "Unassigned"}</span>;
     case "created_time":

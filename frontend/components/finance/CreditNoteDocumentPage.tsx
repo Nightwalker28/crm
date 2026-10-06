@@ -28,6 +28,9 @@ import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getCreditNoteStatus, getPaymentRecordStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
+import { PicklistText } from "@/components/picklists/PicklistText";
+import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
 
 type Row = { line: PosInvoiceLine; creditable: number };
@@ -61,6 +64,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
   const [notes, setNotes] = useState("");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [panel, setPanel] = useState<"void" | "refund" | null>(null);
   const [panelReason, setPanelReason] = useState("");
   const [refundMethod, setRefundMethod] = useState("");
@@ -74,6 +78,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
   const seedKey = isNew ? (invoice ? `invoice-${invoice.id}-${candidate ? "return" : "all"}` : null) : note && invoice ? `note-${note.id}-${note.status}-${note.updated_at}` : null;
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
+    setCustomValues(note?.custom_fields ?? {});
     setReason(note?.reason ?? (candidates.data ? `Return ${candidates.data.return_number}` : ""));
     setNotes(note?.notes ?? "");
     const seeded: Record<number, string> = {};
@@ -109,10 +114,10 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
       setError(null);
       let id = note?.id ?? null;
       if (isNew && invoice) {
-        const created = await mutations.createCreditNote({ invoice_id: invoice.id, return_id: returnId, reason: reason.trim(), notes: notes.trim() || null, lines });
+        const created = await mutations.createCreditNote({ invoice_id: invoice.id, return_id: returnId, reason: reason.trim(), notes: notes.trim() || null, lines, custom_fields: customValues });
         id = created.id;
       } else if (note) {
-        await mutations.updateCreditNote({ id: note.id, payload: { reason: reason.trim(), notes: notes.trim() || null, lines } });
+        await mutations.updateCreditNote({ id: note.id, payload: { reason: reason.trim(), notes: notes.trim() || null, lines, custom_fields: customValues } });
       }
       if (id && andIssue) {
         const issued = await mutations.issueCreditNote(id);
@@ -142,7 +147,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
         await mutations.voidCreditNote({ id: note.id, reason: panelReason.trim() });
         toast.success(`${note.number} voided; the invoice balance is back.`);
       } else {
-        await mutations.recordPayment({ direction: "made", kind: "refund", paid_on: refundDate || null, method: refundMethod.trim() || null,
+        await mutations.recordPayment({ direction: "made", kind: "refund", paid_on: refundDate || null, method: refundMethod || null,
           allocations: [{ credit_note_id: note.id, amount: note.refund_due }] });
         toast.success("Refund recorded.");
       }
@@ -197,7 +202,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
 
       {note && !editable ? (
         <FactList className="grid-cols-2 lg:grid-cols-4">
-          <Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.financePos}/${note.invoice_id}`}>{note.invoice_number ?? "Invoice"}</TextLink></Fact>
+          <Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.invoices}/${note.invoice_id}`}>{note.invoice_number ?? "Invoice"}</TextLink></Fact>
           <Fact label="Total"><Money amount={note.total_amount} currency={note.currency} context="field" /></Fact>
           {note.applied_amount != null ? <Fact label="Applied to the invoice"><Money amount={note.applied_amount} currency={note.currency} context="field" /></Fact> : null}
           {note.status === "issued" ? <Fact label="Refund due"><Money amount={note.refund_due} currency={note.currency} context="field" /></Fact> : null}
@@ -207,12 +212,14 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
         </FactList>
       ) : invoice && !noInvoice ? (
         <div className="grid gap-6 lg:grid-cols-3">
-          <FactList><Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.financePos}/${invoice.id}`}>{invoice.invoice_number ?? "Invoice"}</TextLink></Fact></FactList>
+          <FactList><Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.invoices}/${invoice.id}`}>{invoice.invoice_number ?? "Invoice"}</TextLink></Fact></FactList>
           <Field className="lg:col-span-2"><FieldLabel htmlFor="credit-reason">Reason</FieldLabel><Input id="credit-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Returned goods, price agreed after the fact…" /></Field>
           <Field className="lg:col-span-3"><FieldLabel htmlFor="credit-notes">Notes</FieldLabel><Textarea id="credit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
         </div>
       ) : null}
 
+      {!noInvoice ? (editable ? <RecordCustomFieldsSection moduleKey="finance_credit_notes" values={customValues} onChange={setCustomValues} />
+        : note ? <RecordCustomFieldsFacts moduleKey="finance_credit_notes" values={note.custom_fields} /> : null) : null}
       {!noInvoice ? (
         <section className="flex flex-col gap-3">
           <SectionHeading description={editable ? `About ${estimate.toFixed(2)} ${invoice?.currency ?? ""}, before the invoice's own discount and tax rate` : undefined}>Lines</SectionHeading>
@@ -267,7 +274,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
             columns={[
               { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
               { key: "paid_on", label: "Paid on", size: "sm", render: (row) => formatDateOnly(row.paid_on) },
-              { key: "method", label: "Method", size: "sm", render: (row) => row.method ?? "—" },
+              { key: "method", label: "Method", size: "sm", render: (row) => <PicklistText listKey="payment_method" value={row.method} /> },
               { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPaymentRecordStatus(row.status)} /> },
               { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.amount} currency={row.currency} /> },
             ]}
@@ -277,7 +284,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
 
       {editable && invoice && !noInvoice ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : "A draft changes nothing until it is issued."}>
-          <Button type="button" variant="outline" asChild><Link href={note ? DASHBOARD_ROUTES.creditNotes : `${DASHBOARD_ROUTES.financePos}/${invoice.id}`}>Back</Link></Button>
+          <Button type="button" variant="outline" asChild><Link href={note ? DASHBOARD_ROUTES.creditNotes : `${DASHBOARD_ROUTES.invoices}/${invoice.id}`}>Back</Link></Button>
           <Button type="button" variant="outline" onClick={() => void save(false)} disabled={mutations.isSaving}>Save draft</Button>
           {actions?.can_edit ? <Button type="button" onClick={() => void save(true)} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save and issue"}</Button> : null}
         </FormFooter>
@@ -297,7 +304,7 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
       >
         {panel === "refund" ? (
           <>
-            <Field><FieldLabel htmlFor="refund-method">Method</FieldLabel><Input id="refund-method" maxLength={100} value={refundMethod} onChange={(event) => setRefundMethod(event.target.value)} placeholder="Bank transfer, card…" /></Field>
+            <PicklistField id="refund-method" listKey="payment_method" label="Method" value={refundMethod} onChange={setRefundMethod} />
             <Field><FieldLabel htmlFor="refund-date">Paid on</FieldLabel><Input id="refund-date" type="date" max={todayIsoDate()} value={refundDate} onChange={(event) => setRefundDate(event.target.value)} /></Field>
           </>
         ) : (

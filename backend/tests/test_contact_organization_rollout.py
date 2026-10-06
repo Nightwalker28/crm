@@ -20,14 +20,15 @@ from app.core.database import Base
 from app.core.permissions import require_linked_record_access
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform.models import (
-    CustomFieldDefinition,
-    CustomFieldValue,
+    FieldDefinition,
+    FieldValue,
     ModuleFieldConfig,
     RecordLayoutDefinition,
 )
 from app.modules.platform.services.record_layouts import (
     MODULE_LAYOUT_SEEDS,
     MODULE_SYSTEM_FIELDS,
+    QUICK_CREATE_ONE_OF,
     resolve_record_layout,
 )
 from app.modules.sales.routes.contacts_routes import _require_account_link_access
@@ -57,7 +58,7 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
             engine,
             tables=[
                 Tenant.__table__,
-                CustomFieldDefinition.__table__,
+                FieldDefinition.__table__,
                 ModuleFieldConfig.__table__,
                 RecordLayoutDefinition.__table__,
             ],
@@ -114,7 +115,11 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
                 required_keys = {
                     key for key, field in MODULE_SYSTEM_FIELDS[module_key].items() if field.required
                 }
-                self.assertTrue(required_keys, "each rolled-out module has at least one required field")
+                # A module whose domain asks for "one of" (13a A9, H13) shows at least one of them.
+                alternatives = QUICK_CREATE_ONE_OF.get(module_key, ())
+                self.assertTrue(required_keys or alternatives, "each rolled-out module states what a create needs")
+                if alternatives:
+                    self.assertTrue(any(key in fields and fields[key].visible and not fields[key].readonly for key in alternatives))
                 for key in required_keys:
                     self.assertIn(key, fields)
                     self.assertTrue(fields[key].visible)
@@ -129,10 +134,11 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
         # Quick Create stays quick: the guidance ceiling is 8 visible fields.
         self.assertLessEqual(len([field for field in fields.values() if field.visible]), 8)
 
-    def test_opportunity_quick_create_requires_a_contact_and_detail_omits_the_spine(self):
+    def test_opportunity_quick_create_offers_account_and_contact_and_detail_omits_the_spine(self):
         fields = resolved_fields(self.resolve("sales_opportunities", "quick_create"))
-        self.assertTrue(fields["contact_id"].required)
-        self.assertIn("organization_id", fields)
+        # An account or a contact (13a H13): both offered, neither alone required.
+        self.assertFalse(fields["contact_id"].required)
+        self.assertFalse(fields["organization_id"].required)
 
         # The Opportunity workspace landed in rebuild 5.3 batch 1, so `detail` resolves now.
         # What it must not carry is the four fields the record spine owns — drawing an editable
@@ -141,7 +147,7 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
         detail_fields = resolved_fields(self.resolve("sales_opportunities", "detail"))
         for spine_owned in ("sales_stage", "assigned_to", "contact_id", "organization_id"):
             self.assertNotIn(spine_owned, detail_fields)
-        self.assertIn("total_cost_of_project", detail_fields)
+        self.assertIn("amount", detail_fields)
         self.assertIn("expected_close_date", detail_fields)
 
     def test_disabled_field_config_hides_optional_fields_but_never_required_ones(self):
@@ -160,8 +166,8 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
                     id=2,
                     tenant_id=1,
                     module_key="sales_organizations",
-                    field_key="primary_email",
-                    label="Primary email",
+                    field_key="org_name",
+                    label="Account name",
                     is_enabled=False,
                     is_protected=False,
                 ),
@@ -171,8 +177,8 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
 
         fields = resolved_fields(self.resolve("sales_organizations", "quick_create"))
         self.assertNotIn("website", fields)
-        self.assertIn("primary_email", fields)
-        self.assertTrue(fields["primary_email"].visible)
+        self.assertIn("org_name", fields)
+        self.assertTrue(fields["org_name"].visible)
 
     def test_detail_surfaces_are_read_only_and_absorb_custom_fields(self):
         custom = SimpleNamespace(
@@ -182,6 +188,7 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
             is_required=False,
             placeholder=None,
             help_text=None,
+            picklist_key=None,
         )
         for module_key in ("sales_contacts", "sales_organizations"):
             with self.subTest(module_key=module_key):
@@ -322,8 +329,8 @@ class ContextualLinkTenantIsolationTests(unittest.TestCase):
             tables=[
                 Tenant.__table__,
                 User.__table__,
-                CustomFieldDefinition.__table__,
-                CustomFieldValue.__table__,
+                FieldDefinition.__table__,
+                FieldValue.__table__,
                 SalesContact.__table__,
                 SalesOrganization.__table__,
                 SalesOpportunity.__table__,

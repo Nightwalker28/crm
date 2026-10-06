@@ -187,8 +187,8 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.getByRole("button", { name: "Add field" }).click();
   await page.getByRole("textbox", { name: "Label", exact: true }).fill("Status");
   await page.getByLabel("Field type").click();
-  await page.getByRole("option", { name: "single select" }).click();
-  await page.getByLabel("Options").fill("New\nResolved");
+  await page.getByRole("option", { name: "Picklist", exact: true }).click();
+  await page.getByLabel("Values", { exact: true }).fill("New\nResolved");
   await page.getByRole("button", { name: "Done editing field" }).click();
 
   const createRequest = page.waitForRequest((request) =>
@@ -198,8 +198,8 @@ test("adds a field in the inspector and exposes shared builder destinations", as
   await page.getByRole("button", { name: "Save changes" }).click();
   expect((await createRequest).postDataJSON()).toMatchObject({
     label: "Status",
-    field_type: "single_select",
-    validation_json: { options: ["New", "Resolved"] },
+    field_type: "picklist",
+    picklist_values: ["New", "Resolved"],
   });
 
   await expect(page.getByRole("tab", { name: "Permissions" })).toHaveCount(0);

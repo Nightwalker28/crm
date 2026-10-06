@@ -4,11 +4,11 @@ import { loginAsAdmin } from "./helpers/auth";
 
 const dealId = 987654324;
 const summary = {
-  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", client: "Grace Buyer", sales_stage: "proposal", pipeline_stage: { id: 3, key: "proposal", label: "Proposal", semantic_type: "ongoing", probability: 50, is_active: true }, contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
+  opportunity: { opportunity_id: dealId, opportunity_name: "Browser Deal", sales_stage: "proposal", pipeline_stage: { id: 3, key: "proposal", label: "Proposal", semantic_type: "ongoing", probability: 50, is_active: true }, contact_id: 41, contact_name: "Grace Buyer", organization_id: 51, organization_name: "Acme", assigned_to: 7, assigned_to_name: "Ada Owner", start_date: "2099-07-01", expected_close_date: "2099-08-01", probability_percent: 65, total_cost_of_project: "125000", currency_type: "USD", campaign_type: "Demand generation", target_geography: "APAC", target_audience: "Operations leaders", delivery_format: "Qualified leads", created_time: "2099-07-20T09:30:00Z", updated_at: "2099-07-20T09:30:00Z", custom_fields: {} },
   contact: { contact_id: 41, first_name: "Grace", last_name: "Buyer", primary_email: "grace@example.com", contact_telephone: "+94770000003", current_title: "COO" },
   organization: { org_id: 51, org_name: "Acme" },
   participant_contacts: [], can_view_contacts: true,
-  related_quotes: [], related_insertion_orders: [], inferred_services: ["Demand generation"], insertion_order_count: 0,
+  related_quotes: [], inferred_services: ["Demand generation"],
 };
 const pipelineSummary = {
   total_count: 2,
@@ -73,7 +73,7 @@ test("Deal create, detail, and edit use routed record workflows", async ({ page 
   await expect(page.getByRole("heading", { name: "Create deal", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: "Create deal" }).click();
   await expect(page.getByText("Deal name is required.")).toBeVisible();
-  await expect(page.getByText("Select an existing contact.")).toBeVisible();
+  await expect(page.getByText("Choose an account or a contact.").first()).toBeVisible();
   await expect(page.getByLabel("Deal name")).toBeFocused();
 
   await page.goto(`/dashboard/sales/opportunities/${dealId}`);

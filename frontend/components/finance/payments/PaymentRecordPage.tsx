@@ -21,9 +21,11 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPaymentRecordStatus } from "@/lib/statusStyles";
+import { PicklistText } from "@/components/picklists/PicklistText";
+import { RecordCustomFieldsFacts } from "@/components/customFields/RecordCustomFields";
 
 function documentHref(allocation: PaymentAllocation) {
-  if (allocation.document_type === "invoice") return `${DASHBOARD_ROUTES.financePos}/${allocation.document_id}`;
+  if (allocation.document_type === "invoice") return `${DASHBOARD_ROUTES.invoices}/${allocation.document_id}`;
   if (allocation.document_type === "credit_note") return `${DASHBOARD_ROUTES.creditNotes}/${allocation.document_id}`;
   return `${DASHBOARD_ROUTES.purchaseBills}/${allocation.document_id}`;
 }
@@ -77,12 +79,13 @@ export function PaymentRecordPage({ paymentId }: { paymentId: number | null }) {
           <FactList className="grid-cols-2 lg:grid-cols-4">
             <Fact label="Amount"><Money amount={payment.amount} currency={payment.currency} context="field" /></Fact>
             <Fact label="Customer or vendor">{payment.party_name ?? "—"}</Fact>
-            <Fact label="Method">{payment.method ?? "—"}</Fact>
+            <Fact label="Method"><PicklistText listKey="payment_method" value={payment.method} context="field" /></Fact>
             <Fact label="Reference">{payment.reference ?? "—"}</Fact>
             <Fact label="Recorded">{formatDateTime(payment.created_at)}</Fact>
             {payment.void_reason ? <Fact label="Voided because">{payment.void_reason}</Fact> : null}
             {payment.notes ? <Fact label="Notes">{payment.notes}</Fact> : null}
           </FactList>
+          <RecordCustomFieldsFacts moduleKey="finance_payments" values={payment.custom_fields} />
           <section className="flex flex-col gap-3">
             <SectionHeading>Settles</SectionHeading>
             <RecordTable<PaymentAllocation>

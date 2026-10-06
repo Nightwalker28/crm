@@ -8,6 +8,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.core.uploads import build_media_url
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.catalog.models import CatalogCategory
 
 
@@ -88,7 +89,7 @@ def normalize_catalog_category_id(db: Session, *, tenant_id: int, value) -> int 
     return category_id
 
 
-def normalize_catalog_detail_fields(db: Session, *, tenant_id: int, payload: dict, partial: bool) -> dict:
+def normalize_catalog_detail_fields(db: Session, *, tenant_id: int, payload: dict, partial: bool, existing=None) -> dict:
     """Category, cost and unit, shared by products and services.
 
     On a partial update only the keys the caller sent are returned, so an omitted field stays
@@ -103,7 +104,22 @@ def normalize_catalog_detail_fields(db: Session, *, tenant_id: int, payload: dic
     if not partial or "unit" in payload:
         if partial and payload.get("unit") is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="unit cannot be null")
-        values["unit"] = normalize_catalog_unit(payload.get("unit") or "unit")
+        # The tenant's `unit` picklist (13b §3.2); an empty unit takes the list's default.
+        units = PicklistResolver(db, tenant_id)
+        raw = normalize_catalog_unit(payload.get("unit") or units.default_key("unit") or "unit")
+        values["unit"] = units.resolve("unit", raw, current=getattr(existing, "unit", None), field_key="unit", field_label="Unit")
+    # 13a C4: a list price apart from the website price, and a tax category F5 will rate.
+    if not partial or "list_price" in payload:
+        raw_price = payload.get("list_price")
+        if raw_price in (None, "") and not partial:
+            raw_price = payload.get("public_unit_price")
+        values["list_price"] = normalize_catalog_cost(raw_price)
+    if not partial or "tax_category" in payload:
+        lists = PicklistResolver(db, tenant_id)
+        raw_category = payload.get("tax_category") or (None if partial else lists.default_key("tax_category"))
+        values["tax_category"] = lists.resolve(
+            "tax_category", raw_category, current=getattr(existing, "tax_category", None), field_key="tax_category", field_label="Tax category",
+        )
     return values
 
 
@@ -121,4 +137,6 @@ def catalog_detail_payload(record) -> dict:
         "category_name": category.full_name if category is not None else None,
         "cost_price": record.cost_price,
         "unit": record.unit or "unit",
+        "list_price": record.list_price,
+        "tax_category": record.tax_category,
     }

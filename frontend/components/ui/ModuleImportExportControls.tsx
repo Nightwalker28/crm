@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ExportControls } from "@/components/ui/ExportControls";
 import { ImportControls } from "@/components/ui/ImportControls";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 
 type Props = {
   importEndpoint?: string;
@@ -20,6 +21,8 @@ type Props = {
   selectedIds?: number[];
   currentPageIds?: number[];
   onExportSuccess?: () => void;
+  /** The module whose `configure` grant lets the importer add unknown picklist values. */
+  picklistModuleKey?: string;
 };
 
 export function ModuleImportExportControls({
@@ -34,7 +37,12 @@ export function ModuleImportExportControls({
   selectedIds = [],
   currentPageIds = [],
   onExportSuccess,
+  picklistModuleKey,
 }: Props) {
+  const { modules } = useAccessibleModules();
+  const canAddListValues = Boolean(
+    picklistModuleKey && modules.find((module) => module.name === picklistModuleKey)?.actions?.can_configure,
+  );
   // The dialog and the file input live beside the menu, not inside it. Radix unmounts the
   // menu's content when an item closes it, and anything rendered there went with it: the
   // export dialog opened and vanished in the same frame, and the import picker returned to an
@@ -78,6 +86,7 @@ export function ModuleImportExportControls({
           importLabel={importLabel}
           fileAccept={fileAccept}
           onImportSuccess={onImportSuccess}
+          allowAddingListValues={canAddListValues}
         />
       ) : null}
       {exportEndpoint ? (

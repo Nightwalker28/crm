@@ -37,10 +37,9 @@ const FOLDERS = [
 ];
 const LINK_TARGET_MODULES = [
   { key: "sales_contacts", label: "Contact", searchPath: "/sales/contacts/search", idField: "contact_id", labelFields: ["first_name", "last_name", "primary_email"] },
-  { key: "sales_opportunities", label: "Opportunity", searchPath: "/sales/opportunities/search", idField: "opportunity_id", labelFields: ["opportunity_name", "client"] },
+  { key: "sales_opportunities", label: "Opportunity", searchPath: "/sales/opportunities/search", idField: "opportunity_id", labelFields: ["opportunity_name", "organization_name"] },
   { key: "sales_quotes", label: "Quote", searchPath: "/sales/quotes/search", idField: "quote_id", labelFields: ["quote_number", "customer_name"] },
-  { key: "finance_io", label: "Insertion order", searchPath: "/finance/insertion-orders", idField: "id", labelFields: ["io_number", "customer_name"] },
-  { key: "finance_pos", label: "POS Invoice", searchPath: "/finance/pos-invoices", idField: "id", labelFields: ["invoice_number", "customer_name"] },
+  { key: "finance_pos", label: "Invoice", searchPath: "/finance/invoices", idField: "id", labelFields: ["invoice_number", "customer_name"] },
 ] as const;
 
 type ImapForm = {
@@ -109,8 +108,7 @@ function linkedRecordHref(message: MailMessage) {
   if (message.source_module_key === "sales_contacts") return `/dashboard/sales/contacts/${id}`;
   if (message.source_module_key === "sales_opportunities") return `/dashboard/sales/opportunities/${id}`;
   if (message.source_module_key === "sales_quotes") return `/dashboard/sales/quotes/${id}`;
-  if (message.source_module_key === "finance_io") return `/dashboard/finance/insertion-orders/${id}`;
-  if (message.source_module_key === "finance_pos") return `/dashboard/finance/pos/${id}`;
+  if (message.source_module_key === "finance_pos") return `/dashboard/finance/invoices/${id}`;
   return null;
 }
 

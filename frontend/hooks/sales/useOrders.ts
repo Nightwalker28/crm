@@ -23,6 +23,8 @@ export type OrderItem = {
 };
 
 export type Order = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number;
   order_number: string;
   quote_id: number | null;
@@ -53,10 +55,15 @@ export type Order = {
   invoice_status?: string;
   /** urgent · high · normal: arriving stock goes to waiting orders in this order, then oldest first. */
   priority?: string;
+  /** Where the order came from (13 F1.3): crm, website or client_portal. */
+  source?: "crm" | "website" | "client_portal";
+  /** The shop platform a website order named, e.g. "shopify". */
+  channel?: string | null;
+  /** The website's own order reference. */
+  external_reference?: string | null;
   remaining_closed_at?: string | null;
   remaining_close_reason?: string | null;
   delivery_date?: string | null;
-  delivery_address?: string | null;
   payment_terms?: string | null;
   notes?: string | null;
   created_by_id?: number | null;

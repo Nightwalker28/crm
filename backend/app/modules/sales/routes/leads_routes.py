@@ -2,6 +2,7 @@ from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, 
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.permissions import require_access
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import (
     ImportExecutionResponse,
@@ -341,11 +342,14 @@ async def import_leads(
     replace_duplicates: bool = False,
     skip_duplicates: bool = False,
     create_new_records: bool = False,
+    add_unknown_picklist_values: bool = False,
     db: Session = Depends(get_db),
     current_user=Depends(require_user),
     require_module=Depends(require_module_access("sales_leads")),
     require_permission=Depends(require_action_access("sales_leads", "create")),
 ):
+    if add_unknown_picklist_values:
+        require_access(db, current_user, "sales_leads", "configure", detail="Only users who can configure leads can add list values during an import.")
     file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
     target_headers = _enabled_lead_import_fields(db, current_user.tenant_id)
     mapping = parse_mapping_json(mapping_json, target_headers=target_headers)
@@ -365,7 +369,7 @@ async def import_leads(
             },
         )
         stored_path = persist_job_upload(job_id=job.id, filename="leads-import.csv", file_bytes=remapped_file_bytes)
-        job.payload = {**(job.payload or {}), "source_file_path": stored_path}
+        job.payload = {**(job.payload or {}), "source_file_path": stored_path, "add_unknown_picklist_values": add_unknown_picklist_values}
         db.add(job)
         db.commit()
         db.refresh(job)
@@ -381,6 +385,7 @@ async def import_leads(
         replace_duplicates=replace_duplicates,
         skip_duplicates=skip_duplicates,
         create_new_records=create_new_records,
+        add_unknown_picklist_values=add_unknown_picklist_values,
     )
     return ImportExecutionResponse(mode="inline", message=summary["message"], summary=StandardImportSummary(**summary))
 

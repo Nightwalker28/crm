@@ -95,10 +95,10 @@ class BackfillTests(PipelineFixture):
         self.make_opportunity(300, sales_stage=None)
         self.db.add(
             SalesOpportunity(
+                organization_id=1,
                 opportunity_id=301,
                 tenant_id=TENANT,
                 opportunity_name="Deleted",
-                client="Acme",
                 sales_stage="proposal",
                 deleted_at=datetime(2026, 2, 1, tzinfo=timezone.utc),
             )

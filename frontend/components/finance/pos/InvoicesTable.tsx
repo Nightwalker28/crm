@@ -13,6 +13,7 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { OVERDUE_STATUS, getPosInvoiceStatus, getPosPaymentStatus } from "@/lib/statusStyles";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 type Props = {
   invoices: PosInvoice[];
@@ -107,7 +108,7 @@ function renderCell(invoice: PosInvoice, column: string) {
     case "due_date":
       return <span className="text-sm text-copy-secondary">{invoice.due_date ? formatDateOnly(invoice.due_date) : "—"}</span>;
     case "payment_method":
-      return <span className="text-sm text-copy-secondary">{invoice.payment_method || "—"}</span>;
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="payment_method" value={invoice.payment_method} /></span>;
     case "template_id":
       return <span className="text-sm text-copy-secondary">{formatSnakeCaseLabel(invoice.template_id)}</span>;
     case "updated_at":
@@ -149,11 +150,11 @@ export default function InvoicesTable({
       columns={columns}
       rows={invoices}
       rowKey={(invoice) => invoice.id}
-      rowHref={(invoice) => `/dashboard/finance/pos/${invoice.id}`}
+      rowHref={(invoice) => `/dashboard/finance/invoices/${invoice.id}`}
       rowLabel={(invoice) => `Open invoice ${invoice.invoice_number}`}
       rowActions={(invoice) => (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link href={`/dashboard/finance/pos/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}>
+          <Link href={`/dashboard/finance/invoices/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}>
             <Printer />
           </Link>
         </Button>
@@ -174,7 +175,7 @@ export default function InvoicesTable({
           ? "Create an itemized invoice to start tracking receivables."
           : "Invoices will appear here when a teammate creates one.",
         action: canCreateInvoice
-          ? <Button asChild><Link href="/dashboard/finance/pos/new">Create invoice</Link></Button>
+          ? <Button asChild><Link href="/dashboard/finance/invoices/new">Create invoice</Link></Button>
           : undefined,
       }}
       filteredEmptyState={{ icon: FileText }}

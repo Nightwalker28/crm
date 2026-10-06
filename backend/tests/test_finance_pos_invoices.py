@@ -10,7 +10,6 @@ from app.modules.finance.models import FinancePosInvoice
 from app.modules.finance.models import FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso
-from app.modules.finance.services import io_search_services
 from app.modules.finance.services import pos_invoice_services
 from app.modules.finance.services.pos_invoice_services import serialize_invoice
 
@@ -265,9 +264,12 @@ class FinancePosInvoiceTests(unittest.TestCase):
         self.assertEqual(invoice.lines[0].description, "Updated")
         self.assertIsNone(invoice.lines[1].id)
 
-    def test_parse_human_date_annotation_matches_date_return(self):
-        self.assertEqual(io_search_services.parse_human_date.__annotations__["return"], "date | None")
-        self.assertIsInstance(io_search_services.parse_human_date("2026-06-22"), date)
+    def test_invoice_dates_are_iso_and_a_bad_one_is_refused(self):
+        self.assertEqual(pos_invoice_services._date("2026-06-22"), date(2026, 6, 22))
+        self.assertIsNone(pos_invoice_services._date(""))
+        with self.assertRaises(HTTPException) as error:
+            pos_invoice_services._date("22 June 2026")
+        self.assertEqual(error.exception.status_code, 400)
 
 
 if __name__ == "__main__":

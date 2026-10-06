@@ -6,6 +6,7 @@
  */
 
 import type { OrganizationFormValue } from "@/components/organizations/OrganizationFormFields";
+import { addressFrom, addressPayload } from "@/components/forms/AddressFields";
 import { pickEnabledModulePayload, type ModuleFieldConfig } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { RecordMutationError } from "@/lib/apiErrors";
@@ -17,10 +18,10 @@ export function validateOrganizationName(rawName: string): string | null {
   return rawName.trim() ? null : "Account name is required.";
 }
 
+/** Optional, as the domain has it; an email that is given must look like one. */
 export function validateOrganizationEmail(rawEmail: string): string | null {
   const email = rawEmail.trim();
-  if (!email) return "Primary email is required.";
-  if (!/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
+  if (email && !/^\S+@\S+\.\S+$/.test(email)) return "Enter a valid email address.";
   return null;
 }
 
@@ -33,18 +34,17 @@ export function buildOrganizationPayload(
   return pickEnabledModulePayload(
     {
       org_name: form.org_name.trim(),
-      primary_email: form.primary_email.trim(),
+      primary_email: form.primary_email.trim() || null,
       secondary_email: form.secondary_email.trim() || null,
       website: form.website.trim() || null,
       primary_phone: form.primary_phone.trim() || null,
       secondary_phone: form.secondary_phone.trim() || null,
       industry: form.industry.trim() || null,
+      account_type: form.account_type || null,
       annual_revenue: form.annual_revenue.trim() || null,
-      billing_address: form.billing_address.trim() || null,
-      billing_city: form.billing_city.trim() || null,
-      billing_state: form.billing_state.trim() || null,
-      billing_postal_code: form.billing_postal_code.trim() || null,
-      billing_country: form.billing_country || null,
+      employee_count: form.employee_count.trim() === "" ? null : Math.max(0, Math.round(Number(form.employee_count)) || 0),
+      ...addressPayload("billing", addressFrom(form, "billing")),
+      ...addressPayload("shipping", addressFrom(form, "shipping")),
       is_vendor: form.is_vendor,
       payment_terms_days: form.payment_terms_days.trim() === "" ? null : Math.max(0, Math.min(365, Math.round(Number(form.payment_terms_days)) || 0)),
       // An edit that clears the owner would otherwise reassign the account to the editor.

@@ -1,137 +1,7 @@
 from datetime import date
 from decimal import Decimal
 from typing import Any, Optional
-from pydantic import BaseModel, Field, field_validator
-
-from app.modules.finance.services.io_search_services import normalize_io_status
-
-
-class InsertionOrderBase(BaseModel):
-    io_number: Optional[str] = None
-    customer_name: str = Field(min_length=1)
-    customer_contact_id: Optional[int] = None
-    customer_organization_id: Optional[int] = None
-    create_customer_if_missing: bool = False
-    customer_email: Optional[str] = None
-    counterparty_reference: Optional[str] = None
-    external_reference: Optional[str] = None
-    issue_date: Optional[str] = None
-    effective_date: Optional[str] = None
-    due_date: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    status: str = "draft"
-    currency: str = "USD"
-    subtotal_amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    total_amount: Optional[float] = None
-    notes: Optional[str] = None
-    custom_fields: dict[str, Any] | None = None
-
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, value: str) -> str:
-        return normalize_io_status(value)
-
-
-class InsertionOrderCreateRequest(InsertionOrderBase):
-    pass
-
-
-class InsertionOrderUpdateRequest(BaseModel):
-    customer_name: Optional[str] = Field(default=None, min_length=1)
-    customer_contact_id: Optional[int] = None
-    customer_organization_id: Optional[int] = None
-    create_customer_if_missing: bool = False
-    customer_email: Optional[str] = None
-    counterparty_reference: Optional[str] = None
-    external_reference: Optional[str] = None
-    issue_date: Optional[str] = None
-    effective_date: Optional[str] = None
-    due_date: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    status: Optional[str] = None
-    currency: Optional[str] = None
-    subtotal_amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    total_amount: Optional[float] = None
-    notes: Optional[str] = None
-    #: The record's owner. Writable because design.md 4.7 puts a user-pointing column in the
-    #: spine's State block, and an insertion order was the one record type of the nine whose
-    #: update contract had no way to carry the reassignment at all.
-    user_id: Optional[int] = None
-    custom_fields: dict[str, Any] | None = None
-
-    @field_validator("status")
-    @classmethod
-    def validate_status(cls, value: str | None) -> str | None:
-        return normalize_io_status(value, default=None)
-
-
-class InsertionOrderResponse(BaseModel):
-    id: int
-    io_number: str
-    customer_name: str
-    customer_contact_id: Optional[int] = None
-    customer_organization_id: Optional[int] = None
-    counterparty_reference: Optional[str] = None
-    external_reference: Optional[str] = None
-    issue_date: Optional[str] = None
-    effective_date: Optional[str] = None
-    due_date: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    status: str
-    currency: str
-    subtotal_amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    total_amount: Optional[float] = None
-    notes: Optional[str] = None
-    custom_fields: dict[str, Any] | None = None
-    file_name: Optional[str] = None
-    file_url: Optional[str] = None
-    #: The owner's id as well as their name: the rail's Owner control selects by id, and the
-    #: name alone left it unable to say which option was the current one.
-    user_id: Optional[int] = None
-    user_name: Optional[str] = None
-    photo_url: Optional[str] = None
-    created_at: Optional[str] = None
-    updated_at: Optional[str] = None
-
-
-class InsertionOrderListItem(BaseModel):
-    id: int
-    io_number: str | None = None
-    customer_name: str | None = None
-    status: str | None = None
-    currency: str | None = None
-    total_amount: Optional[float] = None
-    issue_date: Optional[str] = None
-    due_date: Optional[str] = None
-    external_reference: Optional[str] = None
-    user_name: Optional[str] = None
-    updated_at: Optional[str] = None
-    customer_contact_id: Optional[int] = None
-    customer_organization_id: Optional[int] = None
-    counterparty_reference: Optional[str] = None
-    effective_date: Optional[str] = None
-    start_date: Optional[str] = None
-    end_date: Optional[str] = None
-    subtotal_amount: Optional[float] = None
-    tax_amount: Optional[float] = None
-    notes: Optional[str] = None
-    custom_fields: dict[str, Any] | None = None
-
-
-class InsertionOrderListResponse(BaseModel):
-    results: list[InsertionOrderListItem]
-    range_start: int
-    range_end: int
-    total_count: int
-    total_pages: int
-    page: int
-    page_size: int
+from pydantic import BaseModel, Field
 
 
 class PosInvoiceLineRequest(BaseModel):
@@ -155,6 +25,7 @@ class PosInvoicePaidNow(BaseModel):
 
 
 class PosInvoiceBase(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     customer_name: str = Field(min_length=1)
     customer_email: Optional[str] = None
     customer_address: Optional[str] = None
@@ -183,6 +54,7 @@ class PosInvoiceCreateRequest(PosInvoiceBase):
 class PosInvoiceUpdateRequest(BaseModel):
     """A draft takes any field. An issued invoice takes only due date, notes, payment terms
     and template; the service refuses the rest (12c §3.3)."""
+    custom_fields: dict[str, Any] | None = None
 
     customer_name: Optional[str] = Field(default=None, min_length=1)
     customer_email: Optional[str] = None
@@ -208,6 +80,7 @@ class PosInvoicePaymentRequest(BaseModel):
     payment_method: str | None = Field(default=None, max_length=100)
     paid_on: Optional[date] = None
     reference: Optional[str] = Field(default=None, max_length=200)
+    custom_fields: dict[str, Any] | None = None
 
 
 class ReasonRequest(BaseModel):
@@ -242,6 +115,7 @@ class PosInvoiceLineResponse(BaseModel):
 
 
 class PosInvoiceResponse(BaseModel):
+    custom_fields: dict[str, Any] | None = None
     id: int
     invoice_number: Optional[str] = None
     mode: str

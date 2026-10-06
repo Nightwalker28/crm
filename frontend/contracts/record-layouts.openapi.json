@@ -48,6 +48,17 @@
             "title": "Label",
             "type": "string"
           },
+          "picklist_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picklist Key"
+          },
           "placeholder": {
             "anyOf": [
               {

@@ -18,6 +18,7 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPaymentRecordStatus } from "@/lib/statusStyles";
+import { PicklistText } from "@/components/picklists/PicklistText";
 
 /**
  * Payments (12c-erp-invoicing.md §3.5): the money itself, received from customers and paid to
@@ -41,7 +42,7 @@ export default function PaymentsPage() {
       description="Money received from customers and paid to vendors."
       actions={
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline" size="sm"><Link href={DASHBOARD_ROUTES.financePos}><ReceiptText />Open invoices</Link></Button>
+          <Button asChild variant="outline" size="sm"><Link href={DASHBOARD_ROUTES.invoices}><ReceiptText />Open invoices</Link></Button>
           {canRecord ? <Button asChild variant="outline" size="sm"><Link href={`${DASHBOARD_ROUTES.payments}/record`}><CreditCard />Record payment</Link></Button> : null}
         </div>
       }
@@ -81,7 +82,7 @@ export default function PaymentsPage() {
           { key: "party", label: "Customer or vendor", size: "lg", render: (row) => row.party_name ?? "—" },
           { key: "document", label: "For", size: "md", render: (row) => row.allocations.map((allocation) => allocation.document_label ?? "Document").join(", ") || "—" },
           { key: "kind", label: "Kind", size: "sm", render: (row) => (row.kind === "refund" ? "Refund" : row.direction === "received" ? "Received" : "Paid out") },
-          { key: "method", label: "Method", size: "sm", render: (row) => row.method ?? "—" },
+          { key: "method", label: "Method", size: "sm", render: (row) => <PicklistText listKey="payment_method" value={row.method} /> },
           { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPaymentRecordStatus(row.status)} /> },
           { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.amount} currency={row.currency} /> },
         ]}

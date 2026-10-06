@@ -141,8 +141,6 @@ const supportedBackupModules = new Set([
   "sales_orders",
   "tasks",
   "documents",
-  "support_cases",
-  "contracts",
 ]);
 
 async function readJson(res: Response) {

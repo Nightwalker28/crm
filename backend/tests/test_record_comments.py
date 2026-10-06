@@ -13,7 +13,6 @@ from app.modules.platform.services.record_comments import (
     validate_record_mentions,
 )
 from app.modules.sales.models import SalesContact, SalesOrder
-from app.modules.support.models import SupportCase
 from app.modules.user_management.models import Module, Role, User, UserStatus
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.documents import models as document_models  # noqa: F401
@@ -29,7 +28,6 @@ class RecordCommentMentionTests(unittest.TestCase):
             [
                 Module(id=1, name="sales_contacts", base_route="sales_contacts", is_enabled=1),
                 Module(id=2, name="sales_orders", base_route="sales_orders", is_enabled=1),
-                Module(id=3, name="support_cases", base_route="support_cases", is_enabled=1),
                 Role(id=1, tenant_id=10, name="Admin", level=100),
                 Role(id=2, tenant_id=10, name="User", level=10),
                 User(
@@ -71,14 +69,6 @@ class RecordCommentMentionTests(unittest.TestCase):
                     order_number="SO-0008",
                     status="confirmed",
                     currency="USD",
-                ),
-                SupportCase(
-                    id=9,
-                    tenant_id=10,
-                    case_number="CASE-0009",
-                    subject="Delivery issue",
-                    status="open",
-                    priority="medium",
                 ),
             ]
         )
@@ -165,7 +155,6 @@ class RecordCommentMentionTests(unittest.TestCase):
     def test_get_record_reference_supports_models_without_deleted_at(self):
         cases = [
             ("sales_orders", 8),
-            ("support_cases", 9),
         ]
 
         for module_key, entity_id in cases:

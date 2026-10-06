@@ -28,13 +28,12 @@ from app.modules.platform.services.module_fields import module_field_enabled_map
 
 # Which (module, surface) pairs the runtime resolver will answer for. Opportunity's `detail`
 # surface was held back for "the Opportunity workspace slice" — that is rebuild 5.3 batch 1,
-# which lands the deal on the record archetype, so it opens here. Contracts join for the same
-# reason: the archetype's `Details` tab is `ReadOnlyRecordLayout` on the resolved layout, so a
-# record page without one would be the only page rendering its fields a private way.
+# which lands the deal on the record archetype, so it opens here: the archetype's `Details`
+# tab is `ReadOnlyRecordLayout` on the resolved layout, so a record page without one would be
+# the only page rendering its fields a private way.
 #
-# Contracts have no `custom_fields` column, which costs nothing: the catalog merges custom
-# definitions when a module has them and is simply system-only here — as do orders and POS
-# invoices, which batch 3 adds alongside quotes for the same reason. All four are
+# Quotes, orders and invoices have no `custom_fields` column, which costs nothing: the catalog
+# merges custom definitions when a module has them and is simply system-only here. They are
 # `detail`-only: their create and edit surfaces keep `RecordFormLayout` and a manual save,
 # because R1 does not autosave a document whose totals derive from its line items.
 SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
@@ -42,12 +41,9 @@ SUPPORTED_LAYOUT_SURFACES_BY_MODULE: dict[str, set[str]] = {
     "sales_contacts": {"quick_create", "detail"},
     "sales_organizations": {"quick_create", "detail"},
     "sales_opportunities": {"quick_create", "detail"},
-    "contracts": {"detail"},
     "sales_quotes": {"detail"},
     "sales_orders": {"detail"},
     "finance_pos": {"detail"},
-    "finance_io": {"detail"},
-    "support_cases": {"detail"},
     "catalog_products": {"detail"},
     "catalog_services": {"detail"},
 }
@@ -82,6 +78,8 @@ class RuntimeFieldDefinition:
     field_source: str = "system"
     placeholder: str | None = None
     help_text: str | None = None
+    # A `picklist` field's list (13b §3.3); the form offers that list's active values.
+    picklist_key: str | None = None
 
 
 def _field_map(*fields: RuntimeFieldDefinition) -> dict[str, RuntimeFieldDefinition]:
@@ -95,11 +93,13 @@ LEAD_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("first_name", "First name", "text"),
     RuntimeFieldDefinition("last_name", "Last name", "text"),
     RuntimeFieldDefinition("company", "Company", "text"),
-    RuntimeFieldDefinition("primary_email", "Email", "email", required=True),
+    # Email or a phone (13a A9): neither alone is required by the domain.
+    RuntimeFieldDefinition("primary_email", "Email", "email"),
     RuntimeFieldDefinition("phone", "Phone", "phone"),
+    RuntimeFieldDefinition("mobile_phone", "Mobile", "phone"),
     RuntimeFieldDefinition("title", "Job title", "text"),
-    RuntimeFieldDefinition("source", "Source", "text"),
-    RuntimeFieldDefinition("status", "Status", "select"),
+    RuntimeFieldDefinition("source", "Source", "picklist", picklist_key="lead_source"),
+    RuntimeFieldDefinition("status", "Status", "picklist", picklist_key="lead_status"),
     RuntimeFieldDefinition("notes", "Notes", "long_text"),
     RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
     RuntimeFieldDefinition("team_id", "Team", "team_reference"),
@@ -108,34 +108,50 @@ LEAD_SYSTEM_FIELDS = _field_map(
 )
 
 CONTACT_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("salutation", "Salutation", "picklist", picklist_key="salutation"),
     RuntimeFieldDefinition("first_name", "First name", "text"),
     RuntimeFieldDefinition("last_name", "Last name", "text"),
-    RuntimeFieldDefinition("primary_email", "Email", "email", required=True),
-    RuntimeFieldDefinition("contact_telephone", "Phone", "phone"),
+    RuntimeFieldDefinition("primary_email", "Email", "email"),
+    RuntimeFieldDefinition("contact_telephone", "Work phone", "phone"),
+    RuntimeFieldDefinition("mobile_phone", "Mobile", "phone"),
     RuntimeFieldDefinition("current_title", "Job title", "text"),
     RuntimeFieldDefinition("linkedin_url", "LinkedIn", "url"),
     RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
     RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
-    RuntimeFieldDefinition("region", "Region", "select"),
-    RuntimeFieldDefinition("country", "Country", "select"),
+    RuntimeFieldDefinition("region", "Region", "picklist", picklist_key="region"),
+    RuntimeFieldDefinition("mailing_address", "Street", "text"),
+    RuntimeFieldDefinition("mailing_street2", "Street, line 2", "text"),
+    RuntimeFieldDefinition("mailing_city", "City", "text"),
+    RuntimeFieldDefinition("mailing_state", "State or province", "text"),
+    RuntimeFieldDefinition("mailing_postal_code", "Postal code", "text"),
+    RuntimeFieldDefinition("country", "Country", "picklist", picklist_key="country"),
     RuntimeFieldDefinition("email_opt_out", "Email opt-out", "boolean"),
 )
 
 ORGANIZATION_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("org_name", "Account name", "text", required=True),
-    RuntimeFieldDefinition("primary_email", "Primary email", "email", required=True),
+    RuntimeFieldDefinition("account_type", "Type", "picklist", picklist_key="account_type"),
+    RuntimeFieldDefinition("primary_email", "Primary email", "email"),
     RuntimeFieldDefinition("secondary_email", "Secondary email", "email"),
     RuntimeFieldDefinition("primary_phone", "Primary phone", "phone"),
     RuntimeFieldDefinition("secondary_phone", "Secondary phone", "phone"),
     RuntimeFieldDefinition("website", "Website", "url"),
-    RuntimeFieldDefinition("industry", "Industry", "text"),
-    RuntimeFieldDefinition("annual_revenue", "Annual revenue", "text"),
+    RuntimeFieldDefinition("industry", "Industry", "picklist", picklist_key="industry"),
+    RuntimeFieldDefinition("annual_revenue", "Annual revenue", "currency"),
+    RuntimeFieldDefinition("employee_count", "Employees", "number"),
     RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
-    RuntimeFieldDefinition("billing_address", "Billing address", "long_text"),
-    RuntimeFieldDefinition("billing_city", "City", "text"),
-    RuntimeFieldDefinition("billing_state", "State or province", "text"),
-    RuntimeFieldDefinition("billing_postal_code", "Postal code", "text"),
-    RuntimeFieldDefinition("billing_country", "Country", "select"),
+    RuntimeFieldDefinition("billing_address", "Billing street", "text"),
+    RuntimeFieldDefinition("billing_street2", "Billing street, line 2", "text"),
+    RuntimeFieldDefinition("billing_city", "Billing city", "text"),
+    RuntimeFieldDefinition("billing_state", "Billing state or province", "text"),
+    RuntimeFieldDefinition("billing_postal_code", "Billing postal code", "text"),
+    RuntimeFieldDefinition("billing_country", "Billing country", "picklist", picklist_key="country"),
+    RuntimeFieldDefinition("shipping_address", "Shipping street", "text"),
+    RuntimeFieldDefinition("shipping_street2", "Shipping street, line 2", "text"),
+    RuntimeFieldDefinition("shipping_city", "Shipping city", "text"),
+    RuntimeFieldDefinition("shipping_state", "Shipping state or province", "text"),
+    RuntimeFieldDefinition("shipping_postal_code", "Shipping postal code", "text"),
+    RuntimeFieldDefinition("shipping_country", "Shipping country", "picklist", picklist_key="country"),
 )
 
 # Opportunity keeps the legacy single primary contact. Multi-contact participants are
@@ -146,41 +162,23 @@ ORGANIZATION_SYSTEM_FIELDS = _field_map(
 # tenant can reorder or disable them like every other field.
 OPPORTUNITY_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("opportunity_name", "Deal name", "text", required=True),
-    RuntimeFieldDefinition("contact_id", "Contact", "contact_reference", required=True),
+    # An account or a contact (13a H13): neither alone is required by the domain.
+    RuntimeFieldDefinition("contact_id", "Contact", "contact_reference"),
     RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
     RuntimeFieldDefinition("sales_stage", "Stage", "select"),
-    RuntimeFieldDefinition("start_date", "Start date", "date"),
-    RuntimeFieldDefinition("expected_close_date", "Expected close date", "date"),
-    RuntimeFieldDefinition("probability_percent", "Probability", "text"),
-    RuntimeFieldDefinition("total_cost_of_project", "Deal value", "text"),
+    RuntimeFieldDefinition("amount", "Amount", "currency"),
     RuntimeFieldDefinition("currency_type", "Currency", "select"),
+    RuntimeFieldDefinition("probability_percent", "Probability", "percent"),
+    RuntimeFieldDefinition("expected_close_date", "Expected close date", "date"),
+    RuntimeFieldDefinition("start_date", "Start date", "date"),
+    RuntimeFieldDefinition("deal_type", "Type", "picklist", picklist_key="deal_type"),
+    RuntimeFieldDefinition("source", "Source", "picklist", picklist_key="lead_source"),
+    RuntimeFieldDefinition("next_step", "Next step", "text"),
+    RuntimeFieldDefinition("lost_reason", "Lost reason", "picklist", picklist_key="lost_reason"),
     RuntimeFieldDefinition("assigned_to", "Owner", "user_reference"),
-    RuntimeFieldDefinition("campaign_type", "Campaign", "text"),
-    RuntimeFieldDefinition("target_geography", "Geography", "text"),
-    RuntimeFieldDefinition("target_audience", "Audience", "text"),
-    RuntimeFieldDefinition("delivery_format", "Delivery format", "text"),
-    RuntimeFieldDefinition("total_leads", "Total leads", "text"),
-    RuntimeFieldDefinition("cpl", "Cost per lead", "text"),
-    RuntimeFieldDefinition("domain_cap", "Domain cap", "text"),
-    RuntimeFieldDefinition("tactics", "Tactics", "long_text"),
 )
 
-# Contracts have no create-surface layout, so nothing here is `required`: the create schema is
-# enforced by `ContractCreateRequest` and this catalog only describes the read-only `detail`
-# surface the record archetype renders.
-CONTRACT_SYSTEM_FIELDS = _field_map(
-    RuntimeFieldDefinition("contract_number", "Contract number", "text"),
-    RuntimeFieldDefinition("title", "Title", "text"),
-    RuntimeFieldDefinition("status", "Status", "select"),
-    RuntimeFieldDefinition("value_amount", "Value", "text"),
-    RuntimeFieldDefinition("currency", "Currency", "select"),
-    RuntimeFieldDefinition("effective_date", "Effective date", "date"),
-    RuntimeFieldDefinition("expiration_date", "Expiration date", "date"),
-    RuntimeFieldDefinition("renewal_date", "Renewal date", "date"),
-    RuntimeFieldDefinition("owner_id", "Owner", "user_reference"),
-)
-
-# The three line-item documents. Like contracts, none of them has a create-surface layout —
+# The three line-item documents. None of them has a create-surface layout —
 # `/new` and `/[id]/edit` stay on `RecordFormLayout` because R1 keeps a document body on an
 # explicit save — so nothing here is `required` and these catalogs describe only the
 # read-only `detail` surface the record archetype renders.
@@ -200,6 +198,23 @@ QUOTE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("tax_amount", "Tax", "text"),
     RuntimeFieldDefinition("total_amount", "Total", "text"),
     RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("billing_address", "Billing street", "text"),
+    RuntimeFieldDefinition("billing_street2", "Billing street, line 2", "text"),
+    RuntimeFieldDefinition("billing_city", "Billing city", "text"),
+    RuntimeFieldDefinition("billing_state", "Billing state or province", "text"),
+    RuntimeFieldDefinition("billing_postal_code", "Billing postal code", "text"),
+    RuntimeFieldDefinition("billing_country", "Billing country", "picklist", picklist_key="country"),
+    RuntimeFieldDefinition("shipping_address", "Shipping street", "text"),
+    RuntimeFieldDefinition("shipping_street2", "Shipping street, line 2", "text"),
+    RuntimeFieldDefinition("shipping_city", "Shipping city", "text"),
+    RuntimeFieldDefinition("shipping_state", "Shipping state or province", "text"),
+    RuntimeFieldDefinition("shipping_postal_code", "Shipping postal code", "text"),
+    RuntimeFieldDefinition("shipping_country", "Shipping country", "picklist", picklist_key="country"),
+    RuntimeFieldDefinition("customer_po_reference", "Customer PO reference", "text"),
+    RuntimeFieldDefinition("shipping_method", "Shipping method", "picklist", picklist_key="shipping_method"),
+    RuntimeFieldDefinition("shipping_charge", "Shipping charge", "currency"),
+    RuntimeFieldDefinition("terms_and_conditions", "Terms and conditions", "long_text"),
+    RuntimeFieldDefinition("lost_reason", "Declined reason", "picklist", picklist_key="lost_reason"),
     RuntimeFieldDefinition("contact_id", "Contact", "contact_reference"),
     RuntimeFieldDefinition("organization_id", "Account", "organization_reference"),
     RuntimeFieldDefinition("opportunity_id", "Deal", "text"),
@@ -215,10 +230,30 @@ ORDER_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("tax_total", "Tax", "text"),
     RuntimeFieldDefinition("grand_total", "Total", "text"),
     RuntimeFieldDefinition("delivery_date", "Delivery date", "date"),
-    RuntimeFieldDefinition("delivery_address", "Delivery address", "long_text"),
+    RuntimeFieldDefinition("billing_address", "Billing street", "text"),
+    RuntimeFieldDefinition("billing_street2", "Billing street, line 2", "text"),
+    RuntimeFieldDefinition("billing_city", "Billing city", "text"),
+    RuntimeFieldDefinition("billing_state", "Billing state or province", "text"),
+    RuntimeFieldDefinition("billing_postal_code", "Billing postal code", "text"),
+    RuntimeFieldDefinition("billing_country", "Billing country", "picklist", picklist_key="country"),
+    RuntimeFieldDefinition("shipping_address", "Shipping street", "text"),
+    RuntimeFieldDefinition("shipping_street2", "Shipping street, line 2", "text"),
+    RuntimeFieldDefinition("shipping_city", "Shipping city", "text"),
+    RuntimeFieldDefinition("shipping_state", "Shipping state or province", "text"),
+    RuntimeFieldDefinition("shipping_postal_code", "Shipping postal code", "text"),
+    RuntimeFieldDefinition("shipping_country", "Shipping country", "picklist", picklist_key="country"),
+    RuntimeFieldDefinition("customer_po_reference", "Customer PO reference", "text"),
+    RuntimeFieldDefinition("shipping_method", "Shipping method", "picklist", picklist_key="shipping_method"),
+    RuntimeFieldDefinition("shipping_charge", "Shipping charge", "currency"),
+    RuntimeFieldDefinition("terms_and_conditions", "Terms and conditions", "long_text"),
+    RuntimeFieldDefinition("lost_reason", "Cancellation reason", "picklist", picklist_key="lost_reason"),
     RuntimeFieldDefinition("payment_terms", "Payment terms", "text"),
     RuntimeFieldDefinition("notes", "Notes", "long_text"),
     RuntimeFieldDefinition("owner_id", "Owner", "user_reference"),
+    # Where the order came from (13 F1.3); written by the website and portal intake only.
+    RuntimeFieldDefinition("source", "Source", "text", readonly=True),
+    RuntimeFieldDefinition("channel", "Channel", "text", readonly=True),
+    RuntimeFieldDefinition("external_reference", "External reference", "text", readonly=True),
 )
 
 # `balance_due` and `payment_status` are maintained by the payment path rather than written
@@ -230,7 +265,7 @@ POS_INVOICE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("payment_status", "Payment status", "select", readonly=True),
     # `select`, not `text`: the values are a closed set (`card`, `cash`, `bank_transfer`) and
     # the read-only renderer only sentence-cases a `select`, so as `text` the page drew `card`.
-    RuntimeFieldDefinition("payment_method", "Payment method", "select"),
+    RuntimeFieldDefinition("payment_method", "Payment method", "picklist", picklist_key="payment_method"),
     RuntimeFieldDefinition("customer_name", "Customer", "text"),
     RuntimeFieldDefinition("customer_email", "Customer email", "email"),
     RuntimeFieldDefinition("customer_address", "Billing address", "long_text"),
@@ -249,53 +284,9 @@ POS_INVOICE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("notes", "Notes", "long_text"),
 )
 
-# Batch 4's four. None of them has a create-surface layout either, for the same reason the
-# four above do not: their `/new` and `/[id]/edit` pages stay on `RecordFormLayout`, so these
-# catalogs describe only the read-only `detail` surface.
+# The catalog pair has no create-surface layout either: their `/new` and `/[id]/edit` pages
+# stay on `RecordFormLayout`, so these catalogs describe only the read-only `detail` surface.
 #
-# An insertion order carries `custom_fields`, so its catalog is merged with the tenant's
-# custom definitions at resolve time — which is what retires the page's private
-# "Custom fields" card rather than porting it.
-INSERTION_ORDER_SYSTEM_FIELDS = _field_map(
-    RuntimeFieldDefinition("io_number", "IO number", "text"),
-    RuntimeFieldDefinition("customer_name", "Customer", "text"),
-    RuntimeFieldDefinition("status", "Status", "select"),
-    RuntimeFieldDefinition("external_reference", "External reference", "text"),
-    RuntimeFieldDefinition("counterparty_reference", "Counterparty reference", "text"),
-    RuntimeFieldDefinition("issue_date", "Issue date", "date"),
-    RuntimeFieldDefinition("effective_date", "Effective date", "date"),
-    RuntimeFieldDefinition("due_date", "Due date", "date"),
-    RuntimeFieldDefinition("start_date", "Start date", "date"),
-    RuntimeFieldDefinition("end_date", "End date", "date"),
-    RuntimeFieldDefinition("currency", "Currency", "select"),
-    RuntimeFieldDefinition("subtotal_amount", "Subtotal", "text"),
-    RuntimeFieldDefinition("tax_amount", "Tax", "text"),
-    RuntimeFieldDefinition("total_amount", "Total", "text"),
-    RuntimeFieldDefinition("notes", "Notes", "long_text"),
-    # The imported source document's filename. The download itself is a header action, not a
-    # field, so this is `readonly`: nothing on the record page writes it.
-    RuntimeFieldDefinition("file_name", "Source file", "text", readonly=True),
-)
-
-# `first_response_at`, `resolved_at` and `closed_at` are stamped by `cases_services` when a
-# reply lands or the status moves, so they are `readonly` by §4.7's "written by an operator,
-# or derived by a service?" test. `sla_due_at` is `readonly` for a blunter reason recorded in
-# `rebuild.md`: no code path writes it at all yet.
-SUPPORT_CASE_SYSTEM_FIELDS = _field_map(
-    RuntimeFieldDefinition("case_number", "Case number", "text"),
-    RuntimeFieldDefinition("subject", "Subject", "text"),
-    RuntimeFieldDefinition("description", "Description", "long_text"),
-    RuntimeFieldDefinition("status", "Status", "select"),
-    RuntimeFieldDefinition("priority", "Priority", "select"),
-    RuntimeFieldDefinition("category", "Category", "select"),
-    RuntimeFieldDefinition("source", "Source", "select"),
-    RuntimeFieldDefinition("assigned_to_id", "Assignee", "user_reference"),
-    RuntimeFieldDefinition("sla_due_at", "SLA due", "datetime", readonly=True),
-    RuntimeFieldDefinition("first_response_at", "First response", "datetime", readonly=True),
-    RuntimeFieldDefinition("resolved_at", "Resolved", "datetime", readonly=True),
-    RuntimeFieldDefinition("closed_at", "Closed", "datetime", readonly=True),
-)
-
 # `is_active` and `is_public` are booleans whose values are named states, so the rail edits
 # them (design.md §4.7) and neither is seeded here. `media_url` is absent on purpose: the
 # catalog image is the record's public body and renders under the layout, the same shape the
@@ -305,10 +296,18 @@ CATALOG_PRODUCT_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("sku", "SKU", "text"),
     RuntimeFieldDefinition("barcode", "Barcode", "text"),
     RuntimeFieldDefinition("category_name", "Category", "text", readonly=True),
-    RuntimeFieldDefinition("unit", "Unit", "text"),
+    RuntimeFieldDefinition("unit", "Unit", "picklist", picklist_key="unit"),
     RuntimeFieldDefinition("slug", "Public slug", "text"),
     RuntimeFieldDefinition("description", "Description", "long_text"),
-    RuntimeFieldDefinition("public_unit_price", "Public base price", "text"),
+    RuntimeFieldDefinition("list_price", "List price", "currency"),
+    RuntimeFieldDefinition("public_unit_price", "Website price", "currency"),
+    RuntimeFieldDefinition("tax_category", "Tax category", "picklist", picklist_key="tax_category"),
+    RuntimeFieldDefinition("weight", "Weight", "decimal"),
+    RuntimeFieldDefinition("weight_unit", "Weight unit", "text"),
+    RuntimeFieldDefinition("length", "Length", "decimal"),
+    RuntimeFieldDefinition("width", "Width", "decimal"),
+    RuntimeFieldDefinition("height", "Height", "decimal"),
+    RuntimeFieldDefinition("dimension_unit", "Dimension unit", "text"),
     RuntimeFieldDefinition("cost_price", "Cost", "text"),
     RuntimeFieldDefinition("currency", "Currency", "select"),
     RuntimeFieldDefinition("stock_status", "Stock status", "select"),
@@ -321,10 +320,12 @@ CATALOG_SERVICE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("name", "Name", "text"),
     RuntimeFieldDefinition("sku", "SKU", "text"),
     RuntimeFieldDefinition("category_name", "Category", "text", readonly=True),
-    RuntimeFieldDefinition("unit", "Unit", "text"),
+    RuntimeFieldDefinition("unit", "Unit", "picklist", picklist_key="unit"),
     RuntimeFieldDefinition("slug", "Public slug", "text"),
     RuntimeFieldDefinition("description", "Description", "long_text"),
-    RuntimeFieldDefinition("public_unit_price", "Public base price", "text"),
+    RuntimeFieldDefinition("list_price", "List price", "currency"),
+    RuntimeFieldDefinition("public_unit_price", "Website price", "currency"),
+    RuntimeFieldDefinition("tax_category", "Tax category", "picklist", picklist_key="tax_category"),
     RuntimeFieldDefinition("cost_price", "Cost", "text"),
     RuntimeFieldDefinition("currency", "Currency", "select"),
     RuntimeFieldDefinition("is_public", "Website feed", "boolean"),
@@ -336,12 +337,9 @@ MODULE_SYSTEM_FIELDS: dict[str, dict[str, RuntimeFieldDefinition]] = {
     "sales_contacts": CONTACT_SYSTEM_FIELDS,
     "sales_organizations": ORGANIZATION_SYSTEM_FIELDS,
     "sales_opportunities": OPPORTUNITY_SYSTEM_FIELDS,
-    "contracts": CONTRACT_SYSTEM_FIELDS,
     "sales_quotes": QUOTE_SYSTEM_FIELDS,
     "sales_orders": ORDER_SYSTEM_FIELDS,
     "finance_pos": POS_INVOICE_SYSTEM_FIELDS,
-    "finance_io": INSERTION_ORDER_SYSTEM_FIELDS,
-    "support_cases": SUPPORT_CASE_SYSTEM_FIELDS,
     "catalog_products": CATALOG_PRODUCT_SYSTEM_FIELDS,
     "catalog_services": CATALOG_SERVICE_SYSTEM_FIELDS,
 }
@@ -406,13 +404,15 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("company", "full"),
                         ("primary_email", "full"),
                         ("phone", "half"),
+                        ("mobile_phone", "half"),
                     ],
                 ),
                 _seed_section(
                     "qualification",
                     "Qualification",
                     1,
-                    [("status", "half"), ("assigned_to", "half")],
+                    # Source belongs on the first screen (13a H25): it is how leads are reported.
+                    [("status", "half"), ("source", "half"), ("assigned_to", "half")],
                 ),
             ],
         ),
@@ -428,6 +428,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     [
                         ("primary_email", "half"),
                         ("phone", "half"),
+                        ("mobile_phone", "half"),
                         ("company", "half"),
                         ("title", "half"),
                     ],
@@ -485,9 +486,11 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "Contact",
                     0,
                     [
+                        ("salutation", "half"),
+                        ("current_title", "half"),
                         ("primary_email", "half"),
                         ("contact_telephone", "half"),
-                        ("current_title", "half"),
+                        ("mobile_phone", "half"),
                         ("linkedin_url", "half"),
                     ],
                 ),
@@ -499,8 +502,20 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("organization_id", "half"),
                         ("assigned_to", "half"),
                         ("region", "half"),
-                        ("country", "half"),
                         ("email_opt_out", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "address",
+                    "Mailing address",
+                    2,
+                    [
+                        ("mailing_address", "full"),
+                        ("mailing_street2", "full"),
+                        ("mailing_city", "half"),
+                        ("mailing_state", "half"),
+                        ("mailing_postal_code", "half"),
+                        ("country", "half"),
                     ],
                 ),
             ],
@@ -546,21 +561,37 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                         ("primary_phone", "half"),
                         ("secondary_phone", "half"),
                         ("website", "half"),
+                        ("account_type", "half"),
                         ("industry", "half"),
                         ("annual_revenue", "half"),
+                        ("employee_count", "half"),
                         ("assigned_to", "half"),
                     ],
                 ),
                 _seed_section(
                     "billing",
-                    "Billing",
+                    "Billing address",
                     1,
                     [
                         ("billing_address", "full"),
+                        ("billing_street2", "full"),
                         ("billing_city", "half"),
                         ("billing_state", "half"),
                         ("billing_postal_code", "half"),
                         ("billing_country", "half"),
+                    ],
+                ),
+                _seed_section(
+                    "shipping",
+                    "Shipping address",
+                    2,
+                    [
+                        ("shipping_address", "full"),
+                        ("shipping_street2", "full"),
+                        ("shipping_city", "half"),
+                        ("shipping_state", "half"),
+                        ("shipping_postal_code", "half"),
+                        ("shipping_country", "half"),
                     ],
                 ),
             ],
@@ -588,7 +619,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "value",
                     "Value and ownership",
                     1,
-                    [("total_cost_of_project", "half"), ("assigned_to", "half")],
+                    [("amount", "half"), ("assigned_to", "half")],
                 ),
             ],
         ),
@@ -605,70 +636,20 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "Commercial",
                     0,
                     [
-                        ("total_cost_of_project", "half"),
+                        ("amount", "half"),
                         ("currency_type", "half"),
                         ("probability_percent", "half"),
                         ("expected_close_date", "half"),
+                        ("deal_type", "half"),
+                        ("source", "half"),
+                        ("next_step", "full"),
+                        ("lost_reason", "half"),
                         ("start_date", "half"),
                     ],
                 ),
-                _seed_section(
-                    "delivery",
-                    "Delivery",
-                    1,
-                    [
-                        ("campaign_type", "half"),
-                        ("delivery_format", "half"),
-                        ("target_geography", "half"),
-                        ("target_audience", "half"),
-                        ("total_leads", "half"),
-                        ("cpl", "half"),
-                        ("domain_cap", "half"),
-                        ("tactics", "full"),
-                    ],
-                ),
             ],
         ),
     },
-    # `contract_number` is the record's name and `status` and `owner_id` are the spine's, so
-    # none of the three is seeded — the header and the rail already draw them (design.md §4.7).
-    # They stay in the catalog above so a tenant can add them back deliberately.
-    "contracts": {
-        "detail": _seed(
-            "contracts",
-            "detail",
-            "Contract Details",
-            [
-                _seed_section(
-                    "agreement",
-                    "Agreement",
-                    0,
-                    [("title", "full"), ("value_amount", "half"), ("currency", "half")],
-                ),
-                _seed_section(
-                    "dates",
-                    "Dates",
-                    1,
-                    [
-                        ("effective_date", "half"),
-                        ("expiration_date", "half"),
-                        ("renewal_date", "half"),
-                    ],
-                ),
-            ],
-        ),
-    },
-    # The three line-item documents. Each omits the fields the record page already draws
-    # elsewhere (design.md §4.7): the document number is the header's name, `status` is the
-    # rail's one editable field, and the relationships are the rail's `Connected` block.
-    # `customer_name` is the header subtitle on all three, so it is not seeded either.
-    #
-    # Money is seeded as a `Totals` section rather than left to the page, because the totals
-    # *are* the document's summary — the pre-5.3 pages each drew their own private version of
-    # this block, which is three renderers for one thing.
-    #
-    # `notes` never gets a section of its own: a `Notes` section holding one `Notes` field draws
-    # the word twice. It joins a neighbour instead — the order's terms, as on the invoice.
     "sales_quotes": {
         "detail": _seed(
             "sales_quotes",
@@ -711,7 +692,8 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "fulfillment",
                     "Fulfilment",
                     0,
-                    [("delivery_date", "half"), ("delivery_address", "full")],
+                    [("delivery_date", "half"), ("shipping_method", "half"), ("shipping_address", "full"), ("shipping_city", "half"),
+                     ("shipping_country", "half"), ("customer_po_reference", "half")],
                 ),
                 _seed_section(
                     "totals",
@@ -779,84 +761,9 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
             ],
         ),
     },
-    # Batch 4's four. Each omits what the record page already draws elsewhere (design.md
+    # The catalog pair. Each omits what the record page already draws elsewhere (design.md
     # §4.7): the header's name, the rail's State fields, and the rail's `Connected` links.
     #
-    # `io_number` is the header's name and `customer_name` its subtitle, `status` is the
-    # rail's one editable field, and `file_name` is unseeded because the download is a header
-    # action — the filename alone is not worth a field.
-    "finance_io": {
-        "detail": _seed(
-            "finance_io",
-            "detail",
-            "Insertion Order Details",
-            [
-                _seed_section(
-                    "references",
-                    "References",
-                    0,
-                    [
-                        ("external_reference", "half"),
-                        ("counterparty_reference", "half"),
-                        ("notes", "full"),
-                    ],
-                ),
-                _seed_section(
-                    "period",
-                    "Dates",
-                    1,
-                    [
-                        ("issue_date", "half"),
-                        ("effective_date", "half"),
-                        ("due_date", "half"),
-                        ("start_date", "half"),
-                        ("end_date", "half"),
-                    ],
-                ),
-                _seed_section(
-                    "totals",
-                    "Totals",
-                    2,
-                    [
-                        ("subtotal_amount", "half"),
-                        ("tax_amount", "half"),
-                        ("total_amount", "half"),
-                        ("currency", "half"),
-                    ],
-                ),
-            ],
-        ),
-    },
-    # `subject` is the case's name in the header and `case_number` its subtitle; status,
-    # priority and category are the rail's, and every relationship is `Connected`.
-    #
-    # `sla_due_at` is unseeded: nothing writes it, so seeding it would put a permanently empty
-    # row on every case. It stays in the catalog so the field exists when an SLA policy does.
-    "support_cases": {
-        "detail": _seed(
-            "support_cases",
-            "detail",
-            "Case Details",
-            [
-                _seed_section(
-                    "request",
-                    "Request",
-                    0,
-                    [("description", "full"), ("source", "half")],
-                ),
-                _seed_section(
-                    "response",
-                    "Response",
-                    1,
-                    [
-                        ("first_response_at", "half"),
-                        ("resolved_at", "half"),
-                        ("closed_at", "half"),
-                    ],
-                ),
-            ],
-        ),
-    },
     # `name` is the header's, and `is_active`, `is_public` and `stock_status` are the rail's
     # three State fields, so none of the four is seeded. The catalog image is not a field at
     # all — it renders under the layout.
@@ -883,7 +790,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "pricing",
                     "Pricing",
                     1,
-                    [("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half")],
+                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half")],
                 ),
                 _seed_section("inventory", "Inventory", 2, [("stock_quantity", "half")]),
             ],
@@ -911,7 +818,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "pricing",
                     "Pricing",
                     1,
-                    [("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half")],
+                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half")],
                 ),
             ],
         ),
@@ -957,8 +864,17 @@ def _field_catalog(db: Session, *, tenant_id: int, module_key: str) -> dict[str,
             field_source="custom_field",
             placeholder=definition.placeholder,
             help_text=definition.help_text,
+            picklist_key=definition.picklist_key,
         )
     return catalog
+
+
+# Fields of which a create needs at least one (13a A9, H13).
+QUICK_CREATE_ONE_OF: dict[str, tuple[str, ...]] = {
+    "sales_leads": ("primary_email", "phone", "mobile_phone"),
+    "sales_contacts": ("primary_email", "contact_telephone", "mobile_phone"),
+    "sales_opportunities": ("organization_id", "contact_id"),
+}
 
 
 def collect_layout_errors(
@@ -1017,6 +933,12 @@ def collect_layout_errors(
         ]
         if not writable:
             errors.append("A Quick Create layout needs at least one visible, writable field.")
+        # A rule the domain states as "one of" (13a A9, H13): no single field is required,
+        # but hiding all of them leaves a Quick Create that can never save.
+        alternatives = QUICK_CREATE_ONE_OF.get(module_key)
+        if alternatives and not any(key in writable for key in alternatives):
+            labels = [catalog[key].label for key in alternatives if key in catalog]
+            errors.append(f"Quick Create needs at least one of {', '.join(labels[:-1])} or {labels[-1]}.")
 
     return list(dict.fromkeys(errors))
 
@@ -1234,6 +1156,7 @@ def _resolve_sections(
                     readonly=definition.surface == "detail" or field.readonly or configured.readonly is True,
                     placeholder=field.placeholder,
                     help_text=field.help_text,
+                    picklist_key=field.picklist_key,
                 )
             )
         if resolved_fields:
@@ -1321,6 +1244,10 @@ def resolve_record_layout(
         missing_required.extend(
             key for key in unusable_required_overrides if key not in missing_required
         )
+        # "One of" (13a A9, H13): a stored layout with none of them usable can never save.
+        alternatives = [key for key in QUICK_CREATE_ONE_OF.get(module_key, ()) if key in catalog]
+        if alternatives and not any(key in writable_visible_keys for key in alternatives):
+            missing_required.append(" or ".join(alternatives))
         if missing_required:
             warnings.append("Stored layout omitted required fields; using the system fallback")
             logger.warning(
@@ -1398,6 +1325,7 @@ def _catalog_entries(
                 enabled=enabled_states.get(field.field_key, True),
                 locked=field.required and surface == "quick_create",
                 locked_reason=locked_reason,
+                picklist_key=field.picklist_key,
             )
         )
     return entries

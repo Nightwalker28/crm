@@ -165,8 +165,8 @@ class LinkedRecordOptionsTests(unittest.TestCase):
         sync_record_tags(
             self.db,
             tenant_id=10,
-            module_key="support_cases",
-            entity_id="case-1",
+            module_key="sales_contacts",
+            entity_id="contact-1",
             tags=["Sensitive Support"],
         )
         self.db.commit()
@@ -246,9 +246,9 @@ class LinkedRecordOptionsTests(unittest.TestCase):
             organization=organization,
         )
         opportunity = SalesOpportunity(
+            organization_id=1,
             tenant_id=10,
             opportunity_name="Platform rollout",
-            client="Grace Hopper",
             assigned_to=1,
             contact=contact,
             organization=organization,

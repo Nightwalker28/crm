@@ -27,7 +27,7 @@ import { cn } from "@/lib/utils";
  * That last part is why the tabs are named props rather than an array. `Details ·
  * Timeline · Tasks · Files` is fixed by §4.7, and a `tabs={[…]}` API would let the next
  * page reorder them, rename one, or — as `opportunities/[opportunityId]` and
- * `finance/pos/[invoiceId]` both did — nest a second strip inside the first. Named slots
+ * `finance/invoices/[invoiceId]` both did — nest a second strip inside the first. Named slots
  * make all three unrepresentable. A module's own tab appends after `Files` through
  * `extraTabs`, which is the one thing §4.7 permits.
  *

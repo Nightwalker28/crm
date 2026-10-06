@@ -18,7 +18,7 @@ import {
   OpportunityMutationError,
   buildOpportunityPayload,
   saveOpportunity,
-  validateOpportunityContact,
+  validateOpportunityParty,
   validateOpportunityName,
 } from "@/components/opportunities/opportunityMutation";
 import { layoutHasVisibleField } from "@/components/forms/quickCreateLayout";
@@ -105,10 +105,10 @@ export function OpportunityQuickCreate({
         const nameError = validateOpportunityName(form.opportunity_name);
         if (nameError) errors.opportunity_name = nameError;
       }
-      // The domain requires a contact whether or not the layout chose to show the field.
-      if (!errors.contact_id) {
-        const contactError = validateOpportunityContact(form.contact_id);
-        if (contactError) errors.contact_id = contactError;
+      // The domain needs an account or a contact, whichever the layout shows (13a H13).
+      if (!errors.contact_id && !errors.organization_id) {
+        const partyError = validateOpportunityParty(form);
+        if (partyError) errors[layoutHasVisibleField(layout, "organization_id") ? "organization_id" : "contact_id"] = partyError;
       }
       return errors;
     },

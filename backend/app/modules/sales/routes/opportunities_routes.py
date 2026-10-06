@@ -44,7 +44,7 @@ from app.modules.sales.schema import (
     SalesOpportunityUpdate,
 )
 from app.modules.sales.services.followups import log_opportunity_follow_up
-from app.modules.sales.services import opportunities_api, pipelines_services
+from app.modules.sales.services import pipelines_services
 from app.modules.sales.services.summary_services import build_opportunity_summary
 from app.modules.sales.services.opportunities_services import (
     OPPORTUNITY_EXPORT_HEADERS,
@@ -67,7 +67,6 @@ router = APIRouter(prefix="/opportunities", tags=["Sales"])
 
 OPPORTUNITY_LIST_FIELDS = {
     "opportunity_name",
-    "client",
     "sales_stage",
     "contact_id",
     "contact_name",
@@ -77,8 +76,12 @@ OPPORTUNITY_LIST_FIELDS = {
     "assigned_to_name",
     "expected_close_date",
     "probability_percent",
-    "total_cost_of_project",
+    "amount",
     "currency_type",
+    "deal_type",
+    "source",
+    "next_step",
+    "lost_reason",
     "created_time",
 }
 
@@ -91,36 +94,28 @@ OPPORTUNITY_IMPORT_TARGET_FIELDS = [
     "start_date",
     "expected_close_date",
     "probability_percent",
-    "campaign_type",
-    "total_leads",
-    "cpl",
-    "total_cost_of_project",
+    "amount",
     "currency_type",
-    "target_geography",
-    "target_audience",
-    "domain_cap",
-    "tactics",
-    "delivery_format",
+    "deal_type",
+    "source",
+    "next_step",
+    "lost_reason",
 ]
 
 OPPORTUNITY_IMPORT_ALIASES = {
     "opportunity_name": ["name", "opportunity", "deal name", "opportunity name"],
-    "contact_id": ["contact", "contact id", "client", "client id"],
+    "contact_id": ["contact", "contact id"],
     "organization_id": ["organization", "organization id", "org id", "company id"],
     "assigned_to": ["owner", "assignee", "assigned to"],
     "sales_stage": ["stage", "pipeline stage", "sales stage"],
     "start_date": ["start", "start date"],
     "expected_close_date": ["close date", "expected close", "expected close date"],
-    "campaign_type": ["type", "campaign type"],
-    "total_leads": ["leads", "total leads"],
-    "cpl": ["cost per lead", "cpl"],
-    "total_cost_of_project": ["project cost", "total cost", "total project cost"],
+    "amount": ["amount", "value", "deal value", "project cost", "total cost"],
     "currency_type": ["currency", "currency type"],
-    "target_geography": ["geography", "target geography", "region"],
-    "target_audience": ["audience", "target audience"],
-    "domain_cap": ["domain cap"],
-    "tactics": ["tactic", "tactics"],
-    "delivery_format": ["format", "delivery format"],
+    "deal_type": ["type", "deal type"],
+    "source": ["source", "lead source"],
+    "next_step": ["next step"],
+    "lost_reason": ["lost reason", "loss reason"],
 }
 
 
@@ -175,8 +170,8 @@ def _emit_deal_assigned_event(db: Session, *, current_user, opportunity) -> None
         payload={
             **actor_payload(current_user),
             "deal_name": opportunity.opportunity_name,
-            "company": getattr(getattr(opportunity, "organization", None), "org_name", None) or opportunity.client,
-            "deal_value": opportunity.total_cost_of_project,
+            "company": getattr(getattr(opportunity, "organization", None), "org_name", None),
+            "deal_value": str(opportunity.amount) if opportunity.amount is not None else None,
             "stage": opportunity.sales_stage,
             "assigned_to": opportunity.assigned_to,
             "assigned_to_name": _display_user_name(getattr(opportunity, "assigned_user", None)),
@@ -214,15 +209,6 @@ def _serialize_opportunity_list_item(opportunity, fields: set[str]) -> SalesOppo
             "organization_id",
             "organization_name",
             "start_date",
-            "campaign_type",
-            "total_leads",
-            "cpl",
-            "target_geography",
-            "target_audience",
-            "domain_cap",
-            "tactics",
-            "delivery_format",
-            "attachments",
             "custom_fields",
         }
     )
@@ -529,42 +515,6 @@ def create_sales_opportunity(
     return SalesOpportunityResponse.model_validate(opportunity)
 
 
-@router.post("/{opportunity_id}/attachments", response_model=SalesOpportunityResponse, status_code=status.HTTP_201_CREATED)
-async def upload_opportunity_attachments(
-    opportunity_id: int,
-    files: list[UploadFile] = File(...),
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
-):
-    return await opportunities_api.upload_opportunity_attachments(
-        db,
-        opportunity_id=opportunity_id,
-        tenant_id=current_user.tenant_id,
-        files=files,
-        current_user=current_user,
-    )
-
-
-@router.delete("/{opportunity_id}/attachments", response_model=SalesOpportunityResponse)
-def delete_opportunity_attachments(
-    opportunity_id: int,
-    attachments: list[str] = Body(..., embed=True),
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "edit")),
-):
-    return opportunities_api.delete_opportunity_attachments(
-        db,
-        opportunity_id=opportunity_id,
-        tenant_id=current_user.tenant_id,
-        attachments=attachments,
-        current_user=current_user,
-    )
-
-
 @router.get("/{opportunity_id}", response_model=SalesOpportunityResponse)
 def get_sales_opportunity(
     opportunity_id: int,
@@ -671,6 +621,7 @@ def update_sales_opportunity_stage(
         opportunity,
         sales_stage=payload.sales_stage,
         pipeline_stage_id=payload.pipeline_stage_id,
+        lost_reason=payload.lost_reason,
     )
     action = "close" if pipelines_services.opportunity_stage_facts(updated).is_closed else "stage_change"
     log_activity(
@@ -735,21 +686,6 @@ def restore_sales_opportunity(
         after_state=_serialize_opportunity(restored),
     )
     return SalesOpportunityResponse.model_validate(restored)
-
-
-@router.post("/{opportunity_id}/create_finance_io")
-def create_finance_io(
-    opportunity_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(require_user),
-    require_module = Depends(require_module_access("sales_opportunities")),
-    require_permission = Depends(require_action_access("sales_opportunities", "create")),
-):
-    return opportunities_api.create_finance_io_for_opportunity(
-        db,
-        opportunity_id=opportunity_id,
-        current_user=current_user,
-    )
 
 
 @router.post("/import", response_model=ImportExecutionResponse, status_code=status.HTTP_201_CREATED)

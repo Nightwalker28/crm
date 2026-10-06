@@ -6,8 +6,6 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
-from app.modules.contracts.models import Contract
-from app.modules.contracts.services.contracts_services import create_contract
 from app.modules.documents import models as document_models  # noqa: F401
 from app.modules.platform import models as platform_models  # noqa: F401
 from app.modules.platform.models import CrmNumberCounter
@@ -15,8 +13,6 @@ from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.sales.models import SalesOrder, SalesQuote
 from app.modules.sales.services.orders_services import create_sales_order
 from app.modules.sales.services.quotes_services import create_sales_quote
-from app.modules.support.models import SupportCase
-from app.modules.support.services.cases_services import create_support_case
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
 
@@ -72,20 +68,14 @@ class CrmNumberingTests(unittest.TestCase):
             },
             self.user,
         )
-        case = create_support_case(self.db, {"subject": "Need help"}, self.user)
-        contract = create_contract(self.db, {"title": "Acme MSA"}, self.user)
 
         self.assertTrue(quote.quote_number.startswith("Q-"))
         self.assertTrue(order.order_number.startswith("SO-"))
-        self.assertTrue(case.case_number.startswith("CASE-"))
-        self.assertTrue(contract.contract_number.startswith("CTR-"))
         self.assertEqual(self.db.query(SalesQuote).count(), 1)
         self.assertEqual(self.db.query(SalesOrder).count(), 1)
-        self.assertEqual(self.db.query(SupportCase).count(), 1)
-        self.assertEqual(self.db.query(Contract).count(), 1)
         self.assertEqual(
             {counter.scope for counter in self.db.query(CrmNumberCounter).all()},
-            {"sales_quotes", "sales_orders", "support_cases", "contracts"},
+            {"sales_quotes", "sales_orders"},
         )
 
 

@@ -14,7 +14,6 @@ import { apiFetch } from "@/lib/api";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { ADMIN_QUICK_ACTIONS, getDependentModuleDefinitions, getModuleDefinition, getModuleRegistryLabel, getModuleRoute, isModuleVisibleInNavigation, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
 import { describeRecentDashboardPage, getRecentPagesSnapshot, parseRecentPages, recordRecentPage, subscribeToRecentPages } from "@/lib/recent-pages";
-import { canonicalizeDashboardHref } from "@/lib/routes";
 
 const SEARCH_LABEL = "Search records and modules";
 
@@ -233,17 +232,16 @@ export default function GlobalCommandPalette({ responsive = false }: { responsiv
     for (const item of searchQuery.data?.results ?? []) {
       const label = getModuleRegistryLabel(item.module_key) ?? item.module_label;
       const current = groups.get(label) ?? [];
-      current.push({ ...item, href: canonicalizeDashboardHref(item.href) });
+      current.push(item);
       groups.set(label, current);
     }
     return Array.from(groups.entries());
   }, [searchQuery.data?.results]);
 
   function handleNavigate(href: string) {
-    const canonicalHref = canonicalizeDashboardHref(href);
     setQuery("");
     setOpen(false);
-    router.push(canonicalHref);
+    router.push(href);
   }
 
   const canSearch = deferredQuery.length >= 2;

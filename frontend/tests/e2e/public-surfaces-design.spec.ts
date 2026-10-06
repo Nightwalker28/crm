@@ -22,11 +22,9 @@ const UNAUTHENTICATED = [
 const CLIENT_ROUTES = [
   "/client",
   "/client/documents",
-  "/client/messages",
   "/client/orders",
   "/client/quotes",
   "/client/catalog",
-  "/client/support",
   "/client/bookings",
 ];
 

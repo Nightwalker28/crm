@@ -57,7 +57,7 @@ def scan_overdue_documents(db: Session, *, today: date | None = None) -> dict:
                     "entity_type": "finance_pos_invoice", "entity_id": str(invoice.id), "invoice_number": invoice.invoice_number,
                     "customer_name": invoice.customer_name, "due_date": invoice.due_date.isoformat(),
                     "balance_due": str(invoice.balance_due), "currency": invoice.currency,
-                    "record_label": invoice.invoice_number, "record_url": f"/dashboard/finance/pos/{invoice.id}"}) is not None:
+                    "record_label": invoice.invoice_number, "record_url": f"/dashboard/finance/invoices/{invoice.id}"}) is not None:
             created += 1
     for bill in bills:
         if _already(seen_bills, tenant_id=bill.tenant_id, entity_id=bill.id, due=bill.due_date):

@@ -683,7 +683,6 @@ class OpportunityContextualSendTests(ContextualMailSendTests):
                     opportunity_id=DEAL_ID,
                     tenant_id=TENANT,
                     opportunity_name="Acme Pilot",
-                    client="Ada",
                     contact_id=ADA_ID,
                     organization_id=DEAL_ORG_ID,
                 ),

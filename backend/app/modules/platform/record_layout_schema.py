@@ -73,6 +73,7 @@ class ResolvedRecordLayoutField(StrictLayoutModel):
     readonly: bool
     placeholder: str | None = None
     help_text: str | None = None
+    picklist_key: str | None = None
 
 
 class ResolvedRecordLayoutSection(StrictLayoutModel):
@@ -115,6 +116,7 @@ class RecordLayoutCatalogField(StrictLayoutModel):
     enabled: bool
     locked: bool
     locked_reason: str | None = None
+    picklist_key: str | None = None
 
 
 class RecordLayoutValidationReport(StrictLayoutModel):

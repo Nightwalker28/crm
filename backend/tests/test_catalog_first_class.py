@@ -234,6 +234,13 @@ class CatalogFirstClassTests(unittest.TestCase):
     # Product and service fields ------------------------------------------------------
 
     def test_products_and_services_carry_category_cost_unit_and_codes(self):
+        # Units are the tenant's `unit` picklist (13b §3.2); this workspace sells pieces and hours.
+        from app.modules.platform.services import picklists
+
+        units = picklists.ensure_picklist(self.db, 10, "unit")
+        for label in ("Piece", "Hour"):
+            picklists.add_value(self.db, 10, units, label=label, actor_user_id=None, log=False)
+        self.db.commit()
         cameras = category_services.create_category(self.db, tenant_id=10, actor_user_id=1, payload={"name": "Cameras"})
         product = product_services.create_product(
             self.db,

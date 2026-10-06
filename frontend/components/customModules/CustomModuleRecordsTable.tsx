@@ -6,7 +6,10 @@ import { Boxes, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
-import type { CustomModuleRecord } from "@/hooks/useModuleBuilder";
+import { FieldValue } from "@/components/fields/FieldValue";
+import { customModuleFieldShape } from "@/components/customModules/CustomModuleFieldInput";
+import { EmptyValue } from "@/components/ui/EmptyValue";
+import { useCustomModuleSchema, type CustomModuleField, type CustomModuleRecord } from "@/hooks/useModuleBuilder";
 import { formatDateTime } from "@/lib/datetime";
 
 export type CustomModuleTableColumn = { key: string; label: string };
@@ -32,18 +35,15 @@ type Props = {
 
 const SORTABLE_RECORD_COLUMNS = new Set(["title", "created_at", "updated_at"]);
 
-function renderValue(value: unknown) {
-  if (Array.isArray(value)) return value.length ? value.join(", ") : "—";
-  if (typeof value === "boolean") return value ? "Yes" : "No";
-  return value == null || value === "" ? "—" : String(value);
-}
-
-function renderRecordColumn(record: CustomModuleRecord, column: string) {
+function renderRecordColumn(record: CustomModuleRecord, column: string, fields: Map<string, CustomModuleField>) {
   if (column === "title") return record.title;
   if (column === "created_at" || column === "updated_at") {
-    return record[column] ? formatDateTime(String(record[column]), { hour: "numeric", minute: "2-digit" }) : "—";
+    return record[column] ? formatDateTime(String(record[column]), { hour: "numeric", minute: "2-digit" }) : <EmptyValue />;
   }
-  return renderValue(record.values[column]);
+  const field = fields.get(column);
+  if (!field) return <EmptyValue />;
+  // Each value drawn by its type: picklists by label, references by name (13b §3.4).
+  return <FieldValue field={customModuleFieldShape(field)} value={record.values[column]} context="cell" />;
 }
 
 export default function CustomModuleRecordsTable({
@@ -64,6 +64,11 @@ export default function CustomModuleRecordsTable({
   isDeleting = false,
   onDelete,
 }: Props) {
+  const schema = useCustomModuleSchema(moduleKey);
+  const fieldsByKey = useMemo(
+    () => new Map((schema.data?.fields ?? []).map((field) => [field.key, field])),
+    [schema.data?.fields],
+  );
   const tableColumns = useMemo<RecordTableColumn<CustomModuleRecord>[]>(
     () =>
       columns.map((column) => ({
@@ -77,11 +82,11 @@ export default function CustomModuleRecordsTable({
               column.key === "title" ? "font-medium text-copy-primary" : "text-copy-secondary"
             }`}
           >
-            {renderRecordColumn(record, column.key)}
+            {renderRecordColumn(record, column.key, fieldsByKey)}
           </span>
         ),
       })),
-    [columns],
+    [columns, fieldsByKey],
   );
 
   return (

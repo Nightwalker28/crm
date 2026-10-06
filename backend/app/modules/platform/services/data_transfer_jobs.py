@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session
 
 from app.core.access_control import (
     PermissionPolicy,
-    get_finance_user_scope,
     require_department_module_access,
     require_role_module_action_access,
 )
@@ -20,6 +19,7 @@ from app.core.database import SessionLocal
 from app.core.job_errors import safe_data_transfer_error, technical_job_error
 from app.core.json_serialization import to_json_safe
 from app.core.pagination import Pagination
+from app.modules.platform.services.picklists import PicklistResolver
 from app.modules.platform.services.document_exports import DOCUMENT_EXPORT_MODULES, document_export_rows
 from app.modules.platform.models import DataTransferJob
 from app.modules.user_management.models import User
@@ -36,7 +36,6 @@ MODULE_DISPLAY_NAMES = {
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
     "sales_quotes": "Quotes",
-    "finance_io": "Insertion Orders",
     "reports": "Reports",
     "inventory_stock": "Inventory stock",
     "inventory_valuation": "Stock valuation",
@@ -61,7 +60,6 @@ MODULE_LINKS = {
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
     "sales_quotes": "/dashboard/sales/quotes",
-    "finance_io": "/dashboard/finance/insertion-orders",
     "reports": "/dashboard/reports",
     "inventory_stock": "/dashboard/inventory/stock",
     "inventory_valuation": "/dashboard/inventory/valuation",
@@ -70,7 +68,7 @@ MODULE_LINKS = {
     "purchase_orders": "/dashboard/purchasing/orders",
     "purchase_receipts": "/dashboard/purchasing/receipts",
     "purchase_bills": "/dashboard/purchasing/bills",
-    "finance_pos": "/dashboard/finance/pos",
+    "finance_pos": "/dashboard/finance/invoices",
     "finance_credit_notes": "/dashboard/finance/credit-notes",
     "finance_payments": "/dashboard/finance/payments",
 }
@@ -543,6 +541,7 @@ def process_import_job(*, job_id: int) -> None:
                     default_assigned_to=actor_user_id,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_contacts":
                 from app.modules.sales.services.contacts_import_service import import_contacts_from_csv
@@ -556,6 +555,7 @@ def process_import_job(*, job_id: int) -> None:
                     default_assigned_to=actor_user_id or 0,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_organizations":
                 from app.modules.sales.services.organizations_services import import_organizations_from_csv
@@ -568,6 +568,7 @@ def process_import_job(*, job_id: int) -> None:
                     current_user=current_user,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
+                    add_unknown_picklist_values=bool(payload.get("add_unknown_picklist_values")),
                 )
             elif module_key == "sales_opportunities":
                 from app.modules.sales.services.opportunities_services import import_opportunities_from_csv
@@ -593,21 +594,6 @@ def process_import_job(*, job_id: int) -> None:
                     default_assigned_to=actor_user_id,
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-                )
-            elif module_key == "finance_io":
-                from app.modules.finance.services import io_search_api
-                from app.modules.user_management.services.admin_modules import get_module_duplicate_mode
-
-                update_job_progress(db, job, progress_percent=65, progress_message="Importing insertion orders.")
-                summary = io_search_api.import_insertion_orders_csv_bytes(
-                    db=db,
-                    current_user=current_user,
-                    file_bytes=file_bytes,
-                    duplicate_mode=duplicate_mode,
-                    default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
-                    replace_duplicates=False,
-                    skip_duplicates=False,
-                    create_new_records=False,
                 )
             elif module_key == "inventory_stock":
                 from app.modules.inventory.services.opening_import import import_opening_stock
@@ -648,7 +634,6 @@ def process_export_job(*, job_id: int) -> None:
         current_page_ids = list(payload.get("current_page_ids") or [])
         export_ids = selected_ids if mode == "selected" else current_page_ids if mode == "current" else None
         search = (payload.get("search") or "").strip() or None
-        status_filter = (payload.get("status") or "").strip() or None
         all_filter_conditions = payload.get("filters_all") or None
         any_filter_conditions = payload.get("filters_any") or None
         actor_user_id = job.actor_user_id
@@ -705,7 +690,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing leads export.")
-            content = export_leads_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_leads_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_leads.csv"
             media_type = "text/csv"
         elif module_key == "sales_contacts":
@@ -730,7 +715,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing contacts export.")
-            content = export_contacts_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_contacts_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_contacts.csv"
             media_type = "text/csv"
         elif module_key == "sales_organizations":
@@ -779,7 +764,7 @@ def process_export_job(*, job_id: int) -> None:
                 )
             exported_rows = len(records)
             update_job_progress(db, job, progress_percent=70, progress_message="Serializing opportunities export.")
-            content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"))
+            content = export_opportunities_to_csv(records, field_keys=payload.get("field_keys"), labels=PicklistResolver(db, job.tenant_id))
             file_name = "sales_opportunities.csv"
             media_type = "text/csv"
         elif module_key == "sales_quotes":
@@ -878,52 +863,6 @@ def process_export_job(*, job_id: int) -> None:
             content = dict_rows_to_csv_bytes(headers=headers, rows=({key: row.get(key) for key in headers} for row in rows))
             exported_rows = len(rows)
             file_name = f"{module_key}.csv"
-            media_type = "text/csv"
-        elif module_key == "finance_io":
-            from app.modules.finance.models import FinanceIO
-            from app.modules.finance.services.io_search_api import (
-                INSERTION_ORDER_EXPORT_HEADERS,
-                export_generic_insertion_orders,
-                serialize_insertion_order_export_row,
-            )
-            from app.modules.finance.services.io_search_services import get_finance_module_id
-
-            if export_ids:
-                module_id = get_finance_module_id(db)
-                user_scope = get_finance_user_scope(db, current_user)
-                query = db.query(FinanceIO).filter(
-                    FinanceIO.tenant_id == job.tenant_id,
-                    FinanceIO.module_id == module_id,
-                    FinanceIO.deleted_at.is_(None),
-                )
-                if user_scope.user_id_filter is not None:
-                    query = query.filter(FinanceIO.user_id == user_scope.user_id_filter)
-                query = query.filter(FinanceIO.id.in_(export_ids))
-                records = query.order_by(FinanceIO.updated_at.desc()).all()
-                exported_rows = len(records)
-                from app.core.module_export import dict_rows_to_csv_bytes
-                field_keys = [
-                    field for field in (payload.get("field_keys") or INSERTION_ORDER_EXPORT_HEADERS)
-                    if field in INSERTION_ORDER_EXPORT_HEADERS
-                ] or ["id", "io_number"]
-
-                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
-                content = dict_rows_to_csv_bytes(
-                    headers=field_keys,
-                    rows=(serialize_insertion_order_export_row(record) for record in records),
-                )
-            else:
-                update_job_progress(db, job, progress_percent=70, progress_message="Serializing insertion orders export.")
-                content, exported_rows = export_generic_insertion_orders(
-                    db,
-                    current_user,
-                    search=search,
-                    status_filter=status_filter,
-                    all_filter_conditions=all_filter_conditions,
-                    any_filter_conditions=any_filter_conditions,
-                    field_keys=payload.get("field_keys"),
-                )
-            file_name = "insertion_orders.csv"
             media_type = "text/csv"
         else:
             raise ValueError(f"Unsupported export module '{module_key}'.")

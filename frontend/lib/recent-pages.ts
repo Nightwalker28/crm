@@ -1,7 +1,7 @@
 import type { AccessibleModule } from "@/hooks/useAccessibleModules";
 import { getModuleDisplayName } from "@/lib/module-display";
 import { getModuleRoute, SETTINGS_NAV_ITEMS } from "@/lib/module-registry";
-import { canonicalizeDashboardHref, getFriendlyRouteLabel } from "@/lib/routes";
+import { getFriendlyRouteLabel } from "@/lib/routes";
 
 const RECENT_PAGES_KEY_PREFIX = "lynk:command-palette:recent-pages";
 const RECENT_PAGES_CHANGED_EVENT = "lynk:recent-pages-changed";
@@ -66,8 +66,6 @@ export function recordRecentPage(userId: number, page: RecentPage) {
 function singularize(label: string) {
   const irregular: Record<string, string> = {
     Accounts: "account",
-    "Support Cases": "support case",
-    "Insertion orders": "insertion order",
   };
   if (irregular[label]) return irregular[label];
   return label.endsWith("s") ? label.slice(0, -1).toLowerCase() : label.toLowerCase();
@@ -78,7 +76,7 @@ export function describeRecentDashboardPage(
   modules: AccessibleModule[],
   isAdmin: boolean,
 ): RecentPage | null {
-  const href = canonicalizeDashboardHref(pathname);
+  const href = pathname;
   if (href === "/dashboard" || !href.startsWith("/dashboard/")) return null;
 
   const setting = SETTINGS_NAV_ITEMS.find((item) => item.href === href);

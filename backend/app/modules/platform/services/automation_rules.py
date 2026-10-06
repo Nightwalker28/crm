@@ -41,7 +41,6 @@ from app.modules.platform.services.automation_registry import (
 from app.modules.sales.models import SalesLead, SalesQuote
 from app.modules.sales.services.leads_services import convert_sales_lead, recalculate_lead_score
 from app.modules.sales.services.orders_services import convert_quote_to_order
-from app.modules.support.models import SupportCase, SupportCaseEvent
 from app.modules.tasks.models import Task, TaskAssignee
 from app.modules.user_management.models import Module, Team, User
 
@@ -870,54 +869,6 @@ def _convert_quote_to_order_action(db: Session, *, tenant_id: int, actor_user_id
     return {"type": "convert_quote_to_order", "quote_id": quote_id, "order_id": order.id, "order_number": order.order_number}
 
 
-def _assign_support_case_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
-    case_id = _resolve_record_id(action, data, "case_id")
-    if case_id is None:
-        raise RuntimeError("Support case id is required")
-    assignee_user_id = _resolve_action_user_id(action, data, "assignee_user_id")
-    assignee = _ensure_user(db, tenant_id=tenant_id, user_id=assignee_user_id)
-    if not assignee:
-        raise RuntimeError("Support case assignee not found")
-    case = db.query(SupportCase).filter(SupportCase.tenant_id == tenant_id, SupportCase.id == case_id).first()
-    if not case:
-        raise RuntimeError("Support case not found")
-    previous_assignee_id = case.assigned_to_id
-    case.assigned_to_id = assignee.id
-    db.add(case)
-    db.add(
-        SupportCaseEvent(
-            tenant_id=tenant_id,
-            case_id=case.id,
-            event_type="automation.assigned",
-            payload_json={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
-            created_by_id=actor_user_id,
-        )
-    )
-    notification = UserNotification(
-        tenant_id=tenant_id,
-        user_id=assignee.id,
-        category="automation",
-        title=str(_template(action.get("notification_title") or "Support case assigned", data)).strip()[:255],
-        message=str(_template(action.get("notification_message") or "{{payload.subject}} needs attention.", data)).strip(),
-        link_url=f"/dashboard/support/cases/{case.id}",
-        payload={"automation": True, "case_id": case.id},
-    )
-    db.add(notification)
-    _add_automation_activity(
-        db,
-        tenant_id=tenant_id,
-        actor_user_id=actor_user_id,
-        module_key="support_cases",
-        entity_type="support_case",
-        entity_id=case.id,
-        action="automation.assign_case",
-        description="Assigned support case through automation",
-        after_state={"from_user_id": previous_assignee_id, "to_user_id": assignee.id},
-    )
-    db.flush()
-    return {"type": "assign_support_case", "case_id": case.id, "assignee_user_id": assignee.id, "notification_id": notification.id}
-
-
 def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, action: dict[str, Any], data: dict[str, Any]) -> dict[str, Any]:
     action_type = action.get("type")
     if action_type == "create_task":
@@ -932,8 +883,6 @@ def _execute_action(db: Session, *, tenant_id: int, actor_user_id: int | None, a
         return _convert_lead_to_opportunity_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
     if action_type == "convert_quote_to_order":
         return _convert_quote_to_order_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
-    if action_type == "assign_support_case":
-        return _assign_support_case_action(db, tenant_id=tenant_id, actor_user_id=actor_user_id, action=action, data=data)
     raise RuntimeError(f"Unsupported action {action_type}")
 
 
@@ -1109,8 +1058,18 @@ def serialize_condition_fields_for_tenant(db: Session, *, tenant_id: int, fields
     from app.modules.platform.services.automation_registry import serialize_condition_field
     from app.modules.sales.services.pipelines_services import get_default_opportunity_pipeline
 
+    from app.modules.platform.services.picklists import PicklistResolver
+
     serialized = [serialize_condition_field(field) for field in fields]
+    picklists = PicklistResolver(db, tenant_id)
     for item in serialized:
+        if item.get("picklist_key"):
+            # Every value, deactivated ones included: a rule may still need to match a record
+            # that holds one.
+            item["options"] = [
+                {"value": value.key, "label": value.label if value.is_active else f"{value.label} (inactive)"}
+                for value in picklists.picklist(item["picklist_key"]).values
+            ]
         if item["module_key"] == "sales_opportunities" and item["payload_key"] == "sales_stage":
             pipeline = get_default_opportunity_pipeline(db, tenant_id)
             stages = sorted(pipeline.stages, key=lambda stage: (stage.position, stage.id)) if pipeline else []

@@ -7,7 +7,7 @@ export default function PaymentsError({ reset }: RouteErrorBoundaryProps) {
     <RouteErrorState
       title="Payments could not be loaded"
       reset={reset}
-      backHref="/dashboard/finance/pos"
+      backHref="/dashboard/finance/invoices"
       backLabel="Return to invoices"
     />
   );

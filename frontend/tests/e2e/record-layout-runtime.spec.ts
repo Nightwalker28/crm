@@ -31,7 +31,7 @@ const quickCreateLayout = {
       region: "main",
       collapsed_by_default: true,
       fields: [
-        { field_key: "status", label: "Status", field_type: "select", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
+        { field_key: "status", label: "Status", field_type: "picklist", picklist_key: "lead_status", field_source: "system", position: 0, width: "half", visible: true, required: false, readonly: false },
         { field_key: "assigned_to", label: "Owner", field_type: "user_reference", field_source: "system", position: 1, width: "half", visible: true, required: true, readonly: false },
         { field_key: "tags", label: "Tags", field_type: "tags", field_source: "system", position: 2, width: "full", visible: true, required: true, readonly: false },
       ],
@@ -70,6 +70,20 @@ const detailLayout = {
   ],
 };
 
+function harnessList(key: string, label: string, values: [string, string, string | null][], meaningSet: string | null = null) {
+  return {
+    id: key.length, key, label, scope: "global", meaning_set: meaningSet, meanings: [], is_system: true, is_locked: false, used_by: [],
+    values: values.map(([valueKey, valueLabel, meaning], position) => ({
+      key: valueKey, label: valueLabel, position, is_active: true, is_default: position === 0, tone: null, meaning,
+    })),
+  };
+}
+
+const harnessPicklists = [
+  harnessList("lead_status", "Lead status", [["new", "New", "open"], ["contacted", "Contacted", "working"], ["qualified", "Qualified", "qualified"]], "lead_status"),
+  harnessList("lead_source", "Lead source", [["website", "Website", null], ["referral", "Referral", null]]),
+];
+
 test("resolved Quick Create metadata controls order, visibility, collapse, width, validation, and custom values", async ({ page }) => {
   const pageErrors: string[] = [];
   page.on("pageerror", (error) => pageErrors.push(error.message));
@@ -84,6 +98,21 @@ test("resolved Quick Create metadata controls order, visibility, collapse, width
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({ results: [{ id: 7, label: "Ada Owner", email: "ada@example.test" }] }),
+    }),
+  );
+  // The harness runs signed out, so the lead's value lists (13b §3.1) are stubbed too.
+  await page.route("**/api/v1/picklists", (route) =>
+    route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ results: harnessPicklists }) }),
+  );
+  // Custom fields render through the one field control, which reads their definitions.
+  await page.route("**/api/v1/custom-fields/sales_leads", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{
+        id: 1, module_key: "sales_leads", field_key: "renewal_tier", label: "Renewal tier", field_type: "text",
+        placeholder: null, help_text: null, is_required: false, is_active: true, sort_order: 0,
+      }]),
     }),
   );
 

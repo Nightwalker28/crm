@@ -11,6 +11,8 @@ export type CatalogKind = "products" | "services";
 export type CatalogSortState = PagedListSort;
 
 export type CatalogRecord = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number;
   name: string;
   slug?: string | null;
@@ -18,6 +20,18 @@ export type CatalogRecord = {
   sku?: string | null;
   currency: string;
   public_unit_price: number | string;
+  /** The standard selling price, apart from the website price; line editors default to it (13a C4). */
+  list_price?: number | string | null;
+  tax_category?: string | null;
+  /** Products only (13a C4). */
+  weight?: number | string | null;
+  weight_unit?: string | null;
+  length?: number | string | null;
+  width?: number | string | null;
+  height?: number | string | null;
+  dimension_unit?: string | null;
+  /** Pictures after the main image (13a C4). */
+  images?: CatalogImage[];
   stock_status?: "untracked" | "in_stock" | "out_of_stock" | "preorder";
   stock_quantity?: number | string | null;
   reorder_point?: number | string;
@@ -43,13 +57,31 @@ export type CatalogRecord = {
   updated_at: string;
 };
 
+export type CatalogImage = {
+  id: number;
+  url: string | null;
+  content_type?: string | null;
+  original_filename?: string | null;
+  position: number;
+};
+
 export type CatalogRecordPayload = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   name: string;
   slug?: string | null;
   description?: string | null;
   sku?: string | null;
   currency: string;
   public_unit_price: number;
+  list_price?: number | null;
+  tax_category?: string | null;
+  weight?: number | null;
+  weight_unit?: string | null;
+  length?: number | null;
+  width?: number | null;
+  height?: number | null;
+  dimension_unit?: string | null;
   stock_status?: string;
   stock_quantity?: number | null;
   reorder_point?: number;
@@ -156,6 +188,18 @@ async function uploadCatalogRecordMedia(kind: CatalogKind, id: number, file: Fil
     body: form,
   });
   return parseJsonResponse<CatalogRecord>(res, `Failed to upload catalog media (${res.status})`);
+}
+
+async function addCatalogGalleryImage(kind: CatalogKind, id: number, file: File): Promise<CatalogImage[]> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await apiFetch(pathFor(kind, `/${id}/images`), { method: "POST", body: form });
+  return (await parseJsonResponse<{ results: CatalogImage[] }>(res, `Failed to add the picture (${res.status})`)).results;
+}
+
+async function removeCatalogGalleryImage(kind: CatalogKind, id: number, imageId: number): Promise<CatalogImage[]> {
+  const res = await apiFetch(pathFor(kind, `/${id}/images/${imageId}`), { method: "DELETE" });
+  return (await parseJsonResponse<{ results: CatalogImage[] }>(res, `Failed to remove the picture (${res.status})`)).results;
 }
 
 async function deleteCatalogRecord(kind: CatalogKind, id: number): Promise<CatalogRecord> {
@@ -303,6 +347,19 @@ export function useCatalogRecordActions(kind: CatalogKind) {
      */
     patchRecord: (id: number, payload: Partial<CatalogRecordPayload>) => updateMutation.mutateAsync({ id, payload }),
     uploadMedia: (id: number, file: File) => uploadMutation.mutateAsync({ id, file }),
+    /** Gallery writes land at once, apart from the form's Save: they are files, not fields. */
+    addGalleryImage: async (id: number, file: File) => {
+      const images = await addCatalogGalleryImage(kind, id, file);
+      // Stale, not refetched: the open form remounts on a new record and would drop its edits.
+      await queryClient.invalidateQueries({ queryKey: [...queryKey, id], refetchType: "none" });
+      return images;
+    },
+    removeGalleryImage: async (id: number, imageId: number) => {
+      const images = await removeCatalogGalleryImage(kind, id, imageId);
+      // Stale, not refetched: the open form remounts on a new record and would drop its edits.
+      await queryClient.invalidateQueries({ queryKey: [...queryKey, id], refetchType: "none" });
+      return images;
+    },
     deleteRecord: (id: number) => deleteMutation.mutateAsync(id),
     isSaving: createMutation.isPending || updateMutation.isPending || uploadMutation.isPending,
     isDeleting: deleteMutation.isPending,

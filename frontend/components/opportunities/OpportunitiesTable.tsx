@@ -7,11 +7,13 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { Button } from "@/components/ui/button";
 import { CustomFieldValue } from "@/components/ui/CustomFieldValue";
 import { EmptyValue } from "@/components/ui/EmptyValue";
+import { PicklistText } from "@/components/picklists/PicklistText";
 import { RecordTable, type RecordTableColumn, type RecordTableSort } from "@/components/ui/RecordTable";
 import type { Opportunity } from "@/hooks/sales/useOpportunities";
 import type { TableColumnOption } from "@/types/table";
 import { getReadableColumnLabel, isCustomFieldColumnKey } from "@/lib/moduleViewConfigs";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatMoney } from "@/lib/currency";
 import { isClosedSemantic, resolveStage, stageStatus } from "@/components/opportunities/opportunityStages";
 
 type Props = {
@@ -35,25 +37,23 @@ type Props = {
 
 const HEADERS: Record<string, string> = {
   opportunity_name: "Deal",
-  client: "Contact",
   contact_name: "Contact",
   organization_name: "Account",
   assigned_to_name: "Owner",
   sales_stage: "Stage",
   expected_close_date: "Expected close",
   probability_percent: "Probability",
-  total_cost_of_project: "Project cost",
+  amount: "Amount",
   currency_type: "Currency",
   created_time: "Created",
 };
 
 const SORTABLE_COLUMNS = new Set([
   "opportunity_name",
-  "client",
   "sales_stage",
   "expected_close_date",
   "probability_percent",
-  "total_cost_of_project",
+  "amount",
   "currency_type",
   "created_time",
 ]);
@@ -75,7 +75,7 @@ function isOverdue(dateStr?: string | null): boolean {
 }
 
 function renderCell(opportunity: Opportunity, column: string) {
-  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={opportunity.custom_fields} />;
+  if (isCustomFieldColumnKey(column)) return <CustomFieldValue column={column} values={opportunity.custom_fields} moduleKey="sales_opportunities" />;
 
   switch (column) {
     case "opportunity_name":
@@ -84,10 +84,9 @@ function renderCell(opportunity: Opportunity, column: string) {
           {opportunity.opportunity_name || <span className="text-copy-disabled">—</span>}
         </span>
       );
-    case "client":
     case "contact_name":
-      return opportunity.contact_name || opportunity.client ? (
-        <span className="text-sm font-medium text-action-primary">{opportunity.contact_name || opportunity.client}</span>
+      return opportunity.contact_name ? (
+        <span className="text-sm font-medium text-action-primary">{opportunity.contact_name}</span>
       ) : (
         <span className="text-sm text-copy-disabled">—</span>
       );
@@ -112,13 +111,21 @@ function renderCell(opportunity: Opportunity, column: string) {
         </span>
       );
     }
-    case "total_cost_of_project":
-      return opportunity.total_cost_of_project ? (
+    case "amount":
+      return opportunity.amount !== null && opportunity.amount !== undefined && opportunity.amount !== "" ? (
         // A pipeline value is a number, not good news (5.7 ruling 2): ink, not the success hue.
-        <span className="text-sm font-semibold tabular-nums text-copy-primary">{opportunity.total_cost_of_project}</span>
+        <span className="text-sm font-semibold tabular-nums text-copy-primary">{formatMoney(opportunity.amount, opportunity.currency_type)}</span>
       ) : (
         <EmptyValue />
       );
+    case "deal_type":
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="deal_type" value={opportunity.deal_type} /></span>;
+    case "source":
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="lead_source" value={opportunity.source} /></span>;
+    case "lost_reason":
+      return <span className="text-sm text-copy-secondary"><PicklistText listKey="lost_reason" value={opportunity.lost_reason} /></span>;
+    case "next_step":
+      return opportunity.next_step ? <span className="block max-w-[240px] truncate text-sm text-copy-secondary">{opportunity.next_step}</span> : <EmptyValue />;
     case "probability_percent":
       return opportunity.probability_percent !== null &&
         opportunity.probability_percent !== undefined &&

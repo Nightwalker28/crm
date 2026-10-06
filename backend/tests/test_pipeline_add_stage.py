@@ -40,8 +40,8 @@ class ConstraintTests(StageRefFixture):
     def test_a_downgrade_refuses_to_strand_tenant_stages(self):
         MIGRATION.assert_downgrade_is_safe(self.db.connection())  # only legacy keys: fine
         self.db.execute(text(
-            "INSERT INTO sales_opportunities (opportunity_id, tenant_id, opportunity_name, client, sales_stage, created_time, updated_at) "
-            "VALUES (901, :tenant, 'Custom', 'x', 'discovery', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
+            "INSERT INTO sales_opportunities (opportunity_id, tenant_id, opportunity_name, organization_id, sales_stage, created_time, updated_at) "
+            "VALUES (901, :tenant, 'Custom', 1, 'discovery', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)"
         ), {"tenant": TENANT})
         with self.assertRaisesRegex(RuntimeError, "discovery"):
             MIGRATION.assert_downgrade_is_safe(self.db.connection())
@@ -97,7 +97,7 @@ class AddedStageBehaviourTests(StageRefFixture):
     def test_a_deal_can_move_into_an_added_stage_and_reads_it_by_meaning(self):
         pipelines_services.create_pipeline_stage(self.db, TENANT, {"label": "Signed by partner", "semantic_type": "won"})
         self.db.commit()
-        deal = self.create(sales_stage="proposal", total_cost_of_project="400")
+        deal = self.create(sales_stage="proposal", amount="400")
 
         update_opportunity_stage(self.db, deal, sales_stage="signed_by_partner")
         self.assertEqual(deal.pipeline_stage.label, "Signed by partner")

@@ -61,7 +61,6 @@ from app.modules.sales.opportunity_contact_roles import (
 from app.modules.sales.repositories import opportunities_repository, opportunity_contacts_repository
 
 CROSS_TENANT_CONTACT_DETAIL = "Contact not found"
-LEGACY_CLIENT_FALLBACK = "Unnamed Contact"
 
 MODULE_KEY = "sales_opportunities"
 ENTITY_TYPE = "sales_opportunity"
@@ -248,18 +247,6 @@ def is_contact_on_opportunity(db: Session, *, opportunity: SalesOpportunity, con
         opportunity_id=opportunity.opportunity_id,
         contact_id=contact_id,
     )
-
-
-def legacy_client_name(contact: SalesContact | None) -> str:
-    """`sales_opportunities.client` exactly as the legacy create/update path writes it.
-
-    `opportunities_services` imports this module, so the shared helper lives here to
-    keep that dependency one-way and to guarantee a primary change made from the
-    participant side produces the same denormalized display name as one made
-    through the legacy `contact_id` field.
-    """
-
-    return contact_display_name(contact) or LEGACY_CLIENT_FALLBACK
 
 
 # ---------------------------------------------------------------------------
@@ -484,7 +471,6 @@ def _promote_to_primary(
     link.is_primary = True
     db.add(link)
     opportunity.contact_id = link.contact_id
-    opportunity.client = legacy_client_name(contact)
     db.add(opportunity)
     _flush_or_conflict(db)
 

@@ -28,6 +28,7 @@ import {
   useCustomModuleSchema,
   type CustomModuleField,
 } from "@/hooks/useModuleBuilder";
+import { isWideType } from "@/lib/fieldTypes";
 
 function isMissingRequiredValue(field: CustomModuleField, value: unknown) {
   if (!field.is_required || field.field_type === "boolean") return false;
@@ -242,17 +243,15 @@ function CustomModuleRecordCreateEditor({
                     key={field.id}
                     data-invalid={Boolean(error)}
                     className={
-                      field.field_type === "textarea" || field.field_type === "multi_select"
+                      isWideType(field.field_type)
                         ? "sm:col-span-2"
                         : undefined
                     }
                   >
-                    {field.field_type !== "boolean" ? (
-                      <FieldLabel htmlFor={`custom-field-${field.key}`}>
-                        {field.label}
-                        {field.is_required ? <RequiredMark /> : null}
-                      </FieldLabel>
-                    ) : null}
+                    <FieldLabel htmlFor={`custom-field-${field.key}`}>
+                      {field.label}
+                      {field.is_required ? <RequiredMark /> : null}
+                    </FieldLabel>
                     <CustomModuleFieldInput
                       field={field}
                       value={values[field.key]}

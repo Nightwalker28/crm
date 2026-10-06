@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 
 from app.core.access_control import PermissionPolicy
 from app.modules.platform.services.custom_fields import hydrate_custom_field_record, hydrate_custom_field_records
-from app.modules.finance.models import FinanceIO, FinancePosInvoice
+from app.modules.finance.models import FinancePosInvoice
 from app.modules.sales.models import (
     SalesContact,
     SalesOpportunity,
@@ -36,7 +36,6 @@ RELATED_SECTION_MODULES = {
     "quotes": "sales_quotes",
     "orders": "sales_orders",
     "invoices": "finance_pos",
-    "insertion_orders": "finance_io",
 }
 
 
@@ -59,32 +58,6 @@ def _to_float(value: Decimal | None) -> float | None:
     return float(value)
 
 
-def _serialize_io(record: FinanceIO) -> dict:
-    return {
-        "id": record.id,
-        "io_number": record.io_number,
-        "customer_name": record.customer_name,
-        "status": record.status,
-        "total_amount": _to_float(record.total_amount),
-        "currency": record.currency,
-        "updated_at": record.updated_at,
-    }
-
-
-def _collect_services(opportunities: list[SalesOpportunity]) -> list[str]:
-    labels: set[str] = set()
-    for opportunity in opportunities:
-        for value in (
-            opportunity.campaign_type,
-            opportunity.delivery_format,
-            opportunity.tactics,
-            opportunity.target_audience,
-        ):
-            if value and value.strip():
-                labels.add(value.strip())
-    return sorted(labels)
-
-
 def _related_quotes_query(
     db: Session,
     *,
@@ -105,43 +78,6 @@ def _related_quotes_query(
     else:
         return None
     return db.query(SalesQuote).filter(*quote_filters)
-
-
-def _related_insertion_orders_query(
-    db: Session,
-    tenant_id: int,
-    organization_name: str | None,
-    organization_id: int | None = None,
-    contact_id: int | None = None,
-):
-    normalized_name = organization_name.strip().lower() if organization_name and organization_name.strip() else None
-    match_conditions = []
-    if contact_id is not None:
-        match_conditions.append(FinanceIO.customer_contact_id == contact_id)
-    if organization_id is not None:
-        match_conditions.append(FinanceIO.customer_organization_id == organization_id)
-    if normalized_name is not None:
-        match_conditions.append(func.lower(func.coalesce(FinanceIO.customer_name, "")) == normalized_name)
-    if not match_conditions:
-        return None
-
-    filters = [FinanceIO.tenant_id == tenant_id, FinanceIO.deleted_at.is_(None)]
-    filters.append(or_(*match_conditions) if len(match_conditions) > 1 else match_conditions[0])
-    return db.query(FinanceIO).filter(*filters)
-
-
-def _get_related_insertion_orders(
-    db: Session,
-    tenant_id: int,
-    organization_name: str | None,
-    organization_id: int | None = None,
-    contact_id: int | None = None,
-    limit: int = 8,
-) -> list[FinanceIO]:
-    query = _related_insertion_orders_query(db, tenant_id, organization_name, organization_id, contact_id)
-    if query is None:
-        return []
-    return query.order_by(FinanceIO.updated_at.desc()).limit(limit).all()
 
 
 def _related_orders_query(db: Session, *, tenant_id: int, organization_id: int | None = None, contact_id: int | None = None):
@@ -220,7 +156,7 @@ def _serialize_contact_opportunities(db: Session, *, tenant_id: int, contact_id:
                 "sales_stage": opportunity.sales_stage,
                 "expected_close_date": opportunity.expected_close_date,
                 "probability_percent": opportunity.probability_percent,
-                "total_cost_of_project": opportunity.total_cost_of_project,
+                "amount": opportunity.amount,
                 "currency_type": opportunity.currency_type,
                 "contact_role_key": link.role_key if link else None,
                 "contact_role_label": opportunity_contact_role_label(link.role_key) if link else None,
@@ -232,7 +168,7 @@ def _serialize_contact_opportunities(db: Session, *, tenant_id: int, contact_id:
 
 def build_contact_summary(db: Session, contact: SalesContact, *, current_user=None) -> dict:
     tenant_id = contact.tenant_id
-    access = related_access(db, current_user, ("opportunities", "quotes", "orders", "insertion_orders"))
+    access = related_access(db, current_user, ("opportunities", "quotes", "orders"))
 
     organization = None
     if contact.organization_id:
@@ -281,19 +217,6 @@ def build_contact_summary(db: Session, contact: SalesContact, *, current_user=No
         order_count = _count(query)
         orders = query.order_by(SalesOrder.updated_at.desc(), SalesOrder.id.desc()).limit(10).all()
 
-    insertion_orders: list = []
-    insertion_order_count = 0
-    if access["insertion_orders"]:
-        query = _related_insertion_orders_query(
-            db,
-            tenant_id,
-            organization.org_name if organization else None,
-            organization.org_id if organization else None,
-            contact.contact_id,
-        )
-        insertion_order_count = _count(query)
-        insertion_orders = query.order_by(FinanceIO.updated_at.desc()).limit(8).all()
-
     return {
         "contact": contact,
         "organization": organization,
@@ -303,19 +226,16 @@ def build_contact_summary(db: Session, contact: SalesContact, *, current_user=No
         ),
         "related_quotes": quotes,
         "related_orders": orders,
-        "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
-        "inferred_services": _collect_services(opportunities),
         "opportunity_count": opportunity_count,
         "quote_count": quote_count,
         "order_count": order_count,
-        "insertion_order_count": insertion_order_count,
     }
 
 
 def build_organization_summary(db: Session, organization: SalesOrganization, *, current_user=None) -> dict:
     tenant_id = organization.tenant_id
     access = related_access(
-        db, current_user, ("contacts", "opportunities", "quotes", "orders", "invoices", "insertion_orders")
+        db, current_user, ("contacts", "opportunities", "quotes", "orders", "invoices")
     )
 
     contacts: list = []
@@ -379,14 +299,6 @@ def build_organization_summary(db: Session, organization: SalesOrganization, *, 
         invoice_count = _count(query)
         invoices = query.order_by(FinancePosInvoice.updated_at.desc(), FinancePosInvoice.id.desc()).limit(10).all()
 
-    insertion_orders: list = []
-    insertion_order_count = 0
-    if access["insertion_orders"]:
-        query = _related_insertion_orders_query(db, tenant_id, organization.org_name, organization.org_id)
-        if query is not None:
-            insertion_order_count = _count(query)
-            insertion_orders = query.order_by(FinanceIO.updated_at.desc()).limit(8).all()
-
     receivables: list[dict] = []
     if access["invoices"]:
         rows = _related_invoices_query(db, tenant_id=tenant_id, organization_id=organization.org_id).filter(
@@ -411,14 +323,11 @@ def build_organization_summary(db: Session, organization: SalesOrganization, *, 
         "related_quotes": quotes,
         "related_orders": orders,
         "related_invoices": invoices,
-        "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
-        "inferred_services": _collect_services(opportunities),
         "contact_count": contact_count,
         "opportunity_count": opportunity_count,
         "quote_count": quote_count,
         "order_count": order_count,
         "invoice_count": invoice_count,
-        "insertion_order_count": insertion_order_count,
         "receivables": receivables,
         "payables": payables,
     }
@@ -464,21 +373,7 @@ def build_opportunity_summary(db: Session, opportunity: SalesOpportunity, *, cur
                 record_id=organization.org_id,
             )
 
-    access = related_access(db, current_user, ("contacts", "quotes", "insertion_orders"))
-
-    insertion_orders: list = []
-    insertion_order_count = 0
-    if access["insertion_orders"]:
-        query = _related_insertion_orders_query(
-            db,
-            opportunity.tenant_id,
-            organization.org_name if organization else None,
-            organization.org_id if organization else None,
-            opportunity.contact_id,
-        )
-        if query is not None:
-            insertion_order_count = _count(query)
-            insertion_orders = query.order_by(FinanceIO.updated_at.desc()).limit(8).all()
+    access = related_access(db, current_user, ("contacts", "quotes"))
 
     quotes: list = []
     quote_count = 0
@@ -515,10 +410,7 @@ def build_opportunity_summary(db: Session, opportunity: SalesOpportunity, *, cur
         "can_view_contacts": can_view_contacts,
         "related_access": access,
         "related_quotes": quotes,
-        "related_insertion_orders": [_serialize_io(record) for record in insertion_orders],
-        "inferred_services": _collect_services([opportunity]),
         "quote_count": quote_count,
-        "insertion_order_count": insertion_order_count,
     }
 
 

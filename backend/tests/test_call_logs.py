@@ -140,7 +140,6 @@ class _Fixture(unittest.TestCase):
                     opportunity_id=DEAL,
                     tenant_id=TENANT,
                     opportunity_name="Acme Pilot",
-                    client="Ada",
                     contact_id=ADA,
                     organization_id=20,
                 ),
@@ -453,7 +452,7 @@ class CallActivityTests(_Fixture):
     def test_call_is_offered_only_where_calls_are_logged(self):
         for module_key in ("sales_leads", "sales_contacts", "sales_opportunities", "sales_quotes"):
             self.assertIn("call", [a.type for a in record_activity.ADAPTERS if a.applies(module_key)])
-        for module_key in ("sales_organizations", "sales_orders", "support_cases"):
+        for module_key in ("sales_organizations", "sales_orders"):
             self.assertNotIn("call", [a.type for a in record_activity.ADAPTERS if a.applies(module_key)])
 
     def test_call_follow_ups_logged_before_this_phase_stay_follow_ups(self):

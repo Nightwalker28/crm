@@ -33,7 +33,7 @@ TS_TSX=(--include=*.tsx --include=*.ts)
 BRAND_MARK_FILES='frontend/app/auth/login/page.tsx|frontend/components/contacts/contactList.tsx'
 # §2.5 exception 2 — the invoice print document carries its own operator-picked theme
 # and must not follow the app theme.
-INVOICE_PRINT='frontend/app/dashboard/finance/pos/\[invoiceId\]/print/'
+INVOICE_PRINT='frontend/app/dashboard/finance/invoices/\[invoiceId\]/print/'
 
 MAX_SHOWN=25
 failures=0
@@ -103,7 +103,6 @@ check "No hand-tuned line heights" "§3.3" \
 check "No arbitrary font sizes" "§3.3" \
   "text-2xs (11px) is the floor; pick a role from the ladder, never text-[Npx]" \
   "$(grep -rnE 'text-\[[0-9.]+(px|rem|em)\]' "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
-     | grep -vE '^frontend/(app/client/support|app/dashboard/(contracts|support)|components/(contracts|support))/' \
      | unexempt)"
 
 # --- §4 Space and size -----------------------------------------------------------
@@ -115,12 +114,10 @@ check "Spacing stays on the 4px grid" "§4.1" \
 
 # The ladder is a closed set, not just multiples of 4px. Rebuild 5.9 swept the 5-step out
 # (~190 classes); without this, §4.1 is enforced by rereading, which is how 112 became 190.
-# Contracts and support stay out of the programme (rebuild scoping decision 8).
 check "No 5-step spacing" "§4.1" \
   "gap-5 / p-5 are off the ladder: p-4 for a dense container, p-6 for a card holding sections, gap-4 between fields, gap-6 between sections" \
   "$(grep -rnE '(^|[^a-zA-Z0-9_-])-?([a-z0-9]+:)*-?(p|px|py|pt|pb|pl|pr|ps|pe|m|mx|my|mt|mb|ml|mr|ms|me|gap|gap-x|gap-y|space-x|space-y)-5([^0-9./a-zA-Z_-]|$)' \
        "${FE_DIRS[@]}" "${TS_TSX[@]}" 2>/dev/null \
-     | grep -vE '^frontend/(app/client/support|app/dashboard/(contracts|support)|components/(contracts|support))/' \
      | unexempt)"
 
 check "No call-site control heights" "§4.2" \

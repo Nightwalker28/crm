@@ -40,12 +40,13 @@ and automation actions. A webhook receiver sees what the table below emits, not 
 | `opportunity.participant_added` / `_removed` / `.primary_contact_changed` | `sales_opportunity` | `opportunity_contacts_services` | same names |
 | `quote.created` | `sales_quote` | `quotes_routes` create | `quote.created` |
 | `quote.status_changed` | `sales_quote` | `quotes_routes` update; client portal accept/reject | `quote.status_changed` |
-| `order.created` | `sales_order` | `orders_routes` create; `quotes_routes` convert | `order.created` |
-| `invoice.overdue` | `finance_insertion_order` | `io_search_api` on becoming overdue | `invoice.overdue` |
+| `order.created` | `sales_order` | `orders_routes` create; `quotes_routes` convert; the website order API | `order.created` |
 | `task.assigned` | `task` | `tasks_routes` on added assignees | `task.assigned` |
 | `task.due_today` | `task` | `tasks_routes` and the reminder job, once per task per day | `task.due_today` |
-| `case.created`, `case.status_changed` | `support_case` | `cases_routes` | **none**: support is out of scope and may be deleted |
-| `contract.status_changed` | `contract` | `contracts_routes` | **none**: contracts are out of scope and may be deleted |
+
+**Removed 2026-10-05 (13 §7 Step 5).** `invoice.overdue` belonged to insertion orders, which
+were retired with contracts and support cases; it left the catalogue with them. Invoices emit
+`finance.invoice_overdue` internally; whether it joins this catalogue is F10's call.
 
 **Advertised but never emitted.** `automation_registry.AUTOMATION_TRIGGERS` lists 20 more
 triggers that nothing emits: `lead.status_changed`, `lead.assigned`, `opportunity.created`,
@@ -125,7 +126,6 @@ configuration is admin-only (08 §11).
 | `quote.created` | quote | `quote_number`, `customer_name`, `status`, `total_amount` |
 | `quote.status_changed` | quote | the above + `previous_status` |
 | `order.created` | order | `order_number`, `status`, `quote_id` |
-| `invoice.overdue` | invoice | `invoice_number`, `customer_name`, `amount`, `currency`, `due_date`, `status` |
 | `task.assigned` / `task.due_today` | task | `title`, `priority`, `status`, `due_at` |
 
 `GET /api/v1/admin/webhooks/event-types` (admin only) returns this catalogue with each

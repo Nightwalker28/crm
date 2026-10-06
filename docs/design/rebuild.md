@@ -78,7 +78,11 @@ Confirmed with the owner. Items 2 and 5 override `consistency-pass.md` decision 
    (§7.3), never a second table. Anything that genuinely cannot be a variant is listed
    with its reason in 5.5 and nowhere else.
 7. **Testing is scoped, not skipped.** See the policy below.
-8. **Contracts and support cases are out of scope for the rest of the programme** — every
+8. **Superseded 2026-10-05: contracts and support cases are deleted** (final fixes §7 Step 5),
+   with the client portal's Support and Messages pages that were built on support cases. The
+   decision below is kept as the record of why they were skipped.
+
+   **Contracts and support cases are out of scope for the rest of the programme** — every
    remaining sub-phase, 5.4 through 5.10, not just the one this was decided in. Decided by
    the owner 2026-08-20 and restated 2026-08-20 after the first wording scoped it too
    narrowly: the modules may be removed entirely, so effort spent making them consistent is

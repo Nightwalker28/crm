@@ -16,6 +16,8 @@ export type ProductStock = { product_id: number; track_inventory: boolean; needs
 export type InventoryKind = "adjustments" | "transfers";
 export type InventoryDocumentLine = { id: number; product_id: number; product_name: string; sku: string | null; expected?: string; counted?: string | null; delta?: string | null; unit_cost?: string | null; needs_cost?: boolean; quantity?: string };
 export type InventoryDocument = {
+  /** The one field system (13b §3.4). */
+  custom_fields?: Record<string, unknown> | null;
   id: number; number: string; status: "draft" | "posted" | "cancelled"; notes: string | null;
   posted_at: string | null; posted_by: number | null; created_at: string; is_deleted: boolean;
   line_count: number; lines?: InventoryDocumentLine[];

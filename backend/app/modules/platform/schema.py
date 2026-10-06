@@ -77,14 +77,20 @@ class ActivityLogListResponse(BaseModel):
 
 
 class CustomFieldDefinitionResponse(BaseModel):
+    """A field of the one field system (13b §3.4)."""
+
     id: int
     module_key: str
     field_key: str
     label: str
     field_type: str
+    picklist_key: str | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool
+    is_unique: bool = False
     is_active: bool
     sort_order: int
     created_at: datetime
@@ -94,22 +100,29 @@ class CustomFieldDefinitionResponse(BaseModel):
 
 
 class CustomFieldDefinitionCreateRequest(BaseModel):
-    field_key: str
-    label: str
+    field_key: str | None = None
+    label: str = Field(min_length=1, max_length=150)
     field_type: str
+    # A picklist field uses an existing list, or gets its own list from these values.
+    picklist_key: str | None = None
+    picklist_values: list[str] | None = None
+    lookup_module_key: str | None = None
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool = False
+    is_unique: bool = False
     is_active: bool = True
     sort_order: int = 0
 
 
 class CustomFieldDefinitionUpdateRequest(BaseModel):
-    label: str | None = None
-    field_type: str | None = None
+    label: str | None = Field(default=None, min_length=1, max_length=150)
+    config: dict[str, Any] | None = None
     placeholder: str | None = None
     help_text: str | None = None
     is_required: bool | None = None
+    is_unique: bool | None = None
     is_active: bool | None = None
     sort_order: int | None = None
 
