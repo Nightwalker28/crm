@@ -27,7 +27,7 @@ import {
   saveOrganizationQuickCreateDraft,
 } from "@/components/organizations/organizationQuickCreateDraft";
 import { QuickCreateSurface, type QuickCreateOutcome } from "@/components/ui/QuickCreateSurface";
-import { useQuickCreateRecord } from "@/hooks/useQuickCreateRecord";
+import { useQuickCreateRecord, type QuickCreateContext } from "@/hooks/useQuickCreateRecord";
 import { RecordLayoutContractError } from "@/hooks/useResolvedRecordLayout";
 import { formErrorMessage } from "@/lib/apiErrors";
 
@@ -35,7 +35,15 @@ type Props = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   returnFocusRef?: RefObject<HTMLElement | null>;
-  onCreated: (organizationId: number | null) => void;
+  /** Called with the new account and its name, so a picker that opened this can select it. */
+  onCreated: (organizationId: number | null, name: string) => void;
+  /** Prefilled values: a picker's typed name, *Vendor* on for a vendor picker. */
+  context?: QuickCreateContext<OrganizationFormValue>;
+  /**
+   * Opened from inside another form (a picker's *Create "…"*): no *More details* or
+   * *Create & open*, which would leave that form's unsaved work.
+   */
+  embedded?: boolean;
 };
 
 function layoutErrorMessage(error: unknown) {
@@ -67,7 +75,7 @@ function describeSubmitError(error: unknown) {
   return { message: "The account could not be created. Check the fields and try again." };
 }
 
-export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, onCreated }: Props) {
+export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, onCreated, context, embedded = false }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
 
@@ -75,6 +83,7 @@ export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, on
     moduleKey: "sales_organizations",
     open,
     emptyForm: EMPTY_ORGANIZATION_FORM,
+    context,
     inputId: organizationQuickCreateInputId,
     validate: ({ layout, form, customFieldValues }) => {
       const errors = validateOrganizationQuickCreateLayout(layout, form, customFieldValues);
@@ -95,8 +104,8 @@ export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, on
       }),
     onCreated: async (organizationId, outcome) => {
       await queryClient.invalidateQueries({ queryKey: ["sales-organizations"] });
-      toast.success("Account created.");
-      onCreated(organizationId);
+      toast.success(quickCreate.form.is_vendor ? "Vendor created." : "Account created.");
+      onCreated(organizationId, quickCreate.form.org_name.trim());
       onOpenChange(false);
       quickCreate.reset();
       if (outcome === "create-and-open" && organizationId !== null) {
@@ -122,8 +131,14 @@ export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, on
     <QuickCreateSurface
       open={open}
       onOpenChange={onOpenChange}
-      title="Create account"
-      description="Capture the essentials now. The full form stays available under More details."
+      title={context?.defaults?.is_vendor ? "Create vendor" : "Create account"}
+      description={
+        context?.defaults?.is_vendor
+          ? "The new account is marked as a vendor, so purchase orders and bills can use it."
+          : embedded
+            ? "Capture the essentials now. Open the account later to add the rest."
+            : "Capture the essentials now. The full form stays available under More details."
+      }
       returnFocusRef={returnFocusRef}
       isDirty={quickCreate.isDirty}
       isPending={quickCreate.isSubmitting}
@@ -136,7 +151,8 @@ export function OrganizationQuickCreate({ open, onOpenChange, returnFocusRef, on
       }
       statusMessage={quickCreate.isDirty ? "Unsaved changes" : "Ready to create"}
       onSubmit={(outcome: QuickCreateOutcome) => quickCreate.handleSubmit(outcome)}
-      onMoreDetails={handleMoreDetails}
+      onMoreDetails={embedded ? undefined : handleMoreDetails}
+      showCreateAndOpen={!embedded}
       discardTitle="Discard this account?"
       discardDescription="The details you entered here have not been saved."
     >

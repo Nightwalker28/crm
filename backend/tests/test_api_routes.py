@@ -1796,6 +1796,8 @@ class APIRouteTests(unittest.TestCase):
         with patch.object(organizations_routes, "get_organization", return_value=existing) as get_mock, \
              patch.object(organizations_routes, "reject_disabled_field_writes"), \
              patch.object(organizations_routes, "sanitize_disabled_field_payload", return_value={"org_name": "After"}), \
+             patch.object(organizations_routes, "enforce_field_rules", side_effect=lambda db, **kwargs: kwargs["payload"]), \
+             patch.object(organizations_routes, "enforce_picklist_dependencies", side_effect=lambda db, **kwargs: kwargs["payload"]), \
              patch.object(organizations_routes, "update_existing_organization", return_value=updated) as update_mock, \
              patch.object(organizations_routes, "log_activity"):
             response = organizations_routes.edit_sales_organization(

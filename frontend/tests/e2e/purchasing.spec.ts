@@ -40,7 +40,7 @@ test("a purchase order is placed, partly received and its stock arrives at cost"
 
   await page.goto("/dashboard/purchasing/orders/new");
   await expect(page.getByRole("heading", { name: "New purchase order" })).toBeVisible();
-  await page.getByLabel("Vendor", { exact: true }).fill(vendor.org_name);
+  await page.getByRole("combobox", { name: "Vendor", exact: true }).fill(vendor.org_name);
   await page.getByRole("option", { name: new RegExp(vendor.org_name) }).click();
   await page.getByPlaceholder("Search tracked products").fill(product.name);
   await page.getByRole("option", { name: new RegExp(product.name) }).click();
@@ -93,7 +93,7 @@ test("a delivery note prints the ship-to address and quantities", async ({ page 
     name: `E3 note item ${stamp}`, currency: "USD", public_unit_price: "10", track_inventory: true, stock_quantity: "3",
   });
   const order = await api<{ id: number }>(page, "/sales/orders", "POST", {
-    order_number: `E3-N-${stamp}`, status: "confirmed", currency: "USD", delivery_address: "12 Harbour Road\nColombo 03",
+    order_number: `E3-N-${stamp}`, status: "confirmed", currency: "USD", shipping_address: "12 Harbour Road", shipping_city: "Colombo 03",
     items: [{ catalog_product_id: product.id, name: product.name, quantity: "3", unit_price: "10" }],
   });
   const delivery = await api<{ id: number; number: string }>(page, "/inventory/deliveries", "POST", { order_id: order.id, carrier: "DHL" });

@@ -14,3 +14,18 @@ export function formValuesFromRecord<TForm extends object>(empty: TForm, record:
   }
   return next as TForm;
 }
+
+/**
+ * A form value from a clone draft's copied fields (`useCloneDraft`, 13b Phase 5). Only keys
+ * the empty form has are taken, each as the form holds it: text inputs hold strings, so a
+ * copied amount `12500` becomes `"12500"`. Anything the draft leaves out stays empty.
+ */
+export function formValuesFromCopy<TForm extends object>(emptyForm: TForm, fields: Record<string, unknown>): TForm {
+  const form = { ...emptyForm } as Record<string, unknown>;
+  for (const [key, empty] of Object.entries(emptyForm)) {
+    const value = fields[key];
+    if (value === null || value === undefined) continue;
+    form[key] = typeof empty === "string" ? String(value) : value;
+  }
+  return form as TForm;
+}

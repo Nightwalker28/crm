@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 import { Card } from "@/components/ui/Card";
 import type {
@@ -31,6 +31,15 @@ type Props = {
    * nothing disappears instead of drawing an empty panel.
    */
   omitFieldKeys?: readonly string[];
+  /**
+   * What sits between the sections but is not a field — a document's line editor. It goes
+   * after `afterSection` when the layout still has that section in the main region, else
+   * after the first main section: an administrator renaming or moving sections must not
+   * lose the lines.
+   */
+  mainInsert?: { afterSection?: string; node: ReactNode };
+  /** Controls in a section's heading, by section id ("Same as billing"). */
+  sectionActions?: Record<string, ReactNode>;
 };
 
 function LayoutSection({
@@ -39,12 +48,14 @@ function LayoutSection({
   invalidFieldKeys,
   viewport,
   omitted,
+  actions,
 }: {
   section: ResolvedRecordLayoutSection;
   renderField: Props["renderField"];
   invalidFieldKeys: Set<string>;
   viewport: ResolvedRecordLayoutViewport;
   omitted: Set<string>;
+  actions?: ReactNode;
 }) {
   const fields = [...section.fields]
     .filter((field) => field.visible && !omitted.has(field.field_key))
@@ -82,7 +93,14 @@ function LayoutSection({
         </details>
       ) : (
         <>
-          <h2 className="mb-4 text-base font-semibold text-copy-primary">{section.label}</h2>
+          {actions ? (
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2 className="text-base font-semibold text-copy-primary">{section.label}</h2>
+              {actions}
+            </div>
+          ) : (
+            <h2 className="mb-4 text-base font-semibold text-copy-primary">{section.label}</h2>
+          )}
           {body}
         </>
       )}
@@ -98,6 +116,8 @@ export function ResolvedRecordLayout({
   fixedSidebar,
   viewport = "auto",
   omitFieldKeys,
+  mainInsert,
+  sectionActions = {},
 }: Props) {
   const sections = [...layout.sections].sort((left, right) => left.position - right.position);
   const mainSections = sections.filter((section) => section.region === "main");
@@ -105,6 +125,22 @@ export function ResolvedRecordLayout({
   const hasSidebar = sidebarSections.length > 0 || Boolean(fixedSidebar);
   const invalidFields = new Set(invalidFieldKeys);
   const omitted = new Set(omitFieldKeys ?? []);
+  const insertAfter = mainInsert
+    ? mainSections.some((section) => section.id === mainInsert.afterSection)
+      ? mainInsert.afterSection
+      : mainSections[0]?.id
+    : undefined;
+  const renderSection = (section: ResolvedRecordLayoutSection) => (
+    <LayoutSection
+      key={section.id}
+      section={section}
+      renderField={renderField}
+      invalidFieldKeys={invalidFields}
+      viewport={viewport}
+      omitted={omitted}
+      actions={sectionActions[section.id]}
+    />
+  );
 
   return (
     <div
@@ -119,15 +155,17 @@ export function ResolvedRecordLayout({
       data-layout-viewport={viewport}
     >
       <div className="grid min-w-0 gap-4">
+        {mainInsert && !insertAfter ? mainInsert.node : null}
         {mainSections.map((section) => (
-          <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} omitted={omitted} />
+          <Fragment key={section.id}>
+            {renderSection(section)}
+            {section.id === insertAfter ? mainInsert?.node : null}
+          </Fragment>
         ))}
       </div>
       {hasSidebar ? (
         <aside className="grid gap-4">
-          {sidebarSections.map((section) => (
-            <LayoutSection key={section.id} section={section} renderField={renderField} invalidFieldKeys={invalidFields} viewport={viewport} omitted={omitted} />
-          ))}
+          {sidebarSections.map(renderSection)}
           {fixedSidebar}
         </aside>
       ) : null}

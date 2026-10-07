@@ -7,7 +7,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import { ContactFormMainFields, ContactFormSidebarFields, EMPTY_CONTACT_FORM, type ContactFormValue, contactFormInputIdFor } from "@/components/contacts/ContactFormFields";
+import { CONTACT_FORM_INPUT_IDS, EMPTY_CONTACT_FORM, type ContactFormValue, contactFormInputIdFor } from "@/components/contacts/ContactFormFields";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import { buildContactPayload, saveContact, validateContactEmail } from "@/components/contacts/contactMutation";
 import {
   consumeContactQuickCreateDraft,
@@ -20,9 +22,11 @@ import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useCloneDraft } from "@/hooks/useCloneDraft";
+import { formValuesFromCopy } from "@/lib/formValues";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -38,6 +42,11 @@ async function fetchContactSummary(contactId: string) {
   return body as ContactSummary;
 }
 
+
+/** Field ids on the full form: the long-standing ones, so focus, errors and specs still find them. */
+const contactFullFormInputId = (fieldKey: string) =>
+  CONTACT_FORM_INPUT_IDS[fieldKey] ?? `contact-${fieldKey.replace(/_/g, "-")}`;
+
 export default function ContactRecordFormPage({ mode, contactId }: { mode: "create" | "edit"; contactId?: string }) {
   const router = useRouter();
   // R2 travels in both directions: the tab the operator left is on this page's own URL,
@@ -48,10 +57,11 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   const [form, setForm] = useState<ContactFormValue>(EMPTY_CONTACT_FORM);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [initialSnapshot, setInitialSnapshot] = useState(() => JSON.stringify([EMPTY_CONTACT_FORM, {}]));
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const serverErrors = useServerFormErrors(contactFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
-  const customFieldsQuery = useModuleCustomFields("sales_contacts", true);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_contacts", "full_form");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_contacts");
   const summaryQuery = useQuery({
     queryKey: ["sales-contact-summary", contactId],
@@ -59,6 +69,16 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     enabled: mode === "edit" && Boolean(contactId),
     refetchOnWindowFocus: false,
   });
+  // *Clone* (13b Phase 5): `?clone=<id>` fills this create form from that contact. The copy is
+  // the starting point, so leaving it untouched is not unsaved work.
+  const clone = useCloneDraft("sales_contacts", mode === "create");
+  useEffect(() => {
+    if (!clone.draft) return;
+    const nextForm = formValuesFromCopy(EMPTY_CONTACT_FORM, clone.draft.fields);
+    setForm(nextForm);
+    setCustomFieldValues(clone.draft.custom_fields);
+    setInitialSnapshot(JSON.stringify([nextForm, clone.draft.custom_fields]));
+  }, [clone.draft]);
 
   // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
   // empty on purpose, so the restored values count as unsaved changes and stay guarded.
@@ -107,10 +127,16 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const error = validateContactEmail(form);
-    setEmailError(error);
-    if (error) {
-      document.getElementById("contact-primary-email")?.focus();
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customFieldValues) : {};
+    const emailError = nextErrors.primary_email ? null : validateContactEmail(form);
+    if (emailError) nextErrors.primary_email = emailError;
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_contacts-${firstInvalid.slice("custom:".length)}`
+        : contactFullFormInputId(firstInvalid);
+      document.getElementById(id)?.focus();
       return false;
     }
     return true;
@@ -138,6 +164,10 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
     }
   }
 
+  if (clone.isLoading) return <RouteLoadingState label="contact" />;
+  if (clone.error) {
+    return <RouteErrorState title="This contact could not be copied" reset={() => void clone.refetch()} backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />;
+  }
   if (mode === "edit" && summaryQuery.isLoading) return <RouteLoadingState label="contact" />;
   if (mode === "edit" && summaryQuery.error) {
     return <RouteErrorState title="This contact could not be loaded" reset={() => void summaryQuery.refetch()} backHref="/dashboard/sales/contacts" backLabel="Back to contacts" />;
@@ -160,19 +190,18 @@ export default function ContactRecordFormPage({ mode, contactId }: { mode: "crea
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={contactFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? recordName : "Create contact"}
-        sidebar={<ContactFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
         status={isDirty ? "Unsaved changes" : mode === "edit" ? null : "Complete the required fields to create this contact."}
         actions={<><Button asChild variant="outline"><Link href={cancelHref}>Cancel</Link></Button><Button onClick={() => void submit()} disabled={submitting || (mode === "edit" && !isDirty)}><Save />{submitting ? "Saving…" : mode === "edit" ? "Save changes" : "Create contact"}</Button></>}
       >
-        <ContactFormMainFields
+        <LayoutRecordFormBody<ContactFormValue>
+          moduleKey="sales_contacts"
           value={form}
           onChange={setForm}
-          customFields={customFieldsQuery.data ?? []}
-          customFieldValues={customFieldValues}
-          onCustomFieldChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
-          moduleFields={moduleFields}
-          emailError={emailError}
-          mode={mode}
+          customValues={customFieldValues}
+          onCustomChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
+          inputId={contactFullFormInputId}
+          action={mode}
+          errors={fieldErrors}
         />
       </RecordFormLayout>
       </ServerFieldErrorsProvider>

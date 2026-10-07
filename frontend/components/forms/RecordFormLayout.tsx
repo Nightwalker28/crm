@@ -28,7 +28,11 @@ export function RecordFormLayout({
    */
   title: string;
   children: ReactNode;
-  sidebar: ReactNode;
+  /**
+   * The rail. Left out when the body is a layout-driven `RecordForm`, whose layout places
+   * its own sidebar sections (13b Phase 4e); the body then takes the full width.
+   */
+  sidebar?: ReactNode;
   /** The dirty-state line, an error, a `SaveStateIndicator`. Sits left in the footer. */
   status?: ReactNode;
   /** Cancel and the commit. `FormFooter` supplies the `ActionBar`, so R4's height holds. */
@@ -44,10 +48,14 @@ export function RecordFormLayout({
       >
         {title}
       </h2>
-      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+      {sidebar === undefined ? (
         <div className="grid min-w-0 gap-6">{children}</div>
-        <aside className="grid gap-6 lg:sticky lg:top-6">{sidebar}</aside>
-      </div>
+      ) : (
+        <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          <div className="grid min-w-0 gap-6">{children}</div>
+          <aside className="grid gap-6 lg:sticky lg:top-6">{sidebar}</aside>
+        </div>
+      )}
       {/* R3: this was `sticky bottom-0 ... backdrop-blur` and is now an ordinary flex
           sibling at the end of the document. It was also the string `MessageTemplate`
           copied verbatim, which is what a sticky bar being a layout detail rather than a

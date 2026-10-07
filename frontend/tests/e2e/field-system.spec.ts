@@ -26,7 +26,8 @@ test("a picklist custom field appears on the purchase order form with its own va
   const label = `Priority ${Date.now()}`;
   await post(page, "/admin/custom-fields/purchase_orders", { label, field_type: "picklist", picklist_values: ["Rush", "Standard"] });
   await page.goto("/dashboard/purchasing/orders/new");
-  await expect(page.getByRole("heading", { name: "Custom fields" })).toBeVisible();
+  // Since 13b Phase 4e custom fields sit in the form's layout, not a separate section.
+  await expect(page.locator('[data-record-layout="purchase_orders:full_form"]')).toBeVisible({ timeout: 30_000 });
   await page.getByRole("combobox", { name: label }).click();
   await expect(page.getByRole("option", { name: "Rush" })).toBeVisible();
 });

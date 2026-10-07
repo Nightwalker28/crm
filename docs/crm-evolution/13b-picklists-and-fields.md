@@ -425,7 +425,35 @@ quick create *Source*, addresses (using the address type), quotes, orders and pr
 **Phase 4 — Layouts and rules.** §3.6: layout admin everywhere, `RecordForm`, field rules,
 role and team overrides, dependent picklists, country → state.
 
-**Phase 5 — Quick create and clone.** §3.7.
+Phase 4 is built in five slices, so a session can stop between any two (split 2026-10-06):
+
+| Slice | What | State |
+|---|---|---|
+| 4a | Field rules (F3.4): `is_required` / `is_readonly` on `module_field_configs`, `enforce_field_rules` in the CRM routes, the resolver, Settings → Fields | **Built 2026-10-06, tested and committed 2026-10-08** (see STATUS) |
+| 4b | Dependent picklists and country → state (F3.6): `picklist_dependencies`, ISO 3166-2 filter, server check, form filtering | **Built 2026-10-06, tested and committed 2026-10-08** (see STATUS) |
+| 4c | Role and team layout overrides (F3.5): `role_id` / `team_id` on `record_layout_definitions`, resolution team → role → tenant → product, *Preview as*. Also: field rules and dependencies enforced on sales orders, products, services and every ERP document | **Built 2026-10-06, tested and committed 2026-10-08** (see STATUS) |
+| 4d | Layout admin everywhere (F3.3): drop `ADMIN_LAYOUT_MODULES` / `ADMIN_LAYOUT_SURFACES`, `full_form` seeds, ERP header layouts, Settings → Layouts module and surface picker | **Built 2026-10-06, tested and committed 2026-10-08** (see STATUS). Pages consume the new layouts in 4e |
+| 4e | `RecordForm` (F3.3, E7): one layout-driven form replacing the hand-written forms and the four `*QuickCreateLayoutFields` | **Built 2026-10-06/07, tested and committed 2026-10-08** (see STATUS): `RecordForm` on every quick create and full form (CRM, quotes, orders, invoices, catalog, nine ERP documents), ERP detail headers on the `detail` layouts, live full-form preview, imports apply field rules |
+
+Migrations: 4a is `20261011_field_rules` (the §3.9 `20261011_layout_rules` split per slice),
+4b is `20261012_picklist_deps`, 4c is `20261013_layout_overrides`.
+
+**Deviation from §3.6 (4b):** an address's state column keeps the subdivision's **name**
+(`California`), not its code (`US-CA`). Codes and any spelling are accepted on input and
+stored as the bundled name, so every list, export, report and print reads correctly without
+a label lookup per surface; the country stays a code because its picklist labels were already
+everywhere. Countries the ISO list does not divide keep a free-text state.
+
+**Deviation from §3.6 (4e):** a document's source references (a receipt's purchase order, a
+return's delivery, a credit note's invoice and return, a bill's order and receipt) are shown,
+not picked: the action that starts the document sets them, and no update endpoint changes
+them.
+
+**Phase 5 — Quick create and clone.** §3.7. **Built 2026-10-07, tested and committed 2026-10-08** (see STATUS).
+The clone draft endpoint is `GET /records/{module}/{id}/clone-draft`, one platform route for
+every module rather than one per module router. Beyond §3.7: the purchase order line editor
+also offers *Create product* (tracked, the PO's vendor as preferred vendor), and invoices get
+the line editor's *Create product* with quotes and orders, since they share it.
 
 **Tests written with each phase, run in the step's test pass** (§5 decision 2):
 - backend: `test_picklists` (keys fixed, deactivate, merge rewrites records, views and

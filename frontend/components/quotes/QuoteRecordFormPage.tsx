@@ -7,15 +7,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import CustomFieldInputs from "@/components/customFields/CustomFieldInputs";
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
-import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
-import { customFieldInputId, ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import {
+  customFieldInputId,
+  ServerFieldError,
+  ServerFieldErrorsProvider,
+  useServerFormErrors,
+} from "@/components/forms/ServerFieldErrors";
 import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
@@ -23,32 +29,25 @@ import {
   createTransactionLineItem,
   serializeTransactionItems,
   transactionCatalogLink,
+  transactionItemsFromCopy,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
+import { customerFieldRenderer } from "@/components/transactions/customerFieldRenderer";
 import { fetchDealForDocument, type DealForDocument } from "@/components/transactions/dealPrefill";
 import {
-  DocumentAddressesSection,
   documentHeaderFrom,
   documentHeaderInputId,
   documentHeaderPayload,
-  DocumentTermsSection,
   EMPTY_DOCUMENT_HEADER,
+  SameAsBillingButton,
   shippingChargeAmount,
-  type DocumentHeaderValue,
 } from "@/components/transactions/DocumentHeaderFields";
 import { Button } from "@/components/ui/button";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
-import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -60,9 +59,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useCloneDraft, type CloneDraft } from "@/hooks/useCloneDraft";
+import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import {
   isModuleFieldEnabled,
@@ -72,8 +71,10 @@ import {
 import { apiFetch } from "@/lib/api";
 import { apiErrorFromResponse } from "@/lib/apiErrors";
 import { formatDateTime } from "@/lib/datetime";
+import { formValuesFromCopy } from "@/lib/formValues";
 
-type QuoteForm = {
+/** The quote form's value: flat, keyed by field key, as `RecordForm` draws it (13b Phase 4e). */
+type QuoteForm = RecordFormValue & {
   quote_number: string;
   title: string;
   customer_name: string;
@@ -90,10 +91,10 @@ type QuoteForm = {
   expiry_date: string;
   currency: string;
   notes: string;
-  header: DocumentHeaderValue;
 };
 
 const EMPTY_FORM: QuoteForm = {
+  ...EMPTY_DOCUMENT_HEADER,
   quote_number: "",
   title: "",
   customer_name: "",
@@ -108,9 +109,8 @@ const EMPTY_FORM: QuoteForm = {
   status: "draft",
   issue_date: "",
   expiry_date: "",
-  currency: "USD",
+  currency: "",
   notes: "",
-  header: EMPTY_DOCUMENT_HEADER,
 };
 const STATUSES = [
   { value: "draft", label: "Draft" },
@@ -120,15 +120,40 @@ const STATUSES = [
   { value: "expired", label: "Expired" },
 ];
 
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const QUOTE_INPUT_IDS: Record<string, string> = {
+  customer_name: "quote-customer",
+  organization_id: "quote-account",
+  contact_id: "quote-contact",
+  opportunity_id: "quote-deal",
+  title: "quote-title",
+  notes: "quote-notes",
+  quote_number: "quote-number",
+  currency: "quote-currency",
+  issue_date: "quote-issue",
+  expiry_date: "quote-expiry",
+  status: "quote-status",
+  assigned_to: "quote-owner",
+};
+
+function quoteInputId(fieldKey: string) {
+  return QUOTE_INPUT_IDS[fieldKey] ?? documentHeaderInputId("quote", fieldKey) ?? `quote-${fieldKey.replace(/_/g, "-")}`;
+}
+
 type QuoteEditSource = {
-  quote: Omit<
-    QuoteForm,
-    | "contact_name"
-    | "organization_name"
-    | "opportunity_name"
-    | "assigned_to_name"
-    | "header"
-  > & Record<string, unknown> & {
+  quote: Record<string, unknown> & {
+    quote_number?: string | null;
+    title?: string | null;
+    customer_name?: string | null;
+    contact_id?: number | null;
+    organization_id?: number | null;
+    opportunity_id?: number | null;
+    assigned_to?: number | null;
+    status?: string | null;
+    issue_date?: string | null;
+    expiry_date?: string | null;
+    currency?: string | null;
+    notes?: string | null;
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
     items?: Array<{
@@ -179,7 +204,7 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
             contact_name: deal.contact_name ?? "",
             opportunity_id: deal.opportunity_id,
             opportunity_name: deal.opportunity_name,
-            currency: deal.currency_type || EMPTY_FORM.currency,
+            currency: deal.currency_type || "",
           }
         : EMPTY_FORM,
       items: [createTransactionLineItem("quote")],
@@ -193,6 +218,7 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
     : "";
   return {
     form: {
+      ...documentHeaderFrom(quote),
       quote_number: quote.quote_number ?? "",
       title: quote.title ?? "",
       customer_name: quote.customer_name ?? "",
@@ -207,9 +233,8 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
       status: quote.status ?? "draft",
       issue_date: quote.issue_date ?? "",
       expiry_date: quote.expiry_date ?? "",
-      currency: quote.currency ?? "USD",
+      currency: quote.currency ?? "",
       notes: quote.notes ?? "",
-      header: documentHeaderFrom(quote),
     },
     items: quote.items?.length
       ? quote.items.map((item) => ({
@@ -224,6 +249,15 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
         }))
       : [createTransactionLineItem("quote")],
     customValues: quote.custom_fields ?? {},
+  };
+}
+
+/** *Clone* (13b Phase 5): the copied customer, addresses, terms and lines; a new number, status and dates. */
+function quoteSeedFromCopy(draft: CloneDraft): QuoteSeed {
+  return {
+    form: formValuesFromCopy(EMPTY_FORM, draft.fields),
+    items: transactionItemsFromCopy(draft.lines, "quote"),
+    customValues: draft.custom_fields,
   };
 }
 
@@ -247,8 +281,19 @@ export default function QuoteRecordFormPage({
     enabled: mode === "create" && Boolean(dealId),
     staleTime: 30_000,
   });
+  const clone = useCloneDraft("sales_quotes", mode === "create");
   if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
   if (mode === "create" && dealId && dealQuery.isLoading) return <RouteLoadingState />;
+  if (clone.isLoading) return <RouteLoadingState />;
+  if (clone.error)
+    return (
+      <RouteErrorState
+        title="This quote could not be copied"
+        reset={() => void clone.refetch()}
+        backHref="/dashboard/sales/quotes"
+        backLabel="Back to quotes"
+      />
+    );
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
@@ -258,10 +303,10 @@ export default function QuoteRecordFormPage({
         backLabel="Back to quotes"
       />
     );
-  const seed = quoteSeed(query.data, dealQuery.data);
+  const seed = clone.draft ? quoteSeedFromCopy(clone.draft) : quoteSeed(query.data, dealQuery.data);
   return (
     <QuoteRecordFormEditor
-      key={`${mode}:${quoteId ?? "new"}:${query.data?.quote.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}`}
+      key={`${mode}:${quoteId ?? "new"}:${query.data?.quote.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}:${clone.cloneId ?? ""}`}
       mode={mode}
       quoteId={quoteId}
       seed={seed}
@@ -295,20 +340,21 @@ function QuoteRecordFormEditor({
   const [initialSnapshot] = useState(() =>
     JSON.stringify([seed.form, seed.items, seed.customValues]),
   );
-  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [itemsError, setItemsError] = useState<string | null>(null);
   const inputIdFor = useCallback(
-    (path: string) => documentHeaderInputId("quote", path) ?? customFieldInputId("sales_quotes", path),
+    (path: string) => customFieldInputId("sales_quotes", path) ?? quoteInputId(path),
     [],
   );
   const serverErrors = useServerFormErrors(inputIdFor);
   const [submitting, setSubmitting] = useState(false);
-  const customFields = useModuleCustomFields("sales_quotes", true);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_quotes", "full_form");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
-  const currencies = useCompanyCurrencies(true);
-  const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
+  const baseCurrency = useBaseCurrency();
+  const currency = form.currency || baseCurrency.data || "USD";
   const totals = useMemo(() => calculateTransactionTotals(items), [items]);
-  const shippingCharge = shippingChargeAmount(form.header);
+  const shippingCharge = shippingChargeAmount(form);
   const snapshot = useMemo(
     () => JSON.stringify([form, items, customValues]),
     [form, items, customValues],
@@ -316,20 +362,25 @@ function QuoteRecordFormEditor({
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
-    const validCustomer = Boolean(form.customer_name.trim());
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues) : {};
+    if (!form.customer_name.trim() && !nextErrors.customer_name) nextErrors.customer_name = "Customer name is required.";
     const validItems = areTransactionItemsValid(items);
-    setCustomerError(validCustomer ? null : "Customer name is required.");
+    setFieldErrors(nextErrors);
     setItemsError(
       validItems
         ? null
         : "Each line needs a name, positive quantity, and valid non-negative amounts.",
     );
-    if (!validCustomer) document.getElementById("quote-customer")?.focus();
-    else if (!validItems)
-      document
-        .querySelector<HTMLInputElement>("[data-transaction-field='name']")
-        ?.focus();
-    return validCustomer && validItems;
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_quotes-${firstInvalid.slice("custom:".length)}`
+        : quoteInputId(firstInvalid);
+      document.getElementById(id)?.focus();
+    } else if (!validItems) {
+      document.querySelector<HTMLInputElement>("[data-line-field='name']")?.focus();
+    }
+    return !firstInvalid && validItems;
   }
   async function submit() {
     if (!validate()) return;
@@ -348,9 +399,9 @@ function QuoteRecordFormEditor({
           status: form.status,
           issue_date: form.issue_date || null,
           expiry_date: form.expiry_date || null,
-          currency: form.currency,
+          currency,
           notes: form.notes.trim() || null,
-          ...documentHeaderPayload(form.header),
+          ...documentHeaderPayload(form),
           custom_fields: customValues,
         },
         moduleFields,
@@ -419,17 +470,6 @@ function QuoteRecordFormEditor({
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={inputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? form.quote_number : "Create quote"}
-        sidebar={
-          <QuoteSummary
-            form={form}
-            onChange={setForm}
-            totals={totals}
-            shippingCharge={shippingCharge}
-            currencies={currencies.data ?? ["USD"]}
-            moduleFields={moduleFields}
-            mode={mode}
-          />
-        }
         status={dirty
           ? "Unsaved changes"
           : mode === "edit"
@@ -451,376 +491,112 @@ function QuoteRecordFormEditor({
           </>
         )}
       >
-        <FormSection
-          title="Customer and billing details"
-          description="Link the quote to canonical CRM records while preserving the customer-facing name."
-        >
-          <FieldGroup columns={2}>
-            {enabled("customer_name") ? (
-              <Field
-                data-invalid={Boolean(customerError)}
-                className="md:col-span-2"
-              >
-                <FieldLabel htmlFor="quote-customer">
-                  Customer name <RequiredMark />
-                </FieldLabel>
-                <Input
-                  id="quote-customer"
-                  value={form.customer_name}
-                  onChange={(event) => {
-                    setForm({ ...form, customer_name: event.target.value });
-                    setCustomerError(null);
+        <LayoutRecordFormBody<QuoteForm>
+          moduleKey="sales_quotes"
+          value={form}
+          onChange={setForm}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={quoteInputId}
+          action={mode}
+          errors={fieldErrors}
+          renderField={customerFieldRenderer({ value: form, idPrefix: "quote" })}
+          slots={{
+            mainInsert: {
+              afterSection: "quote",
+              node: (
+                <TransactionLineItemsEditor
+                  items={items}
+                  onChange={(nextItems) => {
+                    setItems(nextItems);
+                    setItemsError(null);
                   }}
-                  aria-invalid={Boolean(customerError)}
+                  currency={currency}
+                  error={itemsError}
+                  idPrefix="quote"
                 />
-                {customerError ? (
-                  <FieldError>{customerError}</FieldError>
-                ) : null}
-              </Field>
-            ) : null}
-            {enabled("organization_id") ? (
-              <Field>
-                <FieldLabel htmlFor="quote-account">Account</FieldLabel>
-                <LinkedRecordPicker
-                  inputId="quote-account"
-                  recordType="organization"
-                  valueId={form.organization_id}
-                  displayValue={form.organization_name}
-                  onDisplayValueChange={(organization_name) =>
-                    setForm({
-                      ...form,
-                      organization_id: null,
-                      organization_name,
-                      contact_id: null,
-                      contact_name: "",
-                      opportunity_id: null,
-                      opportunity_name: "",
-                    })
-                  }
-                  onSelect={(option) =>
-                    setForm({
-                      ...form,
-                      organization_id: option.id,
-                      organization_name: option.label,
-                      customer_name: form.customer_name.trim() || option.label,
-                      contact_id: null,
-                      contact_name: "",
-                      opportunity_id: null,
-                      opportunity_name: "",
-                    })
-                  }
-                  onClear={() =>
-                    setForm({
-                      ...form,
-                      organization_id: null,
-                      organization_name: "",
-                      contact_id: null,
-                      contact_name: "",
-                      opportunity_id: null,
-                      opportunity_name: "",
-                    })
-                  }
-                  placeholder="Search accounts"
-                  queryKeyPrefix="quote-page-account"
+              ),
+            },
+            sectionActions: { shipping: <SameAsBillingButton value={form} set={(patch) => setForm({ ...form, ...patch })} /> },
+            fixedSidebar: (
+              <>
+                <TransactionTotals
+                  description="Totals are calculated from the line items and verified again by the server."
+                  currency={currency}
+                  rows={[
+                    { label: "Subtotal", amount: totals.subtotal },
+                    { label: "Discount", amount: totals.discount, negative: true },
+                    { label: "Tax", amount: totals.tax },
+                    ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
+                    { label: "Total", amount: totals.total + shippingCharge, resolved: true },
+                  ]}
                 />
-              </Field>
-            ) : null}
-            {enabled("contact_id") ? (
-              <Field>
-                <FieldLabel htmlFor="quote-contact">Contact</FieldLabel>
-                <LinkedRecordPicker
-                  inputId="quote-contact"
-                  recordType="contact"
-                  valueId={form.contact_id}
-                  displayValue={form.contact_name}
-                  onDisplayValueChange={(contact_name) =>
-                    setForm({
-                      ...form,
-                      contact_id: null,
-                      contact_name,
-                      opportunity_id: null,
-                      opportunity_name: "",
-                    })
-                  }
-                  onSelect={(option) =>
-                    setForm({
-                      ...form,
-                      contact_id: option.id,
-                      contact_name: option.label,
-                      organization_id:
-                        option.organization_id ?? form.organization_id,
-                      organization_name:
-                        option.organization_name ?? form.organization_name,
-                      customer_name: form.customer_name.trim() || option.label,
-                    })
-                  }
-                  onClear={() =>
-                    setForm({ ...form, contact_id: null, contact_name: "" })
-                  }
-                  placeholder="Search contacts"
-                  queryKeyPrefix="quote-page-contact"
-                  filters={{ organizationId: form.organization_id }}
-                />
-              </Field>
-            ) : null}
-            {enabled("opportunity_id") ? (
-              <Field className="md:col-span-2">
-                <FieldLabel htmlFor="quote-deal">Deal</FieldLabel>
-                <LinkedRecordPicker
-                  inputId="quote-deal"
-                  recordType="opportunity"
-                  valueId={form.opportunity_id}
-                  displayValue={form.opportunity_name}
-                  onDisplayValueChange={(opportunity_name) =>
-                    setForm({ ...form, opportunity_id: null, opportunity_name })
-                  }
-                  onSelect={(option) =>
-                    setForm({
-                      ...form,
-                      opportunity_id: option.id,
-                      opportunity_name: option.label,
-                      contact_id: option.contact_id ?? form.contact_id,
-                      organization_id:
-                        option.organization_id ?? form.organization_id,
-                      customer_name:
-                        form.customer_name.trim() ||
-                        option.description?.split(" · ")[0] ||
-                        option.label,
-                    })
-                  }
-                  onClear={() =>
-                    setForm({
-                      ...form,
-                      opportunity_id: null,
-                      opportunity_name: "",
-                    })
-                  }
-                  placeholder="Search deals"
-                  queryKeyPrefix="quote-page-deal"
-                  filters={{
-                    contactId: form.contact_id,
-                    organizationId: form.organization_id,
-                  }}
-                />
-                <FieldDescription>
-                  When linked, the contact must be one of this deal&apos;s
-                  participants and the account must match the deal.
-                </FieldDescription>
-              </Field>
-            ) : null}
-          </FieldGroup>
-        </FormSection>
-        <TransactionLineItemsEditor
-          items={items}
-          onChange={(nextItems) => {
-            setItems(nextItems);
-            setItemsError(null);
+                <QuoteDetails form={form} onChange={setForm} moduleFields={moduleFields} />
+              </>
+            ),
           }}
-          currency={form.currency}
-          error={itemsError}
-          idPrefix="quote"
         />
-        <DocumentAddressesSection idPrefix="quote" value={form.header} onChange={(header) => setForm({ ...form, header })} />
-        <DocumentTermsSection
-          idPrefix="quote"
-          value={form.header}
-          onChange={(header) => setForm({ ...form, header })}
-          showLostReason={form.status === "declined"}
-          lostReasonLabel="Declined reason"
-        />
-        <FormSection
-          title="Title and notes"
-          description="Customer-facing context included with the quote."
-        >
-          <FieldGroup columns={2}>
-            {enabled("title") ? (
-              <Field className="md:col-span-2">
-                <FieldLabel htmlFor="quote-title">Title</FieldLabel>
-                <Input
-                  id="quote-title"
-                  value={form.title}
-                  onChange={(event) =>
-                    setForm({ ...form, title: event.target.value })
-                  }
-                  placeholder="Proposal title"
-                />
-              </Field>
-            ) : null}
-            {enabled("notes") ? (
-              <Field className="md:col-span-2">
-                <FieldLabel htmlFor="quote-notes">Notes</FieldLabel>
-                <Textarea
-                  id="quote-notes"
-                  rows={6}
-                  value={form.notes}
-                  onChange={(event) =>
-                    setForm({ ...form, notes: event.target.value })
-                  }
-                />
-              </Field>
-            ) : null}
-          </FieldGroup>
-        </FormSection>
-        {customFields.data?.length ? (
-          <FormSection
-            title="Custom fields"
-            description="Additional quote information configured for your workspace."
-          >
-            <CustomFieldInputs
-              definitions={customFields.data}
-              values={customValues}
-              onChange={(key, value) =>
-                setCustomValues((current) => ({ ...current, [key]: value }))
-              }
-            />
-          </FormSection>
-        ) : null}
       </RecordFormLayout>
       </ServerFieldErrorsProvider>
     </PageShell>
   );
 }
 
-function QuoteSummary({
+/** Numbering and workflow: the system's part of the header, beside the totals. */
+function QuoteDetails({
   form,
   onChange,
-  totals,
-  shippingCharge,
-  currencies,
   moduleFields,
-  mode,
 }: {
   form: QuoteForm;
   onChange: (form: QuoteForm) => void;
-  totals: { subtotal: number; discount: number; tax: number; total: number };
-  shippingCharge: number;
-  currencies: string[];
   moduleFields: ReturnType<typeof useModuleFieldConfigs>["fields"];
-  mode: "create" | "edit";
 }) {
   const enabled = (key: string) => isModuleFieldEnabled(moduleFields, key);
+  if (!enabled("quote_number") && !enabled("status")) return null;
   return (
-    <>
-      <TransactionTotals
-        description="Totals are calculated from the line items and verified again by the server."
-        currency={form.currency}
-        rows={[
-          { label: "Subtotal", amount: totals.subtotal },
-          { label: "Discount", amount: totals.discount, negative: true },
-          { label: "Tax", amount: totals.tax },
-          ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
-          { label: "Total", amount: totals.total + shippingCharge, resolved: true },
-        ]}
-      />
-      <FormSection
-        title="Quote details"
-        description="Control numbering, dates, currency, and workflow status."
-      >
-        <div className="space-y-4">
-          {enabled("quote_number") ? (
-            <Field>
-              <FieldLabel htmlFor="quote-number">Quote number</FieldLabel>
-              <Input
-                id="quote-number"
-                value={form.quote_number}
-                onChange={(event) =>
-                  onChange({ ...form, quote_number: event.target.value })
-                }
-                placeholder="Auto-generated if blank"
-              />
-            </Field>
-          ) : null}
-          {enabled("currency") ? (
-            <Field>
-              <FieldLabel htmlFor="quote-currency">Currency</FieldLabel>
-              <Select
-                value={form.currency}
-                onValueChange={(currency) => onChange({ ...form, currency })}
-              >
-                <SelectTrigger id="quote-currency">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {currencies.map((currency) => (
-                    <SelectItem key={currency} value={currency}>
-                      {currency}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : null}
-          {enabled("issue_date") ? (
-            <Field>
-              <FieldLabel htmlFor="quote-issue">Issue date</FieldLabel>
-              <Input
-                id="quote-issue"
-                type="date"
-                value={form.issue_date}
-                onChange={(event) =>
-                  onChange({ ...form, issue_date: event.target.value })
-                }
-              />
-            </Field>
-          ) : null}
-          {enabled("expiry_date") ? (
-            <Field>
-              <FieldLabel htmlFor="quote-expiry">Expiry date</FieldLabel>
-              <Input
-                id="quote-expiry"
-                type="date"
-                value={form.expiry_date}
-                min={form.issue_date || undefined}
-                onChange={(event) =>
-                  onChange({ ...form, expiry_date: event.target.value })
-                }
-              />
-            </Field>
-          ) : null}
-          {enabled("status") ? (
-            <Field>
-              <FieldLabel htmlFor="quote-status">Status</FieldLabel>
-              <Select
-                value={form.status}
-                onValueChange={(status) => onChange({ ...form, status })}
-              >
-                <SelectTrigger id="quote-status">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {STATUSES.map((status) => (
-                    <SelectItem key={status.value} value={status.value}>
-                      {status.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </Field>
-          ) : null}
-        </div>
-      </FormSection>
-      <FormSection
-        title="Ownership"
-        description="Assign responsibility for this quote."
-      >
-        {enabled("assigned_to") ? (
+    <FormSection title="Quote details" description="Numbering and workflow status.">
+      <div className="space-y-4">
+        {enabled("quote_number") ? (
           <Field>
-            <FieldLabel htmlFor="quote-owner">Owner</FieldLabel>
-            <OwnerSelect
-              id="quote-owner"
-              moduleKey="sales_quotes"
-              action={mode === "edit" ? "edit" : "create"}
-              ownerId={form.assigned_to}
-              ownerName={form.assigned_to_name}
-              onChange={(assigned_to, assigned_to_name) =>
-                onChange({ ...form, assigned_to, assigned_to_name })
-              }
+            <FieldLabel htmlFor="quote-number">Quote number</FieldLabel>
+            <Input
+              id="quote-number"
+              value={form.quote_number}
+              onChange={(event) => onChange({ ...form, quote_number: event.target.value })}
+              placeholder="Auto-generated if blank"
             />
+            <ServerFieldError inputId="quote-number" />
           </Field>
-        ) : (
-          <p className="text-sm text-copy-muted">Ownership is not enabled.</p>
-        )}
-      </FormSection>
-    </>
+        ) : null}
+        {enabled("status") ? (
+          <Field>
+            <FieldLabel htmlFor="quote-status">Status</FieldLabel>
+            <Select value={form.status} onValueChange={(status) => onChange({ ...form, status })}>
+              <SelectTrigger id="quote-status">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {STATUSES.map((status) => (
+                  <SelectItem key={status.value} value={status.value}>
+                    {status.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        ) : null}
+        {/* Only once declined: a field for a state the quote is not in is noise (§4.7, A12). */}
+        {form.status === "declined" ? (
+          <PicklistField
+            id="quote-lost-reason"
+            listKey="lost_reason"
+            label="Declined reason"
+            value={String(form.lost_reason ?? "")}
+            onChange={(lost_reason) => onChange({ ...form, lost_reason })}
+          />
+        ) : null}
+      </div>
+    </FormSection>
   );
 }

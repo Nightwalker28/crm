@@ -5,23 +5,24 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { vendorFieldRenderer } from "@/components/purchasing/vendorFieldRenderer";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Fact, FactList } from "@/components/ui/Fact";
-import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
-import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Money } from "@/components/ui/Money";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
-import { TextLink } from "@/components/ui/TextLink";
 import { useFinanceDocumentActions } from "@/hooks/finance/useFinanceDocuments";
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
 import { usePurchaseBill, usePurchaseOrder, usePurchaseReceipt, usePurchasingActions, type PurchaseBillLine } from "@/hooks/purchasing/usePurchasing";
@@ -37,7 +38,7 @@ import { OVERDUE_STATUS, getBillMatchStatus, getBillStatus, getPaymentRecordStat
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { PicklistText } from "@/components/picklists/PicklistText";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 
 type DraftLine = {
   key: number; orderLineId: number | null; receiptLineId: number | null; name: string; description: string;
@@ -45,6 +46,32 @@ type DraftLine = {
 };
 let nextKey = 1;
 const blankLine = (): DraftLine => ({ key: nextKey++, orderLineId: null, receiptLineId: null, name: "", description: "", quantity: "1", unitCost: "0", tax: "0", poCost: null, billable: null });
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type BillHeader = RecordFormValue & {
+  vendor_id: number | null;
+  vendor_name: string;
+  vendor_invoice_number: string;
+  bill_date: string;
+  due_date: string;
+  order_id: number | null;
+  order_name: string;
+  receipt_id: number | null;
+  receipt_name: string;
+  currency: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const BILL_INPUT_IDS: Record<string, string> = {
+  vendor_id: "bill-vendor",
+  vendor_invoice_number: "bill-reference",
+  bill_date: "bill-date",
+  due_date: "bill-due",
+  currency: "bill-currency",
+  notes: "bill-notes",
+};
+const billInputId = (fieldKey: string) => BILL_INPUT_IDS[fieldKey] ?? `bill-${fieldKey.replace(/_/g, "-")}`;
 
 
 /**
@@ -69,17 +96,12 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const money = useFinanceDocumentActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [vendorId, setVendorId] = useState<number | null>(null);
-  const [vendorName, setVendorName] = useState("");
-  const [reference, setReference] = useState("");
-  const [billDate, setBillDate] = useState("");
-  const [dueDate, setDueDate] = useState("");
-  const [currency, setCurrency] = useState("");
-  const [notes, setNotes] = useState("");
+  const [header, setHeader] = useState<BillHeader | null>(null);
+  const layoutQuery = useResolvedRecordLayout("purchase_bills", "full_form");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
-  const [fieldErrors, setFieldErrors] = useState<{ vendor?: string; reference?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [panel, setPanel] = useState<"void" | "pay" | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [payAmount, setPayAmount] = useState("");
@@ -97,13 +119,19 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(bill?.custom_fields ?? {});
-    setVendorId(bill?.vendor_id ?? order.data?.vendor_id ?? null);
-    setVendorName(bill?.vendor_name ?? order.data?.vendor_name ?? "");
-    setReference(bill?.vendor_invoice_number ?? "");
-    setBillDate(bill?.bill_date ?? todayIsoDate());
-    setDueDate(bill?.due_date ?? "");
-    setCurrency(bill?.currency ?? order.data?.currency ?? "");
-    setNotes(bill?.notes ?? "");
+    setHeader({
+      vendor_id: bill?.vendor_id ?? order.data?.vendor_id ?? null,
+      vendor_name: bill?.vendor_name ?? order.data?.vendor_name ?? "",
+      vendor_invoice_number: bill?.vendor_invoice_number ?? "",
+      bill_date: bill?.bill_date ?? todayIsoDate(),
+      due_date: bill?.due_date ?? "",
+      order_id: effectiveOrderId,
+      order_name: order.data?.number ?? bill?.order_number ?? "",
+      receipt_id: bill?.receipt_id ?? receiptId,
+      receipt_name: receipt.data?.number ?? "",
+      currency: bill?.currency ?? order.data?.currency ?? "",
+      notes: bill?.notes ?? "",
+    });
     if (bill?.lines?.length) {
       setLines(bill.lines.map((line) => ({
         key: nextKey++, orderLineId: line.order_line_id, receiptLineId: line.receipt_line_id, name: line.description, description: line.description,
@@ -124,14 +152,24 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
     }
   }
 
-  const currencyCode = currency || bill?.currency || currencies?.[0] || "USD";
+  const currencyCode = header?.currency || bill?.currency || baseCurrency.data || currencies?.[0] || "USD";
+  // The source documents show only when there is one; a bill from an order takes its vendor and currency.
+  const omitFieldKeys = [...(header?.order_id ? [] : ["order_id"]), ...(header?.receipt_id ? [] : ["receipt_id"])];
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0), 0);
 
   async function save(andPost: boolean) {
-    setFieldErrors({});
-    if (!vendorId) { setFieldErrors({ vendor: "Choose a vendor." }); setError("Check the highlighted field."); document.getElementById("bill-vendor")?.focus(); return; }
-    if (!reference.trim()) { setFieldErrors({ reference: "Enter the vendor's invoice number." }); setError("Check the highlighted field."); document.getElementById("bill-reference")?.focus(); return; }
+    if (!header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues, omitFieldKeys) : {};
+    if (!header.vendor_id) nextErrors.vendor_id = "Choose a vendor.";
+    if (!header.vendor_invoice_number.trim()) nextErrors.vendor_invoice_number = "Enter the vendor's invoice number.";
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      setError("Check the highlighted field.");
+      document.getElementById(firstInvalid.startsWith("custom:") ? `custom-field-purchase_bills-${firstInvalid.slice(7)}` : billInputId(firstInvalid))?.focus();
+      return;
+    }
     const chosen = lines.filter((line) => Number(line.quantity) > 0);
     if (!chosen.length) { setError("Bill at least one line."); return; }
     if (chosen.some((line) => !line.orderLineId && !line.description.trim())) { setError("Describe every line."); return; }
@@ -139,8 +177,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
     if (over) { setError(`${over.name}: only ${quantity(over.billable)} received and not yet billed.`); return; }
     const payload = {
       custom_fields: customValues,
-      vendor_id: fromOrder ? null : vendorId, vendor_invoice_number: reference.trim(), bill_date: billDate || null, due_date: dueDate || null,
-      currency: fromOrder ? null : currencyCode, notes: notes.trim() || null,
+      vendor_id: fromOrder ? null : header.vendor_id, vendor_invoice_number: header.vendor_invoice_number.trim(), bill_date: header.bill_date || null, due_date: header.due_date || null,
+      currency: fromOrder ? null : currencyCode, notes: header.notes.trim() || null,
       lines: chosen.map((line) => ({ order_line_id: line.orderLineId, receipt_line_id: line.receiptLineId, description: line.description.trim() || null,
         quantity: line.quantity, unit_cost: line.unitCost, tax_amount: line.tax || "0" })),
     };
@@ -165,7 +203,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
       const clash = formFieldErrors(failure).vendor_invoice_number
         ?? (failure instanceof ApiError && failure.status === 409 && /vendor's invoice/i.test(failure.message) ? failure.message : null);
       if (clash) {
-        setFieldErrors({ reference: clash });
+        setFieldErrors({ vendor_invoice_number: clash });
         setError("Check the highlighted field.");
         document.getElementById("bill-reference")?.focus();
       } else {
@@ -230,59 +268,50 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         </div>
       }
     >
-      {editable ? (
-        <div className="grid gap-6 lg:grid-cols-3">
-          {fromOrder ? (
-            <FactList>
-              <Fact label="Vendor">{vendorName || "—"}</Fact>
-              <Fact label="Purchase order"><TextLink href={`${DASHBOARD_ROUTES.purchaseOrders}/${effectiveOrderId}`}>{order.data?.number ?? bill?.order_number ?? "Purchase order"}</TextLink></Fact>
-            </FactList>
-          ) : (
-            <Field className="lg:col-span-2" data-invalid={Boolean(fieldErrors.vendor)}>
-              <FieldLabel htmlFor="bill-vendor">Vendor <RequiredMark /></FieldLabel>
-              <LinkedRecordPicker inputId="bill-vendor" recordType="vendor" valueId={vendorId} displayValue={vendorName}
-                onDisplayValueChange={(value) => { setVendorName(value); setVendorId(null); }}
-                onSelect={(option) => { setVendorId(option.id); setVendorName(option.label); }}
-                onClear={() => { setVendorId(null); setVendorName(""); }} placeholder="Search vendors" />
-              {fieldErrors.vendor ? <FieldError>{fieldErrors.vendor}</FieldError> : null}
-            </Field>
-          )}
-          <Field data-invalid={Boolean(fieldErrors.reference)}>
-            <FieldLabel htmlFor="bill-reference">Vendor invoice number <RequiredMark /></FieldLabel>
-            <Input id="bill-reference" maxLength={120} value={reference} aria-required aria-invalid={Boolean(fieldErrors.reference)} aria-describedby={fieldErrors.reference ? "bill-reference-error" : undefined} onChange={(event) => setReference(event.target.value)} />
-            {fieldErrors.reference ? <FieldError id="bill-reference-error">{fieldErrors.reference}</FieldError> : <FieldDescription>As printed on the vendor&apos;s invoice; used to catch a bill entered twice.</FieldDescription>}
-          </Field>
-          <Field><FieldLabel htmlFor="bill-date">Bill date</FieldLabel><Input id="bill-date" type="date" value={billDate} onChange={(event) => setBillDate(event.target.value)} /></Field>
-          <Field>
-            <FieldLabel htmlFor="bill-due">Due date</FieldLabel>
-            <Input id="bill-due" type="date" min={billDate || undefined} value={dueDate} onChange={(event) => setDueDate(event.target.value)} />
-            {!dueDate ? <FieldDescription>Blank uses the vendor&apos;s payment terms.</FieldDescription> : null}
-          </Field>
-          {!fromOrder ? (
-            <Field>
-              <FieldLabel htmlFor="bill-currency">Currency</FieldLabel>
-              <Select value={currencyCode} onValueChange={setCurrency}>
-                <SelectTrigger id="bill-currency"><SelectValue /></SelectTrigger>
-                <SelectContent>{Array.from(new Set([currencyCode, ...(currencies ?? [])])).map((code) => <SelectItem key={code} value={code}>{code}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-          ) : null}
-          <Field className="lg:col-span-3"><FieldLabel htmlFor="bill-notes">Notes</FieldLabel><Textarea id="bill-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-        </div>
+      {editable && header ? (
+        <LayoutRecordFormBody<BillHeader>
+          moduleKey="purchase_bills"
+          value={header}
+          onChange={setHeader}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={billInputId}
+          action={isNew ? "create" : "edit"}
+          errors={fieldErrors}
+          lockedFieldKeys={fromOrder ? ["vendor_id", "currency"] : []}
+          renderField={vendorFieldRenderer(header)}
+          slots={{ omitFieldKeys }}
+        />
       ) : bill ? (
-        <FactList className="grid-cols-2 lg:grid-cols-4">
-          <Fact label="Vendor"><TextLink href={`/dashboard/sales/organizations/${bill.vendor_id}`}>{bill.vendor_name ?? "Vendor"}</TextLink></Fact>
-          {bill.order_id ? <Fact label="Purchase order"><TextLink href={`${DASHBOARD_ROUTES.purchaseOrders}/${bill.order_id}`}>{bill.order_number ?? "Purchase order"}</TextLink></Fact> : null}
-          <Fact label="Bill date">{formatDateOnly(bill.bill_date)}</Fact>
-          <Fact label="Total"><Money amount={bill.total} currency={bill.currency} context="field" /></Fact>
-          {bill.status === "posted" ? <Fact label="Balance due"><Money amount={bill.balance_due} currency={bill.currency} context="field" /></Fact> : null}
-          {bill.status === "posted" ? <Fact label="Payment"><StatusValue status={getPosPaymentStatus(bill.payment_status)} /></Fact> : null}
-          {bill.order_id ? <Fact label="Matching"><StatusValue status={getBillMatchStatus(bill.match_status)} /></Fact> : null}
-          {bill.void_reason ? <Fact label="Voided because">{bill.void_reason}</Fact> : null}
-        </FactList>
+        <>
+          <DocumentDetailHeader
+            moduleKey="purchase_bills"
+            record={bill}
+            currency={bill.currency}
+            links={{
+              vendor_id: `/dashboard/sales/organizations/${bill.vendor_id}`,
+              order_id: bill.order_id ? `${DASHBOARD_ROUTES.purchaseOrders}/${bill.order_id}` : null,
+              receipt_id: bill.receipt_id ? `${DASHBOARD_ROUTES.purchaseReceipts}/${bill.receipt_id}` : null,
+            }}
+            omitFieldKeys={[
+              ...(bill.order_id ? [] : ["order_id", "match_status"]),
+              ...(bill.receipt_id ? [] : ["receipt_id"]),
+              // Payment is the posted bill's story.
+              ...(bill.status === "posted" ? [] : ["amount_paid", "balance_due", "payment_status"]),
+            ]}
+            renderValue={(field, value) => {
+              if (field.field_key === "payment_status" && typeof value === "string") return <StatusValue status={getPosPaymentStatus(value)} />;
+              if (field.field_key === "match_status" && typeof value === "string") return <StatusValue status={getBillMatchStatus(value)} />;
+              return undefined;
+            }}
+          />
+          {bill.void_reason ? (
+            <FactList className="grid-cols-2 lg:grid-cols-4">
+              <Fact label="Voided because">{bill.void_reason}</Fact>
+            </FactList>
+          ) : null}
+        </>
       ) : null}
-
-      {editable ? <RecordCustomFieldsSection moduleKey="purchase_bills" values={customValues} onChange={setCustomValues} /> : bill ? <RecordCustomFieldsFacts moduleKey="purchase_bills" values={bill.custom_fields} /> : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

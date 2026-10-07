@@ -90,6 +90,7 @@ const STATIC_ROUTES = [
   "/dashboard/settings/picklists",
   "/dashboard/settings/picklists/lead_status",
   "/dashboard/settings/picklists/country",
+  "/dashboard/settings/field-dependencies",
   "/dashboard/settings/warehouses",
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",
@@ -822,7 +823,9 @@ test("design rule audit", async ({ page, browser }) => {
     let measuredOn: string | null = null;
     for (const route of ["/dashboard/sales/leads/new", "/dashboard/sales/opportunities/new", "/dashboard/sales/quotes/new", "/dashboard/tasks", "/dashboard/settings/general"]) {
       await page.goto(route, { waitUntil: "domcontentloaded", timeout: 45000 });
-      await page.waitForTimeout(1500);
+      // Forms draw once their layout resolves (13b Phase 4e), so wait for the trigger rather
+      // than counting after a fixed pause.
+      await page.locator(box.trigger).first().waitFor({ timeout: 10_000 }).catch(() => undefined);
       if (!(await page.locator(box.trigger).count())) continue;
       for (const theme of ["dark", "light"] as const) {
         const ground = await setTheme(page, theme);

@@ -150,6 +150,9 @@ class ModuleFieldConfig(Base):
     field_source = Column(String(40), nullable=False, server_default="system")
     is_enabled = Column(Boolean, nullable=False, server_default="true")
     is_protected = Column(Boolean, nullable=False, server_default="false")
+    # Field rules (13b Phase 4): an administrator's required and read-only, on user writes only.
+    is_required = Column(Boolean, nullable=False, default=False, server_default="false")
+    is_readonly = Column(Boolean, nullable=False, default=False, server_default="false")
     sort_order = Column(Integer, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -163,21 +166,37 @@ class RecordLayoutDefinition(Base):
             name="ck_record_layout_definitions_surface",
         ),
         CheckConstraint("version >= 1", name="ck_record_layout_definitions_version"),
-        UniqueConstraint(
-            "tenant_id",
-            "module_key",
-            "surface",
-            "name",
-            name="uq_record_layout_defs_tenant_module_surface_name",
-        ),
+        # An override belongs to one role or one team, never both (13b Phase 4 slice 4c).
+        CheckConstraint("role_id IS NULL OR team_id IS NULL", name="ck_record_layout_defs_one_scope"),
+        # One tenant default per surface; overrides are never the default.
         Index(
             "uq_record_layout_defs_default",
             "tenant_id",
             "module_key",
             "surface",
             unique=True,
-            postgresql_where=text("is_default"),
-            sqlite_where=text("is_default = 1"),
+            postgresql_where=text("is_default AND role_id IS NULL AND team_id IS NULL"),
+            sqlite_where=text("is_default = 1 AND role_id IS NULL AND team_id IS NULL"),
+        ),
+        Index(
+            "uq_record_layout_defs_role",
+            "tenant_id",
+            "module_key",
+            "surface",
+            "role_id",
+            unique=True,
+            postgresql_where=text("role_id IS NOT NULL"),
+            sqlite_where=text("role_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_record_layout_defs_team",
+            "tenant_id",
+            "module_key",
+            "surface",
+            "team_id",
+            unique=True,
+            postgresql_where=text("team_id IS NOT NULL"),
+            sqlite_where=text("team_id IS NOT NULL"),
         ),
         Index(
             "ix_record_layout_defs_tenant_module_surface",
@@ -193,6 +212,10 @@ class RecordLayoutDefinition(Base):
     surface = Column(String(32), nullable=False, index=True)
     name = Column(String(150), nullable=False)
     is_default = Column(Boolean, nullable=False, server_default="false")
+    # A role or team override (13b §3.6, 09 Phase 3): a complete layout for that audience,
+    # resolved team → role → tenant default → product default. Both null = the tenant default.
+    role_id = Column(BigInteger, ForeignKey("roles.id", ondelete="CASCADE"), nullable=True, index=True)
+    team_id = Column(BigInteger, ForeignKey("teams.id", ondelete="CASCADE"), nullable=True, index=True)
     version = Column(Integer, nullable=False, server_default="1")
     sections = Column(JSON, nullable=False, server_default="[]")
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
@@ -321,6 +344,32 @@ class PicklistValue(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
 
     picklist = relationship("Picklist", back_populates="values")
+
+
+class PicklistDependency(Base):
+    """A dependent picklist (13b §3.6, F3.6): the controlling field's value limits the dependent's.
+
+    `value_map` maps each controlling value key to the dependent value keys it allows. A
+    controlling value missing from the map allows none, and an empty controlling field leaves
+    the dependent empty (Salesforce's rule). Field keys are standard columns or `custom:<key>`.
+    A field has at most one controlling field. Country → state is built in, not stored here.
+    """
+
+    __tablename__ = "picklist_dependencies"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "dependent_field_key", name="uq_picklist_deps_dependent"),
+        CheckConstraint("controlling_field_key <> dependent_field_key", name="ck_picklist_deps_distinct"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True, index=True, autoincrement=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False, index=True)
+    controlling_field_key = Column(String(150), nullable=False)
+    dependent_field_key = Column(String(150), nullable=False)
+    value_map = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
+
 
 
 class UserModuleReport(Base):

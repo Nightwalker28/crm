@@ -5,6 +5,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -14,10 +18,8 @@ import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Switch, SwitchThumb } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { TextLink } from "@/components/ui/TextLink";
 import { useReturnCreditCandidates } from "@/hooks/finance/useFinanceDocuments";
 import { useDelivery, type DeliveryLine } from "@/hooks/inventory/useDeliveries";
@@ -30,7 +32,25 @@ import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getReturnStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type ReturnHeader = RecordFormValue & {
+  delivery_id: number | null;
+  delivery_name: string;
+  warehouse_id: number | null;
+  warehouse_name: string;
+  reason: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const RETURN_INPUT_IDS: Record<string, string> = {
+  reason: "return-reason",
+  warehouse_id: "return-warehouse",
+  notes: "return-notes",
+};
+const returnInputId = (fieldKey: string) => RETURN_INPUT_IDS[fieldKey] ?? `return-${fieldKey.replace(/_/g, "-")}`;
 
 
 function plural(count: number, word: string) {
@@ -62,9 +82,9 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const mutations = useReturnActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
-  const [warehouseId, setWarehouseId] = useState<number | null>(null);
+  const [header, setHeader] = useState<ReturnHeader | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("inventory_returns", "full_form");
   const [drafts, setDrafts] = useState<Record<number, Draft>>({});
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -75,6 +95,8 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   const editable = isNew ? Boolean(actions?.can_create) : doc?.status === "draft" && Boolean(actions?.can_edit);
   const activeWarehouses = warehouses.data?.filter((row) => row.is_active) ?? [];
   const deliveryLines = delivery.data?.lines ?? [];
+  // A tenant with one warehouse never sees the choice.
+  const omitFieldKeys = activeWarehouses.length > 1 ? [] : ["warehouse_id"];
   // What can still come back per delivery line; a draft's own lines are not yet counted as back.
   const returnable = (line: DeliveryLine) => Number(line.quantity) - Number(line.returned ?? 0);
 
@@ -83,9 +105,14 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(doc?.custom_fields ?? {});
-    setReason(doc?.reason ?? "");
-    setNotes(doc?.notes ?? "");
-    setWarehouseId(doc?.warehouse_id ?? delivery.data?.warehouse_id ?? null);
+    setHeader({
+      delivery_id: doc?.delivery_id ?? delivery.data?.id ?? null,
+      delivery_name: delivery.data?.number ?? doc?.delivery_number ?? "",
+      warehouse_id: doc?.warehouse_id ?? delivery.data?.warehouse_id ?? null,
+      warehouse_name: doc?.warehouse_name ?? delivery.data?.warehouse_name ?? "",
+      reason: doc?.reason ?? "",
+      notes: doc?.notes ?? "",
+    });
     const seeded: Record<number, Draft> = {};
     for (const line of delivery.data?.lines ?? []) {
       const onDraft = doc?.lines?.find((item) => item.delivery_line_id === line.id);
@@ -101,13 +128,21 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
   });
 
   async function save() {
-    if (!effectiveDeliveryId) return;
-    if (!reason.trim()) { setError("Enter a reason for the return."); return; }
+    if (!effectiveDeliveryId || !header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues, omitFieldKeys) : {};
+    if (!header.reason.trim()) nextErrors.reason = "Enter a reason for the return.";
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      setError("Check the highlighted fields.");
+      document.getElementById(firstInvalid.startsWith("custom:") ? `custom-field-inventory_returns-${firstInvalid.slice(7)}` : returnInputId(firstInvalid))?.focus();
+      return;
+    }
     if (invalidLine) { setError(`${invalidLine.name}: return between 0 and ${quantity(returnable(invalidLine))}.`); return; }
     if (!chosen.length) { setError("Enter a quantity on at least one line."); return; }
     const payload = {
       custom_fields: customValues,
-      reason: reason.trim(), notes: notes.trim() || null, warehouse_id: warehouseId,
+      reason: header.reason.trim(), notes: header.notes.trim() || null, warehouse_id: header.warehouse_id,
       lines: chosen.map((line) => ({ delivery_line_id: line.id, quantity: drafts[line.id].quantity, restock: drafts[line.id].restock })),
     };
     try {
@@ -188,35 +223,40 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
     >
       {missingDelivery ? null : (
         <>
-          <FactList className="grid-cols-2 lg:grid-cols-4">
-            <Fact label="Delivery">
-              {effectiveDeliveryId ? <TextLink href={`${DASHBOARD_ROUTES.inventoryDeliveries}/${effectiveDeliveryId}`}>{delivery.data?.number ?? doc?.delivery_number ?? "Delivery"}</TextLink> : "—"}
-            </Fact>
-            <Fact label="Order">
-              {(doc?.order_id ?? delivery.data?.order_id) ? <TextLink href={`/dashboard/sales/orders/${doc?.order_id ?? delivery.data?.order_id}?tab=fulfilment`}>{doc?.order_number ?? delivery.data?.order_number ?? "Order"}</TextLink> : "—"}
-            </Fact>
-            {!editable && doc ? <Fact label="Reason">{doc.reason}</Fact> : null}
-            {!editable && doc && activeWarehouses.length > 1 ? <Fact label="Warehouse">{doc.warehouse_name ?? "—"}</Fact> : null}
-            {doc?.status === "cancelled" && doc.cancel_reason ? <Fact label="Cancelled because">{doc.cancel_reason}</Fact> : null}
-          </FactList>
-
-          {editable ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Field><FieldLabel htmlFor="return-reason">Reason</FieldLabel><Input id="return-reason" maxLength={120} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Damaged in transit" /></Field>
-              {activeWarehouses.length > 1 ? (
-                <Field>
-                  <FieldLabel htmlFor="return-warehouse">Receive into</FieldLabel>
-                  <Select value={String(warehouseId ?? "")} onValueChange={(value) => setWarehouseId(Number(value))}>
-                    <SelectTrigger id="return-warehouse"><SelectValue placeholder="Select warehouse" /></SelectTrigger>
-                    <SelectContent>{activeWarehouses.map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent>
-                  </Select>
-                </Field>
+          {editable || (doc?.status === "cancelled" && doc.cancel_reason) ? (
+            <FactList className="grid-cols-2 lg:grid-cols-4">
+              {editable && (doc?.order_id ?? delivery.data?.order_id) ? (
+                <Fact label="Order">
+                  <TextLink href={`/dashboard/sales/orders/${doc?.order_id ?? delivery.data?.order_id}?tab=fulfilment`}>{doc?.order_number ?? delivery.data?.order_number ?? "Order"}</TextLink>
+                </Fact>
               ) : null}
-              <Field className="lg:col-span-2"><FieldLabel htmlFor="return-notes">Notes</FieldLabel><Textarea id="return-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-            </div>
-          ) : doc?.notes ? <p className="text-p-sm text-copy-secondary">{doc.notes}</p> : null}
+              {doc?.status === "cancelled" && doc.cancel_reason ? <Fact label="Cancelled because">{doc.cancel_reason}</Fact> : null}
+            </FactList>
+          ) : null}
 
-          {editable ? <RecordCustomFieldsSection moduleKey="inventory_returns" values={customValues} onChange={setCustomValues} /> : doc ? <RecordCustomFieldsFacts moduleKey="inventory_returns" values={doc.custom_fields} /> : null}
+          {editable && header ? (
+            <LayoutRecordFormBody<ReturnHeader>
+              moduleKey="inventory_returns"
+              value={header}
+              onChange={setHeader}
+              customValues={customValues}
+              onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+              inputId={returnInputId}
+              action={isNew ? "create" : "edit"}
+              errors={fieldErrors}
+              slots={{ omitFieldKeys }}
+            />
+          ) : doc ? (
+            <DocumentDetailHeader
+              moduleKey="inventory_returns"
+              record={doc}
+              links={{
+                delivery_id: `${DASHBOARD_ROUTES.inventoryDeliveries}/${doc.delivery_id}`,
+                order_id: `/dashboard/sales/orders/${doc.order_id}?tab=fulfilment`,
+              }}
+              omitFieldKeys={omitFieldKeys}
+            />
+          ) : null}
 
           <section className="flex flex-col gap-3">
             <SectionHeading description={editable ? "Turn Restock off for damaged goods: the return is recorded, but nothing goes back into sellable stock." : undefined}>Lines</SectionHeading>

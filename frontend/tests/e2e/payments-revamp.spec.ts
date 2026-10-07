@@ -112,13 +112,13 @@ test("Payment recording provides a responsive routed workflow with bounded amoun
 
   await expect(page.getByRole("heading", { name: "Record payment", level: 2 })).toBeVisible();
   await page.getByRole("button", { name: /INV-PAY-001 · Acme Operations/ }).click();
-  await expect(page.getByLabel("Payment amount")).toHaveValue("750.00");
+  await expect(page.getByRole("spinbutton", { name: "Amount", exact: true })).toHaveValue("750.00");
 
-  await page.getByLabel("Payment amount").fill("751");
+  await page.getByRole("spinbutton", { name: "Amount", exact: true }).fill("751");
   await page.getByRole("button", { name: "Record payment", exact: true }).click();
   await expect(page.getByText("Payment amount cannot exceed the outstanding balance.")).toBeVisible();
 
-  await page.getByLabel("Payment amount").fill("750");
+  await page.getByRole("spinbutton", { name: "Amount", exact: true }).fill("750");
   // Payment method is the tenant's list (13b §3.2).
   await page.getByRole("combobox", { name: "Payment method" }).click();
   await page.getByRole("option", { name: "Card" }).click();

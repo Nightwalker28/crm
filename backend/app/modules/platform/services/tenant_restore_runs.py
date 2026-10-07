@@ -12,7 +12,7 @@ from sqlalchemy import func, inspect as sqlalchemy_inspect, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.sqltypes import Date, DateTime, Numeric
 
-from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistValue, TenantBackupRun, TenantRestoreRun
+from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import rebuild_reservations
@@ -426,7 +426,14 @@ def _restore_picklists(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, au
                     row = {**row, "is_default": False}
         _upsert_child(db, tenant_id=tenant_id, model=PicklistValue, row=row, authoritative=authoritative, natural_key=("picklist_id", "key"))
         db.flush()
-    _sync_id_sequences(db, [Picklist, PicklistValue])
+    # Dependencies name fields and value keys, not ids, so they restore as they were.
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="picklist_dependencies.json"):
+        _upsert_child(
+            db, tenant_id=tenant_id, model=PicklistDependency, row=row, authoritative=authoritative,
+            natural_key=("module_key", "dependent_field_key"),
+        )
+        db.flush()
+    _sync_id_sequences(db, [Picklist, PicklistValue, PicklistDependency])
 
 
 def _restore_field_values(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, authoritative: bool) -> None:

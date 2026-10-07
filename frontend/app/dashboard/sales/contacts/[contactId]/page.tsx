@@ -58,6 +58,7 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { canViewRelated, type RelatedRecordAccess } from "@/lib/related-access";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 type RelatedOpportunity = {
   opportunity_id: number;
@@ -167,6 +168,7 @@ export default function ContactDetailPage() {
   const organizationActions = moduleActions("sales_organizations");
   const canEditContact = Boolean(contactActions?.can_edit);
   const canDeleteContact = Boolean(contactActions?.can_delete);
+  const canClone = Boolean(contactActions?.can_create);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
@@ -356,15 +358,20 @@ export default function ContactDetailPage() {
             ) : null}
           </>
         ) : null}
-        overflowActions={contact && canDeleteContact ? (
-          <RecordDeleteButton
-            as="menuItem"
-            endpoint={`/sales/contacts/${params.contactId}`}
-            label="Contact"
-            recordName={contactName}
-            redirectHref="/dashboard/sales/contacts"
-            queryKeys={["sales-contacts"]}
-          />
+        overflowActions={contact && (canClone || canDeleteContact) ? (
+          <>
+            {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/contacts/new" recordId={params.contactId} /> : null}
+            {canDeleteContact ? (
+              <RecordDeleteButton
+                as="menuItem"
+                endpoint={`/sales/contacts/${params.contactId}`}
+                label="Contact"
+                recordName={contactName}
+                redirectHref="/dashboard/sales/contacts"
+                queryKeys={["sales-contacts"]}
+              />
+            ) : null}
+          </>
         ) : null}
         spine={
           <RecordSpine>

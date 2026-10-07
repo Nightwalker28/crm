@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { Plus } from "lucide-react";
 import { toast } from "sonner";
 
+import { CatalogItemQuickCreate } from "@/components/catalog/CatalogItemQuickCreate";
 import CatalogRecordsTable from "@/components/catalog/CatalogRecordsTable";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
@@ -34,6 +34,8 @@ export default function CatalogRecordsPage({ kind }: Props) {
   const canCreate = Boolean(moduleActions?.can_create);
   const canEdit = Boolean(moduleActions?.can_edit);
   const [togglingRecordId, setTogglingRecordId] = useState<number | null>(null);
+  const [quickCreateOpen, setQuickCreateOpen] = useState(false);
+  const quickCreateTriggerRef = useRef<HTMLButtonElement>(null);
   const { confirm } = useConfirm();
   const { fields: moduleFields } = useModuleFieldConfigs(moduleKey);
   const definition = useMemo(() => buildModuleViewDefinition(moduleKey, [], moduleFields), [moduleKey, moduleFields]);
@@ -118,7 +120,7 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))}
         onClearFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }))}
         viewControls={<SavedViewSelector moduleKey={moduleKey} views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />}
-        primaryAction={canCreate ? <Button asChild><Link href={`/dashboard/catalog/${kind}/new`}><Plus />Create {isProduct ? "product" : "service"}</Link></Button> : undefined}
+        primaryAction={canCreate ? <Button ref={quickCreateTriggerRef} onClick={() => setQuickCreateOpen(true)}><Plus />Create {isProduct ? "product" : "service"}</Button> : undefined}
       />
       <InlineSavedViewFilters
         filterFields={definition?.filterFields ?? []}
@@ -166,6 +168,15 @@ export default function CatalogRecordsPage({ kind }: Props) {
         onPageChange={goToPage}
         onPageSizeChange={onPageSizeChange}
       />
+      {canCreate ? (
+        <CatalogItemQuickCreate
+          kind={kind}
+          open={quickCreateOpen}
+          onOpenChange={setQuickCreateOpen}
+          returnFocusRef={quickCreateTriggerRef}
+          onCreated={() => void refresh()}
+        />
+      ) : null}
     </PageShell>
   );
 }

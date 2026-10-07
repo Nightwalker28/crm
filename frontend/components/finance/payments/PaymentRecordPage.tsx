@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
 import { Fact, FactList } from "@/components/ui/Fact";
@@ -21,8 +22,6 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPaymentRecordStatus } from "@/lib/statusStyles";
-import { PicklistText } from "@/components/picklists/PicklistText";
-import { RecordCustomFieldsFacts } from "@/components/customFields/RecordCustomFields";
 
 function documentHref(allocation: PaymentAllocation) {
   if (allocation.document_type === "invoice") return `${DASHBOARD_ROUTES.invoices}/${allocation.document_id}`;
@@ -76,16 +75,25 @@ export function PaymentRecordPage({ paymentId }: { paymentId: number | null }) {
     >
       {payment ? (
         <>
+          <DocumentDetailHeader
+            moduleKey="finance_payments"
+            record={payment}
+            currency={payment.currency}
+            renderValue={(field, value) => {
+              // The payment carries the party's name, not the account's or contact's own.
+              if (field.field_key === "organization_id" && typeof value === "number") {
+                return <TextLink href={`/dashboard/sales/organizations/${value}`}>{payment.party_name ?? "Open account"}</TextLink>;
+              }
+              if (field.field_key === "contact_id" && typeof value === "number") {
+                return <TextLink href={`/dashboard/sales/contacts/${value}`}>{payment.organization_id ? "Open contact" : payment.party_name ?? "Open contact"}</TextLink>;
+              }
+              return undefined;
+            }}
+          />
           <FactList className="grid-cols-2 lg:grid-cols-4">
-            <Fact label="Amount"><Money amount={payment.amount} currency={payment.currency} context="field" /></Fact>
-            <Fact label="Customer or vendor">{payment.party_name ?? "—"}</Fact>
-            <Fact label="Method"><PicklistText listKey="payment_method" value={payment.method} context="field" /></Fact>
-            <Fact label="Reference">{payment.reference ?? "—"}</Fact>
             <Fact label="Recorded">{formatDateTime(payment.created_at)}</Fact>
             {payment.void_reason ? <Fact label="Voided because">{payment.void_reason}</Fact> : null}
-            {payment.notes ? <Fact label="Notes">{payment.notes}</Fact> : null}
           </FactList>
-          <RecordCustomFieldsFacts moduleKey="finance_payments" values={payment.custom_fields} />
           <section className="flex flex-col gap-3">
             <SectionHeading>Settles</SectionHeading>
             <RecordTable<PaymentAllocation>

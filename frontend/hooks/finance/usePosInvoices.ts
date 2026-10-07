@@ -92,7 +92,7 @@ export type PosInvoice = {
   credit_notes?: InvoiceCreditNoteSummary[];
 };
 
-export type RecordPaymentPayload = { amount: number; payment_method?: string | null; paid_on?: string | null; reference?: string | null; custom_fields?: Record<string, unknown> };
+export type RecordPaymentPayload = { amount: number; payment_method?: string | null; paid_on?: string | null; reference?: string | null; notes?: string | null; custom_fields?: Record<string, unknown> };
 
 /** What a draft or issued invoice shows as its number. */
 export function invoiceDisplayNumber(invoice: Pick<PosInvoice, "invoice_number" | "status">) {

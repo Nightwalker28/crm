@@ -214,7 +214,7 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
         self.assertEqual(self.resolve("sales_contacts", "detail").source, "tenant")
         self.assertEqual(self.resolve("sales_contacts", "detail", tenant_id=2).source, "system")
 
-    def test_stored_quick_create_that_drops_a_required_field_falls_back_to_the_seed(self):
+    def test_stored_quick_create_that_drops_a_required_field_gets_it_back(self):
         broken = MODULE_LAYOUT_SEEDS["sales_organizations"]["quick_create"].model_dump(mode="json")
         broken["sections"][0]["fields"] = [
             field for field in broken["sections"][0]["fields"] if field["field_key"] != "org_name"
@@ -232,8 +232,10 @@ class ContactOrganizationLayoutTests(unittest.TestCase):
         )
         self.db.commit()
 
+        # Since 13b Phase 4a the tenant's layout stays and the missing required field is
+        # appended to it, so a field made required after publishing never blocks a create.
         layout = self.resolve("sales_organizations", "quick_create")
-        self.assertEqual(layout.source, "system")
+        self.assertEqual(layout.source, "tenant")
         self.assertIn("org_name", resolved_fields(layout))
 
 

@@ -38,6 +38,7 @@ import { FieldValue } from "@/components/fields/FieldValue";
 import { customModuleFieldShape } from "@/components/customModules/CustomModuleFieldInput";
 import { picklistOptions, usePicklists, type Picklist } from "@/hooks/usePicklists";
 import { isWideType } from "@/lib/fieldTypes";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 /**
  * The field types the rail edits (design.md §4.7).
@@ -82,6 +83,7 @@ export default function CustomModuleRecordDetailPage() {
   const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const canEdit = Boolean(accessibleModule?.actions?.can_edit);
   const canDelete = Boolean(accessibleModule?.actions?.can_delete);
+  const canClone = Boolean(accessibleModule?.actions?.can_create);
 
   const enabledFieldKeys = useMemo(
     () => new Map(moduleFields.fields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
@@ -165,20 +167,25 @@ export default function CustomModuleRecordDetailPage() {
           </Link>
         </Button>
       ) : null}
-      overflowActions={record && canDelete ? (
-        <DropdownMenuItem
-          // Radix closes the menu on select and would steal focus from the confirmation the
-          // handler is about to open, so the close is prevented and the dialog owns focus.
-          onSelect={(event) => {
-            event.preventDefault();
-            void handleDelete();
-          }}
-          disabled={recordQuery.isDeleting}
-          className="text-state-danger focus:bg-state-danger-muted focus:text-state-danger"
-        >
-          <Trash2 />
-          {recordQuery.isDeleting ? "Deleting…" : "Delete record"}
-        </DropdownMenuItem>
+      overflowActions={record && (canClone || canDelete) ? (
+        <>
+          {canClone ? <RecordCloneMenuItem newHref={`/dashboard/custom/${moduleKey}/new`} recordId={recordId} /> : null}
+          {canDelete ? (
+            <DropdownMenuItem
+              // Radix closes the menu on select and would steal focus from the confirmation the
+              // handler is about to open, so the close is prevented and the dialog owns focus.
+              onSelect={(event) => {
+                event.preventDefault();
+                void handleDelete();
+              }}
+              disabled={recordQuery.isDeleting}
+              className="text-state-danger focus:bg-state-danger-muted focus:text-state-danger"
+            >
+              <Trash2 />
+              {recordQuery.isDeleting ? "Deleting…" : "Delete record"}
+            </DropdownMenuItem>
+          ) : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>

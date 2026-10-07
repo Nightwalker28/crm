@@ -47,6 +47,7 @@ import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 import { getLeadScoreGrade } from "@/lib/statusStyles";
 import { picklistMeaning, picklistOptions, picklistStatus, usePicklist } from "@/hooks/usePicklists";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 type LeadScoreFactor = {
   key: string;
@@ -145,6 +146,7 @@ export default function LeadDetailPage() {
   const contactActions = moduleActions("sales_contacts");
   const canEditLead = Boolean(leadActions?.can_edit);
   const canDeleteLead = Boolean(leadActions?.can_delete);
+  const canClone = Boolean(leadActions?.can_create);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
@@ -299,15 +301,20 @@ export default function LeadDetailPage() {
           ) : null}
         </>
       ) : null}
-      overflowActions={lead && canDeleteLead ? (
-        <RecordDeleteButton
-          as="menuItem"
-          endpoint={`/sales/leads/${params.leadId}`}
-          label="Lead"
-          recordName={leadName}
-          redirectHref="/dashboard/sales/leads"
-          queryKeys={["sales-leads"]}
-        />
+      overflowActions={lead && (canClone || canDeleteLead) ? (
+        <>
+          {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/leads/new" recordId={params.leadId} /> : null}
+          {canDeleteLead ? (
+            <RecordDeleteButton
+              as="menuItem"
+              endpoint={`/sales/leads/${params.leadId}`}
+              label="Lead"
+              recordName={leadName}
+              redirectHref="/dashboard/sales/leads"
+              queryKeys={["sales-leads"]}
+            />
+          ) : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>

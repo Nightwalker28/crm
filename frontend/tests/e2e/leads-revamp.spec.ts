@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 
+import { api } from "./helpers/api";
 import { loginAsAdmin } from "./helpers/auth";
 
 const fakeLeadId = 987654321;
@@ -458,7 +459,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await page.getByRole("option", { name: /Ada Owner/ }).click();
   await expect(ownerPicker).toHaveText(/Ada Owner/);
 
-  const teamPicker = page.getByPlaceholder("Search teams (defaults to yours)");
+  const teamPicker = page.getByPlaceholder("Search team", { exact: true });
   await teamPicker.fill("Rev");
   await page.getByRole("option", { name: "Revenue" }).click();
   await expect(teamPicker).toHaveValue("Revenue");
@@ -520,7 +521,7 @@ test("Leads routed workflow exposes create, detail, edit, conversion, and deep-l
   await expect(page.getByRole("heading", { name: "Edit lead" })).toBeVisible();
   await expect(page.getByLabel("Email")).toHaveValue("browser.fixture@example.com");
   await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
-  await expect(page.getByPlaceholder("Search teams")).toHaveValue("Revenue");
+  await expect(page.getByPlaceholder("Search team", { exact: true })).toHaveValue("Revenue");
   await expect(page.getByRole("button", { name: "Remove Enterprise tag" })).toBeVisible();
   await expect(page.getByLabel("Next follow-up")).not.toHaveValue("");
   await expect(page.getByText(/Last modified/)).toBeVisible();
@@ -997,66 +998,54 @@ test("Lead tags support keyboard suggestions and redact lookup failures", async 
 
 test("Lead custom fields are labeled and preserve required false boolean values", async ({ page }) => {
   let submitted: Record<string, unknown> | null = null;
-  await page.route("**/custom-fields/sales_leads", (route) =>
-    route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify([
-        {
-          id: 301,
-          module_key: "sales_leads",
-          field_key: "renewal_tier",
-          label: "Renewal tier",
-          field_type: "text",
-          placeholder: "Gold",
-          help_text: "Internal qualification tier.",
-          is_required: true,
-          is_active: true,
-          sort_order: 10,
-        },
-        {
-          id: 302,
-          module_key: "sales_leads",
-          field_key: "priority_account",
-          label: "Priority account",
-          field_type: "boolean",
-          placeholder: null,
-          help_text: "Include this lead in priority reviews.",
-          is_required: true,
-          is_active: true,
-          sort_order: 20,
-        },
-      ]),
+  // Since 13b Phase 4e the form draws custom fields from the server's resolved layout, so
+  // the fields are real (the run's own database) and switched off again at the end, where a
+  // required field would otherwise refuse every later lead create in the run.
+  await page.goto("/dashboard/sales/leads");
+  const fields = [
+    await api<{ id: number }>(page, "/admin/custom-fields/sales_leads", {
+      method: "POST",
+      data: { field_key: "renewal_tier", label: "Renewal tier", field_type: "text", placeholder: "Gold", help_text: "Internal qualification tier.", is_required: true, sort_order: 10 },
     }),
-  );
-  await page.route("**/api/v1/sales/leads", async (route) => {
-    if (route.request().method() !== "POST") {
-      await route.continue();
-      return;
-    }
-    submitted = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({
-      status: 201,
-      contentType: "application/json",
-      body: JSON.stringify({ lead_id: fakeLeadId }),
+    await api<{ id: number }>(page, "/admin/custom-fields/sales_leads", {
+      method: "POST",
+      data: { field_key: "priority_account", label: "Priority account", field_type: "boolean", help_text: "Include this lead in priority reviews.", is_required: true, sort_order: 20 },
+    }),
+  ];
+  try {
+    await page.route("**/api/v1/sales/leads", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.continue();
+        return;
+      }
+      submitted = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({ lead_id: fakeLeadId }),
+      });
     });
-  });
 
-  await page.goto("/dashboard/sales/leads/new");
-  await expect(page.getByLabel("Renewal tier")).toHaveAttribute("required", "");
-  await expect(page.getByText("Internal qualification tier.")).toBeVisible();
-  // A boolean is a Yes/No pair (SegmentedBoolean, 13b §3.4); an unset required one reads No.
-  await expect(page.getByRole("group", { name: "Priority account" }).getByRole("radio", { name: "No" })).toBeChecked();
+    await page.goto("/dashboard/sales/leads/new");
+    await expect(page.getByLabel("Renewal tier")).toHaveAttribute("required", "");
+    await expect(page.getByText("Internal qualification tier.")).toBeVisible();
+    // A boolean is a Yes/No pair (SegmentedBoolean, 13b §3.4); an unset required one reads No.
+    await expect(page.getByRole("group", { name: "Priority account" }).getByRole("radio", { name: "No" })).toBeChecked();
 
-  await page.getByLabel("Email").fill("qualified@example.test");
-  await page.getByLabel("Renewal tier").fill("Gold");
-  await page.getByRole("button", { name: "Create lead" }).click();
+    await page.getByLabel("Email").fill("qualified@example.test");
+    await page.getByLabel("Renewal tier").fill("Gold");
+    await page.getByRole("button", { name: "Create lead" }).click();
 
-  expect(submitted).toMatchObject({
-    primary_email: "qualified@example.test",
-    custom_fields: {
-      renewal_tier: "Gold",
-      priority_account: false,
-    },
-  });
+    await expect.poll(() => submitted).toMatchObject({
+      primary_email: "qualified@example.test",
+      custom_fields: {
+        renewal_tier: "Gold",
+        priority_account: false,
+      },
+    });
+  } finally {
+    for (const field of fields) {
+      await api(page, `/admin/custom-fields/${field.id}`, { method: "PUT", data: { is_active: false, is_required: false } });
+    }
+  }
 });

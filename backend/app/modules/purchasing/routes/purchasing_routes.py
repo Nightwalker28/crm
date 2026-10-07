@@ -19,6 +19,7 @@ from app.modules.purchasing.services import purchase_order_services as orders
 from app.modules.purchasing.services import receipt_services as receipts
 from app.modules.purchasing.services import reorder_services as reorder
 from app.modules.sales.models import SalesOrganization
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/purchasing", tags=["Purchasing"])
@@ -122,7 +123,8 @@ def list_orders(status: str | None = Query(default=None, pattern="^(draft|ordere
 @router.post("/orders", status_code=201)
 def create_order(payload: OrderPayload, db: Session = Depends(get_db), user=Depends(require_user),
                  _module=Depends(require_module_access(ORDERS)), _create=Depends(require_action_access(ORDERS, "create"))):
-    order = orders.save_order(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=ORDERS, payload=payload.model_dump())
+    order = orders.save_order(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     db.commit()
     return _order(db, user.tenant_id, order.id)
 
@@ -144,7 +146,11 @@ def get_order(order_id: int, db: Session = Depends(get_db), user=Depends(require
 @router.patch("/orders/{order_id}")
 def update_order(order_id: int, payload: OrderPayload, db: Session = Depends(get_db), user=Depends(require_user),
                  _module=Depends(require_module_access(ORDERS)), _edit=Depends(require_action_access(ORDERS, "edit"))):
-    orders.save_order(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), order_id=order_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=ORDERS, payload=payload.model_dump(),
+        record_id=order_id, submitted_keys=payload.model_fields_set,
+    )
+    orders.save_order(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, order_id=order_id)
     db.commit()
     return _order(db, user.tenant_id, order_id)
 
@@ -219,7 +225,8 @@ def create_receipt(payload: ReceiptCreatePayload, db: Session = Depends(get_db),
                    _module=Depends(require_module_access(RECEIPTS)), _create=Depends(require_action_access(RECEIPTS, "create"))):
     if not can_access(db, user, ORDERS, "view"):
         raise HTTPException(status_code=403, detail="Purchase order access required")
-    receipt = receipts.save_receipt(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=RECEIPTS, payload=payload.model_dump())
+    receipt = receipts.save_receipt(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     db.commit()
     return _receipt(db, user.tenant_id, receipt.id)
 
@@ -241,7 +248,11 @@ def get_receipt(receipt_id: int, db: Session = Depends(get_db), user=Depends(req
 @router.patch("/receipts/{receipt_id}")
 def update_receipt(receipt_id: int, payload: ReceiptPayload, db: Session = Depends(get_db), user=Depends(require_user),
                    _module=Depends(require_module_access(RECEIPTS)), _edit=Depends(require_action_access(RECEIPTS, "edit"))):
-    receipts.save_receipt(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), receipt_id=receipt_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=RECEIPTS, payload=payload.model_dump(),
+        record_id=receipt_id, submitted_keys=payload.model_fields_set,
+    )
+    receipts.save_receipt(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, receipt_id=receipt_id)
     db.commit()
     return _receipt(db, user.tenant_id, receipt_id)
 

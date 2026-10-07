@@ -80,6 +80,7 @@ class PosInvoicePaymentRequest(BaseModel):
     payment_method: str | None = Field(default=None, max_length=100)
     paid_on: Optional[date] = None
     reference: Optional[str] = Field(default=None, max_length=200)
+    notes: Optional[str] = None
     custom_fields: dict[str, Any] | None = None
 
 

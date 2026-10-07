@@ -754,6 +754,21 @@ def get_record(db: Session, *, module_key: str, record_id: int, current_user: Us
     return _record_response(db, definition, _get_record(db, definition=definition, record_id=record_id))
 
 
+def clone_source(
+    db: Session, *, module_key: str, record_id: int, current_user: User
+) -> tuple[list[FieldDefinition], CustomModuleRecord, dict[str, Any]]:
+    """The live fields, record and values a clone draft copies from (13b Phase 5). Cloning
+    shows the source and makes a new record, so it needs view and create."""
+    definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
+    _require_module_action(db, user=current_user, definition=definition, action="view")
+    _require_module_action(db, user=current_user, definition=definition, action="create")
+    record = _get_record(db, definition=definition, record_id=record_id)
+    values = custom_fields.load_custom_field_values(
+        db, tenant_id=current_user.tenant_id, module_key=module_key_of(definition), record_id=record.id
+    )
+    return _live_fields(definition), record, values
+
+
 def update_record(db: Session, *, module_key: str, record_id: int, current_user: User, payload: CustomModuleRecordRequest) -> CustomModuleRecordResponse:
     definition = _get_module_definition(db, tenant_id=current_user.tenant_id, key=module_key)
     _require_module_action(db, user=current_user, definition=definition, action="edit")

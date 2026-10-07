@@ -39,6 +39,7 @@ import {
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
 import { resolveMediaUrl } from "@/lib/media";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 import {
   getCatalogActiveState,
   getCatalogStockStatus,
@@ -101,6 +102,7 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
   const adjustmentActions = moduleActions("inventory_adjustments");
   const canEdit = Boolean(catalogActions?.can_edit);
   const canDelete = Boolean(catalogActions?.can_delete);
+  const canClone = Boolean(catalogActions?.can_create);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canViewDocuments = Boolean(documentActions?.can_view);
 
@@ -148,15 +150,20 @@ export default function CatalogRecordDetailPage({ kind, recordId }: Props) {
           </Link>
         </Button>
       ) : null}
-      overflowActions={record && canDelete ? (
-        <RecordDeleteButton
-          as="menuItem"
-          endpoint={`/catalog/${kind}/${recordId}`}
-          label={noun}
-          recordName={recordName}
-          redirectHref={listHref}
-          queryKeys={["catalog"]}
-        />
+      overflowActions={record && (canClone || canDelete) ? (
+        <>
+          {canClone ? <RecordCloneMenuItem newHref={`${listHref}/new`} recordId={recordId} /> : null}
+          {canDelete ? (
+            <RecordDeleteButton
+              as="menuItem"
+              endpoint={`/catalog/${kind}/${recordId}`}
+              label={noun}
+              recordName={recordName}
+              redirectHref={listHref}
+              queryKeys={["catalog"]}
+            />
+          ) : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>

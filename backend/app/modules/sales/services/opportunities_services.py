@@ -8,6 +8,7 @@ from app.core.duplicates import DuplicateMode, detect_duplicates, resolve_duplic
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.pagination import Pagination
 from app.core.module_export import dict_rows_to_csv_bytes
+from app.modules.platform.services.module_fields import ImportFieldRules
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     hydrate_custom_field_records,
@@ -670,8 +671,14 @@ def import_opportunities_from_csv(
         names=names,
     )
 
+    field_rules = ImportFieldRules(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities")
     for row_number, payload in rows:
         existing = None if create_new_records else existing_by_name.get(payload["opportunity_name"])
+        if not (existing and mode == DuplicateMode.skip):
+            rule_failure = field_rules.apply(payload, existing=existing, overwrite=mode == DuplicateMode.overwrite)
+            if rule_failure:
+                failures.append({"row_number": row_number, "record_identifier": payload.get("opportunity_name"), "reason": rule_failure})
+                continue
         try:
             if existing and mode == DuplicateMode.skip:
                 skipped_rows += 1

@@ -64,6 +64,7 @@ import { apiFetch } from "@/lib/api";
 import type { RelatedRecordAccess } from "@/lib/related-access";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 type RelatedQuote = {
   quote_id: number;
@@ -173,6 +174,7 @@ export default function OpportunityDetailPage() {
   const documentActions = moduleActions("documents");
   const canEditDeal = Boolean(opportunityActions?.can_edit);
   const canDeleteDeal = Boolean(opportunityActions?.can_delete);
+  const canClone = Boolean(opportunityActions?.can_create);
   const canRestoreDeal = Boolean(opportunityActions?.can_restore);
   const canCreateContacts = Boolean(moduleActions("sales_contacts")?.can_create);
   const canViewQuotes = Boolean(quoteActions?.can_view);
@@ -382,15 +384,20 @@ export default function OpportunityDetailPage() {
           {lostReasonDialog}
         </>
       ) : null}
-      overflowActions={deal && canDeleteDeal ? (
-        <RecordDeleteButton
-          as="menuItem"
-          endpoint={`/sales/opportunities/${params.opportunityId}`}
-          label="Deal"
-          recordName={dealName}
-          redirectHref="/dashboard/sales/opportunities"
-          queryKeys={["sales-opportunities", "sales-opportunities-pipeline-summary"]}
-        />
+      overflowActions={deal && (canClone || canDeleteDeal) ? (
+        <>
+          {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/opportunities/new" recordId={params.opportunityId} /> : null}
+          {canDeleteDeal ? (
+            <RecordDeleteButton
+              as="menuItem"
+              endpoint={`/sales/opportunities/${params.opportunityId}`}
+              label="Deal"
+              recordName={dealName}
+              redirectHref="/dashboard/sales/opportunities"
+              queryKeys={["sales-opportunities", "sales-opportunities-pipeline-summary"]}
+            />
+          ) : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>

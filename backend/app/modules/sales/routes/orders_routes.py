@@ -9,6 +9,7 @@ from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_access, require_action_access, require_module_access
 from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.crm_events import safe_publish_crm_event
@@ -123,7 +124,9 @@ def create_order(
     require_module=Depends(require_module_access("sales_orders")),
     require_permission=Depends(require_action_access("sales_orders", "create")),
 ):
-    order_payload = payload.model_dump()
+    order_payload = apply_user_write_rules(
+        db, tenant_id=current_user.tenant_id, module_key="sales_orders", payload=payload.model_dump()
+    )
     require_catalog_line_link_access(db, user=current_user, lines=order_payload.get("items"))
     if order_payload.get("status") == "fulfilled" and any(item.get("catalog_product_id") for item in order_payload.get("items") or []):
         _require_delivery_access(db, current_user)
@@ -173,7 +176,14 @@ def update_order(
     require_permission=Depends(require_action_access("sales_orders", "edit")),
 ):
     order = get_order_or_404(db, tenant_id=current_user.tenant_id, order_id=order_id)
-    update_payload = payload.model_dump(exclude_unset=True)
+    update_payload = apply_user_write_rules(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_orders",
+        payload=payload.model_dump(exclude_unset=True),
+        existing=order,
+        record_id=order.id,
+    )
     require_catalog_line_link_access(db, user=current_user, lines=update_payload.get("items"), existing_links=catalog_links_of(order.items))
     if update_payload.get("status") == "fulfilled" and order.status != "fulfilled" and order_needs_delivery(db, order):
         _require_delivery_access(db, current_user)

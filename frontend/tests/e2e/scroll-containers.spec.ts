@@ -82,6 +82,7 @@ const ROUTES = [
   "/dashboard/settings/picklists",
   "/dashboard/settings/picklists/lead_status",
   "/dashboard/settings/picklists/country",
+  "/dashboard/settings/field-dependencies",
   "/dashboard/settings/warehouses",
   "/dashboard/settings/domains",
   "/dashboard/settings/fields",

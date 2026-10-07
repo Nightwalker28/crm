@@ -19,6 +19,7 @@ import {
   RecordWorkspace,
   useRecordTabHref,
 } from "@/components/recordWorkspace/RecordWorkspace";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { InlineFieldEdit, type InlineFieldEditOption } from "@/components/ui/InlineFieldEdit";
@@ -104,6 +105,7 @@ export default function OrderDetailPage() {
   const taskActions = moduleActions("tasks");
   const documentActions = moduleActions("documents");
   const canEdit = Boolean(orderActions?.can_edit);
+  const canClone = Boolean(orderActions?.can_create);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
@@ -226,6 +228,9 @@ export default function OrderDetailPage() {
             Edit
           </Link>
         </Button>
+      ) : null}
+      overflowActions={order && canClone ? (
+        <RecordCloneMenuItem newHref="/dashboard/sales/orders/new" recordId={params.orderId} />
       ) : null}
       spine={
         <RecordSpine>

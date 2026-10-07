@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
 import { ApiError, apiErrorFromResponse, formErrorMessage } from "@/lib/apiErrors";
+import type { PicklistDependency } from "@/hooks/usePicklistDependencies";
 import type { Picklist, PicklistValue } from "@/hooks/usePicklists";
 
 /** Settings → Picklists (13b §3.1). Administration only; everyone else reads `usePicklists`. */
@@ -92,3 +93,34 @@ export const resolveUnmatchedValue = (listKey: string, value: string, intoKey: s
     { method: "POST", body: JSON.stringify({ value, into_key: intoKey }) },
     "The records could not be moved.",
   );
+
+// --- dependent picklists (13b §3.6) -----------------------------------------------------
+
+export type DependencyField = { field_key: string; label: string; list_key: string; multiple: boolean };
+export type AdminDependencies = { results: PicklistDependency[]; fields: DependencyField[] };
+
+export const adminDependenciesQueryKey = (moduleKey: string) => ["admin-picklist-dependencies", moduleKey] as const;
+
+export function useAdminPicklistDependencies(moduleKey: string) {
+  return useQuery({
+    queryKey: adminDependenciesQueryKey(moduleKey),
+    queryFn: () =>
+      send<AdminDependencies>(`/admin/picklists/dependencies/${encodeURIComponent(moduleKey)}`, { method: "GET" }, "Field dependencies could not be loaded."),
+  });
+}
+
+export function saveDependency(moduleKey: string, dependentFieldKey: string, body: { controlling_field_key: string; value_map: Record<string, string[]> }) {
+  return send<PicklistDependency>(
+    `/admin/picklists/dependencies/${encodeURIComponent(moduleKey)}/${encodeURIComponent(dependentFieldKey)}`,
+    { method: "PUT", body: JSON.stringify(body) },
+    "The dependency could not be saved. Try again.",
+  );
+}
+
+export async function deleteDependency(moduleKey: string, dependentFieldKey: string) {
+  const res = await apiFetch(
+    `/admin/picklists/dependencies/${encodeURIComponent(moduleKey)}/${encodeURIComponent(dependentFieldKey)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) throw await apiErrorFromResponse(res, "The dependency could not be removed. Try again.");
+}

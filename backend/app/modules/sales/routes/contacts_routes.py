@@ -45,9 +45,11 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.picklist_dependencies import enforce_picklist_dependencies
 from app.modules.platform.services.module_fields import (
     enabled_module_fields,
     enabled_module_field_sequence,
+    enforce_field_rules,
     reject_disabled_field_writes,
     sanitize_data_transfer_export_payload,
     sanitize_disabled_field_payload,
@@ -316,6 +318,15 @@ def create_contact(
             module_key="sales_contacts",
             payload=payload.model_dump(),
         )
+        sanitized_payload = enforce_field_rules(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key="sales_contacts",
+            payload=sanitized_payload,
+        )
+        enforce_picklist_dependencies(
+            db, tenant_id=current_user.tenant_id, module_key="sales_contacts", payload=sanitized_payload
+        )
         _require_account_link_access(db, current_user=current_user, payload_data=sanitized_payload)
         created = create_sales_contact(
             db=db,
@@ -580,6 +591,21 @@ def update_contact(
         tenant_id=current_user.tenant_id,
         module_key="sales_contacts",
         payload=update_data,
+    )
+    update_data = enforce_field_rules(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        payload=update_data,
+        existing=contact,
+    )
+    enforce_picklist_dependencies(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_contacts",
+        payload=update_data,
+        existing=contact,
+        record_id=contact.contact_id,
     )
     _require_account_link_access(db, current_user=current_user, payload_data=update_data)
 

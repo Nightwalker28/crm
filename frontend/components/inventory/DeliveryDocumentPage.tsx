@@ -6,6 +6,10 @@ import { useRouter } from "next/navigation";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -16,8 +20,6 @@ import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
-import { Textarea } from "@/components/ui/textarea";
-import { TextLink } from "@/components/ui/TextLink";
 import { useDelivery, useDeliveryActions, type DeliveryLine } from "@/hooks/inventory/useDeliveries";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useOrderFulfilment, type OrderFulfilmentLine } from "@/hooks/inventory/useReservations";
@@ -25,13 +27,34 @@ import { useInvoiceActions } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
-import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { TrackingNumber } from "@/components/inventory/TrackingNumber";
 import { getDeliveryStatus, getReturnStatus } from "@/lib/statusStyles";
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
 import { formatQuantity as quantity } from "@/lib/quantity";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type DeliveryHeader = RecordFormValue & {
+  order_id: number | null;
+  order_name: string;
+  warehouse_id: number | null;
+  warehouse_name: string;
+  shipped_on: string;
+  carrier: string;
+  tracking_number: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const DELIVERY_INPUT_IDS: Record<string, string> = {
+  shipped_on: "delivery-shipped-on",
+  carrier: "delivery-carrier",
+  tracking_number: "delivery-tracking",
+  notes: "delivery-notes",
+};
+const deliveryInputId = (fieldKey: string) => DELIVERY_INPUT_IDS[fieldKey] ?? `delivery-${fieldKey.replace(/_/g, "-")}`;
 
 
 function plural(count: number, word: string) {
@@ -62,10 +85,9 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   const mutations = useDeliveryActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [shippedOn, setShippedOn] = useState("");
-  const [carrier, setCarrier] = useState("");
-  const [tracking, setTracking] = useState("");
-  const [notes, setNotes] = useState("");
+  const [header, setHeader] = useState<DeliveryHeader | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("inventory_deliveries", "full_form");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -83,10 +105,17 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(doc?.custom_fields ?? {});
-    setShippedOn(doc?.shipped_on ?? "");
-    setCarrier(doc?.carrier ?? "");
-    setTracking(doc?.tracking_number ?? "");
-    setNotes(doc?.notes ?? "");
+    setHeader({
+      order_id: doc?.order_id ?? fulfilment.data?.order_id ?? null,
+      // I4: a new delivery names its order by number from the start, not "Order 41".
+      order_name: doc?.order_number ?? fulfilment.data?.order_number ?? "",
+      warehouse_id: doc?.warehouse_id ?? fulfilment.data?.warehouse_id ?? null,
+      warehouse_name: doc?.warehouse_name ?? fulfilment.data?.warehouse_name ?? "",
+      shipped_on: doc?.shipped_on ?? "",
+      carrier: doc?.carrier ?? "",
+      tracking_number: doc?.tracking_number ?? "",
+      notes: doc?.notes ?? "",
+    });
     const seeded: Record<number, string> = {};
     for (const line of fulfilment.data?.lines ?? []) {
       const onDraft = doc?.lines?.find((item) => item.order_line_id === line.order_line_id);
@@ -103,12 +132,15 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
   });
 
   async function save() {
-    if (!effectiveOrderId) return;
+    if (!effectiveOrderId || !header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues) : {};
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length) { setError("Check the highlighted fields."); return; }
     if (invalidLine) { setError(`${invalidLine.name}: ship between 0 and ${quantity(invalidLine.to_deliver)}.`); return; }
     if (!shippingLines.length) { setError("Enter a quantity to ship on at least one line."); return; }
     const payload = {
       custom_fields: customValues,
-      shipped_on: shippedOn || null, carrier: carrier.trim() || null, tracking_number: tracking.trim() || null, notes: notes.trim() || null,
+      shipped_on: header.shipped_on || null, carrier: header.carrier.trim() || null, tracking_number: header.tracking_number.trim() || null, notes: header.notes.trim() || null,
       lines: shippingLines.map((line) => ({ order_line_id: line.order_line_id, quantity: quantities[line.order_line_id] })),
     };
     try {
@@ -148,8 +180,6 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
     catch (failure) { setError(failure instanceof Error ? failure.message : "Removal failed."); }
   }
 
-  // I4: a new delivery names its order by number from the start, not "Order 41".
-  const orderNumber = doc?.order_number ?? fulfilment.data?.order_number ?? null;
   const missingOrder = isNew && !orderId;
   const canReturn = doc?.status === "posted" && Boolean(returnActions?.can_create)
     && (doc.lines ?? []).some((line) => Number(line.quantity) > Number(line.returned ?? 0));
@@ -190,28 +220,38 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
       }
     >
       {missingOrder ? null : (<>
-      <FactList className="grid-cols-2 lg:grid-cols-4">
-        <Fact label="Order">
-          {effectiveOrderId ? <TextLink href={`/dashboard/sales/orders/${effectiveOrderId}?tab=fulfilment`}>{orderNumber ?? "Open order"}</TextLink> : "—"}
-        </Fact>
-        {doc?.customer_name ? <Fact label="Customer">{doc.customer_name}</Fact> : null}
-        {multipleWarehouses ? <Fact label="Warehouse">{doc?.warehouse_name ?? fulfilment.data?.warehouse_name ?? "—"}</Fact> : null}
-        {!editable && doc ? <Fact label="Shipped on">{doc.shipped_on ? formatDateOnly(doc.shipped_on) : "—"}</Fact> : null}
-        {!editable && doc?.carrier ? <Fact label="Carrier">{doc.carrier}</Fact> : null}
-        {!editable && doc?.tracking_number ? <Fact label="Tracking number"><TrackingNumber carrier={doc.carrier} number={doc.tracking_number} /></Fact> : null}
-        {doc?.status === "cancelled" && doc.cancel_reason ? <Fact label="Cancelled because">{doc.cancel_reason}</Fact> : null}
-      </FactList>
+      {doc?.customer_name || (doc?.status === "cancelled" && doc.cancel_reason) ? (
+        <FactList className="grid-cols-2 lg:grid-cols-4">
+          {doc?.customer_name ? <Fact label="Customer">{doc.customer_name}</Fact> : null}
+          {doc?.status === "cancelled" && doc.cancel_reason ? <Fact label="Cancelled because">{doc.cancel_reason}</Fact> : null}
+        </FactList>
+      ) : null}
 
-      {editable ? (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Field><FieldLabel htmlFor="delivery-shipped-on">Shipped on</FieldLabel><Input id="delivery-shipped-on" type="date" value={shippedOn} onChange={(event) => setShippedOn(event.target.value)} /></Field>
-          <Field><FieldLabel htmlFor="delivery-carrier">Carrier</FieldLabel><Input id="delivery-carrier" maxLength={120} value={carrier} onChange={(event) => setCarrier(event.target.value)} /></Field>
-          <Field><FieldLabel htmlFor="delivery-tracking">Tracking number</FieldLabel><Input id="delivery-tracking" maxLength={120} value={tracking} onChange={(event) => setTracking(event.target.value)} /></Field>
-          <Field className="lg:col-span-3"><FieldLabel htmlFor="delivery-notes">Notes</FieldLabel><Textarea id="delivery-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-        </div>
-      ) : doc?.notes ? <p className="text-p-sm text-copy-secondary">{doc.notes}</p> : null}
-
-      {editable ? <RecordCustomFieldsSection moduleKey="inventory_deliveries" values={customValues} onChange={setCustomValues} /> : doc ? <RecordCustomFieldsFacts moduleKey="inventory_deliveries" values={doc.custom_fields} /> : null}
+      {editable && header ? (
+        <LayoutRecordFormBody<DeliveryHeader>
+          moduleKey="inventory_deliveries"
+          value={header}
+          onChange={setHeader}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={deliveryInputId}
+          action={isNew ? "create" : "edit"}
+          errors={fieldErrors}
+          // The order the delivery ships is the one it was started from.
+          lockedFieldKeys={["order_id"]}
+          slots={{ omitFieldKeys: multipleWarehouses ? [] : ["warehouse_id"] }}
+        />
+      ) : doc ? (
+        <DocumentDetailHeader
+          moduleKey="inventory_deliveries"
+          record={doc}
+          links={{ order_id: `/dashboard/sales/orders/${doc.order_id}?tab=fulfilment` }}
+          omitFieldKeys={multipleWarehouses ? [] : ["warehouse_id"]}
+          renderValue={(field, value) => (field.field_key === "tracking_number" && typeof value === "string" && value
+            ? <TrackingNumber carrier={doc.carrier} number={value} />
+            : undefined)}
+        />
+      ) : null}
 
       <section className="flex flex-col gap-3">
         <SectionHeading description={editable ? `${plural(totalUnits, "unit")} on this delivery.` : undefined}>Lines</SectionHeading>

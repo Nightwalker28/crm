@@ -9,6 +9,7 @@ from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.pagination import Pagination
+from app.modules.platform.services.module_fields import ImportFieldRules
 from app.modules.platform.services.picklists import PicklistResolver, picklist_error_reason
 from app.modules.sales.repositories import contacts_repository
 from app.modules.platform.services.custom_fields import (
@@ -473,6 +474,7 @@ def import_contacts_from_csv(
         create_new_records=create_new_records,
     )
     resolver = PicklistResolver(db, tenant_id, allow_create=add_unknown_picklist_values)
+    field_rules = ImportFieldRules(db, tenant_id=tenant_id, module_key="sales_contacts")
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     if not {"primary_email", "contact_telephone", "mobile_phone"} & {header.strip().lower() for header in headers}:
         require_csv_headers(headers, required={"primary_email"})
@@ -681,6 +683,11 @@ def import_contacts_from_csv(
 
         if existing and mode == DuplicateMode.skip:
             skipped_rows += 1
+            continue
+
+        rule_failure = field_rules.apply(payload, existing=existing, overwrite=mode == DuplicateMode.overwrite)
+        if rule_failure:
+            failures.append({"row_number": None, "record_identifier": payload.get("primary_email") or normalized_name, "reason": rule_failure})
             continue
 
         if existing and mode == DuplicateMode.overwrite:

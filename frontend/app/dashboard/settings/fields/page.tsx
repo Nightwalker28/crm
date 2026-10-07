@@ -20,6 +20,8 @@ import { RequiredMark } from "@/components/ui/RequiredMark";
 import SearchBar from "@/components/ui/SearchBar";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { isProtectedFieldKey, useModuleFieldConfigs, type ModuleFieldSource } from "@/hooks/useModuleFieldConfigs";
+import { fetchRecordLayoutAdminState } from "@/hooks/useRecordLayoutAdmin";
+import { RECORD_LAYOUT_TARGETS } from "@/lib/recordLayoutTargets";
 import type { CustomFieldDefinition } from "@/hooks/useModuleCustomFields";
 import { useModuleBuilder, type CustomModuleDefinition, type CustomModuleField } from "@/hooks/useModuleBuilder";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -60,6 +62,7 @@ type InspectorDraft = {
   placeholder: string;
   help_text: string;
   is_required: boolean;
+  is_readonly: boolean;
   is_enabled: boolean;
 };
 
@@ -71,6 +74,8 @@ type FieldCatalogItem = {
   sort_order: number;
   is_enabled: boolean;
   is_required: boolean;
+  // Standard fields only; a custom field's rules live on its definition.
+  is_readonly: boolean;
   is_protected: boolean;
   placeholder?: string | null;
   help_text?: string | null;
@@ -93,6 +98,7 @@ const emptyInspectorDraft: InspectorDraft = {
   placeholder: "",
   help_text: "",
   is_required: false,
+  is_readonly: false,
   is_enabled: true,
 };
 
@@ -118,6 +124,7 @@ function inspectorFromField(field: FieldCatalogItem | null): InspectorDraft {
     placeholder: field.placeholder ?? "",
     help_text: field.help_text ?? "",
     is_required: field.is_required,
+    is_readonly: field.is_readonly,
     is_enabled: field.is_enabled,
   };
 }
@@ -144,6 +151,7 @@ function buildSystemCatalog(moduleKey: string): FieldCatalogItem[] {
     sort_order: index,
     is_enabled: true,
     is_required: false,
+    is_readonly: false,
     is_protected: isProtectedFieldKey(column.key, moduleKey),
   }));
 }
@@ -159,6 +167,7 @@ function buildCustomFieldCatalog(moduleKey: string, fields: CustomFieldDefinitio
       sort_order: field.sort_order ?? offset + index,
       is_enabled: field.is_active,
       is_required: field.is_required,
+      is_readonly: false,
       is_protected: isProtectedFieldKey(fieldKey, moduleKey),
       placeholder: field.placeholder,
       help_text: field.help_text,
@@ -177,6 +186,7 @@ function buildCustomModuleCatalog(module: CustomModuleDefinition | null): FieldC
     sort_order: field.sort_order ?? index,
     is_enabled: field.is_active,
     is_required: field.is_required,
+    is_readonly: false,
     is_protected: field.is_protected || isProtectedFieldKey(field.key, module.key),
     placeholder: field.placeholder,
     help_text: field.help_text,
@@ -311,7 +321,32 @@ export default function FieldsPage() {
     },
   });
 
-  const systemCatalog = useMemo(() => buildSystemCatalog(moduleKey), [moduleKey]);
+  // Modules with a list view describe their standard fields there; the ERP documents without
+  // one take them from the layout catalog (13b Phase 4 slice 4d), minus what the system writes.
+  const hasViewCatalog = Boolean(getModuleViewDefinition(moduleKey));
+  const layoutCatalogQuery = useQuery({
+    queryKey: ["fields-layout-catalog", moduleKey],
+    queryFn: () => fetchRecordLayoutAdminState(moduleKey, "full_form"),
+    enabled: !hasViewCatalog && RECORD_LAYOUT_TARGETS.some((target) => target.moduleKey === moduleKey),
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const systemCatalog = useMemo<FieldCatalogItem[]>(() => {
+    if (hasViewCatalog) return buildSystemCatalog(moduleKey);
+    return (layoutCatalogQuery.data?.available_fields ?? [])
+      .filter((field) => field.field_source === "system" && !field.readonly)
+      .map((field, index) => ({
+        field_key: field.field_key,
+        label: field.label,
+        field_type: field.field_type,
+        field_source: "system",
+        sort_order: index,
+        is_enabled: true,
+        is_required: false,
+        is_readonly: false,
+        is_protected: isProtectedFieldKey(field.field_key, moduleKey),
+      }));
+  }, [hasViewCatalog, layoutCatalogQuery.data, moduleKey]);
   const catalog = useMemo(() => {
     const base = selectedCustomModule
       ? buildCustomModuleCatalog(selectedCustomModule)
@@ -326,6 +361,9 @@ export default function FieldsPage() {
           label: config?.label ?? field.label,
           is_enabled: isProtected ? true : (config?.is_enabled ?? field.is_enabled),
           is_protected: isProtected,
+          ...(field.field_source === "system"
+            ? { is_required: Boolean(config?.is_required), is_readonly: !isProtected && Boolean(config?.is_readonly) }
+            : {}),
         };
       })
       .sort((left, right) => left.sort_order - right.sort_order || left.label.localeCompare(right.label));
@@ -474,6 +512,8 @@ export default function FieldsPage() {
         field_source: field.field_source,
         is_enabled: isEnabled,
         is_protected: field.is_protected,
+        // A hidden field cannot stay required: the server refuses the pair.
+        ...(field.field_source === "system" && !isEnabled ? { is_required: false } : {}),
         sort_order: field.sort_order,
       },
     });
@@ -527,6 +567,12 @@ export default function FieldsPage() {
           field_source: selectedField.field_source,
           is_enabled: selectedField.is_protected ? true : inspectorDraft.is_enabled,
           is_protected: selectedField.is_protected,
+          ...(selectedField.field_source === "system" && !selectedField.is_protected
+            ? {
+                is_required: inspectorDraft.is_enabled && inspectorDraft.is_required,
+                is_readonly: inspectorDraft.is_readonly,
+              }
+            : {}),
           sort_order: selectedField.sort_order,
         },
       });
@@ -776,6 +822,36 @@ export default function FieldsPage() {
                     falseLabel="Optional"
                     disabled={isSaving}
                   />
+                </Field>
+              </>
+            ) : !selectedField.is_protected ? (
+              <>
+                {/* Field rules (13b Phase 4): apply to people's saves in the app, the API and
+                    imports; website and portal orders, conversion and automation keep only the
+                    rules the record itself needs. */}
+                <Field>
+                  <FieldLabel>Value required</FieldLabel>
+                  <SegmentedBoolean
+                    aria-label="Value required"
+                    value={inspectorDraft.is_required}
+                    onValueChange={(is_required) => updateInspectorDraft((current) => ({ ...current, is_required, is_readonly: is_required ? false : current.is_readonly }))}
+                    trueLabel="Required"
+                    falseLabel="Optional"
+                    disabled={isSaving || !inspectorDraft.is_enabled}
+                  />
+                  <FieldDescription>People must fill it in to save a record. A required field cannot be read-only.</FieldDescription>
+                </Field>
+                <Field>
+                  <FieldLabel>Editing</FieldLabel>
+                  <SegmentedBoolean
+                    aria-label="Editing"
+                    value={!inspectorDraft.is_readonly}
+                    onValueChange={(editable) => updateInspectorDraft((current) => ({ ...current, is_readonly: !editable, is_required: editable ? current.is_required : false }))}
+                    trueLabel="Editable"
+                    falseLabel="Read-only"
+                    disabled={isSaving}
+                  />
+                  <FieldDescription>A read-only field shows its value but people cannot change it.</FieldDescription>
                 </Field>
               </>
             ) : null}

@@ -5,6 +5,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -15,17 +19,35 @@ import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
-import { Textarea } from "@/components/ui/textarea";
 import { TextLink } from "@/components/ui/TextLink";
 import { usePurchaseOrder, usePurchaseReceipt, usePurchasingActions, type PurchaseOrderLine, type ReceiptLine } from "@/hooks/purchasing/usePurchasing";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
-import { formatDateOnly, formatDateTime } from "@/lib/datetime";
+import { formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPurchaseReceiptStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type ReceiptHeader = RecordFormValue & {
+  order_id: number | null;
+  order_name: string;
+  warehouse_id: number | null;
+  warehouse_name: string;
+  received_on: string;
+  vendor_delivery_ref: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const RECEIPT_INPUT_IDS: Record<string, string> = {
+  received_on: "receipt-received-on",
+  vendor_delivery_ref: "receipt-reference",
+  notes: "receipt-notes",
+};
+const receiptInputId = (fieldKey: string) => RECEIPT_INPUT_IDS[fieldKey] ?? `receipt-${fieldKey.replace(/_/g, "-")}`;
 
 
 function plural(count: number, word: string) {
@@ -51,9 +73,9 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   const mutations = usePurchasingActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [receivedOn, setReceivedOn] = useState("");
-  const [reference, setReference] = useState("");
-  const [notes, setNotes] = useState("");
+  const [header, setHeader] = useState<ReceiptHeader | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("purchase_receipts", "full_form");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -69,9 +91,15 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(receipt?.custom_fields ?? {});
-    setReceivedOn(receipt?.received_on ?? "");
-    setReference(receipt?.vendor_delivery_ref ?? "");
-    setNotes(receipt?.notes ?? "");
+    setHeader({
+      order_id: order.data?.id ?? receipt?.order_id ?? null,
+      order_name: order.data?.number ?? receipt?.order_number ?? "",
+      warehouse_id: receipt?.warehouse_id ?? order.data?.warehouse_id ?? null,
+      warehouse_name: receipt?.warehouse_name ?? order.data?.warehouse_name ?? "",
+      received_on: receipt?.received_on ?? "",
+      vendor_delivery_ref: receipt?.vendor_delivery_ref ?? "",
+      notes: receipt?.notes ?? "",
+    });
     const seeded: Record<number, string> = {};
     for (const line of order.data?.lines ?? []) {
       const onDraft = receipt?.lines?.find((item) => item.order_line_id === line.id);
@@ -88,12 +116,15 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   });
 
   async function save() {
-    if (!effectiveOrderId) return;
+    if (!effectiveOrderId || !header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues) : {};
+    setFieldErrors(nextErrors);
+    if (Object.keys(nextErrors).length) { setError("Check the highlighted fields."); return; }
     if (invalidLine) { setError(`${invalidLine.product_name}: receive between 0 and ${quantity(invalidLine.to_receive)}.`); return; }
     if (!receiving.length) { setError("Enter a received quantity on at least one line."); return; }
     const payload = {
       custom_fields: customValues,
-      received_on: receivedOn || null, vendor_delivery_ref: reference.trim() || null, notes: notes.trim() || null,
+      received_on: header.received_on || null, vendor_delivery_ref: header.vendor_delivery_ref.trim() || null, notes: header.notes.trim() || null,
       lines: receiving.map((line) => ({ order_line_id: line.id, quantity: quantities[line.id] })),
     };
     try {
@@ -165,24 +196,28 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
       {missingOrder ? null : (
         <>
           <FactList className="grid-cols-2 lg:grid-cols-4">
-            <Fact label="Purchase order">
-              {effectiveOrderId ? <TextLink href={`${DASHBOARD_ROUTES.purchaseOrders}/${effectiveOrderId}`}>{order.data?.number ?? receipt?.order_number ?? "Purchase order"}</TextLink> : "—"}
-            </Fact>
             <Fact label="Vendor">{order.data?.vendor_name ?? receipt?.vendor_name ?? "—"}</Fact>
-            {!editable && receipt ? <Fact label="Received on">{receipt.received_on ? formatDateOnly(receipt.received_on) : "—"}</Fact> : null}
-            {!editable && receipt?.vendor_delivery_ref ? <Fact label="Vendor delivery ref">{receipt.vendor_delivery_ref}</Fact> : null}
             {receipt?.status === "cancelled" && receipt.cancel_reason ? <Fact label="Cancelled because">{receipt.cancel_reason}</Fact> : null}
           </FactList>
 
-          {editable ? (
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Field><FieldLabel htmlFor="receipt-received-on">Received on</FieldLabel><Input id="receipt-received-on" type="date" value={receivedOn} onChange={(event) => setReceivedOn(event.target.value)} /></Field>
-              <Field><FieldLabel htmlFor="receipt-reference">Vendor delivery reference</FieldLabel><Input id="receipt-reference" maxLength={120} value={reference} onChange={(event) => setReference(event.target.value)} /></Field>
-              <Field className="lg:col-span-2"><FieldLabel htmlFor="receipt-notes">Notes</FieldLabel><Textarea id="receipt-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-            </div>
-          ) : receipt?.notes ? <p className="text-p-sm text-copy-secondary">{receipt.notes}</p> : null}
-
-          {editable ? <RecordCustomFieldsSection moduleKey="purchase_receipts" values={customValues} onChange={setCustomValues} /> : receipt ? <RecordCustomFieldsFacts moduleKey="purchase_receipts" values={receipt.custom_fields} /> : null}
+          {editable && header ? (
+            <LayoutRecordFormBody<ReceiptHeader>
+              moduleKey="purchase_receipts"
+              value={header}
+              onChange={setHeader}
+              customValues={customValues}
+              onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+              inputId={receiptInputId}
+              action={isNew ? "create" : "edit"}
+              errors={fieldErrors}
+            />
+          ) : receipt ? (
+            <DocumentDetailHeader
+              moduleKey="purchase_receipts"
+              record={receipt}
+              links={{ order_id: `${DASHBOARD_ROUTES.purchaseOrders}/${receipt.order_id}` }}
+            />
+          ) : null}
 
           <section className="flex flex-col gap-3">
             <SectionHeading description={editable ? `${plural(totalUnits, "unit")} on this receipt.` : undefined}>Lines</SectionHeading>

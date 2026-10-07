@@ -15,6 +15,7 @@ from app.core.permissions import require_access, require_action_access, require_
 from app.core.security import require_user
 from app.modules.inventory.models import InventoryReturn
 from app.modules.inventory.services import return_services as service
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -66,7 +67,8 @@ def returns(status: str | None = Query(default=None, pattern="^(draft|received|c
 def create_return(payload: ReturnCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(MODULE)), _create=Depends(require_action_access(MODULE, "create"))):
     require_access(db, user, "inventory_deliveries", "view", detail="Delivery access required")
-    doc = service.save_return(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=MODULE, payload=payload.model_dump())
+    doc = service.save_return(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     db.commit()
     return _get(db, tenant_id=user.tenant_id, return_id=doc.id)
 
@@ -80,7 +82,11 @@ def get_return(return_id: int, db: Session = Depends(get_db), user=Depends(requi
 @router.patch("/returns/{return_id}")
 def update_return(return_id: int, payload: ReturnPayload, db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(MODULE)), _edit=Depends(require_action_access(MODULE, "edit"))):
-    service.save_return(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), return_id=return_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=MODULE, payload=payload.model_dump(),
+        record_id=return_id, submitted_keys=payload.model_fields_set,
+    )
+    service.save_return(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, return_id=return_id)
     db.commit()
     return _get(db, tenant_id=user.tenant_id, return_id=return_id)
 

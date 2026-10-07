@@ -105,11 +105,12 @@ test("Invoice creation uses the dedicated itemized transaction workflow", async 
   await expect(
     page.getByRole("heading", { name: "Create invoice", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByText("Customer and billing details")).toBeVisible();
+  // 13b Phase 4e: the sections are the `full_form` layout's.
+  await expect(page.getByRole("heading", { name: "Customer", exact: true })).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
   await expect(page.getByText("Pricing and tax")).toBeVisible();
   await expect(page.getByText("Payment", { exact: true })).toBeVisible();
-  await expect(page.getByText("Invoice details")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Invoice", exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 
   // E5: a new invoice is saved as a draft or issued; it has no status field of its own.

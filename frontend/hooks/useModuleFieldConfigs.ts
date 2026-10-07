@@ -15,6 +15,9 @@ export type ModuleFieldConfig = {
   field_source: ModuleFieldSource | string;
   is_enabled: boolean;
   is_protected: boolean;
+  // Field rules (13b Phase 4): an administrator's required and read-only, standard fields only.
+  is_required?: boolean;
+  is_readonly?: boolean;
   sort_order: number;
 };
 
@@ -24,13 +27,16 @@ export type ModuleFieldConfigPayload = {
   field_source?: ModuleFieldSource | string;
   is_enabled?: boolean;
   is_protected?: boolean;
+  is_required?: boolean;
+  is_readonly?: boolean;
   sort_order?: number;
 };
 
 const MODULE_PROTECTED_FIELD_KEYS: Record<string, Set<string>> = {
-  sales_leads: new Set(["primary_email"]),
-  sales_contacts: new Set(["primary_email"]),
-  sales_organizations: new Set(["org_name", "primary_email"]),
+  // Mirrors MODULE_PROTECTED_FIELD_KEYS in backend module_fields.py: email is optional since 13b Phase 3.
+  sales_leads: new Set(),
+  sales_contacts: new Set(),
+  sales_organizations: new Set(["org_name"]),
   sales_opportunities: new Set(["opportunity_name"]),
   sales_quotes: new Set(["quote_number", "customer_name"]),
   sales_orders: new Set(["order_number"]),

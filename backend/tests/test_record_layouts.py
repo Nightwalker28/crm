@@ -135,6 +135,30 @@ class RecordLayoutResolverTests(unittest.TestCase):
         self.assertTrue(all(field.readonly for field in tenant_one_fields))
         self.assertNotIn("custom:renewal_tier", tenant_two_keys)
 
+    def test_a_form_shows_each_custom_field_once_and_open(self):
+        # A required custom field is appended to the create form, and the custom-field section
+        # must not draw it a second time; on a form that section starts open (13b Phase 5 pass).
+        definitions = [
+            SimpleNamespace(field_key="renewal_tier", label="Renewal tier", field_type="text", is_required=True,
+                            placeholder=None, help_text=None, picklist_key=None),
+            SimpleNamespace(field_key="segment", label="Segment", field_type="text", is_required=False,
+                            placeholder=None, help_text=None, picklist_key=None),
+        ]
+        with patch(
+            "app.modules.platform.services.record_layouts.list_custom_field_definitions",
+            return_value=definitions,
+        ):
+            form = resolve_record_layout(self.db, tenant_id=1, module_key="sales_leads", surface="full_form")
+            detail = resolve_record_layout(self.db, tenant_id=1, module_key="sales_leads", surface="detail")
+
+        keys = [field.field_key for section in form.sections for field in section.fields]
+        self.assertEqual(keys.count("custom:renewal_tier"), 1)
+        self.assertEqual(keys.count("custom:segment"), 1)
+        form_custom = next(section for section in form.sections if section.id == "custom_fields")
+        self.assertFalse(form_custom.collapsed_by_default)
+        detail_custom = next(section for section in detail.sections if section.id == "custom_fields")
+        self.assertTrue(detail_custom.collapsed_by_default)
+
     def test_tenant_default_is_scoped_and_stale_fields_are_omitted_with_warning(self):
         tenant_layout = LEAD_LAYOUT_SEEDS["detail"].model_dump(mode="json")
         tenant_layout["sections"][0]["fields"].insert(
@@ -204,7 +228,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
 
         self.assertEqual(result.source, "system")
         self.assertEqual(result.version, 1)
-        self.assertIn("Stored layout is invalid; using the system fallback", result.warnings)
+        self.assertIn("Stored layout is invalid; using the next layout that applies", result.warnings)
 
     def test_stored_quick_create_falls_back_when_required_field_is_hidden_or_read_only(self):
         # A lead needs an email or a phone (13a A9): a layout with none of them usable is unsafe.
@@ -274,7 +298,7 @@ class RecordLayoutResolverTests(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ValueError, "Unknown layout field keys"):
                 validate_layout_definition(self.db, tenant_id=1, definition=unknown)
-            with self.assertRaisesRegex(ValueError, "Quick Create needs at least one of Email, Phone or Mobile"):
+            with self.assertRaisesRegex(ValueError, "A create form needs at least one of Email, Phone or Mobile"):
                 validate_layout_definition(self.db, tenant_id=1, definition=hidden)
 
     def test_definition_schema_rejects_extra_properties_and_duplicate_positions(self):
@@ -311,16 +335,17 @@ class RecordLayoutResolverTests(unittest.TestCase):
                     validate_module_and_surface(module_key, surface),
                     (module_key, surface),
                 )
-        # Every module that adopts the record archetype's `Details` tab and nothing else.
-        # None of them has a Quick Create surface: a line-item document and a catalog record
-        # both keep an explicit save on `/new`.
+        # Modules that adopt the record archetype's `Details` tab. The line-item documents have
+        # no Quick Create surface: they keep an explicit save on `/new`. Products and services
+        # gained one in 13b Phase 5.
         detail_only = (
             "sales_quotes",
             "sales_orders",
             "finance_pos",
-            "catalog_products",
-            "catalog_services",
         )
+        for module_key in ("catalog_products", "catalog_services"):
+            self.assertEqual(validate_module_and_surface(module_key, "quick_create"), (module_key, "quick_create"))
+            self.assertEqual(validate_module_and_surface(module_key, "detail"), (module_key, "detail"))
         for module_key in detail_only:
             self.assertEqual(
                 validate_module_and_surface(module_key, "detail"),
@@ -331,9 +356,10 @@ class RecordLayoutResolverTests(unittest.TestCase):
             validate_module_and_surface("mail", "detail")
         self.assertEqual(unadopted_module.exception.status_code, 404)
 
-        with self.assertRaises(HTTPException) as future_surface:
-            validate_module_and_surface("sales_leads", "full_form")
-        self.assertEqual(future_surface.exception.status_code, 422)
+        # 13b Phase 4 slice 4d: every module has a full form, and the ERP documents a header.
+        for module_key in ("sales_leads", *detail_only, "purchase_orders", "inventory_transfers", "finance_payments"):
+            self.assertEqual(validate_module_and_surface(module_key, "full_form"), (module_key, "full_form"))
+        self.assertEqual(validate_module_and_surface("purchase_bills", "detail"), ("purchase_bills", "detail"))
 
         for module_key in detail_only:
             with self.assertRaises(HTTPException) as unseeded_surface:

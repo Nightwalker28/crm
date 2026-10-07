@@ -8,12 +8,14 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
 import {
-  OrganizationFormMainFields,
-  OrganizationFormSidebarFields,
   EMPTY_ORGANIZATION_FORM,
+  ORGANIZATION_FORM_INPUT_IDS,
   organizationFormInputIdFor,
   type OrganizationFormValue,
 } from "@/components/organizations/OrganizationFormFields";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import {
   buildOrganizationPayload,
   saveOrganization,
@@ -35,9 +37,10 @@ import {
   RouteErrorState,
   RouteLoadingState,
 } from "@/components/ui/RouteStates";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useCloneDraft } from "@/hooks/useCloneDraft";
+import { formValuesFromCopy } from "@/lib/formValues";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
 
@@ -55,6 +58,11 @@ async function fetchOrganizationSummary(orgId: string) {
   if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
   return body as OrganizationSummary;
 }
+
+
+/** Field ids on the full form: the long-standing ones, so focus, errors and specs still find them. */
+const organizationFullFormInputId = (fieldKey: string) =>
+  ORGANIZATION_FORM_INPUT_IDS[fieldKey] ?? `account-${fieldKey.replace(/_/g, "-")}`;
 
 export default function OrganizationRecordFormPage({
   mode,
@@ -78,11 +86,11 @@ export default function OrganizationRecordFormPage({
   const [initialSnapshot, setInitialSnapshot] = useState(() =>
     JSON.stringify([EMPTY_ORGANIZATION_FORM, {}]),
   );
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const serverErrors = useServerFormErrors(organizationFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
-  const customFieldsQuery = useModuleCustomFields("sales_organizations", true);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_organizations", "full_form");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_organizations");
   const summaryQuery = useQuery({
     queryKey: ["sales-organization-summary", orgId],
@@ -90,6 +98,16 @@ export default function OrganizationRecordFormPage({
     enabled: mode === "edit" && Boolean(orgId),
     refetchOnWindowFocus: false,
   });
+  // *Clone* (13b Phase 5): `?clone=<id>` fills this create form from that account. The copy is
+  // the starting point, so leaving it untouched is not unsaved work.
+  const clone = useCloneDraft("sales_organizations", mode === "create");
+  useEffect(() => {
+    if (!clone.draft) return;
+    const nextForm = formValuesFromCopy(EMPTY_ORGANIZATION_FORM, clone.draft.fields);
+    setForm(nextForm);
+    setCustomFieldValues(clone.draft.custom_fields);
+    setInitialSnapshot(JSON.stringify([nextForm, clone.draft.custom_fields]));
+  }, [clone.draft]);
 
   // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
   // empty on purpose, so the restored values count as unsaved changes and stay guarded.
@@ -136,16 +154,18 @@ export default function OrganizationRecordFormPage({
   useUnsavedChangesGuard(isDirty, submitting);
 
   function validate() {
-    const nextNameError = validateOrganizationName(form.org_name);
-    const nextEmailError = validateOrganizationEmail(form.primary_email);
-    setNameError(nextNameError);
-    setEmailError(nextEmailError);
-    if (nextNameError) {
-      document.getElementById("account-name")?.focus();
-      return false;
-    }
-    if (nextEmailError) {
-      document.getElementById("account-primary-email")?.focus();
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customFieldValues) : {};
+    const nameError = nextErrors.org_name ? null : validateOrganizationName(form.org_name);
+    if (nameError) nextErrors.org_name = nameError;
+    const emailError = nextErrors.primary_email ? null : validateOrganizationEmail(form.primary_email);
+    if (emailError) nextErrors.primary_email = emailError;
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_organizations-${firstInvalid.slice("custom:".length)}`
+        : organizationFullFormInputId(firstInvalid);
+      document.getElementById(id)?.focus();
       return false;
     }
     return true;
@@ -182,6 +202,10 @@ export default function OrganizationRecordFormPage({
     }
   }
 
+  if (clone.isLoading) return <RouteLoadingState label="account" />;
+  if (clone.error) {
+    return <RouteErrorState title="This account could not be copied" reset={() => void clone.refetch()} backHref="/dashboard/sales/organizations" backLabel="Back to accounts" />;
+  }
   if (mode === "edit" && summaryQuery.isLoading)
     return <RouteLoadingState label="account" />;
   if (mode === "edit" && summaryQuery.error)
@@ -222,14 +246,6 @@ export default function OrganizationRecordFormPage({
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={organizationFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? (form.org_name.trim() || "Account") : "Create account"}
-        sidebar={
-          <OrganizationFormSidebarFields
-            value={form}
-            onChange={setForm}
-            moduleFields={moduleFields}
-            mode={mode}
-          />
-        }
         status={isDirty
           ? "Unsaved changes"
           : mode === "edit"
@@ -254,21 +270,15 @@ export default function OrganizationRecordFormPage({
           </>
         )}
       >
-        <OrganizationFormMainFields
+        <LayoutRecordFormBody<OrganizationFormValue>
+          moduleKey="sales_organizations"
           value={form}
           onChange={setForm}
-          customFields={customFieldsQuery.data ?? []}
-          customFieldValues={customFieldValues}
-          onCustomFieldChange={(fieldKey, value) =>
-            setCustomFieldValues((current) => ({
-              ...current,
-              [fieldKey]: value,
-            }))
-          }
-          moduleFields={moduleFields}
-          nameError={nameError}
-          emailError={emailError}
-          mode={mode}
+          customValues={customFieldValues}
+          onCustomChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
+          inputId={organizationFullFormInputId}
+          action={mode}
+          errors={fieldErrors}
         />
       </RecordFormLayout>
       </ServerFieldErrorsProvider>

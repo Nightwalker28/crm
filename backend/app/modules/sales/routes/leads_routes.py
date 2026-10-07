@@ -31,9 +31,11 @@ from app.modules.platform.services.data_transfer_jobs import (
     persist_job_upload,
     should_background_data_transfer_with_size,
 )
+from app.modules.platform.services.picklist_dependencies import enforce_picklist_dependencies
 from app.modules.platform.services.module_fields import (
     enabled_module_fields,
     enabled_module_field_sequence,
+    enforce_field_rules,
     reject_disabled_field_writes,
     sanitize_data_transfer_export_payload,
     sanitize_disabled_field_payload,
@@ -298,6 +300,8 @@ def create_lead(
     submitted_fields = set(payload.model_fields_set) - {"custom_fields"}
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_leads", field_keys=submitted_fields)
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=payload.model_dump())
+    sanitized_payload = enforce_field_rules(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=sanitized_payload)
+    enforce_picklist_dependencies(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=sanitized_payload)
     created = create_sales_lead(db, sanitized_payload, current_user, replace_duplicates, skip_duplicates, create_new_records)
     log_activity(
         db,
@@ -583,6 +587,8 @@ def update_lead(
         return lead
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_leads", field_keys=set(update_data) - {"custom_fields"})
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=update_data)
+    update_data = enforce_field_rules(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=update_data, existing=lead)
+    enforce_picklist_dependencies(db, tenant_id=current_user.tenant_id, module_key="sales_leads", payload=update_data, existing=lead, record_id=lead.lead_id)
     before_state = _serialize_lead(lead)
     updated = update_sales_lead(db, lead, update_data)
     log_activity(

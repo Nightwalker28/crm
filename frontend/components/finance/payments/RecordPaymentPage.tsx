@@ -1,20 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useDeferredValue, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, CreditCard, Search } from "lucide-react";
 import { toast } from "sonner";
 
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormFieldContext, RecordFormValue } from "@/components/forms/RecordForm";
+import { QuickCreateField, validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import { FormSection, RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
+import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteLoadingState } from "@/components/ui/RouteStates";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { usePaymentInvoices, type PosInvoice } from "@/hooks/finance/usePosInvoices";
@@ -24,8 +26,19 @@ import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatMoney } from "@/lib/currency";
-import { PicklistField } from "@/components/picklists/PicklistSelect";
-import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout, type ResolvedRecordLayoutField } from "@/hooks/useResolvedRecordLayout";
+
+/** The payment the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type PaymentForm = RecordFormValue & { amount: string; paid_on: string; method: string; reference: string; notes: string };
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const PAYMENT_INPUT_IDS: Record<string, string> = {
+  amount: "record-payment-amount",
+  method: "record-payment-method",
+  paid_on: "record-payment-date",
+  reference: "record-payment-reference",
+};
+const paymentInputId = (fieldKey: string) => PAYMENT_INPUT_IDS[fieldKey] ?? `record-payment-${fieldKey.replace(/_/g, "-")}`;
 
 // The unknown-code fallback lives in lib/currency.ts now (design.md 7.1); this keeps only
 // the empty spelling this surface wants (3.6).
@@ -42,16 +55,14 @@ export default function RecordPaymentPage() {
   const router = useRouter();
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const canRecordPayment = Boolean(modules.find((module) => module.name === "finance_payments")?.actions?.can_create);
-  const amountRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState("");
   const deferredSearch = useDeferredValue(search.trim());
   const [invoice, setInvoice] = useState<PosInvoice | null>(null);
-  const [amount, setAmount] = useState("");
-  const [paymentMethod, setPaymentMethod] = useState("");
-  const [paidOn, setPaidOn] = useState(() => todayIsoDate());
-  const [reference, setReference] = useState("");
+  const [form, setForm] = useState<PaymentForm>(() => ({ amount: "", paid_on: todayIsoDate(), method: "", reference: "", notes: "" }));
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("finance_payments", "full_form");
   const [saveComplete, setSaveComplete] = useState(false);
   const filters = useMemo<SavedViewFilters>(() => ({
     search: deferredSearch,
@@ -64,14 +75,14 @@ export default function RecordPaymentPage() {
   }), [deferredSearch]);
   const payments = usePaymentInvoices(filters, { key: "due_date", direction: "asc" });
   const eligibleInvoices = payments.invoices.filter(isEligible);
-  const isDirty = Boolean(invoice || amount.trim() || paymentMethod.trim());
+  const isDirty = Boolean(invoice || form.amount.trim() || form.method.trim());
   useUnsavedChangesGuard(isDirty, saveComplete);
 
   function selectInvoice(next: PosInvoice) {
     setInvoice(next);
-    setAmount(next.balance_due.toFixed(2));
-    setPaymentMethod(next.payment_method ?? "");
+    setForm((current) => ({ ...current, amount: next.balance_due.toFixed(2), method: next.payment_method ?? "" }));
     setError(null);
+    setFieldErrors({});
   }
 
   async function submitPayment() {
@@ -79,23 +90,23 @@ export default function RecordPaymentPage() {
       setError("Select an outstanding invoice.");
       return;
     }
-    const parsedAmount = Number(amount);
-    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
-      setError("Enter a payment amount greater than zero.");
-      amountRef.current?.focus();
-      return;
-    }
-    if (parsedAmount > invoice.balance_due) {
-      setError("Payment amount cannot exceed the outstanding balance.");
-      amountRef.current?.focus();
+    const parsedAmount = Number(form.amount);
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues) : {};
+    if (!nextErrors.amount && (!Number.isFinite(parsedAmount) || parsedAmount <= 0)) nextErrors.amount = "Enter a payment amount greater than zero.";
+    else if (!nextErrors.amount && parsedAmount > invoice.balance_due) nextErrors.amount = "Payment amount cannot exceed the outstanding balance.";
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      document.getElementById(firstInvalid.startsWith("custom:") ? `custom-field-finance_payments-${firstInvalid.slice(7)}` : paymentInputId(firstInvalid))?.focus();
       return;
     }
     try {
       await payments.recordPayment(invoice.id, {
         amount: parsedAmount,
-        payment_method: paymentMethod || null,
-        paid_on: paidOn || null,
-        reference: reference.trim() || null,
+        payment_method: form.method || null,
+        paid_on: form.paid_on || null,
+        reference: form.reference.trim() || null,
+        notes: form.notes.trim() || null,
         custom_fields: customValues,
       });
       setSaveComplete(true);
@@ -183,41 +194,49 @@ export default function RecordPaymentPage() {
           )}
         </FormSection>
 
-        <FormSection title="Payment details" description="The backend rechecks the current outstanding balance before applying the payment.">
-          <FieldGroup>
-            <Field data-invalid={Boolean(error)}>
-              <FieldLabel htmlFor="record-payment-amount">Payment amount <RequiredMark /></FieldLabel>
-              <Input
-                ref={amountRef}
-                id="record-payment-amount"
-                type="number"
-                min="0.01"
-                max={invoice?.balance_due}
-                step="0.01"
-                inputMode="decimal"
-                value={amount}
-                onChange={(event) => {
-                  setAmount(event.target.value);
-                  setError(null);
-                }}
-                disabled={!invoice}
-                aria-invalid={Boolean(error)}
-              />
-              {invoice ? <FieldDescription>Maximum outstanding balance: {money(invoice.balance_due, invoice.currency)}.</FieldDescription> : null}
-              <FieldError>{error}</FieldError>
-            </Field>
-            <PicklistField id="record-payment-method" listKey="payment_method" label="Payment method" value={paymentMethod} onChange={setPaymentMethod} disabled={!invoice} />
-            <Field>
-              <FieldLabel htmlFor="record-payment-date">Paid on</FieldLabel>
-              <Input id="record-payment-date" type="date" value={paidOn} max={todayIsoDate()} onChange={(event) => setPaidOn(event.target.value)} disabled={!invoice} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="record-payment-reference">Reference</FieldLabel>
-              <Input id="record-payment-reference" value={reference} onChange={(event) => setReference(event.target.value)} disabled={!invoice} maxLength={200} placeholder="Transfer or cheque number" />
-            </Field>
-          </FieldGroup>
-        </FormSection>
-        <RecordCustomFieldsSection moduleKey="finance_payments" values={customValues} onChange={setCustomValues} disabled={!invoice} />
+        {error ? <p role="alert" className="text-sm text-state-danger">{error}</p> : null}
+        <LayoutRecordFormBody<PaymentForm>
+          moduleKey="finance_payments"
+          value={form}
+          onChange={setForm}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={paymentInputId}
+          errors={fieldErrors}
+          // Nothing to fill in until there is an invoice to pay.
+          lockedFieldKeys={invoice ? [] : ["amount", "paid_on", "method", "reference", "notes"]}
+          renderField={(field: ResolvedRecordLayoutField, context: RecordFormFieldContext) => {
+            if (field.field_key === "amount") {
+              return (
+                <QuickCreateField field={field} aria={context.aria} error={context.error}>
+                  <Input
+                    id={context.inputId}
+                    type="number"
+                    min="0.01"
+                    max={invoice?.balance_due}
+                    step="0.01"
+                    inputMode="decimal"
+                    value={form.amount}
+                    onChange={(event) => context.set({ amount: event.target.value })}
+                    disabled={context.disabled}
+                    aria-invalid={context.aria.invalid || undefined}
+                    aria-describedby={context.aria.describedBy}
+                  />
+                  {invoice ? <FieldDescription>Maximum outstanding balance: {money(invoice.balance_due, invoice.currency)}.</FieldDescription> : null}
+                </QuickCreateField>
+              );
+            }
+            if (field.field_key === "paid_on") {
+              return (
+                <QuickCreateField field={field} aria={context.aria} error={context.error}>
+                  <Input id={context.inputId} type="date" value={form.paid_on} max={todayIsoDate()} onChange={(event) => context.set({ paid_on: event.target.value })}
+                    disabled={context.disabled} aria-invalid={context.aria.invalid || undefined} aria-describedby={context.aria.describedBy} />
+                </QuickCreateField>
+              );
+            }
+            return undefined;
+          }}
+        />
       </RecordFormLayout>
     </PageShell>
   );

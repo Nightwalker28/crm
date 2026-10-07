@@ -14,6 +14,7 @@ from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, 
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.core.pagination import Pagination
 from app.modules.inventory.services.costing import base_currency
+from app.modules.platform.services.module_fields import ImportFieldRules
 from app.modules.platform.services.custom_fields import (
     export_extension,
     hydrate_custom_field_record,
@@ -660,6 +661,7 @@ def import_leads_from_csv(
     failures: list[dict[str, str | int | None]] = []
     user_cache: dict[int, bool] = {}
     resolver = PicklistResolver(db, tenant_id, allow_create=add_unknown_picklist_values)
+    field_rules = ImportFieldRules(db, tenant_id=tenant_id, module_key="sales_leads")
 
     current_user = db.query(User).filter(User.id == default_assigned_to, User.tenant_id == tenant_id).first() if default_assigned_to else None
     for row_number, row in enumerate(row_iter, start=2):
@@ -710,6 +712,12 @@ def import_leads_from_csv(
             )
             .first()
         ) if email else None
+        target = existing if existing and not create_new_records else None
+        if not (target is not None and mode == DuplicateMode.skip):
+            rule_failure = field_rules.apply(payload, existing=target, overwrite=mode == DuplicateMode.overwrite)
+            if rule_failure:
+                failures.append({"row_number": row_number, "record_identifier": email, "reason": rule_failure})
+                continue
         if existing and not create_new_records:
             if mode == DuplicateMode.skip:
                 skipped_rows += 1

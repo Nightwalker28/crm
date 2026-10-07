@@ -54,11 +54,19 @@ export function MultiOptionSelect({ label, options, values, onChange, id, disabl
 }
 
 /** A multi-select picklist field: the list's active values, plus any the record still holds. */
-export function PicklistMultiSelect({ listKey, values, ...rest }: Omit<MultiOptionSelectProps, "options"> & { listKey: string }) {
+export function PicklistMultiSelect({
+  listKey,
+  values,
+  allowedKeys,
+  ...rest
+}: Omit<MultiOptionSelectProps, "options"> & { listKey: string; allowedKeys?: string[] | null }) {
   const { picklist } = usePicklist(listKey);
+  const allowed = allowedKeys ? new Set(allowedKeys) : null;
   const options = picklist
     ? picklist.values
         .filter((value) => value.is_active || values.includes(value.key))
+        // A dependent picklist (13b §3.6): only the allowed values, plus any already held.
+        .filter((value) => !allowed || allowed.has(value.key) || values.includes(value.key))
         .map((value) => ({ value: value.key, label: value.is_active ? value.label : `${value.label} (no longer used)` }))
     : picklistOptions(null);
   return <MultiOptionSelect options={options} values={values} {...rest} />;

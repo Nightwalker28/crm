@@ -1,16 +1,17 @@
 "use client";
 
-import type { ReactNode } from "react";
+import type { ComponentProps, ReactNode } from "react";
 
 import { CustomFieldInput } from "@/components/customFields/CustomFieldInputs";
-import { PicklistSelect } from "@/components/picklists/PicklistSelect";
 import {
   ResolvedRecordLayout,
   type ResolvedRecordLayoutViewport,
 } from "@/components/forms/ResolvedRecordLayout";
+import { useServerFieldError } from "@/components/forms/ServerFieldErrors";
 import { Field, FieldDescription, FieldError, FieldLabel } from "@/components/ui/field";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { allowedDependentKeys, usePicklistDependencies } from "@/hooks/usePicklistDependencies";
 import type {
   ResolvedRecordLayout as ResolvedRecordLayoutContract,
   ResolvedRecordLayoutField,
@@ -111,48 +112,18 @@ export function QuickCreateField({
   error?: string | null;
   children: ReactNode;
 }) {
+  // The form's own check first; else what the server said about this input on save.
+  const serverError = useServerFieldError(aria.id);
+  const shown = error || serverError;
   return (
-    <Field data-invalid={Boolean(error)}>
+    <Field data-invalid={Boolean(shown)}>
       <FieldLabel htmlFor={aria.id}>
         {field.label} {field.required ? <RequiredMark /> : null}
       </FieldLabel>
       {children}
       {field.help_text ? <FieldDescription id={aria.descriptionId}>{field.help_text}</FieldDescription> : null}
-      {error ? <FieldError id={aria.errorId}>{error}</FieldError> : null}
+      {shown ? <FieldError id={aria.errorId ?? `${aria.id}-error`}>{shown}</FieldError> : null}
     </Field>
-  );
-}
-
-/**
- * A layout field whose values come from a picklist (`field_type: "picklist"`, 13b §3.3), for
- * any module's quick create: the module supplies the value and the setter.
- */
-export function QuickCreatePicklistField({
-  field,
-  context,
-  value,
-  onChange,
-}: {
-  field: ResolvedRecordLayoutField;
-  context: LayoutDrivenQuickCreateFieldContext;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  if (!field.picklist_key) return null;
-  return (
-    <QuickCreateField field={field} aria={context.aria} error={context.error}>
-      <PicklistSelect
-        id={context.inputId}
-        listKey={field.picklist_key}
-        label={field.label}
-        value={value}
-        onChange={onChange}
-        required={field.required}
-        disabled={context.disabled}
-        ariaInvalid={context.aria.invalid}
-        ariaDescribedBy={context.aria.describedBy}
-      />
-    </QuickCreateField>
   );
 }
 
@@ -176,17 +147,28 @@ export function validateLayoutDrivenQuickCreate<TForm extends Record<string, unk
   layout: ResolvedRecordLayoutContract,
   value: TForm,
   customValues: Record<string, unknown>,
+  /** Fields the form leaves out right now (a rate for a document in the base currency). */
+  omitFieldKeys: readonly string[] = [],
 ) {
-  return validateQuickCreateLayout(layout, (field) =>
+  const errors = validateQuickCreateLayout(layout, (field) =>
     resolveQuickCreateFieldValue(field, value, customValues),
   );
+  for (const key of omitFieldKeys) delete errors[key];
+  return errors;
 }
+
+export type LayoutFormSlots = Pick<
+  ComponentProps<typeof ResolvedRecordLayout>,
+  "fixedSidebar" | "mainInsert" | "sectionActions" | "omitFieldKeys"
+>;
 
 export type LayoutDrivenQuickCreateFieldContext = {
   inputId: string;
   aria: QuickCreateFieldAria;
   error: string | null;
   disabled: boolean;
+  /** A dependent picklist's allowed keys given the form's values (13b §3.6), else `null`. */
+  allowedKeys: string[] | null;
 };
 
 /**
@@ -202,7 +184,9 @@ export function LayoutDrivenQuickCreateFields({
   errors = {},
   lockedFieldKeys = [],
   viewport = "auto",
+  systemValues = {},
   renderSystemField,
+  slots = {},
 }: {
   moduleKey: string;
   layout: ResolvedRecordLayoutContract;
@@ -212,13 +196,21 @@ export function LayoutDrivenQuickCreateFields({
   errors?: Record<string, string | null | undefined>;
   lockedFieldKeys?: readonly string[];
   viewport?: ResolvedRecordLayoutViewport;
+  /** The form's standard values, which dependent picklists read their controlling value from. */
+  systemValues?: Record<string, unknown>;
   renderSystemField: (
     field: ResolvedRecordLayoutField,
     context: LayoutDrivenQuickCreateFieldContext,
   ) => ReactNode;
+  /** What a full form adds around the fields: lines, totals, fields the form leaves out. */
+  slots?: LayoutFormSlots;
 }) {
   const locked = new Set(lockedFieldKeys);
   const { data: customDefinitions } = useModuleCustomFields(moduleKey);
+  const { byDependent } = usePicklistDependencies(moduleKey);
+  const dependencyValues: Record<string, unknown> = { ...systemValues };
+  for (const [key, customValue] of Object.entries(customValues)) dependencyValues[`custom:${key}`] = customValue;
+  const allowedFor = (fieldKey: string) => allowedDependentKeys(byDependent, fieldKey, dependencyValues);
 
   function renderField(field: ResolvedRecordLayoutField) {
     const error = errors[field.field_key] ?? null;
@@ -247,6 +239,7 @@ export function LayoutDrivenQuickCreateFields({
           onChange={(nextValue) => onCustomChange(fieldKey, nextValue)}
           disabled={field.readonly}
           error={error}
+          allowedKeys={allowedFor(field.field_key)}
         />
       );
     }
@@ -257,6 +250,7 @@ export function LayoutDrivenQuickCreateFields({
       aria: quickCreateFieldAria(field, resolvedInputId, error),
       error,
       disabled: field.readonly || locked.has(field.field_key),
+      allowedKeys: allowedFor(field.field_key),
     });
   }
 
@@ -266,6 +260,7 @@ export function LayoutDrivenQuickCreateFields({
       renderField={renderField}
       viewport={viewport}
       invalidFieldKeys={invalidFieldKeys(errors)}
+      {...slots}
     />
   );
 }

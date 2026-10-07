@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.core.database import get_db
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_action_access, require_module_access
@@ -80,7 +81,8 @@ def adjustments(status: str | None = None, include_deleted: bool = Query(default
 
 @router.post("/adjustments", status_code=201)
 def create_adjustment(payload: AdjustmentPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _create=Depends(require_action_access("inventory_adjustments", "create"))):
-    doc = service.save_adjustment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key="inventory_adjustments", payload=payload.model_dump())
+    doc = service.save_adjustment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     return _get(db, tenant_id=user.tenant_id, kind="adjustments", document_id=doc.id)
 
 
@@ -91,7 +93,11 @@ def get_adjustment(document_id: int, db: Session = Depends(get_db), user=Depends
 
 @router.put("/adjustments/{document_id}")
 def update_adjustment(document_id: int, payload: AdjustmentPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _edit=Depends(require_action_access("inventory_adjustments", "edit"))):
-    service.save_adjustment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), document_id=document_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key="inventory_adjustments", payload=payload.model_dump(),
+        record_id=document_id, submitted_keys=payload.model_fields_set,
+    )
+    service.save_adjustment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, document_id=document_id)
     return _get(db, tenant_id=user.tenant_id, kind="adjustments", document_id=document_id)
 
 
@@ -129,7 +135,8 @@ def transfers(status: str | None = None, include_deleted: bool = Query(default=F
 
 @router.post("/transfers", status_code=201)
 def create_transfer(payload: TransferPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_transfers")), _create=Depends(require_action_access("inventory_transfers", "create"))):
-    doc = service.save_transfer(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump())
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key="inventory_transfers", payload=payload.model_dump())
+    doc = service.save_transfer(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     return _get(db, tenant_id=user.tenant_id, kind="transfers", document_id=doc.id)
 
 
@@ -140,7 +147,11 @@ def get_transfer(document_id: int, db: Session = Depends(get_db), user=Depends(r
 
 @router.put("/transfers/{document_id}")
 def update_transfer(document_id: int, payload: TransferPayload, db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_transfers")), _edit=Depends(require_action_access("inventory_transfers", "edit"))):
-    service.save_transfer(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), document_id=document_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key="inventory_transfers", payload=payload.model_dump(),
+        record_id=document_id, submitted_keys=payload.model_fields_set,
+    )
+    service.save_transfer(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, document_id=document_id)
     return _get(db, tenant_id=user.tenant_id, kind="transfers", document_id=document_id)
 
 

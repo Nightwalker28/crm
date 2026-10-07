@@ -14,7 +14,8 @@ from app.modules.platform.schema import DataTransferExecutionResponse, DataTrans
 from app.modules.platform.services.activity_logs import safe_log_activity as log_activity
 from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event, safe_publish_crm_event
 from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_export_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
-from app.modules.platform.services.module_fields import enabled_module_fields, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
+from app.modules.platform.services.picklist_dependencies import enforce_picklist_dependencies
+from app.modules.platform.services.module_fields import enabled_module_fields, enforce_field_rules, enabled_module_field_sequence, reject_disabled_field_writes, sanitize_data_transfer_export_payload, sanitize_disabled_field_payload, sanitize_disabled_filter_conditions
 from app.modules.catalog.services.line_links import catalog_links_of, require_catalog_line_link_access
 from app.modules.sales.schema import (
     FollowUpActionRequest,
@@ -161,6 +162,8 @@ def create_quote(payload: SalesQuoteCreateRequest, replace_duplicates: bool = Fa
     raw_payload = payload.model_dump()
     items = raw_payload.pop("items", [])
     sanitized_payload = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=raw_payload)
+    sanitized_payload = enforce_field_rules(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=sanitized_payload)
+    enforce_picklist_dependencies(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=sanitized_payload)
     if "items" in payload.model_fields_set:
         require_catalog_line_link_access(db, user=current_user, lines=items)
         sanitized_payload["items"] = items
@@ -327,6 +330,8 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     reject_disabled_field_writes(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", field_keys=set(update_data) - {"custom_fields", "items"})
     items = update_data.pop("items", None)
     update_data = sanitize_disabled_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data)
+    update_data = enforce_field_rules(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data, existing=quote)
+    enforce_picklist_dependencies(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=update_data, existing=quote, record_id=quote.quote_id)
     if items is not None:
         require_catalog_line_link_access(db, user=current_user, lines=items, existing_links=catalog_links_of(quote.items))
         update_data["items"] = items

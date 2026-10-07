@@ -103,6 +103,25 @@ export function ReadOnlyFieldSection({
   );
 }
 
+/**
+ * A reference reads as the name the record carries beside it (`warehouse_id` →
+ * `warehouse_name`, `order_id` → `order_number`); a page that links it passes `renderValue`.
+ */
+export function referenceLabel(fieldKey: string, values: Record<string, unknown>): string | null {
+  const base = fieldKey.endsWith("_id") ? fieldKey.slice(0, -3) : fieldKey;
+  for (const key of [`${base}_name`, `${base}_number`, `${base}_label`]) {
+    const label = values[key];
+    if (typeof label === "string" && label) return label;
+  }
+  return null;
+}
+
+function referenceDisplay(fieldKey: string, value: unknown, values: Record<string, unknown>): ReactNode | undefined {
+  if (value === null || value === undefined || value === "") return <EmptyValue context="field" />;
+  // No name beside it: the type formatter draws what there is rather than hiding it.
+  return referenceLabel(fieldKey, values) ?? undefined;
+}
+
 export function ReadOnlyRecordLayout({
   layout,
   values,
@@ -137,7 +156,9 @@ export function ReadOnlyRecordLayout({
       ? <FieldValue field={{ field_key: rawCustomKey, label: field.label, field_type: field.field_type, picklist_key: field.picklist_key }} value={value} />
       : field.field_type === "picklist" && field.picklist_key
         ? <PicklistText listKey={field.picklist_key} value={typeof value === "string" ? value : null} context="field" />
-        : undefined;
+        : field.field_type.endsWith("_reference")
+          ? referenceDisplay(field.field_key, value, values)
+          : undefined;
     return (
       <ReadOnlyField label={field.label} fieldType={field.field_type} value={value}>
         {override !== undefined ? override : typed}

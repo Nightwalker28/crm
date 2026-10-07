@@ -21,9 +21,11 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.picklist_dependencies import enforce_picklist_dependencies
 from app.modules.platform.services.module_fields import (
     enabled_module_fields,
     enabled_module_field_sequence,
+    enforce_field_rules,
     reject_disabled_field_writes,
     sanitize_data_transfer_export_payload,
     sanitize_disabled_field_payload,
@@ -482,6 +484,8 @@ def create_sales_opportunity(
         module_key="sales_opportunities",
         payload=data,
     )
+    data = enforce_field_rules(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", payload=data)
+    enforce_picklist_dependencies(db, tenant_id=current_user.tenant_id, module_key="sales_opportunities", payload=data)
     _require_relationship_link_access(db, current_user=current_user, payload_data=data)
     opportunity = create_opportunity(db, data, current_user=current_user)
     log_activity(
@@ -581,6 +585,21 @@ def update_sales_opportunity(
         tenant_id=current_user.tenant_id,
         module_key="sales_opportunities",
         payload=update_data,
+    )
+    update_data = enforce_field_rules(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        payload=update_data,
+        existing=opportunity,
+    )
+    enforce_picklist_dependencies(
+        db,
+        tenant_id=current_user.tenant_id,
+        module_key="sales_opportunities",
+        payload=update_data,
+        existing=opportunity,
+        record_id=opportunity.opportunity_id,
     )
     _require_relationship_link_access(db, current_user=current_user, payload_data=update_data)
 

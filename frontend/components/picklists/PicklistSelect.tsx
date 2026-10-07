@@ -24,6 +24,8 @@ type PicklistSelectProps = {
   ariaInvalid?: boolean;
   ariaDescribedBy?: string;
   size?: "sm" | "default";
+  /** A dependent picklist's allowed keys (13b §3.6); `null` or absent offers the whole list. */
+  allowedKeys?: string[] | null;
 };
 
 /**
@@ -43,13 +45,19 @@ export function PicklistSelect({
   ariaInvalid,
   ariaDescribedBy,
   size,
+  allowedKeys,
 }: PicklistSelectProps) {
   const { picklist, isLoading } = usePicklist(listKey);
   const options = useMemo(() => {
-    const values = picklistOptions(picklist, value);
+    let values = picklistOptions(picklist, value);
     if (!picklist && value) values.push({ value, label: value });
+    if (allowedKeys) {
+      // The held value stays visible even when no longer allowed, so the change is the user's.
+      const allowed = new Set(allowedKeys);
+      values = values.filter((option) => allowed.has(option.value) || option.value === value);
+    }
     return required ? values : [{ value: "", label: EMPTY_FIELD_VALUE }, ...values];
-  }, [picklist, required, value]);
+  }, [allowedKeys, picklist, required, value]);
 
   return (
     <SearchableSelect

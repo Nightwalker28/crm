@@ -9,6 +9,7 @@ from app.core.duplicates import DuplicateMode, detect_duplicates, ensure_single_
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 
 from app.core.module_export import batched_csv_zip_file, dict_rows_to_csv_bytes
+from app.modules.platform.services.module_fields import ImportFieldRules
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
     hydrate_custom_field_records,
@@ -411,6 +412,7 @@ def import_organizations_from_csv(
 ) -> dict:
     """Bulk import organizations from CSV content."""
     resolver = PicklistResolver(db, current_user.tenant_id, allow_create=add_unknown_picklist_values)
+    field_rules = ImportFieldRules(db, tenant_id=current_user.tenant_id, module_key="sales_organizations")
     mode = resolve_duplicate_mode(
         duplicate_mode=duplicate_mode,
         default_mode=default_duplicate_mode,
@@ -528,6 +530,11 @@ def import_organizations_from_csv(
             resolver.normalize("sales_organizations", payload_data, existing=existing)
         except HTTPException as exc:
             failures.append({"row_number": row_number, "record_identifier": org_name, "reason": picklist_error_reason(exc)})
+            continue
+        target = existing if existing and mode in (DuplicateMode.overwrite, DuplicateMode.merge) else None
+        rule_failure = field_rules.apply(payload_data, existing=target, overwrite=mode == DuplicateMode.overwrite)
+        if rule_failure:
+            failures.append({"row_number": row_number, "record_identifier": org_name, "reason": rule_failure})
             continue
 
         if existing and mode == DuplicateMode.overwrite:

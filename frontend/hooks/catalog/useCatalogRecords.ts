@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "@/lib/api";
+import { apiErrorFromResponse } from "@/lib/apiErrors";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
@@ -167,7 +168,9 @@ async function createCatalogRecord(kind: CatalogKind, payload: CatalogRecordPayl
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed to create catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
+  // An `ApiError`, so a form can put the server's field errors on its fields.
+  if (!res.ok) throw await apiErrorFromResponse(res, `The ${kind === "products" ? "product" : "service"} could not be created.`);
+  return res.json();
 }
 
 async function updateCatalogRecord(kind: CatalogKind, id: number, payload: Partial<CatalogRecordPayload>): Promise<CatalogRecord> {
@@ -176,7 +179,8 @@ async function updateCatalogRecord(kind: CatalogKind, id: number, payload: Parti
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return parseJsonResponse<CatalogRecord>(res, `Failed to update catalog ${kind === "products" ? "product" : "service"} (${res.status})`);
+  if (!res.ok) throw await apiErrorFromResponse(res, `The ${kind === "products" ? "product" : "service"} could not be updated.`);
+  return res.json();
 }
 
 async function uploadCatalogRecordMedia(kind: CatalogKind, id: number, file: File): Promise<CatalogRecord> {

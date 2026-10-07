@@ -51,6 +51,7 @@ import { apiFetch } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatDateTime } from "@/lib/datetime";
 import { getQuoteStatus } from "@/lib/statusStyles";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 type QuoteProposal = {
   id: number;
@@ -213,6 +214,7 @@ export default function QuoteDetailPage() {
   const canViewContacts = Boolean(moduleActions("sales_contacts")?.can_view);
   const canEdit = Boolean(quoteActions?.can_edit);
   const canDelete = Boolean(quoteActions?.can_delete);
+  const canClone = Boolean(quoteActions?.can_create);
   const canCreateOrders = Boolean(orderActions?.can_create);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
@@ -365,15 +367,20 @@ export default function QuoteDetailPage() {
           ) : null}
         </>
       ) : null}
-      overflowActions={quote && canDelete ? (
-        <RecordDeleteButton
-          as="menuItem"
-          endpoint={`/sales/quotes/${params.quoteId}`}
-          label="Quote"
-          recordName={quoteName}
-          redirectHref="/dashboard/sales/quotes"
-          queryKeys={["sales-quotes"]}
-        />
+      overflowActions={quote && (canClone || canDelete) ? (
+        <>
+          {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/quotes/new" recordId={params.quoteId} /> : null}
+          {canDelete ? (
+            <RecordDeleteButton
+              as="menuItem"
+              endpoint={`/sales/quotes/${params.quoteId}`}
+              label="Quote"
+              recordName={quoteName}
+              redirectHref="/dashboard/sales/quotes"
+              queryKeys={["sales-quotes"]}
+            />
+          ) : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>

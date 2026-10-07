@@ -16,6 +16,7 @@ from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.finance.services import credit_note_services, payment_services
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.document_exports import start_document_export
 from sqlalchemy.orm import Session
 
@@ -99,7 +100,7 @@ def create_credit_note(payload: CreditNoteCreatePayload, db: Session = Depends(g
     require_access(db, user, "finance_pos", "view", detail="Crediting an invoice needs access to invoices")
     if payload.return_id:
         require_access(db, user, "inventory_returns", "view", detail="Crediting a return needs access to returns")
-    data = payload.model_dump()
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=CREDIT_NOTES, payload=payload.model_dump())
     if data.get("lines") is None:
         data.pop("lines", None)
     credit_note = credit_note_services.save_draft(db, user, payload=data)
@@ -124,7 +125,9 @@ def get_credit_note(credit_note_id: int, db: Session = Depends(get_db), user=Dep
 @router.put("/credit-notes/{credit_note_id}")
 def update_credit_note(credit_note_id: int, payload: CreditNotePayload, db: Session = Depends(get_db), user=Depends(require_user),
                        _module=Depends(require_module_access(CREDIT_NOTES)), _edit=Depends(require_action_access(CREDIT_NOTES, "edit"))):
-    data = payload.model_dump(exclude_unset=True)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=CREDIT_NOTES, payload=payload.model_dump(exclude_unset=True), record_id=credit_note_id
+    )
     credit_note_services.save_draft(db, user, payload=data, credit_note_id=credit_note_id)
     db.commit()
     return _credit_note(db, user, credit_note_id)
@@ -185,7 +188,8 @@ def record_payment(payload: PaymentPayload, db: Session = Depends(get_db), user=
             require_access(db, user, CREDIT_NOTES, "view", detail="Recording a refund needs access to credit notes")
         elif allocation.bill_id:
             require_access(db, user, "purchase_bills", "view", detail="Paying a bill needs access to bills")
-    payment = payment_services.record_payment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), finance_user=user)
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=PAYMENTS, payload=payload.model_dump())
+    payment = payment_services.record_payment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, finance_user=user)
     db.commit()
     return jsonable_encoder(payment_services.serialize_payments(db, [payment_services.get_payment(db, user, payment.id)])[0])
 

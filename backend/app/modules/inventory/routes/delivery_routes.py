@@ -16,6 +16,7 @@ from app.core.permissions import require_access, require_action_access, require_
 from app.core.security import require_user
 from app.modules.inventory.models import InventoryDelivery
 from app.modules.inventory.services import delivery_services as service
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/inventory", tags=["Inventory"])
@@ -69,7 +70,8 @@ def deliveries(status: str | None = Query(default=None, pattern="^(draft|posted|
 def create_delivery(payload: DeliveryCreatePayload, db: Session = Depends(get_db), user=Depends(require_user),
                     _module=Depends(require_module_access(MODULE)), _create=Depends(require_action_access(MODULE, "create"))):
     require_access(db, user, "sales_orders", "view", detail="Order access required")
-    doc = service.save_delivery(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(exclude_unset=False))
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=MODULE, payload=payload.model_dump(exclude_unset=False))
+    doc = service.save_delivery(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data)
     db.commit()
     return _get(db, tenant_id=user.tenant_id, delivery_id=doc.id)
 
@@ -83,7 +85,11 @@ def get_delivery(delivery_id: int, db: Session = Depends(get_db), user=Depends(r
 @router.patch("/deliveries/{delivery_id}")
 def update_delivery(delivery_id: int, payload: DeliveryPayload, db: Session = Depends(get_db), user=Depends(require_user),
                     _module=Depends(require_module_access(MODULE)), _edit=Depends(require_action_access(MODULE, "edit"))):
-    service.save_delivery(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(), delivery_id=delivery_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=MODULE, payload=payload.model_dump(),
+        record_id=delivery_id, submitted_keys=payload.model_fields_set,
+    )
+    service.save_delivery(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, delivery_id=delivery_id)
     db.commit()
     return _get(db, tenant_id=user.tenant_id, delivery_id=delivery_id)
 

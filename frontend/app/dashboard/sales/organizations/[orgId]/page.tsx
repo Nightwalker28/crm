@@ -59,6 +59,7 @@ import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { formatMoney } from "@/lib/currency";
 import { PicklistText } from "@/components/picklists/PicklistText";
+import { RecordCloneMenuItem } from "@/components/recordWorkspace/RecordCloneMenuItem";
 
 type RelatedContact = {
   contact_id: number;
@@ -182,6 +183,7 @@ export default function OrganizationDetailPage() {
   const documentActions = moduleActions("documents");
   const canEditOrganization = Boolean(organizationActions?.can_edit);
   const canDeleteOrganization = Boolean(organizationActions?.can_delete);
+  const canClone = Boolean(organizationActions?.can_create);
   const canViewContacts = Boolean(contactActions?.can_view);
   const canViewOpportunities = Boolean(opportunityActions?.can_view);
   const canViewTasks = Boolean(taskActions?.can_view);
@@ -371,15 +373,20 @@ export default function OrganizationDetailPage() {
             ) : null}
           </>
         ) : null}
-        overflowActions={org && canDeleteOrganization ? (
-          <RecordDeleteButton
-            as="menuItem"
-            endpoint={`/sales/organizations/${params.orgId}`}
-            label="Account"
-            recordName={accountName}
-            redirectHref="/dashboard/sales/organizations"
-            queryKeys={["sales-organizations"]}
-          />
+        overflowActions={org && (canClone || canDeleteOrganization) ? (
+          <>
+            {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/organizations/new" recordId={params.orgId} /> : null}
+            {canDeleteOrganization ? (
+              <RecordDeleteButton
+                as="menuItem"
+                endpoint={`/sales/organizations/${params.orgId}`}
+                label="Account"
+                recordName={accountName}
+                redirectHref="/dashboard/sales/organizations"
+                queryKeys={["sales-organizations"]}
+              />
+            ) : null}
+          </>
         ) : null}
         spine={
           <RecordSpine>

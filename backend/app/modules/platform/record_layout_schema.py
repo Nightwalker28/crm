@@ -141,6 +141,21 @@ class RecordLayoutAdminStateResponse(StrictLayoutModel):
     system_definition: RecordLayoutDefinitionPayload
     available_fields: list[RecordLayoutCatalogField]
     validation: RecordLayoutValidationReport
+    # The audience this state is for (13b Phase 4 slice 4c): both null = the tenant default.
+    role_id: int | None = None
+    team_id: int | None = None
+    # A role or team with no override yet: where the starting copy came from.
+    inherits_from: Literal["tenant", "system"] | None = None
+
+
+class RecordLayoutOverrideSummary(StrictLayoutModel):
+    layout_id: int
+    role_id: int | None = None
+    role_name: str | None = None
+    team_id: int | None = None
+    team_name: str | None = None
+    version: int
+    updated_at: datetime | None = None
 
 
 class RecordLayoutPreviewRequest(StrictLayoutModel):

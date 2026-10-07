@@ -15,6 +15,7 @@ from app.core.duplicates import DuplicateMode, ensure_single_duplicate_action, r
 from app.core.module_csv import build_import_summary, iter_csv_rows_from_bytes, require_csv_headers
 from app.core.module_export import dict_rows_to_csv_bytes
 from app.modules.sales.services.document_fields import fill_addresses_from_account, normalize_document_fields
+from app.modules.platform.services.module_fields import ImportFieldRules
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.platform.services.custom_fields import (
     hydrate_custom_field_record,
@@ -681,6 +682,7 @@ def import_quotes_from_csv(db: Session, file_bytes: bytes, *, tenant_id: int, de
     mode = resolve_duplicate_mode(duplicate_mode=duplicate_mode, default_mode=default_duplicate_mode, replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     headers, row_iter = iter_csv_rows_from_bytes(file_bytes)
     require_csv_headers(headers, required={"customer_name"})
+    field_rules = ImportFieldRules(db, tenant_id=tenant_id, module_key="sales_quotes")
     new_rows = overwritten_rows = merged_rows = skipped_rows = total_rows = 0
     failures: list[dict[str, str | int | None]] = []
     user_cache: dict[int, bool] = {}
@@ -727,6 +729,12 @@ def import_quotes_from_csv(db: Session, file_bytes: bytes, *, tenant_id: int, de
             .filter(SalesQuote.tenant_id == tenant_id, SalesQuote.deleted_at.is_(None), SalesQuote.quote_number == payload["quote_number"])
             .first()
         )
+        target = existing if existing and not create_new_records else None
+        if not (target is not None and mode == DuplicateMode.skip):
+            rule_failure = field_rules.apply(payload, existing=target, overwrite=mode == DuplicateMode.overwrite)
+            if rule_failure:
+                failures.append({"row_number": row_number, "record_identifier": identifier, "reason": rule_failure})
+                continue
         if existing and not create_new_records:
             if mode == DuplicateMode.skip:
                 skipped_rows += 1

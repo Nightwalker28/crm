@@ -7,14 +7,21 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
-import { OwnerSelect } from "@/components/forms/OwnerSelect";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
-import { customFieldInputId, ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormFieldContext, RecordFormValue } from "@/components/forms/RecordForm";
+import { QuickCreateField, validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import {
+  customFieldInputId,
+  ServerFieldError,
+  ServerFieldErrorsProvider,
+  useServerFormErrors,
+} from "@/components/forms/ServerFieldErrors";
 import {
   FormSection,
   RecordFormLayout,
 } from "@/components/forms/RecordFormLayout";
+import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   areTransactionItemsValid,
@@ -22,28 +29,22 @@ import {
   createTransactionLineItem,
   serializeTransactionItems,
   transactionCatalogLink,
+  transactionItemsFromCopy,
   TransactionLineItemsEditor,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
+import { customerFieldRenderer } from "@/components/transactions/customerFieldRenderer";
 import {
-  DocumentAddressesSection,
   documentHeaderFrom,
   documentHeaderInputId,
   documentHeaderPayload,
-  DocumentTermsSection,
   EMPTY_DOCUMENT_HEADER,
+  SameAsBillingButton,
   shippingChargeAmount,
-  type DocumentHeaderValue,
 } from "@/components/transactions/DocumentHeaderFields";
 import { Button } from "@/components/ui/button";
-import {
-  Field,
-  FieldDescription,
-  FieldError,
-  FieldGroup,
-  FieldLabel,
-} from "@/components/ui/field";
+import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import {
@@ -57,8 +58,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
+import { useCloneDraft, type CloneDraft } from "@/hooks/useCloneDraft";
 import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useResolvedRecordLayout, type ResolvedRecordLayoutField } from "@/hooks/useResolvedRecordLayout";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -66,10 +68,11 @@ import type { Order } from "@/hooks/sales/useOrders";
 import { apiFetch } from "@/lib/api";
 import { apiErrorFromResponse } from "@/lib/apiErrors";
 import { formatDateTime } from "@/lib/datetime";
+import { formValuesFromCopy } from "@/lib/formValues";
 import { fetchDealForDocument, type DealForDocument } from "@/components/transactions/dealPrefill";
-import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
-type OrderForm = {
+/** The order form's value: flat, keyed by field key, as `RecordForm` draws it (13b Phase 4e). */
+type OrderForm = RecordFormValue & {
   order_number: string;
   organization_id: number | null;
   organization_name: string;
@@ -84,14 +87,14 @@ type OrderForm = {
   /** E6: base units per one order-currency unit, for margin (12d §3.3). */
   exchange_rate: string;
   delivery_date: string;
-  header: DocumentHeaderValue;
   payment_terms: string;
   notes: string;
   warehouse_id: number | null;
+  warehouse_name: string;
   priority: string;
-  custom_fields: Record<string, unknown>;
 };
 const EMPTY_FORM: OrderForm = {
+  ...EMPTY_DOCUMENT_HEADER,
   order_number: "",
   organization_id: null,
   organization_name: "",
@@ -102,14 +105,13 @@ const EMPTY_FORM: OrderForm = {
   owner_id: null,
   owner_name: "",
   status: "draft",
-  currency: "USD",
+  currency: "",
   exchange_rate: "",
   delivery_date: "",
-  header: EMPTY_DOCUMENT_HEADER,
   payment_terms: "",
   notes: "",
-  custom_fields: {},
   warehouse_id: null,
+  warehouse_name: "",
   priority: "normal",
 };
 const STATUSES = [
@@ -118,8 +120,34 @@ const STATUSES = [
   { value: "fulfilled", label: "Fulfilled" },
   { value: "cancelled", label: "Cancelled" },
 ];
+const PRIORITIES = [
+  { value: "normal", label: "Normal" },
+  { value: "high", label: "High" },
+  { value: "urgent", label: "Urgent" },
+];
 
-type OrderSeed = { form: OrderForm; items: TransactionLineItem[] };
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const ORDER_INPUT_IDS: Record<string, string> = {
+  organization_id: "order-account",
+  contact_id: "order-contact",
+  opportunity_id: "order-deal",
+  warehouse_id: "order-warehouse",
+  priority: "order-priority",
+  delivery_date: "order-delivery-date",
+  payment_terms: "order-payment-terms",
+  notes: "order-notes",
+  order_number: "order-number",
+  currency: "order-currency",
+  exchange_rate: "order-exchange-rate",
+  status: "order-status",
+  owner_id: "order-owner",
+};
+
+function orderInputId(fieldKey: string) {
+  return ORDER_INPUT_IDS[fieldKey] ?? documentHeaderInputId("order", fieldKey) ?? `order-${fieldKey.replace(/_/g, "-")}`;
+}
+
+type OrderSeed = { form: OrderForm; items: TransactionLineItem[]; customValues: Record<string, unknown> };
 
 async function fetchOrderForEdit(orderId: string) {
   const res = await apiFetch(`/sales/orders/${orderId}`);
@@ -141,13 +169,15 @@ function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
             contact_name: deal.contact_name ?? "",
             opportunity_id: deal.opportunity_id,
             opportunity_name: deal.opportunity_name,
-            currency: deal.currency_type || EMPTY_FORM.currency,
+            currency: deal.currency_type || "",
           }
         : EMPTY_FORM,
       items: [createTransactionLineItem("order")],
+      customValues: {},
     };
   return {
     form: {
+      ...documentHeaderFrom(order as unknown as Record<string, unknown>),
       order_number: order.order_number,
       organization_id: order.organization_id,
       organization_name: order.organization_name ?? "",
@@ -161,12 +191,11 @@ function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
       currency: order.currency,
       exchange_rate: order.exchange_rate ?? order.suggested_exchange_rate ?? "",
       delivery_date: order.delivery_date ?? "",
-      header: documentHeaderFrom(order as unknown as Record<string, unknown>),
       payment_terms: order.payment_terms ?? "",
       notes: order.notes ?? "",
       warehouse_id: order.warehouse_id ?? null,
+      warehouse_name: order.warehouse_name ?? "",
       priority: order.priority ?? "normal",
-      custom_fields: order.custom_fields ?? {},
     },
     items: order.items?.length
       ? order.items.map((item) => ({
@@ -181,6 +210,19 @@ function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
           tax_amount: String(item.tax_amount),
         }))
       : [createTransactionLineItem("order")],
+    customValues: order.custom_fields ?? {},
+  };
+}
+
+/**
+ * *Clone* (13b Phase 5): the copied customer, addresses, terms, warehouse and lines; a new
+ * number and status, and today's exchange rate.
+ */
+function orderSeedFromCopy(draft: CloneDraft): OrderSeed {
+  return {
+    form: formValuesFromCopy(EMPTY_FORM, draft.fields),
+    items: transactionItemsFromCopy(draft.lines, "order"),
+    customValues: draft.custom_fields,
   };
 }
 
@@ -204,8 +246,19 @@ export default function OrderRecordFormPage({
     enabled: mode === "create" && Boolean(dealId),
     staleTime: 30_000,
   });
+  const clone = useCloneDraft("sales_orders", mode === "create");
   if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
   if (mode === "create" && dealId && dealQuery.isLoading) return <RouteLoadingState />;
+  if (clone.isLoading) return <RouteLoadingState />;
+  if (clone.error)
+    return (
+      <RouteErrorState
+        title="This order could not be copied"
+        reset={() => void clone.refetch()}
+        backHref="/dashboard/sales/orders"
+        backLabel="Back to orders"
+      />
+    );
   if (mode === "edit" && query.error)
     return (
       <RouteErrorState
@@ -215,10 +268,10 @@ export default function OrderRecordFormPage({
         backLabel="Back to orders"
       />
     );
-  const seed = orderSeed(query.data, dealQuery.data);
+  const seed = clone.draft ? orderSeedFromCopy(clone.draft) : orderSeed(query.data, dealQuery.data);
   return (
     <OrderRecordFormEditor
-      key={`${mode}:${orderId ?? "new"}:${query.data?.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}`}
+      key={`${mode}:${orderId ?? "new"}:${query.data?.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}:${clone.cloneId ?? ""}`}
       mode={mode}
       orderId={orderId}
       seed={seed}
@@ -247,47 +300,62 @@ function OrderRecordFormEditor({
   const currencies = useCompanyCurrencies(true);
   const baseCurrency = useBaseCurrency().data ?? currencies.data?.[0] ?? "USD";
   const [form, setForm] = useState<OrderForm>(seed.form);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>(seed.customValues);
+  const currency = form.currency || baseCurrency;
   const { modules } = useAccessibleModules();
   const canViewStock = Boolean(modules.find((module) => module.name === "inventory_stock")?.actions?.can_view);
   const warehousesQuery = useWarehouses(false, canViewStock);
   // A tenant with one warehouse never sees the choice (12-erp-inventory.md §4.2).
   const warehouseOptions = (warehousesQuery.data ?? []).filter((warehouse) => warehouse.is_active || warehouse.id === form.warehouse_id);
   const showWarehouse = warehouseOptions.length > 1;
+  // Stock has already left the warehouse.
   const warehouseLocked = form.status === "fulfilled" || form.status === "cancelled";
+  // The rate only means something for an order in another currency.
+  const omitFieldKeys = [...(showWarehouse ? [] : ["warehouse_id"]), ...(currency === baseCurrency ? ["exchange_rate"] : [])];
   const [items, setItems] = useState<TransactionLineItem[]>(seed.items);
   const [initialSnapshot] = useState(() =>
-    JSON.stringify([seed.form, seed.items]),
+    JSON.stringify([seed.form, seed.items, seed.customValues]),
   );
-  const [customerError, setCustomerError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [itemsError, setItemsError] = useState<string | null>(null);
   const inputIdFor = useCallback(
-    (path: string) => documentHeaderInputId("order", path) ?? customFieldInputId("sales_orders", path),
+    (path: string) => customFieldInputId("sales_orders", path) ?? orderInputId(path),
     [],
   );
   const serverErrors = useServerFormErrors(inputIdFor);
   const [submitting, setSubmitting] = useState(false);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_orders", "full_form");
   const totals = useMemo(() => calculateTransactionTotals(items), [items]);
-  const shippingCharge = shippingChargeAmount(form.header);
-  const snapshot = useMemo(() => JSON.stringify([form, items]), [form, items]);
+  const shippingCharge = shippingChargeAmount(form);
+  const snapshot = useMemo(() => JSON.stringify([form, items, customValues]), [form, items, customValues]);
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
-    const validCustomer = Boolean(form.organization_id || form.contact_id);
+    const nextErrors = layoutQuery.data
+      ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues, omitFieldKeys)
+      : {};
+    // An account or a contact: no single field is required, so the error sits on the account.
+    if (!form.organization_id && !form.contact_id && !nextErrors.organization_id) {
+      nextErrors.organization_id = "Select an account or contact for this order.";
+    }
     const validItems = areTransactionItemsValid(items);
-    setCustomerError(
-      validCustomer ? null : "Select an account or contact for this order.",
-    );
+    setFieldErrors(nextErrors);
     setItemsError(
       validItems
         ? null
         : "Each line needs a name, positive quantity, and valid non-negative amounts.",
     );
-    if (!validCustomer) document.getElementById("order-account")?.focus();
-    else if (!validItems)
-      document
-        .querySelector<HTMLInputElement>("[data-transaction-field='name']")
-        ?.focus();
-    return validCustomer && validItems;
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_orders-${firstInvalid.slice("custom:".length)}`
+        : orderInputId(firstInvalid);
+      document.getElementById(id)?.focus();
+    } else if (!validItems) {
+      document.querySelector<HTMLInputElement>("[data-line-field='name']")?.focus();
+    }
+    return !firstInvalid && validItems;
   }
   async function submit() {
     if (!validate()) return;
@@ -306,15 +374,15 @@ function OrderRecordFormEditor({
             opportunity_id: form.opportunity_id,
             owner_id: form.owner_id,
             status: form.status,
-            currency: form.currency,
-            exchange_rate: form.currency !== baseCurrency && Number(form.exchange_rate) > 0 ? form.exchange_rate : null,
+            currency,
+            exchange_rate: currency !== baseCurrency && Number(form.exchange_rate) > 0 ? form.exchange_rate : null,
             delivery_date: form.delivery_date || null,
-            ...documentHeaderPayload(form.header),
+            ...documentHeaderPayload(form),
             payment_terms: form.payment_terms.trim() || null,
             notes: form.notes.trim() || null,
             ...(form.warehouse_id ? { warehouse_id: form.warehouse_id } : {}),
             priority: form.priority,
-            custom_fields: form.custom_fields,
+            custom_fields: customValues,
             items: serializeTransactionItems(items),
           }),
         },
@@ -340,6 +408,26 @@ function OrderRecordFormEditor({
     } finally {
       setSubmitting(false);
     }
+  }
+  const customerFields = customerFieldRenderer({ value: form, idPrefix: "order", namesCustomer: false });
+  function renderField(field: ResolvedRecordLayoutField, context: RecordFormFieldContext) {
+    if (field.field_key === "priority") {
+      return (
+        <QuickCreateField field={field} aria={context.aria} error={context.error}>
+          <Select value={form.priority} onValueChange={(priority) => context.set({ priority })} disabled={context.disabled}>
+            <SelectTrigger id={context.inputId} aria-invalid={context.aria.invalid || undefined} aria-describedby={context.aria.describedBy}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PRIORITIES.map((priority) => (
+                <SelectItem key={priority.value} value={priority.value}>{priority.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </QuickCreateField>
+      );
+    }
+    return customerFields(field, context);
   }
   return (
     <PageShell
@@ -369,17 +457,6 @@ function OrderRecordFormEditor({
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={inputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? form.order_number : "Create order"}
-        sidebar={
-          <OrderSidebar
-            form={form}
-            onChange={setForm}
-            totals={totals}
-            shippingCharge={shippingCharge}
-            currencies={currencies.data ?? ["USD"]}
-            baseCurrency={baseCurrency}
-            mode={mode}
-          />
-        }
         status={dirty
           ? "Unsaved changes"
           : mode === "edit"
@@ -401,369 +478,100 @@ function OrderRecordFormEditor({
           </>
         )}
       >
-        {/* The requirement is `account || contact`, which no per-field `RequiredMark` can
-            state — and the backend requires neither, so two marks made a claim that was
-            wrong twice over (design.md §4.7). It is stated once in the description and
-            enforced by the section's own `role="alert"`. */}
-        <FormSection
-          title="Customer and billing details"
-          description="Link this order to the customer records used throughout the CRM. An account or a contact is required."
-        >
-          {customerError ? (
-            <FieldError className="mb-3">{customerError}</FieldError>
-          ) : null}
-          <FieldGroup columns={2}>
-            <Field>
-              <FieldLabel htmlFor="order-account">Account</FieldLabel>
-              <LinkedRecordPicker
-                inputId="order-account"
-                ariaInvalid={Boolean(customerError)}
-                recordType="organization"
-                valueId={form.organization_id}
-                displayValue={form.organization_name}
-                onDisplayValueChange={(organization_name) =>
-                  setForm({
-                    ...form,
-                    organization_id: null,
-                    organization_name,
-                    contact_id: null,
-                    contact_name: "",
-                    opportunity_id: null,
-                    opportunity_name: "",
-                  })
-                }
-                onSelect={(option) => {
-                  setCustomerError(null);
-                  setForm({
-                    ...form,
-                    organization_id: option.id,
-                    organization_name: option.label,
-                    contact_id: null,
-                    contact_name: "",
-                    opportunity_id: null,
-                    opportunity_name: "",
-                  });
-                }}
-                onClear={() =>
-                  setForm({
-                    ...form,
-                    organization_id: null,
-                    organization_name: "",
-                    contact_id: null,
-                    contact_name: "",
-                    opportunity_id: null,
-                    opportunity_name: "",
-                  })
-                }
-                placeholder="Search accounts"
-                queryKeyPrefix="order-page-account"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="order-contact">Contact</FieldLabel>
-              <LinkedRecordPicker
-                inputId="order-contact"
-                ariaInvalid={Boolean(customerError)}
-                recordType="contact"
-                valueId={form.contact_id}
-                displayValue={form.contact_name}
-                onDisplayValueChange={(contact_name) =>
-                  setForm({
-                    ...form,
-                    contact_id: null,
-                    contact_name,
-                    opportunity_id: null,
-                    opportunity_name: "",
-                  })
-                }
-                onSelect={(option) => {
-                  setCustomerError(null);
-                  setForm({
-                    ...form,
-                    contact_id: option.id,
-                    contact_name: option.label,
-                    organization_id:
-                      option.organization_id ?? form.organization_id,
-                    organization_name:
-                      option.organization_name ?? form.organization_name,
-                  });
-                }}
-                onClear={() =>
-                  setForm({ ...form, contact_id: null, contact_name: "" })
-                }
-                placeholder="Search contacts"
-                queryKeyPrefix="order-page-contact"
-                filters={{ organizationId: form.organization_id }}
-              />
-            </Field>
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="order-deal">Deal</FieldLabel>
-              <LinkedRecordPicker
-                inputId="order-deal"
-                recordType="opportunity"
-                valueId={form.opportunity_id}
-                displayValue={form.opportunity_name}
-                onDisplayValueChange={(opportunity_name) =>
-                  setForm({ ...form, opportunity_id: null, opportunity_name })
-                }
-                onSelect={(option) => {
-                  setCustomerError(null);
-                  setForm({
-                    ...form,
-                    opportunity_id: option.id,
-                    opportunity_name: option.label,
-                    contact_id: option.contact_id ?? form.contact_id,
-                    organization_id:
-                      option.organization_id ?? form.organization_id,
-                  });
-                }}
-                onClear={() =>
-                  setForm({
-                    ...form,
-                    opportunity_id: null,
-                    opportunity_name: "",
-                  })
-                }
-                placeholder="Search deals"
-                queryKeyPrefix="order-page-deal"
-                filters={{
-                  contactId: form.contact_id,
-                  organizationId: form.organization_id,
-                }}
-              />
-              <FieldDescription>
-                Orders linked to accepted quotes should continue to use the
-                quote conversion action.
-              </FieldDescription>
-            </Field>
-          </FieldGroup>
-        </FormSection>
-        <TransactionLineItemsEditor
-          items={items}
-          onChange={(nextItems) => {
-            setItems(nextItems);
-            setItemsError(null);
+        <LayoutRecordFormBody<OrderForm>
+          moduleKey="sales_orders"
+          value={form}
+          onChange={setForm}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={orderInputId}
+          action={mode}
+          errors={fieldErrors}
+          lockedFieldKeys={warehouseLocked ? ["warehouse_id"] : []}
+          renderField={renderField}
+          slots={{
+            omitFieldKeys,
+            mainInsert: {
+              afterSection: "customer",
+              node: (
+                <TransactionLineItemsEditor
+                  items={items}
+                  onChange={(nextItems) => {
+                    setItems(nextItems);
+                    setItemsError(null);
+                  }}
+                  currency={currency}
+                  error={itemsError}
+                  idPrefix="order"
+                />
+              ),
+            },
+            sectionActions: { shipping: <SameAsBillingButton value={form} set={(patch) => setForm({ ...form, ...patch })} /> },
+            fixedSidebar: (
+              <>
+                <TransactionTotals
+                  description="Totals are calculated from the items and verified by the server."
+                  currency={currency}
+                  rows={[
+                    { label: "Subtotal", amount: totals.subtotal },
+                    { label: "Discount", amount: totals.discount, negative: true },
+                    { label: "Tax", amount: totals.tax },
+                    ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
+                    { label: "Total", amount: totals.total + shippingCharge, resolved: true },
+                  ]}
+                />
+                <OrderDetails form={form} onChange={setForm} />
+              </>
+            ),
           }}
-          currency={form.currency}
-          error={itemsError}
-          idPrefix="order"
         />
-        <FormSection
-          title="Fulfilment"
-          description="Set fulfilment expectations and customer-facing payment terms."
-        >
-          <FieldGroup columns={2}>
-            {showWarehouse ? (
-              <Field className="md:col-span-2">
-                <FieldLabel htmlFor="order-warehouse">Warehouse</FieldLabel>
-                <Select
-                  value={String(form.warehouse_id ?? warehouseOptions.find((warehouse) => warehouse.is_default)?.id ?? "")}
-                  onValueChange={(value) => setForm({ ...form, warehouse_id: Number(value) })}
-                  disabled={warehouseLocked}
-                >
-                  <SelectTrigger id="order-warehouse"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {warehouseOptions.map((warehouse) => (
-                      <SelectItem key={warehouse.id} value={String(warehouse.id)}>{warehouse.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <FieldDescription>
-                  {warehouseLocked ? "Stock has already left this warehouse." : "Stock is reserved and shipped from here."}
-                </FieldDescription>
-              </Field>
-            ) : null}
-            <Field>
-              <FieldLabel htmlFor="order-priority">Priority</FieldLabel>
-              <Select value={form.priority} onValueChange={(value) => setForm({ ...form, priority: value })}>
-                <SelectTrigger id="order-priority"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="normal">Normal</SelectItem>
-                  <SelectItem value="high">High</SelectItem>
-                  <SelectItem value="urgent">Urgent</SelectItem>
-                </SelectContent>
-              </Select>
-              <FieldDescription>Arriving stock goes to waiting orders by priority, then oldest first.</FieldDescription>
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="order-delivery-date">
-                Delivery date
-              </FieldLabel>
-              <Input
-                id="order-delivery-date"
-                type="date"
-                value={form.delivery_date}
-                onChange={(event) =>
-                  setForm({ ...form, delivery_date: event.target.value })
-                }
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="order-payment-terms">
-                Payment terms
-              </FieldLabel>
-              <Input
-                id="order-payment-terms"
-                value={form.payment_terms}
-                onChange={(event) =>
-                  setForm({ ...form, payment_terms: event.target.value })
-                }
-                placeholder="Net 30"
-              />
-            </Field>
-          </FieldGroup>
-        </FormSection>
-        <DocumentAddressesSection idPrefix="order" value={form.header} onChange={(header) => setForm({ ...form, header })} />
-        <DocumentTermsSection
-          idPrefix="order"
-          value={form.header}
-          onChange={(header) => setForm({ ...form, header })}
-          showLostReason={form.status === "cancelled"}
-          lostReasonLabel="Cancellation reason"
-        />
-        <FormSection
-          title="Terms and notes"
-          description="Internal or fulfilment notes associated with this order."
-        >
-          <Field>
-            <FieldLabel htmlFor="order-notes">Notes</FieldLabel>
-            <Textarea
-              id="order-notes"
-              rows={6}
-              value={form.notes}
-              onChange={(event) =>
-                setForm({ ...form, notes: event.target.value })
-              }
-            />
-          </Field>
-        </FormSection>
       </RecordFormLayout>
       </ServerFieldErrorsProvider>
     </PageShell>
   );
 }
 
-function OrderSidebar({
-  form,
-  onChange,
-  totals,
-  shippingCharge,
-  currencies,
-  baseCurrency,
-  mode,
-}: {
-  form: OrderForm;
-  onChange: (form: OrderForm) => void;
-  totals: ReturnType<typeof calculateTransactionTotals>;
-  shippingCharge: number;
-  currencies: string[];
-  baseCurrency: string;
-  mode: "create" | "edit";
-}) {
+/** Numbering and lifecycle: the system's part of the header, beside the totals. */
+function OrderDetails({ form, onChange }: { form: OrderForm; onChange: (form: OrderForm) => void }) {
   return (
-    <>
-      <TransactionTotals
-        description="Totals are calculated from the items and verified by the server."
-        currency={form.currency}
-        rows={[
-          { label: "Subtotal", amount: totals.subtotal },
-          { label: "Discount", amount: totals.discount, negative: true },
-          { label: "Tax", amount: totals.tax },
-          ...(shippingCharge ? [{ label: "Shipping", amount: shippingCharge }] : []),
-          { label: "Total", amount: totals.total + shippingCharge, resolved: true },
-        ]}
-      />
-      <FormSection
-        title="Order details"
-        description="Control numbering, currency, and lifecycle status."
-      >
-        <div className="space-y-4">
-          <Field>
-            <FieldLabel htmlFor="order-number">Order number</FieldLabel>
-            <Input
-              id="order-number"
-              value={form.order_number}
-              onChange={(event) =>
-                onChange({ ...form, order_number: event.target.value })
-              }
-              placeholder="Auto-generated if blank"
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="order-currency">Currency</FieldLabel>
-            <Select
-              value={form.currency}
-              onValueChange={(currency) => onChange({ ...form, currency })}
-            >
-              <SelectTrigger id="order-currency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {currencies.map((currency) => (
-                  <SelectItem key={currency} value={currency}>
-                    {currency}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          {form.currency !== baseCurrency ? (
-            <Field>
-              <FieldLabel htmlFor="order-exchange-rate">Exchange rate</FieldLabel>
-              <Input
-                id="order-exchange-rate"
-                type="number"
-                min="0"
-                step="0.00000001"
-                inputMode="decimal"
-                value={form.exchange_rate}
-                onChange={(event) => onChange({ ...form, exchange_rate: event.target.value })}
-                aria-describedby="order-exchange-rate-description"
-              />
-              <FieldDescription id="order-exchange-rate-description">
-                {baseCurrency} for one {form.currency}. Optional: used to show this order&apos;s margin in {baseCurrency}.
-              </FieldDescription>
-            </Field>
-          ) : null}
-          <Field>
-            <FieldLabel htmlFor="order-status">Status</FieldLabel>
-            <Select
-              value={form.status}
-              onValueChange={(status) => onChange({ ...form, status })}
-            >
-              <SelectTrigger id="order-status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {STATUSES.map((status) => (
-                  <SelectItem key={status.value} value={status.value}>
-                    {status.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-      </FormSection>
-      <FormSection
-        title="Ownership"
-        description="Assign responsibility for fulfilment."
-      >
+    <FormSection title="Order details" description="Numbering and lifecycle status.">
+      <div className="space-y-4">
         <Field>
-          <FieldLabel htmlFor="order-owner">Owner</FieldLabel>
-          <OwnerSelect
-            id="order-owner"
-            moduleKey="sales_orders"
-            action={mode === "edit" ? "edit" : "create"}
-            ownerId={form.owner_id}
-            ownerName={form.owner_name}
-            onChange={(owner_id, owner_name) =>
-              onChange({ ...form, owner_id, owner_name })
-            }
+          <FieldLabel htmlFor="order-number">Order number</FieldLabel>
+          <Input
+            id="order-number"
+            value={form.order_number}
+            onChange={(event) => onChange({ ...form, order_number: event.target.value })}
+            placeholder="Auto-generated if blank"
           />
+          <ServerFieldError inputId="order-number" />
         </Field>
-      </FormSection>
-      <RecordCustomFieldsSection moduleKey="sales_orders" values={form.custom_fields} onChange={(custom_fields) => onChange({ ...form, custom_fields })} />
-    </>
+        <Field>
+          <FieldLabel htmlFor="order-status">Status</FieldLabel>
+          <Select value={form.status} onValueChange={(status) => onChange({ ...form, status })}>
+            <SelectTrigger id="order-status">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUSES.map((status) => (
+                <SelectItem key={status.value} value={status.value}>
+                  {status.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+        {/* Only once cancelled: a field for a state the order is not in is noise (§4.7, A12). */}
+        {form.status === "cancelled" ? (
+          <PicklistField
+            id="order-lost-reason"
+            listKey="lost_reason"
+            label="Cancellation reason"
+            value={String(form.lost_reason ?? "")}
+            onChange={(lost_reason) => onChange({ ...form, lost_reason })}
+          />
+        ) : null}
+      </div>
+    </FormSection>
   );
 }

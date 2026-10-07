@@ -391,15 +391,27 @@ class RecordLayoutAdminServiceTests(unittest.TestCase):
         self.assertEqual(published.source, "tenant")
         self.assertEqual(published.version, 8)
 
-    def test_administration_is_bounded_to_the_proven_lead_quick_create_surface(self):
-        with self.assertRaises(HTTPException) as other_module:
-            validate_admin_module_and_surface("sales_contacts", "quick_create")
-        self.assertEqual(other_module.exception.status_code, 404)
-
+    def test_administration_covers_every_supported_module_and_surface(self):
+        """13b Phase 4 slice 4d: no module or surface is held back from the builder."""
+        self.assertEqual(validate_admin_module_and_surface("sales_contacts", "quick_create"), ("sales_contacts", "quick_create"))
         for surface in ("detail", "full_form"):
-            with self.assertRaises(HTTPException) as other_surface:
-                validate_admin_module_and_surface("sales_leads", surface)
-            self.assertEqual(other_surface.exception.status_code, 422)
+            self.assertEqual(validate_admin_module_and_surface("sales_leads", surface), ("sales_leads", surface))
+        self.assertEqual(validate_admin_module_and_surface("purchase_orders", "full_form"), ("purchase_orders", "full_form"))
+
+        with self.assertRaises(HTTPException) as unsupported_module:
+            validate_admin_module_and_surface("mail", "detail")
+        self.assertEqual(unsupported_module.exception.status_code, 404)
+        with self.assertRaises(HTTPException) as unsupported_surface:
+            validate_admin_module_and_surface("purchase_orders", "quick_create")
+        self.assertEqual(unsupported_surface.exception.status_code, 422)
+
+    def test_every_full_form_seed_passes_its_own_validation(self):
+        from app.modules.platform.services.record_layouts import MODULE_LAYOUT_SEEDS, collect_layout_errors
+
+        for module_key, seeds in MODULE_LAYOUT_SEEDS.items():
+            for surface, seed in seeds.items():
+                with self.subTest(module=module_key, surface=surface):
+                    self.assertEqual(collect_layout_errors(self.db, tenant_id=1, definition=seed), [])
 
 
 class RecordLayoutAdminRouteTests(unittest.TestCase):
@@ -423,7 +435,7 @@ class RecordLayoutAdminRouteTests(unittest.TestCase):
         user = SimpleNamespace(id=3, tenant_id=7)
         cases = [
             lambda: get_record_layout_admin_state(
-                "sales_leads", "quick_create", db=SimpleNamespace(), current_user=user
+                "sales_leads", "quick_create", db=SimpleNamespace(), current_user=user, role_id=None, team_id=None
             ),
             lambda: preview_record_layout_draft(
                 "sales_leads",
@@ -431,6 +443,8 @@ class RecordLayoutAdminRouteTests(unittest.TestCase):
                 SimpleNamespace(definition=draft),
                 db=SimpleNamespace(),
                 current_user=user,
+                role_id=None,
+                team_id=None,
             ),
             lambda: publish_tenant_record_layout(
                 "sales_leads",
@@ -438,9 +452,11 @@ class RecordLayoutAdminRouteTests(unittest.TestCase):
                 SimpleNamespace(definition=draft, expected_version=None),
                 db=SimpleNamespace(),
                 current_user=user,
+                role_id=None,
+                team_id=None,
             ),
             lambda: reset_tenant_record_layout(
-                "sales_leads", "quick_create", db=SimpleNamespace(), current_user=user
+                "sales_leads", "quick_create", db=SimpleNamespace(), current_user=user, role_id=None, team_id=None
             ),
         ]
 

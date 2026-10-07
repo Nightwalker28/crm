@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, type KeyboardEvent, type Ref } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -78,6 +78,15 @@ type Props = {
   onInputKeyDown?: (event: KeyboardEvent<HTMLInputElement>) => void;
   /** `data-*` attributes for the input, so a grid can find and focus its cells. */
   inputDataAttributes?: Record<`data-${string}`, string | number>;
+  /**
+   * *Create "…"* as the list's last option (13b Phase 5, F3.7): the caller opens the target's
+   * quick create, prefilled with the typed text, and selects the new record when it is saved.
+   */
+  createOption?: {
+    /** The option's text for what was typed, e.g. `Create contact "Ada"`. */
+    label: (text: string) => string;
+    onCreate: (text: string) => void;
+  };
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -320,6 +329,7 @@ export default function LinkedRecordPicker({
   clearLabel = "Clear linked record",
   onInputKeyDown,
   inputDataAttributes,
+  createOption,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -334,11 +344,27 @@ export default function LinkedRecordPicker({
     staleTime: 30_000,
   });
   const options = query.data ?? [];
+  const typed = displayValue.trim();
+  // The create option follows the results, so the arrows reach it last. It waits for the
+  // search to settle, so it never sits where a result is about to appear, and a field that
+  // already holds a record is not offering to make another.
+  // Nor does it offer a record the results already have by that exact name.
+  const exactMatch = options.some((option) => option.label.trim().toLowerCase() === typed.toLowerCase());
+  const createIndex = createOption && typed && valueId == null && !exactMatch && !query.isFetching && !query.error ? options.length : -1;
+  const optionCount = options.length + (createIndex >= 0 ? 1 : 0);
+  const createOptionId = `${listboxId}-${recordType}-create`;
 
   function selectOption(option: LinkedRecordOption) {
     onSelect(option);
     setIsOpen(false);
     setActiveIndex(-1);
+  }
+
+  function chooseCreate() {
+    if (!createOption || !typed) return;
+    setIsOpen(false);
+    setActiveIndex(-1);
+    createOption.onCreate(typed);
   }
 
   function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
@@ -350,16 +376,21 @@ export default function LinkedRecordPicker({
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();
       setIsOpen(true);
-      if (!options.length) return;
+      if (!optionCount) return;
       setActiveIndex((current) => {
-        if (event.key === "ArrowDown") return current >= options.length - 1 ? 0 : current + 1;
-        return current <= 0 ? options.length - 1 : current - 1;
+        if (event.key === "ArrowDown") return current >= optionCount - 1 ? 0 : current + 1;
+        return current <= 0 ? optionCount - 1 : current - 1;
       });
       return;
     }
     if (event.key === "Enter" && isOpen && activeIndex >= 0 && options[activeIndex]) {
       event.preventDefault();
       selectOption(options[activeIndex]);
+      return;
+    }
+    if (event.key === "Enter" && isOpen && activeIndex >= 0 && activeIndex === createIndex) {
+      event.preventDefault();
+      chooseCreate();
       return;
     }
     onInputKeyDown?.(event);
@@ -399,7 +430,9 @@ export default function LinkedRecordPicker({
           aria-activedescendant={
             activeIndex >= 0 && options[activeIndex]
               ? `${listboxId}-${recordType}-${optionIdentity(recordType, options[activeIndex])}`
-              : undefined
+              : activeIndex >= 0 && activeIndex === createIndex
+                ? createOptionId
+                : undefined
           }
           autoComplete="off"
         />
@@ -467,6 +500,21 @@ export default function LinkedRecordPicker({
           ) : (
             <div role="status" className="px-3 py-2 text-sm text-copy-muted">{noResultsText}</div>
           )}
+          {createIndex >= 0 && createOption ? (
+            <button
+              id={createOptionId}
+              type="button"
+              role="option"
+              aria-selected={activeIndex === createIndex}
+              className="flex w-full items-center gap-2 border-t border-line-default px-3 py-2 text-left text-sm text-action-primary hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-focus aria-selected:bg-action-primary-muted"
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setActiveIndex(createIndex)}
+              onClick={chooseCreate}
+            >
+              <Plus className="size-4 shrink-0" aria-hidden="true" />
+              <span className="min-w-0 truncate">{createOption.label(typed)}</span>
+            </button>
+          ) : null}
         </div>
       </PopoverContent>
     </Popover>

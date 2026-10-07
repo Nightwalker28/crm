@@ -24,6 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
+from app.core.subdivisions import has_subdivisions, resolve_subdivision
 from app.modules.platform.models import AutomationRule, Picklist, PicklistValue
 from app.modules.platform.services.activity_logs import safe_log_activity
 
@@ -474,6 +475,7 @@ class PicklistResolver:
             data[field_key] = self.resolve(
                 binding.list_key, data[field_key], current=current, field_key=field_key, field_label=binding.label
             )
+        normalize_address_states(module_key, data, existing=existing)
         return data
 
     def labels_for_row(self, module_key: str, row: dict) -> dict:
@@ -494,6 +496,47 @@ def picklist_error_reason(exc: HTTPException) -> str:
 
 def normalize_picklist_fields(db: Session, tenant_id: int, module_key: str, data: dict, *, existing: Any = None) -> dict:
     return PicklistResolver(db, tenant_id).normalize(module_key, data, existing=existing)
+
+
+# Each address's state and the country it belongs to (13b §3.6). Country → state is built in:
+# the bundled ISO 3166-2 list, not a tenant dependency.
+ADDRESS_STATE_FIELDS: dict[str, tuple[tuple[str, str], ...]] = {
+    "sales_organizations": (("billing_state", "billing_country"), ("shipping_state", "shipping_country")),
+    "sales_contacts": (("mailing_state", "country"),),
+    "sales_quotes": (("billing_state", "billing_country"), ("shipping_state", "shipping_country")),
+    "sales_orders": (("billing_state", "billing_country"), ("shipping_state", "shipping_country")),
+}
+
+
+def normalize_address_states(module_key: str, data: dict, *, existing: Any = None) -> dict:
+    """Checks each state against its country and stores the bundled name, in place.
+
+    Runs when the state or its country is written. A country with subdivisions in the list
+    takes only one of them (a code or a name, any case or accent); other countries, or no
+    country, keep free text. Changing the country under a state it does not have is refused,
+    so the form clears the state when the country changes.
+    """
+    for state_field, country_field in ADDRESS_STATE_FIELDS.get(module_key, ()):
+        if state_field not in data and country_field not in data:
+            continue
+        country = data[country_field] if country_field in data else getattr(existing, country_field, None)
+        state = data[state_field] if state_field in data else getattr(existing, state_field, None)
+        if state is None or not str(state).strip():
+            if state_field in data:
+                data[state_field] = None
+            continue
+        if not has_subdivisions(country):
+            continue
+        resolved = resolve_subdivision(country, str(state))
+        if resolved is None:
+            country_name = dict(iso_countries()).get(str(country).upper(), str(country))
+            raise _field_error(
+                state_field,
+                f"“{' '.join(str(state).split())}” is not a state or province of {country_name}. Choose one from the list.",
+            )
+        if state_field in data:
+            data[state_field] = resolved
+    return data
 
 
 @lru_cache(maxsize=1)
@@ -871,6 +914,9 @@ def merge_values(db: Session, picklist: Picklist, *, from_key: str, into_key: st
     records = _rewrite_records(db, picklist.tenant_id, bindings, from_key, into_key)
     views = _rewrite_saved_views(db, picklist.tenant_id, bindings, from_key, into_key)
     rules = _rewrite_automation(db, picklist.tenant_id, bindings, from_key, into_key)
+    from app.modules.platform.services.picklist_dependencies import rewrite_merged_value
+
+    rewrite_merged_value(db, tenant_id=picklist.tenant_id, list_key=picklist.key, from_key=from_key, into_key=into_key)
     if source.is_default:
         source.is_default = False
         db.flush()

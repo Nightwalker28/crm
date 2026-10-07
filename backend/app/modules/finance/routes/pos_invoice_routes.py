@@ -19,6 +19,7 @@ from app.modules.finance.schema import (
     ReasonRequest,
 )
 from app.modules.finance.services import credit_note_services, invoicing_services, payment_services, pos_invoice_services
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.platform.services.document_exports import start_document_export
 
@@ -131,7 +132,7 @@ def create_pos_invoice(
     require_module=Depends(require_module_access(INVOICES)),
     require_permission=Depends(require_action_access(INVOICES, "create")),
 ):
-    invoice_payload = payload.model_dump()
+    invoice_payload = apply_user_write_rules(db, tenant_id=current_user.tenant_id, module_key=INVOICES, payload=payload.model_dump())
     require_catalog_line_link_access(db, user=current_user, lines=invoice_payload.get("lines"))
     if invoice_payload.get("issue") or invoice_payload.get("paid_now"):
         require_access(db, current_user, INVOICES, "edit", detail="Issuing an invoice needs edit access to invoices")
@@ -204,7 +205,9 @@ def update_pos_invoice(
     require_module=Depends(require_module_access(INVOICES)),
     require_permission=Depends(require_action_access(INVOICES, "edit")),
 ):
-    update_payload = payload.model_dump(exclude_unset=True)
+    update_payload = apply_user_write_rules(
+        db, tenant_id=current_user.tenant_id, module_key=INVOICES, payload=payload.model_dump(exclude_unset=True), record_id=invoice_id
+    )
     if update_payload.get("lines") is not None:
         existing = pos_invoice_services.get_invoice_or_404(db, current_user, invoice_id)
         require_catalog_line_link_access(db, user=current_user, lines=update_payload["lines"], existing_links=catalog_links_of(existing.lines))
@@ -271,6 +274,7 @@ def record_pos_invoice_payment(
         payment_method=payload.payment_method,
         paid_on=payload.paid_on,
         reference=payload.reference,
+        notes=payload.notes,
         custom_fields=payload.custom_fields,
     )
     return _detail(db, current_user, invoice)

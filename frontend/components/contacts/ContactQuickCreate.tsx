@@ -35,13 +35,18 @@ type Props = {
   onOpenChange: (open: boolean) => void;
   /** Focus returns here when the surface closes. */
   returnFocusRef?: RefObject<HTMLElement | null>;
-  /** Called after a successful create so the caller can refresh in place. */
-  onCreated: (contactId: number | null) => void;
+  /** Called after a successful create with the contact's name, so a picker can select it. */
+  onCreated: (contactId: number | null, name: string) => void;
   /**
    * Set when opened from another record (Organization -> + Contact). The account is
    * prefilled and shown read-only; the server re-checks tenant ownership and link permission.
    */
   context?: QuickCreateContext<ContactFormValue>;
+  /**
+   * Opened from inside another form (a picker's *Create "…"*): no *More details* or
+   * *Create & open*, which would leave that form's unsaved work.
+   */
+  embedded?: boolean;
 };
 
 function layoutErrorMessage(error: unknown) {
@@ -75,7 +80,7 @@ function describeSubmitError(error: unknown) {
   return { message: "The contact could not be created. Check the fields and try again." };
 }
 
-export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreated, context }: Props) {
+export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreated, context, embedded = false }: Props) {
   const router = useRouter();
   const queryClient = useQueryClient();
   const lockedFieldKeys = Object.keys(context?.defaults ?? {}).filter(
@@ -104,7 +109,8 @@ export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreat
     onCreated: async (contactId, outcome) => {
       await queryClient.invalidateQueries({ queryKey: ["sales-contacts"] });
       toast.success("Contact created.");
-      onCreated(contactId);
+      const { first_name, last_name, primary_email } = quickCreate.form;
+      onCreated(contactId, `${first_name} ${last_name}`.trim() || primary_email.trim());
       // Closing directly rather than through the dirty guard: the entered data was saved.
       onOpenChange(false);
       quickCreate.reset();
@@ -135,6 +141,8 @@ export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreat
       description={
         context?.sourceModuleKey === "sales_organizations"
           ? "This contact will be linked to the account you came from."
+          : embedded && context?.defaults?.organization_id
+          ? "This contact will be linked to the account on this form."
           : "Capture the essentials now. The full form stays available under More details."
       }
       returnFocusRef={returnFocusRef}
@@ -149,7 +157,8 @@ export function ContactQuickCreate({ open, onOpenChange, returnFocusRef, onCreat
       }
       statusMessage={quickCreate.isDirty ? "Unsaved changes" : "Ready to create"}
       onSubmit={(outcome: QuickCreateOutcome) => quickCreate.handleSubmit(outcome)}
-      onMoreDetails={handleMoreDetails}
+      onMoreDetails={embedded ? undefined : handleMoreDetails}
+      showCreateAndOpen={!embedded}
       discardTitle="Discard this contact?"
       discardDescription="The details you entered here have not been saved."
     >

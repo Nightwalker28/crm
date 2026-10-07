@@ -15,6 +15,7 @@ from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
 from app.modules.purchasing.services import bill_services as bills
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.document_exports import start_document_export
 
 router = APIRouter(prefix="/purchasing", tags=["Purchasing bills"])
@@ -76,7 +77,7 @@ def create_bill(payload: BillCreatePayload, db: Session = Depends(get_db), user=
                 _module=Depends(require_module_access(BILLS)), _create=Depends(require_action_access(BILLS, "create"))):
     if payload.order_id:
         require_access(db, user, "purchase_orders", "view", detail="Billing a purchase order needs access to purchase orders")
-    data = payload.model_dump()
+    data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=BILLS, payload=payload.model_dump())
     if data.get("lines") is None:
         data.pop("lines", None)
     else:
@@ -104,7 +105,10 @@ def get_bill(bill_id: int, db: Session = Depends(get_db), user=Depends(require_u
 @router.patch("/bills/{bill_id}")
 def update_bill(bill_id: int, payload: BillPayload, db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(BILLS)), _edit=Depends(require_action_access(BILLS, "edit"))):
-    bills.save_bill(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=payload.model_dump(exclude_unset=True), bill_id=bill_id)
+    data = apply_user_write_rules(
+        db, tenant_id=user.tenant_id, module_key=BILLS, payload=payload.model_dump(exclude_unset=True), record_id=bill_id
+    )
+    bills.save_bill(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, bill_id=bill_id)
     db.commit()
     return _bill(db, user.tenant_id, bill_id)
 

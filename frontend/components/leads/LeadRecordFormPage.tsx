@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -11,17 +11,24 @@ import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
 import { ServerFieldErrorsProvider, useServerFormErrors } from "@/components/forms/ServerFieldErrors";
 import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
-import { EMPTY_LEAD_FORM, LeadFormMainFields, LeadFormSidebarFields, type LeadFormValue, leadFormInputIdFor } from "@/components/leads/LeadFormFields";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { EMPTY_LEAD_FORM, LEAD_FORM_INPUT_IDS, type LeadFormValue, leadFormInputIdFor, useLeadStatusDefault } from "@/components/leads/LeadFormFields";
 import { buildLeadPayload, saveLead, toDatetimeLocalValue, validateLeadEmail } from "@/components/leads/leadMutation";
 import { consumeLeadQuickCreateDraft, isLeadQuickCreateHandoff } from "@/components/leads/leadQuickCreateDraft";
 import { Button } from "@/components/ui/button";
 import { PageShell } from "@/components/ui/PageShell";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useCloneDraft } from "@/hooks/useCloneDraft";
+import { formValuesFromCopy } from "@/lib/formValues";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
+
+/** Field ids on the full form: the long-standing ones, so focus, errors and specs still find them. */
+const leadFullFormInputId = (fieldKey: string) => LEAD_FORM_INPUT_IDS[fieldKey] ?? `lead-${fieldKey.replace(/_/g, "-")}`;
 
 type LeadSummary = {
   lead: LeadFormValue & {
@@ -48,10 +55,11 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
   const [form, setForm] = useState<LeadFormValue>(EMPTY_LEAD_FORM);
   const [customFieldValues, setCustomFieldValues] = useState<Record<string, unknown>>({});
   const [initialSnapshot, setInitialSnapshot] = useState(() => JSON.stringify([EMPTY_LEAD_FORM, {}]));
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const serverErrors = useServerFormErrors(leadFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
-  const customFieldsQuery = useModuleCustomFields("sales_leads", true);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_leads", "full_form");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_leads");
   const summaryQuery = useQuery({
     queryKey: ["sales-lead-summary", leadId],
@@ -59,6 +67,16 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
     enabled: mode === "edit" && Boolean(leadId),
     refetchOnWindowFocus: false,
   });
+  // *Clone* (13b Phase 5): `?clone=<id>` fills this create form from that lead. The copy is
+  // the starting point, so leaving it untouched is not unsaved work.
+  const clone = useCloneDraft("sales_leads", mode === "create");
+  useEffect(() => {
+    if (!clone.draft) return;
+    const nextForm = formValuesFromCopy(EMPTY_LEAD_FORM, clone.draft.fields);
+    setForm(nextForm);
+    setCustomFieldValues(clone.draft.custom_fields);
+    setInitialSnapshot(JSON.stringify([nextForm, clone.draft.custom_fields]));
+  }, [clone.draft]);
 
   // Picks up values handed off from Quick Create's "More details". The initial snapshot stays
   // empty on purpose, so the restored values count as unsaved changes and stay guarded.
@@ -102,11 +120,22 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
 
   useUnsavedChangesGuard(isDirty, submitting);
 
+  useLeadStatusDefault(
+    form.status,
+    useCallback((status: string) => setForm((current) => (current.status ? current : { ...current, status })), []),
+  );
+
   function validate() {
-    const emailError = validateLeadEmail(form);
-    setEmailError(emailError);
-    if (emailError) {
-      document.getElementById("lead-primary-email")?.focus();
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customFieldValues) : {};
+    const emailError = nextErrors.primary_email ? null : validateLeadEmail(form);
+    if (emailError) nextErrors.primary_email = emailError;
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_leads-${firstInvalid.slice("custom:".length)}`
+        : leadFullFormInputId(firstInvalid);
+      document.getElementById(id)?.focus();
       return false;
     }
     return true;
@@ -134,6 +163,10 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
     }
   }
 
+  if (clone.isLoading) return <RouteLoadingState label="lead" />;
+  if (clone.error) {
+    return <RouteErrorState title="This lead could not be copied" reset={() => void clone.refetch()} backHref="/dashboard/sales/leads" backLabel="Back to leads" />;
+  }
   if (mode === "edit" && summaryQuery.isLoading) {
     return <RouteLoadingState label="lead" />;
   }
@@ -166,7 +199,6 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={leadFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? recordName : "Create lead"}
-        sidebar={<LeadFormSidebarFields value={form} onChange={setForm} moduleFields={moduleFields} mode={mode} />}
         status={isDirty ? "Unsaved changes" : mode === "edit" ? null : "Complete the required fields to create this lead."}
         actions={(
           <>
@@ -177,14 +209,15 @@ export default function LeadRecordFormPage({ mode, leadId }: { mode: "create" | 
           </>
         )}
       >
-        <LeadFormMainFields
+        <LayoutRecordFormBody<LeadFormValue>
+          moduleKey="sales_leads"
           value={form}
           onChange={setForm}
-          customFields={customFieldsQuery.data ?? []}
-          customFieldValues={customFieldValues}
-          onCustomFieldChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
-          moduleFields={moduleFields}
-          emailError={emailError}
+          customValues={customFieldValues}
+          onCustomChange={(fieldKey, value) => setCustomFieldValues((current) => ({ ...current, [fieldKey]: value }))}
+          inputId={leadFullFormInputId}
+          action={mode}
+          errors={fieldErrors}
         />
       </RecordFormLayout>
       </ServerFieldErrorsProvider>

@@ -691,6 +691,7 @@ def record_invoice_payment(
     payment_method: str | None = None,
     paid_on: date | None = None,
     reference: str | None = None,
+    notes: str | None = None,
     custom_fields: dict[str, Any] | None = None,
 ) -> FinancePosInvoice:
     """The pre-E5 route, kept as a thin wrapper: one payment record for this invoice."""
@@ -699,6 +700,7 @@ def record_invoice_payment(
     invoice = get_invoice_or_404(db, current_user, invoice_id)
     payment_services.record_payment(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, payload={
         "direction": "received", "kind": "payment", "method": payment_method, "paid_on": paid_on, "reference": reference,
+        "notes": notes,
         "allocations": [{"invoice_id": invoice.id, "amount": amount}],
         # The payment form sends its custom fields; it is a user write (13b §5 decision 9).
         "custom_fields": custom_fields or {},

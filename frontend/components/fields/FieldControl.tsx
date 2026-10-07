@@ -18,6 +18,8 @@ export type FieldControlProps = {
   disabled?: boolean;
   ariaInvalid?: boolean;
   ariaDescribedBy?: string;
+  /** A dependent picklist's allowed keys (13b §3.6); `null` or absent offers the whole list. */
+  allowedKeys?: string[] | null;
 };
 
 const INPUT_TYPES: Record<string, string> = {
@@ -43,7 +45,7 @@ function textValue(value: unknown, type: string): string {
  * the label, help and error slot; this is only the control, so a quick create, a full form
  * and a custom module record page draw the same thing.
  */
-export function FieldControl({ field, id, value, onChange, moduleKey, disabled, ariaInvalid, ariaDescribedBy }: FieldControlProps) {
+export function FieldControl({ field, id, value, onChange, moduleKey, disabled, ariaInvalid, ariaDescribedBy, allowedKeys }: FieldControlProps) {
   const type = fieldTypeKey(field.field_type);
   const aria = { "aria-invalid": ariaInvalid || undefined, "aria-describedby": ariaDescribedBy };
 
@@ -68,13 +70,14 @@ export function FieldControl({ field, id, value, onChange, moduleKey, disabled, 
   if (type === "picklist" && field.picklist_key) {
     return (
       <PicklistSelect id={id} listKey={field.picklist_key} label={field.label} value={typeof value === "string" ? value : ""}
-        onChange={onChange} required={field.is_required} disabled={disabled} ariaInvalid={ariaInvalid} ariaDescribedBy={ariaDescribedBy} />
+        onChange={onChange} required={field.is_required} disabled={disabled} ariaInvalid={ariaInvalid} ariaDescribedBy={ariaDescribedBy}
+        allowedKeys={allowedKeys} />
     );
   }
   if (type === "multi_picklist" && field.picklist_key) {
     return (
       <PicklistMultiSelect id={id} listKey={field.picklist_key} label={field.label} values={Array.isArray(value) ? value.map(String) : []}
-        onChange={onChange} disabled={disabled} ariaInvalid={ariaInvalid} ariaDescribedBy={ariaDescribedBy} />
+        onChange={onChange} disabled={disabled} ariaInvalid={ariaInvalid} ariaDescribedBy={ariaDescribedBy} allowedKeys={allowedKeys} />
     );
   }
   if (type === "user" || type === "lookup" || type === "file") {

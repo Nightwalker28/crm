@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-06 (Step 5 and 13b Phases 1–3 tested and committed together; next: 13b Phase 4).
+Last updated 2026-10-08 (13b Phases 4 and 5 built, second test pass green, committed. Step 6 is complete; next: the next §7 step of `13-final-fixes.md`).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -31,15 +31,402 @@ Last updated 2026-10-06 (Step 5 and 13b Phases 1–3 tested and committed togeth
 | ERP E5 | **Implemented (2026-10-03): invoicing and bills, all four phases.** Plan `12c-erp-invoicing.md`; owner accepted every §5 decision and added §5a (deferred items built to be additive). One test pass, all green; committed as `2c1fec5`. See below | `20260904_invoicing`, `invoicing_services.py`, `payment_services.py`, `credit_note_services.py`, `bill_services.py`; `/dashboard/finance/credit-notes`, `/dashboard/purchasing/bills`; `test_invoicing.py`, `invoicing.spec.ts` |
 | ERP E6 | **Implemented (2026-10-03): costing and valuation, all three phases.** Plan `12d-erp-costing.md`; owner accepted every §5 decision. One test pass, all green; committed as `389dda2`. See below | `20260905_costing`, `costing.py`, `valuation_services.py`, `valuation_routes.py`, `/dashboard/inventory/valuation`, `OrderMarginPanel`; `test_inventory_costing.py`, `costing.spec.ts` |
 | **Next, owner-set order** | **E6 verified; awaiting the owner's commit. The ERP programme (E1–E6) is complete; next wave not yet chosen.** E4 §5 decisions reviewed and accepted (2026-10-03). | |
-| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 done and committed (`2e3bd7f`). §7 Step 4 (FQ code foundations) implemented and verified (2026-10-04): E5, E1/A5/G3, E2, E8/H15, B6, H9, H10. §7 Step 5 built (2026-10-05), tested and committed with 13b Phases 1–3 (2026-10-06): insertion orders, contracts and support removed outright (owner decision 11), invoices at `/invoices`, website and portal orders are sales orders, B7. Step 6 research and plan written (2026-10-05): `13b-picklists-and-fields.md`, benchmark of Salesforce, Dynamics, HubSpot, Zoho and Odoo, five phases, owner accepted all twelve §5 decisions and chose to build Step 6 on top of the untested Step 5: the first test pass, after 13b Phase 3, covers Step 5 too. 13b Phases 1–3 (picklists, one field system, standard records) built, tested and committed 2026-10-06. Next: 13b Phase 4 (layouts and rules)**. See below | `13-final-fixes.md`, `13a-final-fixes-audit.md`, `13b-picklists-and-fields.md` |
+| Final fixes | **Plan approved in direction (2026-10-03): `13-final-fixes.md`, phases F0–F11, all before UAT.** Owner decisions in §2: tax rates, a full accounting module (F7), invoices at `/invoices`, insertion orders retired, custom modules completed (reverses the AGENTS.md deferral in F8), tenant picklists. Code audit of every item done (2026-10-03, `13a-final-fixes-audit.md`): found sales restore drops order lines and deal participants, production uploads missing from `platform-backup.sh`, export buttons absent on 8 ERP lists, no exchange rate on invoices/bills/payments. Full review pass (2026-10-03, `13a` Part 2): 74 findings A1–G5 (bugs, security, data model, missing features, code quality, production readiness, tests), each placed in a phase; new phases FQ (code foundations), F12 (automation, notifications, lead capture), F13 (security and privacy). Hands-on browser pass done (2026-10-03, `13a` Part 3): 30 more findings H1–H30, among them deal edit broken for converted deals (H1), swallowed form errors (H2), the realtime stream blocking the event loop (H3), unpinned dependencies (H4), mixed-currency totals (H5); A10 withdrawn. QA test records listed in 13a Part 3. Remaining flows tested hands-on (13a Part 4, I1–I10): tenant backups fail since E5 (I1, invoice lines lack tenant_id); delivery, return, credit note, automation, report, module builder and client portal verified working; email sending untested (no mailbox for the admin). Owner approved 08a (F10 unblocked) and the §7 execution order (Step 1 = data loss and wrong data). No code changed. **§7 Step 1 done and committed (`6da41ec`, 2026-10-04). §7 Step 2 done and committed (`d66f726`). §7 Step 3 done and committed (`2e3bd7f`). §7 Step 4 (FQ code foundations) implemented and verified (2026-10-04): E5, E1/A5/G3, E2, E8/H15, B6, H9, H10. §7 Step 5 built (2026-10-05), tested and committed with 13b Phases 1–3 (2026-10-06): insertion orders, contracts and support removed outright (owner decision 11), invoices at `/invoices`, website and portal orders are sales orders, B7. Step 6 research and plan written (2026-10-05): `13b-picklists-and-fields.md`, benchmark of Salesforce, Dynamics, HubSpot, Zoho and Odoo, five phases, owner accepted all twelve §5 decisions and chose to build Step 6 on top of the untested Step 5: the first test pass, after 13b Phase 3, covers Step 5 too. 13b Phases 1–3 (picklists, one field system, standard records) built, tested and committed 2026-10-06. Phase 4 split into slices 4a–4e (13b §4); 4a (field rules), 4b (dependent picklists, country → state) and 4c (role and team layout overrides; rules on orders and ERP documents) and 4d (layout admin everywhere) and 4e (`RecordForm` on every create and edit form, ERP detail headers on the `detail` layouts) built 2026-10-06/07, uncommitted and untested. Phase 5 (quick create and clone) built 2026-10-07. Second test pass green and Phases 4–5 committed 2026-10-08. Step 6 complete; next: §7 Step 7**. See below | `13-final-fixes.md`, `13a-final-fixes-audit.md`, `13b-picklists-and-fields.md` |
 
-## Final fixes §7 Step 6 — picklists, standard records, one field system (in progress)
+## Final fixes §7 Step 6 — picklists, standard records, one field system (done 2026-10-08)
 
 Plan `13b-picklists-and-fields.md` (benchmark + design, owner accepted all §5 decisions on
 2026-10-05). Built on top of the untested Step 5: the first test pass, after 13b Phase 3, covers
 Step 5 too. That pass ran on 2026-10-06 (below); Step 5 and Phases 1–3 are committed together.
 
-**Phase 1 — picklists: built (2026-10-05/06), backend and frontend. Phase 2 (one field system): built 2026-10-06. Phase 3 (standard records): built 2026-10-06. First test pass done and committed 2026-10-06. Next: Phase 4 (layouts and rules), then Phase 5, then the second test pass.**
+**Phase 1 — picklists: built (2026-10-05/06), backend and frontend. Phase 2 (one field system): built 2026-10-06. Phase 3 (standard records): built 2026-10-06. First test pass done and committed 2026-10-06. Phase 4 split into slices 4a–4e (table in 13b §4); all built 2026-10-06/07. Phase 5 built 2026-10-07. Second test pass green; Phases 4 and 5 committed 2026-10-08. Step 6 is complete.**
+
+**Owner rule for the rest of Step 6 (2026-10-06):** do not run tests — not even the new
+modules, not "to reach a safe point". Implement and update this file; the second test pass runs
+once Phases 4 **and** 5 are both built. Stopping point = code + this handover.
+
+**Phase 4 slice 4a — field rules (F3.4): built 2026-10-06, working tree, NOT committed.**
+- Migration `20261011_field_rules` (after `20261010_standard_records`): `is_required`,
+  `is_readonly` on `module_field_configs` (model has Python `default=False`; downgrade drops
+  the two columns — plain columns, nothing to lose).
+- `platform/services/module_fields.py`: `module_field_rules()` (standard fields only; custom
+  fields keep `is_required` on their definition), `enforce_field_rules(db, tenant_id,
+  module_key, payload, existing=None)`. Create: required must have a value, read-only is
+  dropped so the record takes its default. Update: a submitted required field cannot be
+  emptied, a changed read-only value is refused (422), an unchanged one is dropped.
+  `update_module_field_config` refuses required + read-only, hidden + required, read-only on
+  protected fields, and any rule on `custom:` keys — validated before anything is set.
+- Called right after `sanitize_disabled_field_payload` in the create and update routes of
+  leads, contacts, accounts, deals and quotes (routes = user writes, §5 decision 9; system
+  writes call the services and skip it).
+- `record_layouts.py` `_field_catalog` merges the rules (stricter wins), so resolved layouts
+  carry them and publish validation applies them; quick create now appends any required
+  field missing from the layout, **for tenant layouts too** (a field made required after a
+  layout was published would otherwise refuse every quick create).
+- Frontend: Settings → Fields inspector has *Value required* and *Editing (Editable /
+  Read-only)* for non-protected standard fields; disabling a field clears its required flag.
+  `useModuleFieldConfigs` types carry the two flags; its protected-key list was stale
+  (`primary_email` still protected on leads/contacts/accounts) and now mirrors the backend.
+- Tests written: `tests/test_field_rules.py` (7 tests). It and `test_record_layouts` /
+  `test_record_layout_admin` were run once before the owner's rule (35 OK); the full suite
+  was **not** run.
+- **Left for 4a:** imports do not call `enforce_field_rules` yet (§5 decision 9 says they
+  should — the import path writes through the services); do it with 4e or the test pass.
+  Hand-written full forms ignore the flags until `RecordForm` (4e) — quick create already
+  honours them through the resolved layout. No list badge for Required / Read-only in
+  Settings → Fields. Orders and ERP documents: **done in 4c** (below).
+
+**Phase 4 slice 4b — dependent picklists, country → state (F3.6): built 2026-10-06, working
+tree, NOT committed, nothing run (not even the new test module).**
+- Migration `20261012_picklist_deps` (after `20261011_field_rules`): `picklist_dependencies`
+  (`tenant_id`, `module_key`, `controlling_field_key`, `dependent_field_key`, `value_map`
+  JSON; unique per dependent field; check controlling ≠ dependent). It also rewrites stored
+  states to the bundled name where the address's country has a list, and **prints** the ones
+  that match nothing (left as they are). Matching is a frozen copy inside the migration, as
+  migrations do not import app code. Downgrade drops the table.
+- `app/core/subdivisions.py`: ISO 3166-2 from the bundled `iso_3166_2.json`; names cleaned of
+  iso-codes' `[alt name]` suffix; matches code (`US-CA`), suffix (`CA`) or name, folding case
+  and accents; returns the bundled **name** (deviation from §3.6, recorded in 13b §4).
+- Country → state is built in, in `PicklistResolver.normalize` → `normalize_address_states`
+  (`picklists.py`, `ADDRESS_STATE_FIELDS`: account billing/shipping, contact mailing + `country`,
+  quote and order billing/shipping), so every write that normalizes picklists checks it —
+  forms, API, imports, portal/website orders. Runs only when the state or its country is
+  written; changing the country under a state it lacks is refused (the forms clear the state).
+- `platform/services/picklist_dependencies.py`: fields = `PICKLIST_BINDINGS` standard fields
+  plus active custom `picklist` / `multi_picklist` fields (`custom:<key>`); controlling must be
+  single-select; no loops; map keys checked against both lists. Salesforce's rule: an unmapped
+  or empty controlling value allows no dependent value. `enforce_picklist_dependencies` runs in
+  the create/update routes of leads, contacts, accounts, deals and quotes right after
+  `enforce_field_rules` (user writes only, §5 decision 9); custom values come from the payload
+  or, on update, `load_custom_field_values`. Picklist merge rewrites the maps
+  (`rewrite_merged_value`, called from `merge_values`). Audit rows under `platform_picklists`.
+  Accounts' routes now go through one helper, `_apply_user_write_rules`.
+- Routes (`platform/routes/picklists.py`): `GET /picklists/subdivisions/{country}`,
+  `GET /picklists/dependencies/{module}` (any user), `GET|PUT|DELETE
+  /admin/picklists/dependencies/{module}/{dependent_field_key}` (`require_admin`; GET also
+  returns the candidate fields).
+- Backup writes `picklist_dependencies.json` (`CONFIGURATION_EXPORTS`); restore upserts by
+  (module, dependent field) after the picklists.
+- Frontend: `hooks/useSubdivisions.ts`, `hooks/usePicklistDependencies.ts`
+  (`allowedDependentKeys`), admin calls in `usePicklistAdmin.ts`. `AddressFields` exports
+  `StateSelect` (list when the country has one, text otherwise) and clears the state when the
+  country changes; account and contact quick creates use `QuickCreateStateField`.
+  `PicklistSelect`, `PicklistMultiSelect`, `FieldControl` and `CustomFieldInput` take
+  `allowedKeys`; `LayoutDrivenQuickCreateFields` takes `systemValues` and gives every field
+  its `allowedKeys` in the context (the four module quick creates now pass `context` through).
+  New page Settings → **Field dependencies** (`/dashboard/settings/field-dependencies`,
+  Customization group, `SETTINGS_ROUTES.fieldDependencies`): module switch (the five modules
+  that enforce), list, editor with one value picker per controlling value. Added to both
+  guard route lists.
+- Tests written, not run: `tests/test_picklist_dependencies.py`. No e2e spec yet (add one,
+  or fold into `layout-admin.spec.ts`, in the test pass). Static checks (tsc, lint,
+  check-design) **not run** either.
+- **Left for later:** hand-written full forms (lead, deal, account, contact, quote pages) do
+  not filter dependent picklists — the server refuses with a field error; `RecordForm` (4e)
+  brings the filter. Orders and ERP documents: **done in 4c** (below). Records with a stored
+  state the migration could not match keep it until their address is next saved.
+
+**Phase 4 slice 4c — role and team layout overrides (F3.5), plus rules on orders and ERP
+documents: built 2026-10-06, working tree, NOT committed, nothing run.**
+- Migration `20261013_layout_overrides` (after `20261012_picklist_deps`):
+  `record_layout_definitions.role_id` / `team_id` (FK, cascade; check at most one); the
+  default index is now limited to rows without a scope; one override per role and per team
+  per surface (partial unique indexes); the unique layout name is dropped (an override starts
+  as a copy). Downgrade refuses.
+- `record_layouts.py`: `LayoutScope`, `validate_layout_scope` (role/team must be the tenant's;
+  not both), `_load_layout(scope)`. `resolve_record_layout(role_id=, team_id=)` walks team →
+  role → tenant default → product default, skipping an unreadable stored layout. Admin
+  state, preview, publish and reset take a scope; a role or team with no override shows the
+  tenant default (or the product default) as its starting copy, with `inherits_from`.
+  Overrides are never `is_default`. Reset on a scope removes the override.
+  `list_layout_overrides`. Audit entity ids carry `:role:<id>` / `:team:<id>`.
+- Routes: the runtime `GET /record-layouts/{m}/{s}/resolved` passes the user's role and team
+  (no signature change, so the generated contract does not drift). Admin GET/PUT/DELETE and
+  POST preview take `?role_id=` or `?team_id=`; new `GET …/overrides` and
+  `GET …/resolved-as?role_id=&team_id=` (*Preview as*). Schema: `role_id`, `team_id`,
+  `inherits_from` on the admin state; `RecordLayoutOverrideSummary`.
+- Frontend: `useRecordLayoutAdmin.ts` — `LayoutAudience`, every call takes an audience,
+  `useRecordLayoutOverrides`, `useRecordLayoutResolvedAs`, `useLayoutAudiences` (roles from
+  `/admin/users/roles/permissions`, teams from `/admin/users/teams`; empty if not allowed).
+  `RecordLayoutBuilder` takes `audience`, `audienceLabel`, `toolbar`, `footer`; *Remove
+  layout* instead of *Reset* for an override. Settings → Record layouts: *Layout for* picker
+  (everyone / team / role, marking which have their own) and a *Preview as* section. Still
+  Lead quick create only — 4d opens the other modules and surfaces.
+- **Rules on orders and ERP documents (owner asked, 2026-10-06):** new
+  `platform/services/write_rules.py` `apply_user_write_rules` (field rules + dependencies; on
+  update loads the record tenant-scoped, and takes `submitted_keys` for routes that dump
+  their whole request model so a field left out is not read as emptied or changed). Called
+  in the create and update routes of sales orders, products, services, invoices, credit
+  notes, payments (create), purchase orders, receipts, bills, deliveries, returns, stock
+  adjustments and transfers. Not on system paths (invoice from order, reorder POs, portal and
+  website orders). Disabled-field rejection stays CRM-only: the ERP forms do not know which
+  fields are off. Settings → Field dependencies now lists all 18 modules (module select).
+  Field rules on ERP standard fields can only be set where Settings → Fields lists system
+  fields (orders, invoices, products, services have a view definition; the other ERP
+  documents list custom fields only) — 4d/4e widen that.
+- Tests written, not run: `tests/test_layout_overrides.py`; `test_field_rules.py` gained the
+  ERP `submitted_keys` case. No e2e yet (`layout-admin.spec.ts` in the plan covers 4c/4d).
+- **Contracts:** the runtime resolved route is unchanged; admin routes are outside the
+  generated slice. `generate-contracts.sh --check` should still pass — confirm in the test pass.
+
+**Phase 4 slice 4d — layout admin everywhere (F3.3): built 2026-10-06, working tree, NOT
+committed, nothing run.**
+- `record_layouts.py`: `ADMIN_LAYOUT_MODULES` / `ADMIN_LAYOUT_SURFACES` gone;
+  `validate_admin_module_and_surface` = the runtime check, so every supported module is
+  editable on every surface it has. `CREATE_SURFACES = {quick_create, full_form}`: the
+  required-visible-and-writable rule, the "one of" rule, the required-field append and the
+  stored-layout fallback now apply to `full_form` too (messages say "create form"); the
+  quick-create count guidance stays quick-create only. System `detail` and `full_form`
+  layouts append the tenant's custom fields.
+- New catalogs for the nine ERP documents (`PURCHASE_ORDER_`, `PURCHASE_RECEIPT_`,
+  `PURCHASE_BILL_`, `DELIVERY_`, `RETURN_`, `ADJUSTMENT_`, `TRANSFER_`, `CREDIT_NOTE_`,
+  `PAYMENT_SYSTEM_FIELDS`): header columns only, system-written ones `readonly`, domain
+  requirements `required` (PO vendor; receipt PO; bill vendor, vendor invoice number, bill
+  date; delivery order; return delivery; transfer from/to; payment amount). New reference
+  field types the 4e renderer must draw: `warehouse_reference`, `purchase_order_reference`,
+  `purchase_receipt_reference`, `order_reference`, `delivery_reference`,
+  `invoice_reference`, `return_reference`.
+- Seeds from short tables (`_table_seed`): `full_form` for all 18 modules
+  (`_FULL_FORM_GROUPS`, mirroring today's hand-written forms' sections), `detail` for the
+  nine ERP documents (`_ERP_DETAIL_GROUPS`); `SUPPORTED_LAYOUT_SURFACES_BY_MODULE` is then
+  derived from the seeds. Line editors stay fixed (not fields).
+- Frontend: `lib/recordLayoutTargets.ts` (modules × surfaces, mirrors the backend map).
+  Settings → Record layouts: *Module* and *Layout* pickers (only modules the user may
+  `configure`), plus 4c's *Layout for*. `RecordLayoutPreview`: Lead quick create stays live;
+  everything else previews its structure through `ResolvedRecordLayout` with placeholder
+  inputs until 4e. Builder title/context generic. Settings → Fields: modules without a list
+  view definition (the ERP documents except invoices) list their standard fields from the
+  layout catalog (`full_form`, writable system fields), so field rules can be set on them.
+- Tests: `test_record_layouts.py` bounds test and `test_record_layout_admin.py` bounds test
+  rewritten for the open admin; new `test_every_full_form_seed_passes_its_own_validation`.
+  Not run.
+- **Not in 4d (it is 4e):** no runtime page reads the new `full_form` layouts or the ERP
+  `detail` layouts yet — the hand-written forms and ERP pages draw as before. Publishing one
+  of those layouts therefore changes nothing a user sees until 4e adopts it; the CRM
+  `quick_create` and the existing `detail` layouts work as before.
+
+**Phase 4 slice 4e-1 — `RecordForm` for the CRM, imports apply field rules: built 2026-10-06,
+working tree, NOT committed, nothing run.**
+- `components/forms/RecordForm.tsx`: one layout-driven form. Wraps the shared frame
+  (`LayoutDrivenQuickCreateFields`: custom fields, dependent picklists, errors, locked keys)
+  and draws each standard field from its `field_type`: text-ish inputs, long text, Yes/No
+  (`SegmentedBoolean`), picklist (with dependency filter), `user_reference` (`OwnerSelect`),
+  `organization_/contact_/team_/order_reference` (`LinkedRecordPicker`), tags
+  (`RecordTagInput`), currency `select`s (`currency`, `currency_type`: company currencies,
+  base first), and address states (`StateSelect` keyed to the address's country; a new
+  country clears the state). A module passes `renderField` for its own controls and returns
+  `undefined` otherwise. References keep their display name at `<key minus _id>_name`.
+  Other `select`s and the ERP references (`warehouse_reference`, …) draw nothing yet — the
+  module must supply them (4e-2).
+- The four `*QuickCreateLayoutFields` are now thin wrappers on `RecordForm` (exports and
+  input ids unchanged). Only the deal keeps overrides — stage (`OpportunityStageSelect`)
+  and the contact picker that fills the account — in `opportunityFieldRenderer`, shared with
+  the deal full form. `QuickCreatePicklistField` / `QuickCreateStateField` removed.
+- `components/forms/LayoutRecordFormBody.tsx`: loads `full_form`, draws `RecordForm`,
+  loading and retry states. Lead, contact, account and deal `/new` and `/[id]/edit` pages use
+  it (`RecordFormLayout.sidebar` is now optional; without it the body takes the full width
+  and the layout places its own sidebar sections). Validation = the layout's required
+  fields + the old email / name / "account or contact" checks, errors shown on the field,
+  focus on the first. Input ids keep the old `*_FORM_INPUT_IDS` (`lead-first-name`, …);
+  new fields get `<prefix>-<field-key-with-dashes>`. `*FormMainFields` /
+  `*FormSidebarFields` deleted from the four `*FormFields.tsx` (types, empty values and id
+  tables stay).
+- Backend: the account catalog gained `is_vendor` (Yes/No) and `payment_terms_days`, in a
+  *Billing and purchasing* section of the account full form; the lead full form gained an
+  *Ownership* section (owner, team, tags).
+- **Imports apply field rules (left from 4a):** `module_fields.ImportFieldRules` (rules loaded
+  once per file; read-only fields never set from a file; required checked on create and
+  overwrite, not on merge) in the lead, account, contact, deal and quote imports; a row that
+  breaks a rule is a failure row. Contact import failure rows carry no row number there (that
+  loop has none). Test added to `test_field_rules.py`, not run.
+- **Visible changes the test pass must expect:** contact *Email opt-out* and account
+  *Vendor* are Yes/No segmented controls (were a checkbox and a switch); the full forms'
+  sections follow the `full_form` seeds (not the old cards: e.g. owner is in the body, not a
+  sidebar); placeholder copy is generic ("Search account"); the deal quick create's
+  "Every deal stays linked to an existing contact" hint is gone (it was wrong since H13).
+  Specs that click those controls or read that copy need updating.
+
+**Phase 4 slice 4e-2 — document and ERP forms: built 2026-10-07, working tree, NOT
+committed, nothing run (no tsc, lint or tests; a source-level check confirmed every seed key
+is in its catalog and every required catalog field is in its `full_form` seed).**
+- Shared: `ResolvedRecordLayout` takes `mainInsert` (a line editor after a named section, else
+  after the first main section, so renaming sections never loses the lines) and
+  `sectionActions` (controls in a section heading); `LayoutDrivenQuickCreateFields` /
+  `RecordForm` / `LayoutRecordFormBody` pass them with `fixedSidebar` and `omitFieldKeys` as
+  `slots`. `validateLayoutDrivenQuickCreate` skips omitted keys. `QuickCreateField` now shows
+  the server's field error for its input (4e-1 forms showed it only in the banner).
+- `RecordForm`: `opportunity_reference` (deal picker), `warehouse_reference`
+  (`components/inventory/WarehouseSelect.tsx`; read-only name without stock access), and the
+  source-document references (PO, receipt, delivery, invoice, return) shown read-only — the
+  action that starts the document sets them (*Receive*, *Create bill*, *Return*, *Credit*);
+  no picker, a deviation from the 4e-2 plan's item 1, which the server's create payloads
+  confirm (none of those references is editable after create).
+- `ReadOnlyRecordLayout` draws a reference as the name beside it (`<base>_name`, `_number`,
+  `_label`), else as before.
+- Catalog corrections (`record_layouts.py`) found by comparing with the create payloads: quote
+  `opportunity_id` is `opportunity_reference` (was `text`); receipt and delivery
+  `warehouse_id` read-only (they come from the PO / the order's reservation); return
+  `reason` and adjustment `warehouse_id` / `mode` / `reason` required; payment direction,
+  account, contact, party and currency read-only (they follow the allocated document) and
+  the payment `full_form` seed is amount, date, method, reference, notes. Orders gained
+  `organization_id`, `contact_id`, `opportunity_id`, `exchange_rate`, `warehouse_id`,
+  `priority` (the order form always had them) and the "one of" rule (account or contact);
+  the order `full_form` seed has a *Customer* section first. Help text moved into the
+  catalog: shipping charge, quote deal, order deal, exchange rate, warehouse, priority.
+- Quotes and orders: `QuoteRecordFormPage` / `OrderRecordFormPage` draw the `full_form`
+  layout through `LayoutRecordFormBody`. Flat form values; `DocumentHeaderFields.tsx` is now
+  helpers on flat keys (`documentHeaderFrom/Payload`, `SameAsBillingButton` in the shipping
+  section heading); `DocumentAddressesSection` / `DocumentTermsSection` deleted. Shared
+  `transactions/customerFieldRenderer.tsx` (account → contact → deal cascade). Line editor
+  via `mainInsert` (after *Quote* / *Customer*); totals and a small *Quote/Order details*
+  card (number, status, declined/cancellation reason) in `fixedSidebar`. Custom fields come
+  from the layout (the separate custom-field section is gone). Input ids unchanged. Order
+  warehouse omitted with one warehouse, locked once fulfilled or cancelled; exchange rate
+  omitted in the base currency. Empty currency = base currency on save.
+- Invoices (`PosInvoiceRecordFormPage`): catalog gained `customer_organization_id` /
+  `customer_contact_id` (the form always linked them); `full_form` seed now *Customer*
+  (name, account, contact, email, address) then *Invoice* (dates, currency, payment method).
+  Lines after *Customer*; totals, invoice-level discount and tax rate, *Paid now* and print
+  settings in the sidebar. An issued invoice locks every layout field but due date, terms,
+  notes and custom fields. *Paid now* records the invoice's own payment method (the
+  separate picker is gone). Form keys are the record's (`customer_contact_name`, …).
+- Products and services (`CatalogRecordFormPage`): catalog gained `category_id`
+  (`category_reference`, drawn by the page), `name` is required, help text for unit and
+  list price; seeds put category after barcode/SKU. Inventory and purchasing stay fixed
+  sections after the layout (`mainInsert` after *Website*), publishing and media in the
+  sidebar. Currency is now the company-currency select (was a free 3-letter input). Field
+  errors sit on their field (weight and dimensions each, not one shared message).
+
+- ERP documents — purchase orders, receipts, bills, deliveries, returns, adjustments,
+  transfers, credit notes, and the payment form and page: the editable header is
+  `LayoutRecordFormBody` on `full_form` (one header state object per page, custom fields from
+  the layout); once not editable, `transactions/DocumentLayoutHeader.tsx`
+  (`DocumentDetailHeader`) draws the `detail` layout read-only — amounts in the document's
+  currency, references as links, statuses as `StatusValue` where the page says so. What is
+  state, not header (cancel/void/close reasons, *Applied to the invoice*, *Recorded*, a
+  delivery's customer, a receipt's vendor) stays a small `FactList`. Line editors and tables
+  are unchanged. `purchasing/vendorFieldRenderer.tsx`: the vendor picker offers vendors only.
+  Conditional fields go through `omitFieldKeys`: warehouse with one warehouse, exchange rate
+  in the base currency, a bill's PO/receipt and a credit note's return when there is none,
+  a bill's payment fields until posted. A bill from a PO locks vendor and currency; a
+  delivery locks its order. Validation: the layout's required fields, then each page's own
+  rules, errors on the field and focus on the first. Input ids kept where specs used them.
+- More catalog corrections: PO and bill `owner_id` read-only (the endpoints set the creator)
+  and out of their `full_form` seeds; adjustment *Adjustment type* and transfer *From/To
+  warehouse* labels (what the page always said); return and credit-note reason
+  placeholders; bill help text (vendor invoice number, due date); payment *Payment method*;
+  quote and invoice `customer_name` labelled *Customer name*.
+- The invoice payment endpoint (`POST /finance/invoices/{id}/payments`) takes `notes`, as
+  the payments endpoint already did — the payment layout has a notes field.
+- A transfer's *To warehouse* is never shown as the default warehouse while empty
+  (`WarehouseSelect emptyMeansDefault`); every other warehouse field keeps "empty = default".
+- Settings → Record layouts preview: every `quick_create` and `full_form` layout is a live
+  `RecordForm` (fields only a module draws, like a deal's stage, show as a placeholder —
+  `recordFormDraws`); details stay a structure preview; Lead quick create keeps its own form.
+- Specs: new `tests/e2e/layout-admin.spec.ts` (module and layout pickers, live full-form
+  preview, role audience, quote line placement and *Same as billing*, order "account or
+  contact", PO and adjustment headers). Updated for the new section names and labels:
+  `quotes-revamp`, `orders-revamp`, `invoices-revamp`, `catalog-revamp` (*Website price*),
+  `payments-revamp` (*Amount*). Not run.
+- **Visible changes the test pass must expect (4e-2):** quote, order and invoice sections are
+  the layout's (*Quote*, *Customer*, *Order*, *Invoice*, *Billing address*, *Shipping*,
+  *Terms*), not *Customer and billing details* / *Fulfilment*; *Quote/Order details* hold only
+  number, status and reason; catalog currency is a select and *Public unit price* reads
+  *Website price*; ERP detail headers are layout cards instead of fact rows; ERP selects have
+  ids (`inventory-warehouse-id`, …) and labels from the catalog; the record-payment amount is
+  *Amount*. Specs beyond those updated may read old copy — fix them in the pass, not the code,
+  unless the old behaviour was right.
+- **Not done, on purpose:** pickers to choose a PO, receipt, delivery, invoice or return in a
+  form (the starting action sets them; see above). Orders and quotes keep a hand-drawn
+  status in the sidebar rather than a layout field (status drives workflow, not data entry).
+
+**Phase 5 — quick create and clone (F3.7, F3.8): built 2026-10-07; tested in the second pass
+and committed with Phase 4.**
+- **Clone, backend:** `platform/services/clone_drafts.py` + `routes/clone_drafts.py`:
+  `GET /records/{module_key}/{record_id}/clone-draft` → `{module_key, source_id, fields,
+  custom_fields, lines}`. Read-only; the form saves the copy as an ordinary create, so every
+  create rule runs again. Needs `view` **and** `create` on the module (`require_access`); the
+  source is loaded through the module's own tenant-scoped getter, so another tenant's id is a
+  404. Each module lists what it **copies** (`CLONE_SPECS`), not what it drops: leads,
+  contacts, accounts, deals, quotes, orders, products, services, purchase orders; any other
+  key falls through to custom modules (`custom_modules.clone_source`, view + create) or 404.
+  Never copied: numbers, statuses and deal stages, totals, issue/expiry/delivery/expected
+  dates, exchange rates, the customer's PO reference, the source quote and channel, a lead's
+  or contact's email (the create refuses a duplicate), a product's SKU, barcode, slug, vendor
+  code, stock and pictures. Also dropped: fields the tenant disabled or made read-only, and
+  unique, file and auto-number custom fields. Quotes resolve their account, contact and deal
+  names (the quote response has ids only). Lines are copied without ids or totals.
+- **Clone, frontend:** `hooks/useCloneDraft.ts` (`?clone=<id>`, `cloneHref`),
+  `lib/formValues.ts` `formValuesFromCopy`, `components/recordWorkspace/RecordCloneMenuItem.tsx`.
+  *Clone* sits in the record header's overflow menu (leads, contacts, accounts, deals,
+  quotes, orders, products, services, custom-module records; shown with `can_create`) and as
+  an outline button on a purchase order. Each `new` page seeds from the draft (loading and
+  "could not be copied" states); the copy is the starting point, so it is not "unsaved
+  changes" until edited. Quote and order lines via `transactionItemsFromCopy`.
+- **Product and service quick create:** `quick_create` seeds for `catalog_products` /
+  `catalog_services` (name, SKU, category, unit, list price, tax category) and
+  `recordLayoutTargets.ts` lists the surface. `components/catalog/CatalogItemQuickCreate.tsx`
+  on the catalog list's *Create product/service* (was a link to `/new`), with *More details*
+  handing off to the full form (`catalogQuickCreateDrafts`). The catalog form's value, seed
+  and payload moved to `components/catalog/catalogForm.ts` (`buildCatalogPayload`, shared by
+  both). `RecordForm` now draws `category_reference` itself (`components/catalog/CategorySelect.tsx`);
+  the catalog page's own category control is gone. Catalog create/update throw `ApiError`, so
+  server field errors reach their fields.
+- **Create "…" inside pickers:** `LinkedRecordPicker` `createOption` — the list's last option,
+  reachable with the arrows and Enter. Wired where 13b §3.7 asks, each only with the target's
+  `can_create`: the quote/order/invoice line editor (*Create product*, priced in the
+  document's currency, the line takes it), the purchase order line (*Create product*, tracked,
+  preferred vendor = the PO's vendor, unit cost from it), the PO and bill vendor picker
+  (*Create vendor*, account quick create with *Vendor* on), and the quote and order contact
+  picker (*Create contact*, typed name split into first/last, linked to the form's account).
+  Account and contact quick creates gained `embedded` (no *More details* or *Create & open*,
+  which would leave the form) and pass the new record's name to `onCreated`.
+- Tests written, not run: `tests/test_clone_drafts.py` (copy lists, disabled/read-only
+  fields, tenant 404, quote lines, custom-field rules, unknown module);
+  `test_record_layouts.py` bounds test updated (catalog has `quick_create`);
+  `tests/e2e/clone-and-inline-create.spec.ts` (lead clone via the menu, quote clone with
+  lines, clone error state, product quick create + *More details*, line *Create product*, PO
+  *Create vendor*). `catalog-revamp.spec.ts`: *Create product/service* is a button now.
+- **Visible changes the test pass must expect:** the catalog list's create opens a sheet;
+  pickers show a *Create "…"* row under results; record overflow menus have *Clone*.
+
+**Second test pass (2026-10-07/08), Phases 4 + 5 — green; committed with Phases 4 and 5.**
+- Backend: compileall OK; 1536 unit tests green (with Redis up for the four rate-limit
+  tests). `verify_migrations` replays to `20261013_layout_overrides`. `verify_openapi` OK (456
+  paths). Generated contracts: no drift (checked with one-off containers).
+- Frontend: `check-design.sh` 21/21; lint clean (one reasoned `set-state-in-effect`
+  suppression for the catalog *More details* handoff, which reads sessionStorage); build OK.
+- e2e through `scripts/e2e.sh` (`--timeout=90000`, six spec chunks of 5–10): the five Step 6
+  specs (`clone-and-inline-create`, `layout-admin`, `picklists`, `field-system`,
+  `deal-record`); leads, leads quick create, contacts, accounts, deals, quotes, orders,
+  invoices, payments, catalog, catalog line items, purchasing, invoicing, fulfilment 1–2,
+  inventory 1–3, costing, record layouts admin, contact/organization rollout, deal
+  participants, custom modules, module builder, fields, imports, exports, automation,
+  reports — all green on their last run. Scoped guards: `design-rules` + `scroll-containers`
+  over `/dashboard/sales`, `/dashboard/catalog`, `/dashboard/settings` (63 routes) and over
+  purchasing, inventory, finance, invoices, custom (26 routes) — green. Not run: the three
+  dev-only `/e2e/*` harness specs, and the unscoped full guard walk (OOMs at 6g, see memory).
+- Fixed in code by the pass: (1) quote, order and invoice forms focused
+  `[data-transaction-field='name']` on a bad line, which no element has — now
+  `[data-line-field='name']`; (2) a system `full_form` drew a required custom field twice
+  (*Required fields* and *Custom fields*), and the custom-field section was collapsed on create
+  forms — now each field once, collapsed only on `detail` (unit test added); (3) a lead's
+  default-status effect wrote back a stale form in the same commit as the *More details*
+  handoff, wiping it — `useLeadStatusDefault(status, applyDefault)` applies a functional
+  update; (4) `LinkedRecordPicker`'s *Create "…"* could become the active option under a
+  resting pointer while results loaded (Enter then opened a quick create) — it now shows only
+  once the search settles, when the field holds no record, and not when a result has exactly
+  the typed name.
+- Tests corrected to intended Phase 4 behaviour: tenant quick create keeps its layout with the
+  required field appended; "A create form needs…"; fallback warning "using the next layout that
+  applies"; admin route test passes `role_id`/`team_id`; org edit route test patches the new
+  write-rule calls; clone test sets `is_protected` (SQLite server default). Specs: generic
+  placeholders (*Search account*, *Search team*), required-marked labels matched by role
+  (*Vendor*, *Amount*), quantity `2.0000`, custom fields inside the layout (the lead
+  custom-field test creates real fields and switches them off), contact email no longer
+  protected, purchasing delivery note uses the order's shipping address (`delivery_address`
+  was retired in Phase 3), and the design guard waits for a listbox trigger instead of a
+  fixed 1.5s pause (forms draw after their layout resolves).
 
 **First test pass (2026-10-06), Step 5 + Phases 1–3.**
 - Backend: 1503 unit tests green (the four rate-limit tests run with Redis up). `verify_migrations`

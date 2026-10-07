@@ -80,6 +80,39 @@ export type RecordLayoutAdminState = {
   system_definition: RecordLayoutDefinition;
   available_fields: RecordLayoutCatalogField[];
   validation: RecordLayoutValidationReport;
+  /** The audience (13b Phase 4c): both null = the workspace default. */
+  role_id?: number | null;
+  team_id?: number | null;
+  /** A role or team with no override yet: where its starting copy came from. */
+  inherits_from?: "tenant" | "system" | null;
+};
+
+/**
+ * Who a layout is for: everyone (the workspace default), one role, or one team. An override
+ * is a complete layout; a user sees their team's, else their role's, else the default.
+ */
+export type LayoutAudience = { kind: "default" } | { kind: "role"; id: number } | { kind: "team"; id: number };
+
+export const DEFAULT_AUDIENCE: LayoutAudience = { kind: "default" };
+
+export function audienceKey(audience: LayoutAudience) {
+  return audience.kind === "default" ? "default" : `${audience.kind}:${audience.id}`;
+}
+
+function audienceQuery(audience: LayoutAudience) {
+  if (audience.kind === "role") return `?role_id=${audience.id}`;
+  if (audience.kind === "team") return `?team_id=${audience.id}`;
+  return "";
+}
+
+export type RecordLayoutOverrideSummary = {
+  layout_id: number;
+  role_id: number | null;
+  role_name: string | null;
+  team_id: number | null;
+  team_name: string | null;
+  version: number;
+  updated_at: string | null;
 };
 
 export type RecordLayoutPreview = {
@@ -178,16 +211,21 @@ async function request(path: string, init?: RequestInit) {
   return body;
 }
 
-export async function fetchRecordLayoutAdminState(moduleKey: string, surface: RecordLayoutSurface) {
-  return (await request(adminPath(moduleKey, surface))) as RecordLayoutAdminState;
+export async function fetchRecordLayoutAdminState(
+  moduleKey: string,
+  surface: RecordLayoutSurface,
+  audience: LayoutAudience = DEFAULT_AUDIENCE,
+) {
+  return (await request(adminPath(moduleKey, surface, audienceQuery(audience)))) as RecordLayoutAdminState;
 }
 
 export async function previewRecordLayout(
   moduleKey: string,
   surface: RecordLayoutSurface,
   definition: RecordLayoutDefinition,
+  audience: LayoutAudience = DEFAULT_AUDIENCE,
 ): Promise<RecordLayoutPreview> {
-  const body = (await request(adminPath(moduleKey, surface, "/preview"), {
+  const body = (await request(adminPath(moduleKey, surface, `/preview${audienceQuery(audience)}`), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ definition }),
@@ -201,10 +239,15 @@ export async function previewRecordLayout(
   };
 }
 
-export function useRecordLayoutAdminState(moduleKey: string, surface: RecordLayoutSurface, enabled = true) {
+export function useRecordLayoutAdminState(
+  moduleKey: string,
+  surface: RecordLayoutSurface,
+  enabled = true,
+  audience: LayoutAudience = DEFAULT_AUDIENCE,
+) {
   return useQuery({
-    queryKey: ["record-layout-admin", moduleKey, surface],
-    queryFn: () => fetchRecordLayoutAdminState(moduleKey, surface),
+    queryKey: ["record-layout-admin", moduleKey, surface, audienceKey(audience)],
+    queryFn: () => fetchRecordLayoutAdminState(moduleKey, surface, audience),
     enabled: Boolean(moduleKey) && enabled,
     refetchOnWindowFocus: false,
     retry: false,
@@ -215,18 +258,24 @@ export function useRecordLayoutAdminState(moduleKey: string, surface: RecordLayo
  * Publishing replaces the tenant default for everyone immediately, so the resolved-layout
  * cache used by the runtime surfaces is invalidated alongside the builder's own state.
  */
-export function useRecordLayoutMutations(moduleKey: string, surface: RecordLayoutSurface) {
+export function useRecordLayoutMutations(
+  moduleKey: string,
+  surface: RecordLayoutSurface,
+  audience: LayoutAudience = DEFAULT_AUDIENCE,
+) {
   const queryClient = useQueryClient();
 
   function applyState(state: RecordLayoutAdminState) {
-    queryClient.setQueryData(["record-layout-admin", moduleKey, surface], state);
+    queryClient.setQueryData(["record-layout-admin", moduleKey, surface, audienceKey(audience)], state);
     void queryClient.invalidateQueries({ queryKey: ["record-layout", moduleKey, surface] });
+    void queryClient.invalidateQueries({ queryKey: ["record-layout-overrides", moduleKey, surface] });
+    void queryClient.invalidateQueries({ queryKey: ["record-layout-resolved-as", moduleKey, surface] });
     return state;
   }
 
   const publish = useMutation({
     mutationFn: async (input: { definition: RecordLayoutDefinition; expectedVersion: number | null }) =>
-      (await request(adminPath(moduleKey, surface), {
+      (await request(adminPath(moduleKey, surface, audienceQuery(audience)), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ definition: input.definition, expected_version: input.expectedVersion }),
@@ -236,9 +285,78 @@ export function useRecordLayoutMutations(moduleKey: string, surface: RecordLayou
 
   const reset = useMutation({
     mutationFn: async () =>
-      (await request(adminPath(moduleKey, surface), { method: "DELETE" })) as RecordLayoutAdminState,
+      (await request(adminPath(moduleKey, surface, audienceQuery(audience)), { method: "DELETE" })) as RecordLayoutAdminState,
     onSuccess: applyState,
   });
 
   return { publish, reset };
+}
+
+/** The role and team overrides a surface has, for the audience picker. */
+export function useRecordLayoutOverrides(moduleKey: string, surface: RecordLayoutSurface, enabled = true) {
+  return useQuery({
+    queryKey: ["record-layout-overrides", moduleKey, surface],
+    queryFn: async () => (await request(adminPath(moduleKey, surface, "/overrides"))) as RecordLayoutOverrideSummary[],
+    enabled: Boolean(moduleKey) && enabled,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/**
+ * *Preview as*: the published layout a user with this role and team sees (team wins). Not
+ * the draft — the builder's own preview shows that.
+ */
+export function useRecordLayoutResolvedAs(
+  moduleKey: string,
+  surface: RecordLayoutSurface,
+  as: { roleId: number | null; teamId: number | null },
+  enabled = true,
+) {
+  return useQuery({
+    queryKey: ["record-layout-resolved-as", moduleKey, surface, as.roleId, as.teamId],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      if (as.roleId) params.set("role_id", String(as.roleId));
+      if (as.teamId) params.set("team_id", String(as.teamId));
+      const query = params.toString();
+      return parseResolvedRecordLayout(await request(adminPath(moduleKey, surface, `/resolved-as${query ? `?${query}` : ""}`)));
+    },
+    enabled: Boolean(moduleKey) && enabled,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+export type LayoutAudienceOption = { id: number; name: string };
+
+/**
+ * Roles and teams to pick an audience from. Both lists are administration reads; someone who
+ * may configure layouts but not read them sees only the workspace default.
+ */
+export function useLayoutAudiences(enabled = true) {
+  const roles = useQuery({
+    queryKey: ["record-layout-audience-roles"],
+    queryFn: async () => {
+      const res = await apiFetch("/admin/users/roles/permissions");
+      if (!res.ok) return [] as LayoutAudienceOption[];
+      const body = (await res.json()) as { roles?: LayoutAudienceOption[] };
+      return (body.roles ?? []).map((role) => ({ id: role.id, name: role.name }));
+    },
+    enabled,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  const teams = useQuery({
+    queryKey: ["record-layout-audience-teams"],
+    queryFn: async () => {
+      const res = await apiFetch("/admin/users/teams");
+      if (!res.ok) return [] as LayoutAudienceOption[];
+      return ((await res.json()) as LayoutAudienceOption[]).map((team) => ({ id: team.id, name: team.name }));
+    },
+    enabled,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+  return { roles: roles.data ?? [], teams: teams.data ?? [], isLoading: roles.isLoading || teams.isLoading };
 }

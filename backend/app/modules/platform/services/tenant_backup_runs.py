@@ -27,7 +27,7 @@ from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
     upload_document_storage_artifact,
 )
-from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistValue, TenantBackupRun, TenantBackupSettings
+from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantBackupSettings
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_settings import (
     _next_run_at,
@@ -124,6 +124,7 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
 CONFIGURATION_EXPORTS: list[tuple[str, Any]] = [
     ("picklists.json", Picklist),
     ("picklist_values.json", PicklistValue),
+    ("picklist_dependencies.json", PicklistDependency),
     # The one field system: definitions are configuration; values belong to the records of
     # each set and are restored with that set.
     ("field_definitions.json", FieldDefinition),

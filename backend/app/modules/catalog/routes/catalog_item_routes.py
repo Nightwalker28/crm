@@ -16,6 +16,7 @@ from app.core.module_filters import parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_action_access, require_module_access
 from app.core.security import require_user
+from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.catalog.services import catalog_item_services as items
 from app.modules.catalog.services.catalog_item_services import CatalogKind
@@ -109,7 +110,8 @@ def build_catalog_item_router(
         require_module=Depends(require_module_access(module)),
         require_permission=Depends(require_action_access(module, "create")),
     ):
-        record = items.create_item(db, kind, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, payload=payload.model_dump())
+        data = apply_user_write_rules(db, tenant_id=current_user.tenant_id, module_key=kind.module_key, payload=payload.model_dump())
+        record = items.create_item(db, kind, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, payload=data)
         return _response(record)
 
     @router.get("/{item_id}", response_model=response)
@@ -135,7 +137,15 @@ def build_catalog_item_router(
         require_permission=Depends(require_action_access(module, "edit")),
     ):
         record = items.get_item_or_404(db, kind, tenant_id=current_user.tenant_id, item_id=item_id)
-        record = items.update_item(db, kind, record=record, actor_user_id=current_user.id, payload=payload.model_dump(exclude_unset=True))
+        data = apply_user_write_rules(
+            db,
+            tenant_id=current_user.tenant_id,
+            module_key=kind.module_key,
+            payload=payload.model_dump(exclude_unset=True),
+            existing=record,
+            record_id=record.id,
+        )
+        record = items.update_item(db, kind, record=record, actor_user_id=current_user.id, payload=data)
         return _response(record)
 
     @router.post("/{item_id}/images")

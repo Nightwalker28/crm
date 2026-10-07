@@ -155,10 +155,12 @@ test("filters fields, explains protected controls, and saves inspector changes o
   await page.getByRole("button", { name: "Close field editor" }).click();
 
   await page.getByRole("radio", { name: "All", exact: true }).click();
+  // Email is optional since 13b Phase 3 (a contact needs an email or a phone), so it is not
+  // protected any more: an administrator may hide it.
   await page.getByRole("row", { name: "Edit Email" }).click();
-  await expect(page.getByText(/This field stays enabled because/)).toBeVisible();
-  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toBeDisabled();
-  await expect(page.getByRole("radio", { name: "Disabled", exact: true })).toBeDisabled();
+  await expect(page.getByText(/This field stays enabled because/)).toHaveCount(0);
+  await expect(page.getByRole("radio", { name: "Enabled", exact: true })).toBeEnabled();
+  await expect(page.getByRole("radio", { name: "Disabled", exact: true })).toBeEnabled();
 });
 
 test("creates a required custom field and opens it in the inspector", async ({ page }) => {

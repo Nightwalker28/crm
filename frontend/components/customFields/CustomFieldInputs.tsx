@@ -15,10 +15,12 @@ type CustomFieldInputProps = {
   onChange: (value: unknown) => void;
   disabled?: boolean;
   error?: string | null;
+  /** A dependent picklist's allowed keys (13b §3.6). */
+  allowedKeys?: string[] | null;
 };
 
 /** One custom field in a form: label, the type's control, help and the server's error (H2). */
-export function CustomFieldInput({ definition: field, value, onChange, disabled = false, error: clientError }: CustomFieldInputProps) {
+export function CustomFieldInput({ definition: field, value, onChange, disabled = false, error: clientError, allowedKeys }: CustomFieldInputProps) {
   // A required Yes/No shows No until it is answered, so No is what the form holds and sends.
   const isRequiredBoolean = fieldTypeKey(field.field_type) === "boolean" && field.is_required;
   useEffect(() => {
@@ -46,6 +48,7 @@ export function CustomFieldInput({ definition: field, value, onChange, disabled 
         disabled={disabled}
         ariaInvalid={Boolean(error)}
         ariaDescribedBy={describedBy}
+        allowedKeys={allowedKeys}
       />
       {field.help_text ? <FieldDescription id={descriptionId}>{field.help_text}</FieldDescription> : null}
       {error ? <FieldError id={errorId}>{error}</FieldError> : null}

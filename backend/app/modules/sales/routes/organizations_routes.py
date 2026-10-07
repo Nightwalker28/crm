@@ -20,9 +20,11 @@ from app.modules.platform.services.data_transfer_jobs import (
     should_background_data_transfer_with_size,
 )
 from app.modules.platform.schema import DataTransferExecutionResponse, DataTransferExportRequest
+from app.modules.platform.services.picklist_dependencies import enforce_picklist_dependencies
 from app.modules.platform.services.module_fields import (
     enabled_module_fields,
     enabled_module_field_sequence,
+    enforce_field_rules,
     reject_disabled_field_writes,
     sanitize_data_transfer_export_payload,
     sanitize_disabled_field_payload,
@@ -104,6 +106,21 @@ ORGANIZATION_IMPORT_ALIASES = {
 }
 
 
+def _apply_user_write_rules(db: Session, current_user, data: dict, *, existing=None) -> dict:
+    """Disabled fields dropped, then the admin's field rules and picklist dependencies (13b Phase 4)."""
+    tenant_id = current_user.tenant_id
+    data = sanitize_disabled_field_payload(db, tenant_id=tenant_id, module_key="sales_organizations", payload=data)
+    data = enforce_field_rules(db, tenant_id=tenant_id, module_key="sales_organizations", payload=data, existing=existing)
+    return enforce_picklist_dependencies(
+        db,
+        tenant_id=tenant_id,
+        module_key="sales_organizations",
+        payload=data,
+        existing=existing,
+        record_id=existing.org_id if existing is not None else None,
+    )
+
+
 def _serialize_organization(org) -> dict:
     return SalesOrganizationResponse.model_validate(org).model_dump(mode="json")
 
@@ -151,12 +168,7 @@ def _create_sales_organization_response(
         field_keys=submitted_fields,
     )
     sanitized_payload = SalesOrganizationCreate.model_validate(
-        sanitize_disabled_field_payload(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key="sales_organizations",
-            payload=payload.model_dump(),
-        )
+        _apply_user_write_rules(db, current_user, payload.model_dump())
     )
     created = create_organization(
         db=db,
@@ -437,12 +449,7 @@ def edit_sales_organization(
         field_keys=set(update_data) - {"custom_fields"},
     )
     sanitized_payload = SalesOrganizationUpdate.model_validate(
-        sanitize_disabled_field_payload(
-            db,
-            tenant_id=current_user.tenant_id,
-            module_key="sales_organizations",
-            payload=update_data,
-        )
+        _apply_user_write_rules(db, current_user, update_data, existing=existing)
     )
 
     before_state = _serialize_organization(existing)

@@ -129,7 +129,7 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await ownerPicker.click();
   await page.getByRole("option", { name: /Ada Owner/ }).click();
   await expect(ownerPicker).toHaveText(/Ada Owner/);
-  const accountPicker = page.getByPlaceholder("Search accounts");
+  const accountPicker = page.getByPlaceholder("Search account", { exact: true });
   await accountPicker.fill("Lynk");
   await page.getByRole("option", { name: "Lynk QA" }).click();
   await expect(accountPicker).toHaveValue("Lynk QA");
@@ -164,6 +164,6 @@ test("Contact create, detail, edit, and record tabs follow the shared workflow",
   await expect(page.getByRole("heading", { name: "Edit contact" })).toBeVisible();
   await expect(page.getByRole("textbox", { name: "Email", exact: true })).toHaveValue("browser.contact@example.com");
   await expect(page.getByRole("combobox", { name: "Owner" })).toHaveText(/Ada Owner/);
-  await expect(page.getByPlaceholder("Search accounts")).toHaveValue("Lynk QA");
+  await expect(page.getByPlaceholder("Search account", { exact: true })).toHaveValue("Lynk QA");
   await expect(page.getByText(/Last modified/)).toBeVisible();
 });

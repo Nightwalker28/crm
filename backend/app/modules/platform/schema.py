@@ -136,6 +136,8 @@ class ModuleFieldConfigResponse(BaseModel):
     field_source: str = "system"
     is_enabled: bool = True
     is_protected: bool = False
+    is_required: bool = False
+    is_readonly: bool = False
     sort_order: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -149,6 +151,8 @@ class ModuleFieldConfigUpdateRequest(BaseModel):
     field_source: str | None = Field(default=None, max_length=40)
     is_enabled: bool | None = None
     is_protected: bool | None = None
+    is_required: bool | None = None
+    is_readonly: bool | None = None
     sort_order: int | None = None
 
 

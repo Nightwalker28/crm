@@ -13,11 +13,14 @@ import { RecordFormLayout } from "@/components/forms/RecordFormLayout";
 import { useRecordTabHref } from "@/components/recordWorkspace/RecordWorkspace";
 import {
   EMPTY_OPPORTUNITY_FORM,
-  OpportunityFormMainFields,
-  OpportunityFormSidebarFields,
+  OPPORTUNITY_FORM_INPUT_IDS,
   opportunityFormInputIdFor,
   type OpportunityFormValue,
 } from "@/components/opportunities/OpportunityFormFields";
+import { opportunityFieldRenderer } from "@/components/opportunities/OpportunityQuickCreateLayoutFields";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import {
   buildOpportunityPayload,
   saveOpportunity,
@@ -32,12 +35,12 @@ import {
 } from "@/components/ui/RouteStates";
 import { defaultStageKey } from "@/components/opportunities/opportunityStages";
 import { useOpportunityPipeline } from "@/hooks/sales/useOpportunityPipeline";
-import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { useCloneDraft } from "@/hooks/useCloneDraft";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime } from "@/lib/datetime";
-import { formValuesFromRecord } from "@/lib/formValues";
+import { formValuesFromCopy, formValuesFromRecord } from "@/lib/formValues";
 
 type OpportunitySummary = {
   opportunity: OpportunityFormValue & {
@@ -58,6 +61,11 @@ async function fetchSummary(id: string) {
   if (!res.ok) throw new Error(body?.detail ?? `Failed with ${res.status}`);
   return body as OpportunitySummary;
 }
+
+
+/** Field ids on the full form: the long-standing ones, so focus, errors and specs still find them. */
+const opportunityFullFormInputId = (fieldKey: string) =>
+  OPPORTUNITY_FORM_INPUT_IDS[fieldKey] ?? `deal-${fieldKey.replace(/_/g, "-")}`;
 
 export default function OpportunityRecordFormPage({
   mode,
@@ -80,11 +88,11 @@ export default function OpportunityRecordFormPage({
   const [initialSnapshot, setInitialSnapshot] = useState(() =>
     JSON.stringify([EMPTY_OPPORTUNITY_FORM, {}]),
   );
-  const [nameError, setNameError] = useState<string | null>(null);
-  const [contactError, setContactError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const serverErrors = useServerFormErrors(opportunityFormInputIdFor);
   const [submitting, setSubmitting] = useState(false);
-  const customFields = useModuleCustomFields("sales_opportunities", true);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("sales_opportunities", "full_form");
   const { fields: moduleFields } = useModuleFieldConfigs("sales_opportunities");
   const summaryQuery = useQuery({
     queryKey: ["sales-opportunity-summary", opportunityId],
@@ -92,6 +100,16 @@ export default function OpportunityRecordFormPage({
     enabled: mode === "edit" && Boolean(opportunityId),
     refetchOnWindowFocus: false,
   });
+  // *Clone* (13b Phase 5): `?clone=<id>` fills this create form from that deal. The copy is
+  // the starting point, so leaving it untouched is not unsaved work.
+  const clone = useCloneDraft("sales_opportunities", mode === "create");
+  useEffect(() => {
+    if (!clone.draft) return;
+    const nextForm = formValuesFromCopy(EMPTY_OPPORTUNITY_FORM, clone.draft.fields);
+    setForm(nextForm);
+    setCustomValues(clone.draft.custom_fields);
+    setInitialSnapshot(JSON.stringify([nextForm, clone.draft.custom_fields]));
+  }, [clone.draft]);
   useEffect(() => {
     if (mode !== "edit" || !summaryQuery.data) return;
     const opportunity = summaryQuery.data.opportunity;
@@ -130,13 +148,22 @@ export default function OpportunityRecordFormPage({
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
-    const nextNameError = validateOpportunityName(form.opportunity_name);
-    const nextPartyError = validateOpportunityParty(form);
-    setNameError(nextNameError);
-    setContactError(nextPartyError);
-    if (nextNameError) document.getElementById("deal-name")?.focus();
-    else if (nextPartyError) document.getElementById("deal-account")?.focus();
-    return !nextNameError && !nextPartyError;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues) : {};
+    const nameError = nextErrors.opportunity_name ? null : validateOpportunityName(form.opportunity_name);
+    if (nameError) nextErrors.opportunity_name = nameError;
+    // An account or a contact (13a H13): the error sits on the account picker.
+    const partyError = validateOpportunityParty(form);
+    if (partyError && !nextErrors.organization_id) nextErrors.organization_id = partyError;
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      const id = firstInvalid.startsWith("custom:")
+        ? `custom-field-sales_opportunities-${firstInvalid.slice("custom:".length)}`
+        : opportunityFullFormInputId(firstInvalid);
+      document.getElementById(id)?.focus();
+      return false;
+    }
+    return true;
   }
   async function submit() {
     if (!validate()) return;
@@ -166,6 +193,10 @@ export default function OpportunityRecordFormPage({
     } finally {
       setSubmitting(false);
     }
+  }
+  if (clone.isLoading) return <RouteLoadingState label="deal" />;
+  if (clone.error) {
+    return <RouteErrorState title="This deal could not be copied" reset={() => void clone.refetch()} backHref="/dashboard/sales/opportunities" backLabel="Back to deals" />;
   }
   if (mode === "edit" && summaryQuery.isLoading)
     return <RouteLoadingState label="deal" />;
@@ -206,14 +237,6 @@ export default function OpportunityRecordFormPage({
       <ServerFieldErrorsProvider errors={serverErrors.errors} inputIdFor={opportunityFormInputIdFor}>
       <RecordFormLayout
         title={mode === "edit" ? (form.opportunity_name.trim() || "Deal") : "Create deal"}
-        sidebar={
-          <OpportunityFormSidebarFields
-            value={form}
-            onChange={setForm}
-            moduleFields={moduleFields}
-            mode={mode}
-          />
-        }
         status={dirty
           ? "Unsaved changes"
           : mode === "edit"
@@ -238,18 +261,16 @@ export default function OpportunityRecordFormPage({
           </>
         )}
       >
-        <OpportunityFormMainFields
+        <LayoutRecordFormBody<OpportunityFormValue>
+          moduleKey="sales_opportunities"
           value={form}
           onChange={setForm}
-          customFields={customFields.data ?? []}
-          customFieldValues={customValues}
-          onCustomFieldChange={(key, value) =>
-            setCustomValues((current) => ({ ...current, [key]: value }))
-          }
-          moduleFields={moduleFields}
-          nameError={nameError}
-          partyError={contactError}
-          mode={mode}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={opportunityFullFormInputId}
+          action={mode}
+          errors={fieldErrors}
+          renderField={opportunityFieldRenderer({ value: form, onChange: setForm, action: mode })}
         />
       </RecordFormLayout>
       </ServerFieldErrorsProvider>

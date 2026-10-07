@@ -5,6 +5,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
 import { EditorPanel } from "@/components/ui/EditorPanel";
@@ -18,7 +22,6 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
-import { TextLink } from "@/components/ui/TextLink";
 import { useCreditNote, useFinanceDocumentActions, useReturnCreditCandidates } from "@/hooks/finance/useFinanceDocuments";
 import { usePosInvoice, type PaymentRecord, type PosInvoiceLine } from "@/hooks/finance/usePosInvoices";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
@@ -30,7 +33,22 @@ import { getCreditNoteStatus, getPaymentRecordStatus } from "@/lib/statusStyles"
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { PicklistText } from "@/components/picklists/PicklistText";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type CreditNoteHeader = RecordFormValue & {
+  invoice_id: number | null;
+  invoice_name: string;
+  return_id: number | null;
+  return_name: string;
+  issue_date: string;
+  reason: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const CREDIT_INPUT_IDS: Record<string, string> = { reason: "credit-reason", notes: "credit-notes" };
+const creditInputId = (fieldKey: string) => CREDIT_INPUT_IDS[fieldKey] ?? `credit-${fieldKey.replace(/_/g, "-")}`;
 
 
 type Row = { line: PosInvoiceLine; creditable: number };
@@ -60,8 +78,9 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
   const mutations = useFinanceDocumentActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [notes, setNotes] = useState("");
+  const [header, setHeader] = useState<CreditNoteHeader | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("finance_credit_notes", "full_form");
   const [quantities, setQuantities] = useState<Record<number, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
@@ -79,8 +98,15 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
   if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(note?.custom_fields ?? {});
-    setReason(note?.reason ?? (candidates.data ? `Return ${candidates.data.return_number}` : ""));
-    setNotes(note?.notes ?? "");
+    setHeader({
+      invoice_id: invoice?.id ?? note?.invoice_id ?? null,
+      invoice_name: invoice?.invoice_number ?? note?.invoice_number ?? "",
+      return_id: note?.return_id ?? returnId,
+      return_name: candidates.data?.return_number ?? "",
+      issue_date: note?.issue_date ?? "",
+      reason: note?.reason ?? (candidates.data ? `Return ${candidates.data.return_number}` : ""),
+      notes: note?.notes ?? "",
+    });
     const seeded: Record<number, string> = {};
     for (const line of invoice?.lines ?? []) {
       if (line.id == null) continue;
@@ -109,15 +135,25 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
     if (!lines.length) { setError("Enter a quantity to credit on at least one line."); return; }
     const over = rows.find((row) => Number(quantities[row.line.id!] || 0) > row.creditable);
     if (over) { setError(`${over.line.description}: only ${quantity(over.creditable)} left to credit.`); return; }
-    if (!reason.trim()) { setError("Say why the customer is credited."); return; }
+    if (!header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues) : {};
+    if (!header.reason.trim() && !nextErrors.reason) nextErrors.reason = "Say why the customer is credited.";
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      setError("Check the highlighted fields.");
+      document.getElementById(firstInvalid.startsWith("custom:") ? `custom-field-finance_credit_notes-${firstInvalid.slice(7)}` : creditInputId(firstInvalid))?.focus();
+      return;
+    }
+    const headerPayload = { reason: header.reason.trim(), notes: header.notes.trim() || null, issue_date: header.issue_date || null };
     try {
       setError(null);
       let id = note?.id ?? null;
       if (isNew && invoice) {
-        const created = await mutations.createCreditNote({ invoice_id: invoice.id, return_id: returnId, reason: reason.trim(), notes: notes.trim() || null, lines, custom_fields: customValues });
+        const created = await mutations.createCreditNote({ invoice_id: invoice.id, return_id: returnId, ...headerPayload, lines, custom_fields: customValues });
         id = created.id;
       } else if (note) {
-        await mutations.updateCreditNote({ id: note.id, payload: { reason: reason.trim(), notes: notes.trim() || null, lines, custom_fields: customValues } });
+        await mutations.updateCreditNote({ id: note.id, payload: { ...headerPayload, lines, custom_fields: customValues } });
       }
       if (id && andIssue) {
         const issued = await mutations.issueCreditNote(id);
@@ -201,25 +237,38 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
       ) : null}
 
       {note && !editable ? (
-        <FactList className="grid-cols-2 lg:grid-cols-4">
-          <Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.invoices}/${note.invoice_id}`}>{note.invoice_number ?? "Invoice"}</TextLink></Fact>
-          <Fact label="Total"><Money amount={note.total_amount} currency={note.currency} context="field" /></Fact>
-          {note.applied_amount != null ? <Fact label="Applied to the invoice"><Money amount={note.applied_amount} currency={note.currency} context="field" /></Fact> : null}
-          {note.status === "issued" ? <Fact label="Refund due"><Money amount={note.refund_due} currency={note.currency} context="field" /></Fact> : null}
-          <Fact label="Reason">{note.reason ?? "—"}</Fact>
-          {note.return_id ? <Fact label="Return"><TextLink href={`${DASHBOARD_ROUTES.inventoryReturns}/${note.return_id}`}>Open return</TextLink></Fact> : null}
-          {note.void_reason ? <Fact label="Voided because">{note.void_reason}</Fact> : null}
-        </FactList>
-      ) : invoice && !noInvoice ? (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <FactList><Fact label="Invoice"><TextLink href={`${DASHBOARD_ROUTES.invoices}/${invoice.id}`}>{invoice.invoice_number ?? "Invoice"}</TextLink></Fact></FactList>
-          <Field className="lg:col-span-2"><FieldLabel htmlFor="credit-reason">Reason</FieldLabel><Input id="credit-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Returned goods, price agreed after the fact…" /></Field>
-          <Field className="lg:col-span-3"><FieldLabel htmlFor="credit-notes">Notes</FieldLabel><Textarea id="credit-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-        </div>
+        <>
+          <DocumentDetailHeader
+            moduleKey="finance_credit_notes"
+            record={note}
+            currency={note.currency}
+            links={{
+              invoice_id: `${DASHBOARD_ROUTES.invoices}/${note.invoice_id}`,
+              return_id: note.return_id ? `${DASHBOARD_ROUTES.inventoryReturns}/${note.return_id}` : null,
+            }}
+            omitFieldKeys={[...(note.return_id ? [] : ["return_id"]), ...(note.status === "issued" ? [] : ["refund_due"])]}
+          />
+          {note.applied_amount != null || note.void_reason ? (
+            <FactList className="grid-cols-2 lg:grid-cols-4">
+              {note.applied_amount != null ? <Fact label="Applied to the invoice"><Money amount={note.applied_amount} currency={note.currency} context="field" /></Fact> : null}
+              {note.void_reason ? <Fact label="Voided because">{note.void_reason}</Fact> : null}
+            </FactList>
+          ) : null}
+        </>
+      ) : invoice && !noInvoice && header ? (
+        <LayoutRecordFormBody<CreditNoteHeader>
+          moduleKey="finance_credit_notes"
+          value={header}
+          onChange={setHeader}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={creditInputId}
+          action={isNew ? "create" : "edit"}
+          errors={fieldErrors}
+          slots={{ omitFieldKeys: header.return_id ? [] : ["return_id"] }}
+        />
       ) : null}
 
-      {!noInvoice ? (editable ? <RecordCustomFieldsSection moduleKey="finance_credit_notes" values={customValues} onChange={setCustomValues} />
-        : note ? <RecordCustomFieldsFacts moduleKey="finance_credit_notes" values={note.custom_fields} /> : null) : null}
       {!noInvoice ? (
         <section className="flex flex-col gap-3">
           <SectionHeading description={editable ? `About ${estimate.toFixed(2)} ${invoice?.currency ?? ""}, before the invoice's own discount and tax rate` : undefined}>Lines</SectionHeading>

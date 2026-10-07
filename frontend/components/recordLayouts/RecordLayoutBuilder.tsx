@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowDown,
   ArrowUp,
@@ -46,9 +46,12 @@ import { PageShell } from "@/components/ui/PageShell";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useConfirm } from "@/hooks/useConfirm";
 import {
+  DEFAULT_AUDIENCE,
   RecordLayoutAdminError,
+  audienceKey,
   previewRecordLayout,
   useRecordLayoutMutations,
+  type LayoutAudience,
   type RecordLayoutAdminState,
   type RecordLayoutCatalogField,
   type RecordLayoutDefinition,
@@ -56,6 +59,7 @@ import {
   type RecordLayoutSectionDefinition,
 } from "@/hooks/useRecordLayoutAdmin";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
+import { RECORD_LAYOUT_SURFACE_LABELS, recordLayoutTarget } from "@/lib/recordLayoutTargets";
 import type { RecordLayoutRegion, RecordLayoutWidth } from "@/lib/contracts/recordLayouts";
 
 /** Long enough that typing a section name is one request, short enough to feel immediate. */
@@ -335,9 +339,27 @@ function SectionCard({
   );
 }
 
-export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAdminState; onReload: () => void }) {
+export function RecordLayoutBuilder({
+  state,
+  onReload,
+  audience = DEFAULT_AUDIENCE,
+  audienceLabel = "Everyone",
+  toolbar,
+  footer,
+}: {
+  state: RecordLayoutAdminState;
+  onReload: () => void;
+  /** Whom this layout is for (13b Phase 4c): the workspace default, a role or a team. */
+  audience?: LayoutAudience;
+  audienceLabel?: string;
+  /** The audience picker, drawn above the sections. */
+  toolbar?: ReactNode;
+  /** *Preview as*, drawn below the builder. */
+  footer?: ReactNode;
+}) {
   const { confirm } = useConfirm();
-  const { publish, reset } = useRecordLayoutMutations(state.module_key, state.surface);
+  const { publish, reset } = useRecordLayoutMutations(state.module_key, state.surface, audience);
+  const isOverride = audience.kind !== "default";
 
   // `state.definition` is the published baseline. The page remounts this component whenever
   // the server copy changes (see its `key`), so the baseline never drifts from the draft.
@@ -363,8 +385,8 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
   }, [draft]);
 
   const previewQuery = useQuery({
-    queryKey: ["record-layout-preview", state.module_key, state.surface, JSON.stringify(debouncedDraft)],
-    queryFn: () => previewRecordLayout(state.module_key, state.surface, debouncedDraft),
+    queryKey: ["record-layout-preview", state.module_key, state.surface, audienceKey(audience), JSON.stringify(debouncedDraft)],
+    queryFn: () => previewRecordLayout(state.module_key, state.surface, debouncedDraft, audience),
     placeholderData: keepPreviousData,
     refetchOnWindowFocus: false,
     retry: false,
@@ -388,7 +410,11 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
     try {
       await publish.mutateAsync({ definition: draft, expectedVersion: state.expected_version });
       setConflict(null);
-      toast.success("Layout published. Everyone in this workspace sees it now.");
+      toast.success(
+        isOverride
+          ? `Layout published for ${audienceLabel}. They see it now.`
+          : "Layout published. Everyone without their own layout sees it now.",
+      );
     } catch (error) {
       if (error instanceof RecordLayoutAdminError && error.kind === "conflict") {
         setConflict(error.message);
@@ -403,17 +429,26 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
   }
 
   async function handleReset() {
-    const confirmed = await confirm({
-      title: "Reset to the system default?",
-      description:
-        "The workspace layout is deleted and Quick Create goes back to the Lynk default for everyone. This cannot be undone.",
-      confirmLabel: "Reset layout",
-      variant: "destructive",
-    });
+    const confirmed = await confirm(
+      isOverride
+        ? {
+            title: `Remove the layout for ${audienceLabel}?`,
+            description: "They go back to the workspace layout. This cannot be undone.",
+            confirmLabel: "Remove layout",
+            variant: "destructive",
+          }
+        : {
+            title: "Reset to the system default?",
+            description:
+              "The workspace layout is deleted and this form goes back to the Lynk default for everyone without their own layout. This cannot be undone.",
+            confirmLabel: "Reset layout",
+            variant: "destructive",
+          },
+    );
     if (!confirmed) return;
     try {
       await reset.mutateAsync();
-      toast.success("Layout reset to the system default.");
+      toast.success(isOverride ? `${audienceLabel} now use the workspace layout.` : "Layout reset to the system default.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The layout could not be reset.");
     }
@@ -425,11 +460,19 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
     <PageShell
       variant="settings"
       title="Record layouts"
-      description="Arrange the fields on the lead quick create form."
+      description="Arrange the fields of each module's forms and details, for everyone or for one role or team."
       context={
         <span>
-          Leads · Quick Create ·{" "}
-          {state.source === "tenant" ? `Workspace layout (v${state.version})` : "System default"}
+          {recordLayoutTarget(state.module_key).label} · {RECORD_LAYOUT_SURFACE_LABELS[state.surface]} · {audienceLabel} ·{" "}
+          {isOverride
+            ? state.source === "tenant"
+              ? `Own layout (v${state.version})`
+              : state.inherits_from === "tenant"
+                ? "Uses the workspace layout"
+                : "Uses the system default"
+            : state.source === "tenant"
+              ? `Workspace layout (v${state.version})`
+              : "System default"}
           {isDirty ? " · Unsaved changes" : ""}
         </span>
       }
@@ -442,10 +485,16 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
           type="button"
           variant="outline"
           disabled={state.source !== "tenant" || isBusy}
-          title={state.source === "tenant" ? undefined : "This workspace already uses the system default."}
+          title={
+            state.source === "tenant"
+              ? undefined
+              : isOverride
+                ? `${audienceLabel} have no layout of their own yet.`
+                : "This workspace already uses the system default."
+          }
           onClick={() => void handleReset()}
         >
-          <RotateCcw />Reset to default
+          <RotateCcw />{isOverride ? "Remove layout" : "Reset to default"}
         </Button>
         <Button type="button" disabled={!isDirty || !validation?.valid || isBusy} onClick={() => void handlePublish()}>
           Publish
@@ -453,6 +502,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
         </ActionBar>
       )}
     >
+      {toolbar}
 
       {conflict ? (
         <Card className="border-state-warning/40 bg-state-warning-muted p-4" role="alert">
@@ -561,6 +611,7 @@ export function RecordLayoutBuilder({ state, onReload }: { state: RecordLayoutAd
       <FormSection title="Preview">
         <RecordLayoutPreview layout={previewQuery.data?.resolved ?? null} isStale={isPreviewStale} />
       </FormSection>
+      {footer}
     </PageShell>
   );
 }

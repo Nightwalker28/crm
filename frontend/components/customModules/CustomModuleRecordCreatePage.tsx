@@ -21,6 +21,7 @@ import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
 import { RequiredMark } from "@/components/ui/RequiredMark";
 import { RouteErrorState, RouteLoadingState } from "@/components/ui/RouteStates";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useCloneDraft, type CloneDraft } from "@/hooks/useCloneDraft";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import {
@@ -39,6 +40,8 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
   const schema = useCustomModuleSchema(moduleKey);
   const moduleFields = useModuleFieldConfigs(moduleKey);
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
+  // *Clone* (13b Phase 5): `?clone=<id>` fills this form from that record.
+  const clone = useCloneDraft(moduleKey);
   const accessibleModule = modules.find((module) => module.id === schema.data?.module_id);
   const enabledFieldKeys = useMemo(
     () => new Map(moduleFields.fields.map((field) => [field.field_key, field.is_protected || field.is_enabled])),
@@ -52,12 +55,23 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
     [enabledFieldKeys, schema.data],
   );
 
-  if (modulesLoading || schema.isLoading || moduleFields.isLoading) {
+  if (modulesLoading || schema.isLoading || moduleFields.isLoading || clone.isLoading) {
     return <RouteLoadingState label="custom module record form" />;
   }
 
   if (!accessibleModule?.actions?.can_create) {
     return <PermissionDeniedState />;
+  }
+
+  if (clone.error) {
+    return (
+      <RouteErrorState
+        title="This record could not be copied"
+        reset={() => void clone.refetch()}
+        backHref={`/dashboard/custom/${moduleKey}`}
+        backLabel="Back to records"
+      />
+    );
   }
 
   if (schema.error || moduleFields.error || !schema.data) {
@@ -88,11 +102,12 @@ export default function CustomModuleRecordCreatePage({ moduleKey }: { moduleKey:
 
   return (
     <CustomModuleRecordCreateEditor
-      key={`${schema.data.id}:${fields.map((field) => `${field.id}:${field.sort_order}`).join(",")}`}
+      key={`${schema.data.id}:${fields.map((field) => `${field.id}:${field.sort_order}`).join(",")}:${clone.cloneId ?? ""}`}
       moduleKey={moduleKey}
       moduleName={schema.data.name}
       moduleDescription={schema.data.description}
       fields={fields}
+      cloneDraft={clone.draft}
     />
   );
 }
@@ -102,21 +117,24 @@ function CustomModuleRecordCreateEditor({
   moduleName,
   moduleDescription,
   fields,
+  cloneDraft,
 }: {
   moduleKey: string;
   moduleName: string;
   moduleDescription?: string | null;
   fields: CustomModuleField[];
+  /** A copy of another record: its title and copyable values over the defaults. */
+  cloneDraft?: CloneDraft | null;
 }) {
   const router = useRouter();
   const { createRecord, isSaving } = useCreateCustomModuleRecord(moduleKey);
-  const [title, setTitle] = useState("");
-  const [values, setValues] = useState<Record<string, unknown>>(() =>
-    getInitialCustomModuleValues(fields),
-  );
-  const [initialSnapshot] = useState(() =>
-    JSON.stringify(["", getInitialCustomModuleValues(fields)]),
-  );
+  const [seed] = useState(() => ({
+    title: cloneDraft ? String(cloneDraft.fields.title ?? "") : "",
+    values: { ...getInitialCustomModuleValues(fields), ...(cloneDraft?.custom_fields ?? {}) },
+  }));
+  const [title, setTitle] = useState(seed.title);
+  const [values, setValues] = useState<Record<string, unknown>>(seed.values);
+  const [initialSnapshot] = useState(() => JSON.stringify([seed.title, seed.values]));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [submitError, setSubmitError] = useState(false);
   const currentSnapshot = useMemo(() => JSON.stringify([title, values]), [title, values]);

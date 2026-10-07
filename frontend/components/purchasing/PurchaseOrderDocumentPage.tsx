@@ -3,10 +3,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { PackagePlus, Printer } from "lucide-react";
+import { Copy, PackagePlus, Printer } from "lucide-react";
 import { toast } from "sonner";
 
+import { CatalogItemQuickCreate } from "@/components/catalog/CatalogItemQuickCreate";
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormValue } from "@/components/forms/RecordForm";
+import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { vendorFieldRenderer } from "@/components/purchasing/vendorFieldRenderer";
+import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
@@ -18,13 +24,13 @@ import { Money } from "@/components/ui/Money";
 import { PageShell } from "@/components/ui/PageShell";
 import { RecordTable } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
 import { TextLink } from "@/components/ui/TextLink";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import { usePurchaseOrder, usePurchasingActions, type PurchaseOrder, type PurchaseOrderLine } from "@/hooks/purchasing/usePurchasing";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { cloneHref, useCloneDraft } from "@/hooks/useCloneDraft";
 import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
@@ -33,11 +39,36 @@ import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
-import { RecordCustomFieldsFacts, RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
+import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 
 type DraftLine = { key: number; productId: number | null; name: string; description: string; quantity: string; unitCost: string };
 let nextKey = 1;
 const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", description: "", quantity: "1", unitCost: "0" });
+
+/** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
+type PurchaseOrderHeader = RecordFormValue & {
+  vendor_id: number | null;
+  vendor_name: string;
+  warehouse_id: number | null;
+  warehouse_name: string;
+  currency: string;
+  exchange_rate: string;
+  expected_date: string;
+  vendor_reference: string;
+  notes: string;
+};
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const PO_INPUT_IDS: Record<string, string> = {
+  vendor_id: "po-vendor",
+  warehouse_id: "po-warehouse",
+  currency: "po-currency",
+  exchange_rate: "po-rate",
+  expected_date: "po-expected",
+  vendor_reference: "po-reference",
+  notes: "po-notes",
+};
+const poInputId = (fieldKey: string) => PO_INPUT_IDS[fieldKey] ?? `po-${fieldKey.replace(/_/g, "-")}`;
 
 
 /** The status a reader cares about: *Partly received* while an ordered PO has some stock in. */
@@ -63,18 +94,19 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const baseCurrencyQuery = useBaseCurrency();
   const query = usePurchaseOrder(orderId);
   const order = query.data;
+  // *Clone* (13b Phase 5): `?clone=<id>` starts a new draft from that order's vendor and lines.
+  const clone = useCloneDraft("purchase_orders", orderId === null);
+  const canCreateProduct = Boolean(modules.find((module) => module.name === "catalog_products")?.actions?.can_create);
+  const [creatingLine, setCreatingLine] = useState<{ key: number; name: string } | null>(null);
   const mutations = usePurchasingActions();
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
-  const [vendorId, setVendorId] = useState<number | null>(null);
-  const [vendorName, setVendorName] = useState("");
-  const [warehouseId, setWarehouseId] = useState<number | null>(null);
-  const [currency, setCurrency] = useState("");
+  const [header, setHeader] = useState<PurchaseOrderHeader | null>(null);
+  // The rate set on a placed order that has none yet (below the header).
   const [exchangeRate, setExchangeRate] = useState("");
-  const [expectedDate, setExpectedDate] = useState("");
-  const [vendorReference, setVendorReference] = useState("");
-  const [notes, setNotes] = useState("");
   const [lines, setLines] = useState<DraftLine[]>([blankLine()]);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const layoutQuery = useResolvedRecordLayout("purchase_orders", "full_form");
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
   const [panel, setPanel] = useState<"close" | "cancel" | null>(null);
@@ -83,21 +115,53 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const isNew = orderId === null;
   const editable = isNew ? Boolean(actions?.can_create) : order?.status === "draft" && Boolean(actions?.can_edit);
   const activeWarehouses = warehouses.data?.filter((row) => row.is_active) ?? [];
-  const defaultCurrency = currencies?.[0] ?? "USD";
+  // What the currency select shows while the field is blank: the base currency.
+  const defaultCurrency = baseCurrencyQuery.data ?? currencies?.[0] ?? "USD";
 
   // Seed the form once per loaded document, while rendering.
-  const seedKey = isNew ? "new" : order ? `order-${order.id}-${order.status}-${order.updated_at}` : null;
-  if (seedKey && seedKey !== loadedKey) {
+  const seedKey = isNew
+    ? clone.cloneId ? (clone.draft ? `clone-${clone.cloneId}` : null) : "new"
+    : order ? `order-${order.id}-${order.status}-${order.updated_at}` : null;
+  if (seedKey && seedKey !== loadedKey && clone.draft) {
+    // A copy: the vendor, warehouse, currency, notes and lines; a new number, status and rate.
+    const fields = clone.draft.fields as Partial<PurchaseOrderHeader>;
+    setLoadedKey(seedKey);
+    setCustomValues(clone.draft.custom_fields);
+    setHeader({
+      vendor_id: fields.vendor_id ?? null,
+      vendor_name: fields.vendor_name ?? "",
+      warehouse_id: fields.warehouse_id ?? null,
+      warehouse_name: fields.warehouse_name ?? "",
+      currency: fields.currency ?? "",
+      exchange_rate: "",
+      expected_date: "",
+      vendor_reference: "",
+      notes: fields.notes ?? "",
+    });
+    const copied = clone.draft.lines.map((line) => ({
+      key: nextKey++,
+      productId: (line.product_id as number | null | undefined) ?? null,
+      name: String(line.product_name ?? ""),
+      description: String(line.description ?? ""),
+      quantity: String(Number(line.quantity ?? 1)),
+      unitCost: String(Number(line.unit_cost ?? 0)),
+    }));
+    setLines(copied.length ? copied : [blankLine()]);
+  } else if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
     setCustomValues(order?.custom_fields ?? {});
-    setVendorId(order?.vendor_id ?? null);
-    setVendorName(order?.vendor_name ?? "");
-    setWarehouseId(order?.warehouse_id ?? null);
-    setCurrency(order?.currency ?? "");
+    setHeader({
+      vendor_id: order?.vendor_id ?? null,
+      vendor_name: order?.vendor_name ?? "",
+      warehouse_id: order?.warehouse_id ?? null,
+      warehouse_name: order?.warehouse_name ?? "",
+      currency: order?.currency ?? "",
+      exchange_rate: order?.exchange_rate ?? order?.suggested_exchange_rate ?? "",
+      expected_date: order?.expected_date ?? "",
+      vendor_reference: order?.vendor_reference ?? "",
+      notes: order?.notes ?? "",
+    });
     setExchangeRate(order?.exchange_rate ?? order?.suggested_exchange_rate ?? "");
-    setExpectedDate(order?.expected_date ?? "");
-    setVendorReference(order?.vendor_reference ?? "");
-    setNotes(order?.notes ?? "");
     setLines(order?.lines?.length ? order.lines.map((line) => ({
       key: nextKey++, productId: line.product_id, name: line.product_name, description: line.description ?? "",
       quantity: String(Number(line.quantity)), unitCost: String(Number(line.unit_cost)),
@@ -105,22 +169,34 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   }
 
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
-  const currencyCode = currency || order?.currency || defaultCurrency;
+  const currencyCode = header?.currency || order?.currency || defaultCurrency;
   // Stock is costed in the base currency, so an order in another one carries a rate (12d §3.5).
   const baseCurrency = order?.base_currency ?? baseCurrencyQuery.data ?? defaultCurrency;
   const foreign = currencyCode !== baseCurrency;
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
 
+  // A tenant with one warehouse never sees the choice; the rate only matters in another currency.
+  const omitFieldKeys = [...(activeWarehouses.length > 1 ? [] : ["warehouse_id"]), ...(foreign ? [] : ["exchange_rate"])];
+
   async function save() {
-    if (!vendorId) { setError("Choose a vendor."); return; }
-    if (foreign && exchangeRate.trim() && !(Number(exchangeRate) > 0)) { setError("The exchange rate must be greater than zero."); return; }
+    if (!header) return;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues, omitFieldKeys) : {};
+    if (!header.vendor_id && !nextErrors.vendor_id) nextErrors.vendor_id = "Choose a vendor.";
+    if (foreign && header.exchange_rate.trim() && !(Number(header.exchange_rate) > 0)) nextErrors.exchange_rate = "The exchange rate must be greater than zero.";
+    setFieldErrors(nextErrors);
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      document.getElementById(firstInvalid.startsWith("custom:") ? `custom-field-purchase_orders-${firstInvalid.slice(7)}` : poInputId(firstInvalid))?.focus();
+      setError("Check the highlighted fields.");
+      return;
+    }
     if (!lines.length || lines.some((line) => !line.productId || !(Number(line.quantity) > 0) || !(Number(line.unitCost) >= 0))) {
       setError("Choose a product and enter a quantity above zero and a unit cost on every line."); return;
     }
     const payload = {
       custom_fields: customValues,
-      vendor_id: vendorId, warehouse_id: warehouseId, currency: currencyCode, exchange_rate: foreign && exchangeRate.trim() ? exchangeRate.trim() : null, expected_date: expectedDate || null,
-      vendor_reference: vendorReference.trim() || null, notes: notes.trim() || null,
+      vendor_id: header.vendor_id!, warehouse_id: header.warehouse_id, currency: currencyCode, exchange_rate: foreign && header.exchange_rate.trim() ? header.exchange_rate.trim() : null, expected_date: header.expected_date || null,
+      vendor_reference: header.vendor_reference.trim() || null, notes: header.notes.trim() || null,
       lines: lines.map((line) => ({ product_id: line.productId!, description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost })),
     };
     try {
@@ -172,10 +248,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
         ? [order.vendor_name, order.ordered_at ? `Placed ${formatDateTime(order.ordered_at)}` : "Not placed yet", order.expected_date ? `Expected ${formatDateOnly(order.expected_date)}` : null].filter(Boolean).join(" · ")
         : "Choose a vendor and the products to order. Save a draft, then place it."}
       backHref={DASHBOARD_ROUTES.purchaseOrders}
-      isLoading={isNew ? modulesLoading : query.isLoading}
-      isPermissionDenied={isForbiddenError(query.error) || (isNew && !modulesLoading && !actions?.can_create)}
-      hasError={Boolean(query.error) && !isForbiddenError(query.error)}
-      onRetry={() => void query.refetch()}
+      isLoading={isNew ? modulesLoading || clone.isLoading : query.isLoading}
+      isPermissionDenied={isForbiddenError(query.error) || isForbiddenError(clone.error) || (isNew && !modulesLoading && !actions?.can_create)}
+      hasError={(Boolean(query.error) && !isForbiddenError(query.error)) || (Boolean(clone.error) && !isForbiddenError(clone.error))}
+      onRetry={() => void (clone.error ? clone.refetch() : query.refetch())}
       actions={
         <div className="flex flex-wrap gap-2">
           {order ? <StatusValue status={purchaseOrderStatus(order)} context="record" /> : null}
@@ -188,61 +264,55 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             <Button asChild variant={toReceive && receiptActions?.can_create ? "outline" : "default"}><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?order_id=${order.id}`}>Create bill</Link></Button>
           ) : null}
           {order && order.status !== "draft" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseOrders}/${order.id}/print`}><Printer />Print</Link></Button> : null}
+          {/* 13b Phase 5: a new draft with this order's vendor and lines. */}
+          {order && actions?.can_create ? <Button asChild variant="outline"><Link href={cloneHref(`${DASHBOARD_ROUTES.purchaseOrders}/new`, order.id)}><Copy />Clone</Link></Button> : null}
           {order?.status === "ordered" && order.receipt_status === "partial" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("close"); }}>Close remaining</Button> : null}
           {(order?.status === "ordered" && order.receipt_status === "none") && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("cancel"); }}>Cancel order</Button> : null}
           {order?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>
       }
     >
-      {editable ? (
-        <div className="grid gap-6 lg:grid-cols-3">
-          <Field className="lg:col-span-2">
-            <FieldLabel htmlFor="po-vendor">Vendor</FieldLabel>
-            <LinkedRecordPicker inputId="po-vendor" recordType="vendor" valueId={vendorId} displayValue={vendorName}
-              onDisplayValueChange={(value) => { setVendorName(value); setVendorId(null); }}
-              onSelect={(option) => { setVendorId(option.id); setVendorName(option.label); }}
-              onClear={() => { setVendorId(null); setVendorName(""); }} placeholder="Search vendors" />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="po-currency">Currency</FieldLabel>
-            <Select value={currencyCode} onValueChange={setCurrency}>
-              <SelectTrigger id="po-currency"><SelectValue /></SelectTrigger>
-              <SelectContent>{Array.from(new Set([currencyCode, ...(currencies ?? [])])).map((code) => <SelectItem key={code} value={code}>{code}</SelectItem>)}</SelectContent>
-            </Select>
-          </Field>
-          {foreign ? (
-            <Field>
-              <FieldLabel htmlFor="po-rate">Exchange rate</FieldLabel>
-              <Input id="po-rate" type="number" min="0" step="0.00000001" inputMode="decimal" value={exchangeRate} onChange={(event) => setExchangeRate(event.target.value)} aria-describedby="po-rate-description" />
-              <FieldDescription id="po-rate-description">{baseCurrency} for one {currencyCode}. Needed to place the order: stock is valued in {baseCurrency}.</FieldDescription>
-            </Field>
-          ) : null}
-          {activeWarehouses.length > 1 ? (
-            <Field>
-              <FieldLabel htmlFor="po-warehouse">Deliver to</FieldLabel>
-              <Select value={String(warehouseId ?? activeWarehouses.find((row) => row.is_default)?.id ?? "")} onValueChange={(value) => setWarehouseId(Number(value))}>
-                <SelectTrigger id="po-warehouse"><SelectValue /></SelectTrigger>
-                <SelectContent>{activeWarehouses.map((row) => <SelectItem key={row.id} value={String(row.id)}>{row.name}</SelectItem>)}</SelectContent>
-              </Select>
-            </Field>
-          ) : null}
-          <Field><FieldLabel htmlFor="po-expected">Expected on</FieldLabel><Input id="po-expected" type="date" value={expectedDate} onChange={(event) => setExpectedDate(event.target.value)} /></Field>
-          <Field><FieldLabel htmlFor="po-reference">Vendor reference</FieldLabel><Input id="po-reference" maxLength={120} value={vendorReference} onChange={(event) => setVendorReference(event.target.value)} /></Field>
-          <Field className="lg:col-span-3"><FieldLabel htmlFor="po-notes">Notes</FieldLabel><Textarea id="po-notes" value={notes} onChange={(event) => setNotes(event.target.value)} /></Field>
-        </div>
+      {editable && header ? (
+        <LayoutRecordFormBody<PurchaseOrderHeader>
+          moduleKey="purchase_orders"
+          value={header}
+          onChange={setHeader}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={poInputId}
+          action={isNew ? "create" : "edit"}
+          errors={fieldErrors}
+          renderField={vendorFieldRenderer(header)}
+          slots={{ omitFieldKeys }}
+        />
       ) : order ? (
-        <FactList className="grid-cols-2 lg:grid-cols-4">
-          <Fact label="Vendor"><TextLink href={`/dashboard/sales/organizations/${order.vendor_id}`}>{order.vendor_name ?? "Vendor"}</TextLink></Fact>
-          {activeWarehouses.length > 1 ? <Fact label="Deliver to">{order.warehouse_name ?? "—"}</Fact> : null}
-          {order.vendor_reference ? <Fact label="Vendor reference">{order.vendor_reference}</Fact> : null}
-          <Fact label="Total"><Money amount={order.subtotal} currency={order.currency} /></Fact>
-          {order.base_currency && order.currency !== order.base_currency ? <Fact label="Exchange rate">{order.exchange_rate
-            ? <span className="tabular-nums">1 {order.currency} = {Number(order.exchange_rate).toLocaleString(undefined, { maximumFractionDigits: 8 })} {order.base_currency}</span>
-            : <span className="text-copy-muted">Not set</span>}</Fact> : null}
-          {order.bill_status && order.bill_status !== "none" ? <Fact label="Billing"><StatusValue status={getPurchaseOrderBillStatus(order.bill_status)} /></Fact> : null}
-          {order.close_reason ? <Fact label="Rest closed because">{order.close_reason}</Fact> : null}
-          {order.cancel_reason ? <Fact label="Cancelled because">{order.cancel_reason}</Fact> : null}
-        </FactList>
+        <>
+          <DocumentDetailHeader
+            moduleKey="purchase_orders"
+            record={order}
+            currency={order.currency}
+            links={{ vendor_id: `/dashboard/sales/organizations/${order.vendor_id}` }}
+            omitFieldKeys={[
+              ...(activeWarehouses.length > 1 ? [] : ["warehouse_id"]),
+              ...(order.base_currency && order.currency !== order.base_currency ? [] : ["exchange_rate"]),
+            ]}
+            renderValue={(field, value) => {
+              if (field.field_key === "exchange_rate" && order.base_currency) {
+                return value
+                  ? <span className="tabular-nums">1 {order.currency} = {Number(value).toLocaleString(undefined, { maximumFractionDigits: 8 })} {order.base_currency}</span>
+                  : <span className="text-copy-muted">Not set</span>;
+              }
+              if (field.field_key === "bill_status" && typeof value === "string" && value !== "none") return <StatusValue status={getPurchaseOrderBillStatus(value)} />;
+              return undefined;
+            }}
+          />
+          {order.close_reason || order.cancel_reason ? (
+            <FactList className="grid-cols-2 lg:grid-cols-4">
+              {order.close_reason ? <Fact label="Rest closed because">{order.close_reason}</Fact> : null}
+              {order.cancel_reason ? <Fact label="Cancelled because">{order.cancel_reason}</Fact> : null}
+            </FactList>
+          ) : null}
+        </>
       ) : null}
       {order && order.status === "ordered" && foreign && !order.exchange_rate && actions?.can_edit ? (
         <div className="flex flex-wrap items-end gap-3">
@@ -256,8 +326,6 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             .catch((failure) => toast.error(failure instanceof Error ? failure.message : "The exchange rate could not be saved."))}>Save rate</Button>
         </div>
       ) : null}
-
-      {editable ? <RecordCustomFieldsSection moduleKey="purchase_orders" values={customValues} onChange={setCustomValues} /> : order ? <RecordCustomFieldsFacts moduleKey="purchase_orders" values={order.custom_fields} /> : null}
 
       <section className="flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
@@ -285,6 +353,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
                         updateLine({ ...line, productId: option.id, name: option.label, unitCost: raw?.cost_price != null ? String(Number(raw.cost_price)) : line.unitCost });
                       }}
                       onClear={() => updateLine({ ...line, productId: null, name: "" })} placeholder="Search tracked products"
+                      createOption={canCreateProduct ? { label: (text) => `Create product "${text}"`, onCreate: (text) => setCreatingLine({ key: line.key, name: text }) } : undefined}
                       onInputKeyDown={productCell.onKeyDown}
                       inputDataAttributes={{ "data-line-editor": productCell["data-line-editor"], "data-line-row": index, "data-line-field": "product" }} />
                     <LineTextInput cellProps={cellProps("description")} ariaLabel={`Description for ${line.name || "line"}`} placeholder="Description (optional)"
@@ -383,6 +452,31 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       >
         <Field><FieldLabel htmlFor="po-panel-reason">Reason</FieldLabel><Textarea id="po-panel-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
       </EditorPanel>
+
+      {/* *Create product "…"* on a line (13b Phase 5): a stock-tracked product bought from this vendor. */}
+      {editable && canCreateProduct ? (
+        <CatalogItemQuickCreate
+          kind="products"
+          open={creatingLine !== null}
+          onOpenChange={(open) => { if (!open) setCreatingLine(null); }}
+          embedded
+          context={{
+            relationshipIntent: "purchase_order_line",
+            defaults: {
+              name: creatingLine?.name ?? "",
+              track_inventory: true,
+              preferred_vendor_id: header?.vendor_id ?? null,
+              preferred_vendor_name: header?.vendor_name ?? "",
+            },
+          }}
+          onCreated={(record) => {
+            if (!creatingLine) return;
+            setLines((current) => current.map((line) => (line.key === creatingLine.key
+              ? { ...line, productId: record.id, name: record.name, unitCost: record.cost_price != null ? String(Number(record.cost_price)) : line.unitCost }
+              : line)));
+          }}
+        />
+      ) : null}
     </PageShell>
   );
 }

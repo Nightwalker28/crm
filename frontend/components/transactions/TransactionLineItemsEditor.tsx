@@ -1,9 +1,13 @@
 "use client";
 
+import { useState } from "react";
+
+import { CatalogItemQuickCreate } from "@/components/catalog/CatalogItemQuickCreate";
 import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { FormSection } from "@/components/forms/RecordFormLayout";
 import { LineItemsEditor, LineNumberInput, LineTextInput, type LineItemsColumn } from "@/components/transactions/LineItemsEditor";
 import { EMPTY_CELL_VALUE } from "@/components/ui/EmptyValue";
+import type { CatalogRecord } from "@/hooks/catalog/useCatalogRecords";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { formatMoney } from "@/lib/currency";
 
@@ -38,6 +42,22 @@ export function transactionLineTotal(item: TransactionLineItem) { return Math.ma
 export function calculateTransactionTotals(items: TransactionLineItem[]): TransactionTotals { return items.reduce((result, item) => { result.subtotal += transactionAmount(item.quantity) * transactionAmount(item.unit_price); result.discount += transactionAmount(item.discount_amount); result.tax += transactionAmount(item.tax_amount); result.total += transactionLineTotal(item); return result; }, { subtotal: 0, discount: 0, tax: 0, total: 0 }); }
 export function areTransactionItemsValid(items: TransactionLineItem[]) { return items.length > 0 && items.every((item) => item.name.trim() && transactionAmount(item.quantity) > 0 && transactionAmount(item.unit_price) >= 0 && transactionAmount(item.discount_amount) >= 0 && transactionAmount(item.tax_amount) >= 0 && transactionAmount(item.discount_amount) <= transactionAmount(item.quantity) * transactionAmount(item.unit_price) + transactionAmount(item.tax_amount)); }
 export function serializeTransactionItems(items: TransactionLineItem[]) { return items.map((item, index) => ({ ...(item.id ? { id: item.id } : {}), ...transactionCatalogLink(item), name: item.name.trim(), description: item.description.trim() || null, quantity: item.quantity, unit_price: item.unit_price, discount_amount: item.discount_amount, tax_amount: item.tax_amount, sort_order: index })); }
+
+/** A clone draft's copied lines as new editor lines: no ids, so each saves as a new line (13b Phase 5). */
+export function transactionItemsFromCopy(lines: Array<Record<string, unknown>>, prefix: string): TransactionLineItem[] {
+  if (!lines.length) return [createTransactionLineItem(prefix)];
+  const text = (value: unknown, fallback = "") => (value === null || value === undefined ? fallback : String(value));
+  return lines.map((line) => ({
+    ...createTransactionLineItem(prefix),
+    ...transactionCatalogLink(line as CatalogLinkSource),
+    name: text(line.name),
+    description: text(line.description),
+    quantity: text(line.quantity, "1"),
+    unit_price: text(line.unit_price, "0"),
+    discount_amount: text(line.discount_amount, "0"),
+    tax_amount: text(line.tax_amount, "0"),
+  }));
+}
 
 /** The first line of a catalog description, short enough for the line's one-line field. */
 function catalogDescriptionLine(value: unknown) {
@@ -76,6 +96,18 @@ export function TransactionLineItemsEditor({
   // The picker offers what the user may see; with neither catalog module the item cell stays
   // plain text, and any link a line already has is kept as it is.
   const canPickCatalog = modules.some((module) => (module.name === "catalog_products" || module.name === "catalog_services") && module.actions?.can_view);
+  // *Create product "…"* (13b Phase 5): a new product, priced in this document's currency, on this line.
+  const canCreateProduct = modules.some((module) => module.name === "catalog_products" && module.actions?.can_create);
+  const [creating, setCreating] = useState<{ index: number; name: string } | null>(null);
+
+  function pickCreatedProduct(record: CatalogRecord) {
+    if (!creating) return;
+    pickCatalogItem(creating.index, {
+      id: record.id,
+      label: record.name,
+      raw: { kind: "product", unit_price: record.list_price ?? record.public_unit_price, description: record.description },
+    });
+  }
 
   function updateItem(index: number, field: ItemField, value: string) {
     onChange(items.map((item, itemIndex) => (itemIndex === index ? { ...item, [field]: value } : item)));
@@ -145,6 +177,7 @@ export function TransactionLineItemsEditor({
             queryKeyPrefix="transaction-catalog-item"
             onInputKeyDown={nameCell.onKeyDown}
             inputDataAttributes={{ "data-line-editor": nameCell["data-line-editor"], "data-line-row": index, "data-line-field": "name" }}
+            createOption={canCreateProduct ? { label: (text) => `Create product "${text}"`, onCreate: (text) => setCreating({ index, name: text }) } : undefined}
           />
         ) : (
           <LineTextInput
@@ -204,6 +237,16 @@ export function TransactionLineItemsEditor({
         lineLabel={(item, index) => item.name || `line ${index + 1}`}
         error={error}
       />
+      {canCreateProduct ? (
+        <CatalogItemQuickCreate
+          kind="products"
+          open={creating !== null}
+          onOpenChange={(open) => { if (!open) setCreating(null); }}
+          embedded
+          context={{ relationshipIntent: "document_line", defaults: { name: creating?.name ?? "", currency } }}
+          onCreated={pickCreatedProduct}
+        />
+      ) : null}
     </FormSection>
   );
 }

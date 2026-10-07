@@ -11,7 +11,8 @@ test("Quote creation uses an itemized full-page workflow", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Create quote", level: 2 }),
   ).toBeVisible();
-  await expect(page.getByText("Customer and billing details")).toBeVisible();
+  // 13b Phase 4e: the sections are the `full_form` layout's.
+  await expect(page.getByRole("heading", { name: "Quote", exact: true })).toBeVisible();
   await expect(page.getByText("Line items", { exact: true })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Totals", exact: true })).toBeVisible();
 

@@ -201,7 +201,7 @@ test("Product list uses permission-aware semantic actions and safe mutation feed
   await page.goto("/dashboard/catalog/products");
 
   await expect(page.getByRole("heading", { name: "Products" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create product" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create product" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Camera kit" })).toHaveAttribute("href", `/dashboard/catalog/products/${productId}`);
   await expect(page.getByText("Public", { exact: true })).toBeVisible();
 
@@ -239,7 +239,7 @@ test("Catalog lists hide ungranted actions and distinguish filtered empty states
   await page.goto("/dashboard/catalog/services");
 
   await expect(page.getByRole("heading", { name: "Services" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Create service" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Create service" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /More actions for/ })).toHaveCount(0);
   await expect(page.getByText("No services yet")).toBeVisible();
   await expect(page.getByText("Services will appear here when a teammate creates one.")).toBeVisible();
@@ -288,7 +288,7 @@ test("Service creation uses the shared form without product inventory fields", a
   await expect(page.getByLabel("SKU")).toBeVisible();
   await expect(page.getByLabel("Barcode")).toHaveCount(0);
   await expect(page.getByLabel("Stock status")).toHaveCount(0);
-  await expect(page.getByLabel("Public unit price")).toBeVisible();
+  await expect(page.getByLabel("Website price")).toBeVisible();
 });
 
 test("Product editing hydrates the routed form and saves back to detail", async ({ page }) => {

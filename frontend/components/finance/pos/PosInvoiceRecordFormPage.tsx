@@ -9,6 +9,9 @@ import { toast } from "sonner";
 
 import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
 import { FormErrorBanner } from "@/components/forms/FormErrorBanner";
+import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
+import type { RecordFormFieldContext, RecordFormValue } from "@/components/forms/RecordForm";
+import { QuickCreateField, validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import {
   FormSection,
   RecordFormLayout,
@@ -29,13 +32,11 @@ import {
   Field,
   FieldDescription,
   FieldError,
-  FieldGroup,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { PageShell } from "@/components/ui/PageShell";
 import { PermissionDeniedState } from "@/components/ui/PermissionDeniedState";
-import { RequiredMark } from "@/components/ui/RequiredMark";
 import {
   RouteErrorState,
   RouteLoadingState,
@@ -47,24 +48,23 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
-import { useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
+import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useResolvedRecordLayout, type ResolvedRecordLayoutField } from "@/hooks/useResolvedRecordLayout";
 import { useUnsavedChangesGuard } from "@/hooks/useUnsavedChangesGuard";
 import { invoiceDisplayNumber, type PosInvoice } from "@/hooks/finance/usePosInvoices";
 import { apiFetch } from "@/lib/api";
 import { formatDateTime, todayIsoDate } from "@/lib/datetime";
-import { PicklistField } from "@/components/picklists/PicklistSelect";
-import { RecordCustomFieldsSection } from "@/components/customFields/RecordCustomFields";
 
-type InvoiceForm = {
+/** The invoice form's value: flat, keyed by field key, as `RecordForm` draws it (13b Phase 4e). */
+type InvoiceForm = RecordFormValue & {
   customer_name: string;
   customer_email: string;
   customer_address: string;
   customer_contact_id: number | null;
-  contact_name: string;
+  customer_contact_name: string;
   customer_organization_id: number | null;
-  organization_name: string;
+  customer_organization_name: string;
   issue_date: string;
   due_date: string;
   /** The POS fast path (12c §3.3): issue and record the payment in one step. */
@@ -77,43 +77,71 @@ type InvoiceForm = {
   tax_rate: string;
   payment_terms: string;
   notes: string;
-  custom_fields: Record<string, unknown>;
 };
 const EMPTY_FORM: InvoiceForm = {
   customer_name: "",
   customer_email: "",
   customer_address: "",
   customer_contact_id: null,
-  contact_name: "",
+  customer_contact_name: "",
   customer_organization_id: null,
-  organization_name: "",
+  customer_organization_name: "",
   issue_date: "",
   due_date: "",
   paid_now: "no",
   payment_method: "",
   template_id: "modern",
   accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
-  currency: "USD",
+  currency: "",
   discount_amount: "0",
   tax_rate: "0",
   payment_terms: "",
   notes: "",
-  custom_fields: {},
 };
 /** What an issued invoice still lets you change (12c §3.3); the server refuses the rest. */
 const ISSUED_EDITABLE_KEYS = ["due_date", "notes", "payment_terms", "template_id", "accent_color", "custom_fields"] as const;
+/** The layout's fields an issued invoice fixes: everything but the editable ones above. */
+const ISSUED_LOCKED_FIELD_KEYS = [
+  "customer_name",
+  "customer_organization_id",
+  "customer_contact_id",
+  "customer_email",
+  "customer_address",
+  "issue_date",
+  "currency",
+  "payment_method",
+] as const;
 const TEMPLATES = [
   { value: "modern", label: "Modern" },
   { value: "classic", label: "Classic" },
   { value: "compact", label: "Compact" },
 ];
+
+/** The ids these inputs had before the layout drew them; specs and focus still use them. */
+const INVOICE_INPUT_IDS: Record<string, string> = {
+  customer_name: "invoice-customer",
+  customer_organization_id: "invoice-account",
+  customer_contact_id: "invoice-contact",
+  customer_email: "invoice-email",
+  customer_address: "invoice-address",
+  issue_date: "invoice-issue",
+  due_date: "invoice-due",
+  currency: "invoice-currency",
+  payment_method: "invoice-payment-method",
+  payment_terms: "invoice-terms",
+  notes: "invoice-notes",
+};
+
+function invoiceInputId(fieldKey: string) {
+  return INVOICE_INPUT_IDS[fieldKey] ?? `invoice-${fieldKey.replace(/_/g, "-")}`;
+}
+
 function numberValue(value: string) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 }
 
-type InvoiceSeed = { form: InvoiceForm; lines: TransactionLineItem[] };
-
+type InvoiceSeed = { form: InvoiceForm; lines: TransactionLineItem[]; customValues: Record<string, unknown> };
 async function fetchInvoiceForEdit(invoiceId: string) {
   const res = await apiFetch(`/finance/invoices/${invoiceId}`);
   const body = await res.json().catch(() => null);
@@ -123,17 +151,16 @@ async function fetchInvoiceForEdit(invoiceId: string) {
 
 function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
   if (!invoice)
-    return { form: { ...EMPTY_FORM, issue_date: todayIsoDate() }, lines: [createTransactionLineItem("invoice")] };
+    return { form: { ...EMPTY_FORM, issue_date: todayIsoDate() }, lines: [createTransactionLineItem("invoice")], customValues: {} };
   return {
     form: {
-      custom_fields: invoice.custom_fields ?? {},
       customer_name: invoice.customer_name,
       customer_email: invoice.customer_email ?? "",
       customer_address: invoice.customer_address ?? "",
       customer_contact_id: invoice.customer_contact_id ?? null,
-      contact_name: invoice.customer_contact_name ?? "",
+      customer_contact_name: invoice.customer_contact_name ?? "",
       customer_organization_id: invoice.customer_organization_id ?? null,
-      organization_name: invoice.customer_organization_name ?? "",
+      customer_organization_name: invoice.customer_organization_name ?? "",
       issue_date: invoice.issue_date ?? "",
       due_date: invoice.due_date ?? "",
       paid_now: "no",
@@ -160,6 +187,7 @@ function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
           tax_amount: String(line.tax_amount ?? 0),
         }))
       : [createTransactionLineItem("invoice")],
+    customValues: invoice.custom_fields ?? {},
   };
 }
 
@@ -241,15 +269,18 @@ function PosInvoiceRecordFormEditor({
   const listHref = "/dashboard/finance/invoices";
   const backHref = useRecordTabHref(mode === "edit" && invoiceId ? `${listHref}/${invoiceId}` : listHref);
   const queryClient = useQueryClient();
-  const currencies = useCompanyCurrencies(true);
+  const baseCurrency = useBaseCurrency();
   const [form, setForm] = useState<InvoiceForm>(seed.form);
+  const [customValues, setCustomValues] = useState<Record<string, unknown>>(seed.customValues);
+  const currency = form.currency || baseCurrency.data || "USD";
   const [lines, setLines] = useState<TransactionLineItem[]>(seed.lines);
   const [initialSnapshot] = useState(() =>
-    JSON.stringify([seed.form, seed.lines]),
+    JSON.stringify([seed.form, seed.lines, seed.customValues]),
   );
-  const [customerError, setCustomerError] = useState<string | null>(null);
-  const [emailError, setEmailError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [linesError, setLinesError] = useState<string | null>(null);
+  // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
+  const layoutQuery = useResolvedRecordLayout("finance_pos", "full_form");
   // One error per pricing field: an error names the fix (§7.5).
   const [discountError, setDiscountError] = useState<string | null>(null);
   const [taxRateError, setTaxRateError] = useState<string | null>(null);
@@ -265,23 +296,23 @@ function PosInvoiceRecordFormEditor({
     const tax = baseTotals.tax + (taxable * Math.max(0, numberValue(form.tax_rate))) / 100;
     return { subtotal: net, discount, tax, total: taxable + tax };
   }, [baseTotals.subtotal, baseTotals.discount, baseTotals.tax, form.discount_amount, form.tax_rate]);
-  const snapshot = useMemo(() => JSON.stringify([form, lines]), [form, lines]);
+  const snapshot = useMemo(() => JSON.stringify([form, lines, customValues]), [form, lines, customValues]);
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
   function validate() {
-    const validCustomer = Boolean(form.customer_name.trim());
-    const validEmail =
-      !form.customer_email.trim() ||
-      /^\S+@\S+\.\S+$/.test(form.customer_email.trim());
-    const validLines = areTransactionItemsValid(lines);
     if (locked) return true;
+    const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues) : {};
+    if (!form.customer_name.trim() && !nextErrors.customer_name) nextErrors.customer_name = "Customer name is required.";
+    if (form.customer_email.trim() && !/^\S+@\S+\.\S+$/.test(form.customer_email.trim()) && !nextErrors.customer_email) {
+      nextErrors.customer_email = "Enter a valid email address.";
+    }
+    const validLines = areTransactionItemsValid(lines);
     const validDiscount =
       numberValue(form.discount_amount) >= 0 &&
       numberValue(form.discount_amount) <= totals.subtotal;
     const validTaxRate =
       numberValue(form.tax_rate) >= 0 && numberValue(form.tax_rate) <= 100;
-    setCustomerError(validCustomer ? null : "Customer name is required.");
-    setEmailError(validEmail ? null : "Enter a valid email address.");
+    setFieldErrors(nextErrors);
     setLinesError(
       validLines
         ? null
@@ -291,15 +322,20 @@ function PosInvoiceRecordFormEditor({
       validDiscount ? null : "Enter a discount between zero and the subtotal.",
     );
     setTaxRateError(validTaxRate ? null : "Enter a tax rate between 0 and 100.");
-    if (!validCustomer) document.getElementById("invoice-customer")?.focus();
-    else if (!validEmail) document.getElementById("invoice-email")?.focus();
-    else if (!validLines)
+    const firstInvalid = Object.keys(nextErrors)[0];
+    if (firstInvalid) {
+      document.getElementById(
+        firstInvalid.startsWith("custom:")
+          ? `custom-field-finance_pos-${firstInvalid.slice("custom:".length)}`
+          : invoiceInputId(firstInvalid),
+      )?.focus();
+    } else if (!validLines)
       document
-        .querySelector<HTMLInputElement>("[data-transaction-field='name']")
+        .querySelector<HTMLInputElement>("[data-line-field='name']")
         ?.focus();
     else if (!validDiscount) document.getElementById("invoice-discount")?.focus();
     else if (!validTaxRate) document.getElementById("invoice-tax-rate")?.focus();
-    return validCustomer && validEmail && validLines && validDiscount && validTaxRate;
+    return !firstInvalid && validLines && validDiscount && validTaxRate;
   }
   function payload() {
     const full: Record<string, unknown> = {
@@ -314,12 +350,12 @@ function PosInvoiceRecordFormEditor({
       payment_method: form.payment_method || null,
       template_id: form.template_id,
       accent_color: form.accent_color,
-      currency: form.currency,
+      currency,
       discount_amount: numberValue(form.discount_amount),
       tax_rate: numberValue(form.tax_rate),
       payment_terms: form.payment_terms.trim() || null,
       notes: form.notes.trim() || null,
-      custom_fields: form.custom_fields,
+      custom_fields: customValues,
       lines: lines.map((line) => ({
         ...(line.id ? { id: line.id } : {}),
         ...transactionCatalogLink(line),
@@ -400,22 +436,6 @@ function PosInvoiceRecordFormEditor({
       ) : null}
       <RecordFormLayout
         title={displayNumber}
-        sidebar={
-          <InvoiceSidebar
-            form={form}
-            onChange={setForm}
-            totals={totals}
-            currencies={currencies.data ?? ["USD"]}
-            discountError={discountError}
-            taxRateError={taxRateError}
-            locked={locked}
-            showPaidNow={mode === "create" && canIssue && canPayNow}
-            onClearPricingError={() => {
-              setDiscountError(null);
-              setTaxRateError(null);
-            }}
-          />
-        }
         status={dirty
           ? "Unsaved changes"
           : locked
@@ -447,198 +467,139 @@ function PosInvoiceRecordFormEditor({
           </>
         )}
       >
-        <FormSection
-          title="Customer and billing details"
-          description={locked ? "Fixed once the invoice is issued." : "Link an existing CRM customer or enter walk-in billing information."}
-        >
-          <fieldset disabled={locked} className="contents">
-          <FieldGroup columns={2}>
-            <Field
-              data-invalid={Boolean(customerError)}
-              className="md:col-span-2"
-            >
-              <FieldLabel htmlFor="invoice-customer">
-                Customer name <RequiredMark />
-              </FieldLabel>
-              <Input
-                id="invoice-customer"
-                value={form.customer_name}
-                onChange={(event) => {
-                  setForm({ ...form, customer_name: event.target.value });
-                  setCustomerError(null);
+        <LayoutRecordFormBody<InvoiceForm>
+          moduleKey="finance_pos"
+          value={form}
+          onChange={setForm}
+          customValues={customValues}
+          onCustomChange={(key, value) => setCustomValues((current) => ({ ...current, [key]: value }))}
+          inputId={invoiceInputId}
+          action={mode}
+          errors={fieldErrors}
+          lockedFieldKeys={locked ? ISSUED_LOCKED_FIELD_KEYS : []}
+          renderField={invoiceCustomerRenderer(form)}
+          slots={{
+            mainInsert: {
+              afterSection: "customer",
+              node: locked && invoice ? (
+                <TransactionLineItemsTable
+                  items={(invoice.lines ?? []).map((line, index) => ({
+                    id: line.id ?? index, name: line.description, quantity: line.quantity, unit_price: line.unit_price,
+                    discount_amount: line.discount_amount ?? 0, tax_amount: line.tax_amount ?? 0, line_total: line.line_total ?? 0,
+                    catalog_product_id: line.catalog_product_id, catalog_service_id: line.catalog_service_id,
+                  }))}
+                  currency={invoice.currency}
+                  itemLabel="Description"
+                />
+              ) : (
+                <TransactionLineItemsEditor
+                  items={lines}
+                  onChange={(nextLines) => {
+                    setLines(nextLines);
+                    setLinesError(null);
+                  }}
+                  currency={currency}
+                  error={linesError}
+                  idPrefix="invoice"
+                  itemLabel="Description"
+                  showDescription={false}
+                />
+              ),
+            },
+            fixedSidebar: (
+              <InvoiceSidebar
+                form={form}
+                onChange={setForm}
+                currency={currency}
+                totals={totals}
+                discountError={discountError}
+                taxRateError={taxRateError}
+                locked={locked}
+                showPaidNow={mode === "create" && canIssue && canPayNow}
+                onClearPricingError={() => {
+                  setDiscountError(null);
+                  setTaxRateError(null);
                 }}
-                aria-invalid={Boolean(customerError)}
               />
-              {customerError ? <FieldError>{customerError}</FieldError> : null}
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="invoice-account">Account</FieldLabel>
-              <LinkedRecordPicker
-                inputId="invoice-account"
-                recordType="organization"
-                valueId={form.customer_organization_id}
-                displayValue={form.organization_name}
-                onDisplayValueChange={(organization_name) =>
-                  setForm({
-                    ...form,
-                    customer_organization_id: null,
-                    organization_name,
-                    customer_contact_id: null,
-                    contact_name: "",
-                  })
-                }
-                onSelect={(option) =>
-                  setForm({
-                    ...form,
-                    customer_organization_id: option.id,
-                    organization_name: option.label,
-                    customer_name: form.customer_name.trim() || option.label,
-                    customer_contact_id: null,
-                    contact_name: "",
-                  })
-                }
-                onClear={() =>
-                  setForm({
-                    ...form,
-                    customer_organization_id: null,
-                    organization_name: "",
-                    customer_contact_id: null,
-                    contact_name: "",
-                  })
-                }
-                placeholder="Search accounts"
-                queryKeyPrefix="invoice-page-account"
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="invoice-contact">Contact</FieldLabel>
-              <LinkedRecordPicker
-                inputId="invoice-contact"
-                recordType="contact"
-                valueId={form.customer_contact_id}
-                displayValue={form.contact_name}
-                onDisplayValueChange={(contact_name) =>
-                  setForm({ ...form, customer_contact_id: null, contact_name })
-                }
-                onSelect={(option) => {
-                  const raw = option.raw as
-                    { primary_email?: string | null } | undefined;
-                  setForm({
-                    ...form,
-                    customer_contact_id: option.id,
-                    contact_name: option.label,
-                    customer_organization_id:
-                      option.organization_id ?? form.customer_organization_id,
-                    organization_name:
-                      option.organization_name ?? form.organization_name,
-                    customer_name: form.customer_name.trim() || option.label,
-                    customer_email:
-                      form.customer_email.trim() || raw?.primary_email || "",
-                  });
-                }}
-                onClear={() =>
-                  setForm({
-                    ...form,
-                    customer_contact_id: null,
-                    contact_name: "",
-                  })
-                }
-                placeholder="Search contacts"
-                queryKeyPrefix="invoice-page-contact"
-                filters={{ organizationId: form.customer_organization_id }}
-              />
-            </Field>
-            <Field data-invalid={Boolean(emailError)}>
-              <FieldLabel htmlFor="invoice-email">Email</FieldLabel>
-              <Input
-                id="invoice-email"
-                type="email"
-                value={form.customer_email}
-                onChange={(event) => {
-                  setForm({ ...form, customer_email: event.target.value });
-                  setEmailError(null);
-                }}
-                aria-invalid={Boolean(emailError)}
-              />
-              {emailError ? <FieldError>{emailError}</FieldError> : null}
-            </Field>
-            <Field className="md:col-span-2">
-              <FieldLabel htmlFor="invoice-address">Billing address</FieldLabel>
-              <Textarea
-                id="invoice-address"
-                rows={4}
-                value={form.customer_address}
-                onChange={(event) =>
-                  setForm({ ...form, customer_address: event.target.value })
-                }
-              />
-            </Field>
-          </FieldGroup>
-          </fieldset>
-        </FormSection>
-        {locked && invoice ? (
-          <TransactionLineItemsTable
-            items={(invoice.lines ?? []).map((line, index) => ({
-              id: line.id ?? index, name: line.description, quantity: line.quantity, unit_price: line.unit_price,
-              discount_amount: line.discount_amount ?? 0, tax_amount: line.tax_amount ?? 0, line_total: line.line_total ?? 0,
-              catalog_product_id: line.catalog_product_id, catalog_service_id: line.catalog_service_id,
-            }))}
-            currency={invoice.currency}
-            itemLabel="Description"
-          />
-        ) : (
-          <TransactionLineItemsEditor
-            items={lines}
-            onChange={(nextLines) => {
-              setLines(nextLines);
-              setLinesError(null);
-            }}
-            currency={form.currency}
-            error={linesError}
-            idPrefix="invoice"
-            itemLabel="Description"
-            showDescription={false}
-          />
-        )}
-        <FormSection
-          title="Terms and notes"
-          description="Customer-facing payment terms and internal invoice notes."
-        >
-          <div className="grid gap-4">
-            <Field>
-              <FieldLabel htmlFor="invoice-terms">Payment terms</FieldLabel>
-              <Textarea
-                id="invoice-terms"
-                rows={3}
-                value={form.payment_terms}
-                onChange={(event) =>
-                  setForm({ ...form, payment_terms: event.target.value })
-                }
-              />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="invoice-notes">Notes</FieldLabel>
-              <Textarea
-                id="invoice-notes"
-                rows={5}
-                value={form.notes}
-                onChange={(event) =>
-                  setForm({ ...form, notes: event.target.value })
-                }
-              />
-            </Field>
-          </div>
-        </FormSection>
+            ),
+          }}
+        />
       </RecordFormLayout>
     </PageShell>
   );
 }
 
+/**
+ * An invoice's customer pickers (13b Phase 4e): the account narrows the contact and a new
+ * one clears it; a contact fills its account and, while blank, the name and email.
+ */
+function invoiceCustomerRenderer(form: InvoiceForm) {
+  return function renderField(field: ResolvedRecordLayoutField, context: RecordFormFieldContext) {
+    const { inputId, aria, error, disabled, set } = context;
+    const common = { inputId, disabled, ariaDescribedBy: aria.describedBy, ariaInvalid: aria.invalid };
+    const noContact = { customer_contact_id: null, customer_contact_name: "" };
+    if (field.field_key === "customer_organization_id") {
+      return (
+        <QuickCreateField field={field} aria={aria} error={error}>
+          <LinkedRecordPicker
+            {...common}
+            recordType="organization"
+            valueId={form.customer_organization_id}
+            displayValue={form.customer_organization_name}
+            onDisplayValueChange={(customer_organization_name) => set({ customer_organization_id: null, customer_organization_name, ...noContact })}
+            onSelect={(option) =>
+              set({
+                customer_organization_id: option.id,
+                customer_organization_name: option.label,
+                customer_name: form.customer_name.trim() || option.label,
+                ...noContact,
+              })
+            }
+            onClear={() => set({ customer_organization_id: null, customer_organization_name: "", ...noContact })}
+            placeholder={field.placeholder ?? "Search accounts"}
+            queryKeyPrefix="invoice-page-account"
+          />
+        </QuickCreateField>
+      );
+    }
+    if (field.field_key === "customer_contact_id") {
+      return (
+        <QuickCreateField field={field} aria={aria} error={error}>
+          <LinkedRecordPicker
+            {...common}
+            recordType="contact"
+            valueId={form.customer_contact_id}
+            displayValue={form.customer_contact_name}
+            onDisplayValueChange={(customer_contact_name) => set({ customer_contact_id: null, customer_contact_name })}
+            onSelect={(option) => {
+              const raw = option.raw as { primary_email?: string | null } | undefined;
+              set({
+                customer_contact_id: option.id,
+                customer_contact_name: option.label,
+                customer_organization_id: option.organization_id ?? form.customer_organization_id,
+                customer_organization_name: option.organization_name ?? form.customer_organization_name,
+                customer_name: form.customer_name.trim() || option.label,
+                customer_email: form.customer_email.trim() || raw?.primary_email || "",
+              });
+            }}
+            onClear={() => set(noContact)}
+            placeholder={field.placeholder ?? "Search contacts"}
+            queryKeyPrefix="invoice-page-contact"
+            filters={{ organizationId: form.customer_organization_id }}
+          />
+        </QuickCreateField>
+      );
+    }
+    return undefined;
+  };
+}
+
+/** Totals, invoice-level pricing, the till's *paid now*, and print settings. */
 function InvoiceSidebar({
   form,
   onChange,
+  currency,
   totals,
-  currencies,
   discountError,
   taxRateError,
   locked,
@@ -647,8 +608,8 @@ function InvoiceSidebar({
 }: {
   form: InvoiceForm;
   onChange: (form: InvoiceForm) => void;
+  currency: string;
   totals: { subtotal: number; discount: number; tax: number; total: number };
-  currencies: string[];
   discountError: string | null;
   taxRateError: string | null;
   locked: boolean;
@@ -659,7 +620,7 @@ function InvoiceSidebar({
     <>
       <TransactionTotals
         description="Totals are recalculated by the server before the invoice is saved."
-        currency={form.currency}
+        currency={currency}
         rows={[
           { label: "Subtotal", amount: totals.subtotal },
           { label: "Invoice discount", amount: totals.discount, negative: true },
@@ -707,11 +668,10 @@ function InvoiceSidebar({
           </Field>
         </fieldset>
       </FormSection>
-      <RecordCustomFieldsSection moduleKey="finance_pos" values={form.custom_fields} onChange={(custom_fields) => onChange({ ...form, custom_fields })} />
       {/* Money is recorded as payments on the issued invoice (12c §3.3). The one exception is
           the till: a walk-in sale is issued and paid in the same step. */}
       {showPaidNow ? (
-        <FormSection title="Payment" description="For a sale paid at the counter: issue the invoice and record the payment together.">
+        <FormSection title="Payment" description="For a sale paid at the counter: issue the invoice and record the payment together, by the invoice's payment method.">
           <div className="space-y-4">
             <Field>
               <FieldLabel htmlFor="invoice-paid-now">Paid now</FieldLabel>
@@ -723,65 +683,9 @@ function InvoiceSidebar({
                 </SelectContent>
               </Select>
             </Field>
-            {form.paid_now === "yes" ? (
-              <PicklistField id="invoice-payment-method" listKey="payment_method" label="Payment method" value={form.payment_method}
-                onChange={(payment_method) => onChange({ ...form, payment_method })} />
-            ) : null}
           </div>
         </FormSection>
       ) : null}
-      <FormSection
-        title="Invoice details"
-        description="Currency and dates. The number is given when the invoice is issued."
-      >
-        <div className="space-y-4">
-          <Field>
-            <FieldLabel htmlFor="invoice-currency">Currency</FieldLabel>
-            <Select
-              value={form.currency}
-              onValueChange={(currency) => onChange({ ...form, currency })}
-              disabled={locked}
-            >
-              <SelectTrigger id="invoice-currency">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {currencies.map((currency) => (
-                  <SelectItem key={currency} value={currency}>
-                    {currency}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="invoice-issue">Issue date</FieldLabel>
-            <Input
-              id="invoice-issue"
-              type="date"
-              disabled={locked}
-              value={form.issue_date}
-              onChange={(event) =>
-                onChange({ ...form, issue_date: event.target.value })
-              }
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="invoice-due">Due date</FieldLabel>
-            {!form.due_date && !locked ? <FieldDescription>Blank uses the account&apos;s payment terms when the invoice is issued.</FieldDescription> : null}
-            <Input
-              id="invoice-due"
-              type="date"
-              min={form.issue_date || undefined}
-              value={form.due_date}
-              onChange={(event) =>
-                onChange({ ...form, due_date: event.target.value })
-              }
-            />
-          </Field>
-
-        </div>
-      </FormSection>
       <FormSection
         title="Print"
         description="How this invoice looks when it is printed or sent."
