@@ -97,3 +97,9 @@ backend/celerybeat-schedule
 ########################################
 
 liscence-keys
+
+# Server runtime stays outside the source checkout.
+!**/.env.example
+**/.env
+**/.env.next
+**/.rollback/

@@ -1,0 +1,223 @@
+name: crm
+
+x-logging: &homelab-logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: '3'
+
+services:
+  backend:
+    # Identity and lifecycle.
+    image: ${BACKEND_IMAGE:-ghcr.io/nightwalker28/crm-backend:prod}
+    restart: unless-stopped
+    init: true
+
+    # Application configuration.
+    env_file:
+      - path: ${LYNK_ENV_FILE:-.env}
+        required: true
+    environment:
+      IO_SEARCH_UPLOAD_DIR: /app/uploads/io-search
+
+    # Published ports.
+    ports:
+      - ${BACKEND_BIND:-127.0.0.1:8000}:8000
+
+    # Persistent and temporary storage.
+    volumes:
+      - ../uploads:/app/uploads
+
+    # Network connections.
+    networks:
+      - db
+      - cache
+      - crm-backend
+
+    # Health checks and shutdown.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5).read()"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+    # Resource limits.
+    mem_limit: 1536m
+    cpus: 1.5
+
+    # Log retention.
+    logging: *homelab-logging
+
+  celery-worker:
+    # Identity and lifecycle.
+    image: ${BACKEND_IMAGE:-ghcr.io/nightwalker28/crm-backend:prod}
+    restart: unless-stopped
+    init: true
+
+    # Process and startup.
+    command: celery -A app.core.celery_app.celery_app worker --loglevel=info
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # Application configuration.
+    env_file:
+      - path: ${LYNK_ENV_FILE:-.env}
+        required: true
+    environment:
+      IO_SEARCH_UPLOAD_DIR: /app/uploads/io-search
+
+    # Persistent and temporary storage.
+    volumes:
+      - ../uploads:/app/uploads
+
+    # Network connections.
+    networks:
+      - db
+      - cache
+      - crm-backend
+
+    # Health checks and shutdown.
+    stop_grace_period: 60s
+
+    # Resource limits.
+    mem_limit: 1536m
+    cpus: 1.5
+
+    # Log retention.
+    logging: *homelab-logging
+
+  celery-beat:
+    # Identity and lifecycle.
+    image: ${BACKEND_IMAGE:-ghcr.io/nightwalker28/crm-backend:prod}
+    restart: unless-stopped
+    init: true
+
+    # Process and startup.
+    command: celery -A app.core.celery_app.celery_app beat --loglevel=info
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # Application configuration.
+    env_file:
+      - path: ${LYNK_ENV_FILE:-.env}
+        required: true
+    environment:
+      IO_SEARCH_UPLOAD_DIR: /app/uploads/io-search
+
+    # Persistent and temporary storage.
+    volumes:
+      - ../uploads:/app/uploads
+
+    # Network connections.
+    networks:
+      - db
+      - cache
+      - crm-backend
+
+    # Health checks and shutdown.
+    stop_grace_period: 30s
+
+    # Resource limits.
+    mem_limit: 512m
+    cpus: 0.5
+
+    # Log retention.
+    logging: *homelab-logging
+
+  frontend:
+    # Identity and lifecycle.
+    image: ${FRONTEND_IMAGE:-ghcr.io/nightwalker28/crm-frontend:prod}
+    restart: unless-stopped
+    init: true
+
+    # Process and startup.
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    # Application configuration.
+    env_file:
+      - path: ${LYNK_ENV_FILE:-.env}
+        required: true
+    environment:
+      NODE_ENV: production
+
+    # Published ports.
+    expose:
+      - '3000'
+
+    # Network connections.
+    networks:
+      - crm-backend
+
+    # Health checks and shutdown.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - node -e "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+    # Resource limits.
+    mem_limit: 512m
+    cpus: 0.75
+
+    # Log retention.
+    logging: *homelab-logging
+
+  gateway:
+    # Identity and lifecycle.
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    init: true
+
+    # Process and startup.
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+
+    # Published ports.
+    ports:
+      - ${FRONTEND_BIND:-127.0.0.1:3002}:80
+
+    # Persistent and temporary storage.
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+
+    # Network connections.
+    networks:
+      - crm-backend
+
+    # Health checks and shutdown.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - wget -qO- http://127.0.0.1/health >/dev/null 2>&1
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s
+
+    # Resource limits.
+    mem_limit: 256m
+    cpus: 0.5
+
+    # Log retention.
+    logging: *homelab-logging
+
+networks:
+  cache:
+    external: true
+  crm-backend:
+    external: true
+  db:
+    external: true

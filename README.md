@@ -11,3 +11,9 @@ The backend container waits for the Postgres healthcheck before starting and mou
 join the postman workspace buddiesss...
 
 https://app.getpostman.com/join-team?invite_code=dca25a69093b25c6de6d2eb14e44b79dc166adec6320840cfad9cc5e6bea76fc&target_code=8ff58402ea6fd6ecfa3fd337667990c6
+
+## Maintained server deployment
+
+The server runtime is separate from this source checkout. See
+[DEPLOYMENT.md](DEPLOYMENT.md) for the canonical production template, paths,
+storage and verification commands.
