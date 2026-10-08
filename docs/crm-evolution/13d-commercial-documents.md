@@ -1,7 +1,8 @@
 # 13d — Step 7, F5: commercial documents
 
 This is the plan for **F5** of `13-final-fixes.md`, the second phase of §7 Step 7 (F4 → F5 → F6).
-It was written on 2026-10-08. **The §5 decisions are awaiting the owner.**
+It was written on 2026-10-08. **The owner accepted all twelve §5 decisions (2026-10-08)**; any
+changes come after client UAT.
 
 **Test cadence (owner, 2026-10-08):** F4, F5 and F6 share **one** test pass after F6 is built
 (13 §6). Nothing in F5 is run on its own. Each slice records its migrations and touched files
@@ -489,7 +490,7 @@ E2e:
 
 New pages go into both guards' route lists.
 
-## 5. Decisions (awaiting the owner)
+## 5. Decisions (owner accepted all, 2026-10-08)
 
 1. **PDF engine: WeasyPrint + Jinja2.** It adds about 60 MB of system libraries to the backend
    image. The alternatives are a headless Chromium (heavier, and one more process to keep

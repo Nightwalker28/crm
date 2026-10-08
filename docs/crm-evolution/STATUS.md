@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, committed untested (`b3d5620`) by the owner's rule; F5 plan written (`13d`), its twelve §5 decisions awaiting the owner. One test pass for F4 + F5 + F6 after F6).
+Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, committed untested (`b3d5620`) by the owner's rule; F5 plan written (`13d`), all twelve §5 decisions accepted; building F5 slice 5.1. One test pass for F4 + F5 + F6 after F6).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -189,10 +189,8 @@ emails nobody and leaves the quote in *Draft*, that invoices compute the subtota
 discounts while quotes and orders compute it before (H16), and that every H14 and I9 item is
 still open. The benchmark covers Odoo, Business Central, NetSuite, Zoho Books, ERPNext and
 Xero/QuickBooks. The plan has seven slices (5.1 tax rates → 5.7 client portal) and six
-migrations (`20261016_tax_rates` … `20261021_client_portal`). **Twelve §5 decisions await the
-owner**: WeasyPrint for PDFs, tax inclusive per document (which differs from 13 F5.1's per
-rate), and opt-in reminders among them. No code changed. Next: the owner's decisions, then
-build F5, then F6, then the one test pass.
+migrations (`20261016_tax_rates` … `20261021_client_portal`). **The owner accepted all twelve §5 decisions (2026-10-08)**; changes, if any, after client UAT. They include: WeasyPrint for PDFs, tax inclusive per document (which differs from 13 F5.1's per
+rate), and opt-in reminders among them. Next: build F5 (5.1 → 5.7), then F6, then the one test pass.
 
 ## Final fixes §7 Step 6 — picklists, standard records, one field system (done 2026-10-08)
 
