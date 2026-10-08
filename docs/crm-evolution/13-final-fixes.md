@@ -832,6 +832,9 @@ major players' defaults. Each is additive on E6's design (12d §5a):
   `codex-check.sh`, then the touched e2e specs with scoped guards.
 - Every new page is added to both guards' route lists.
 - The full rendered walk runs at F4, F7 and F8, and once before UAT.
+- **Step 7 exception (owner, 2026-10-08):** F4, F5 and F6 share one test pass after all three
+  are built: focused backend tests per phase in order (F4, F5, F6), then `codex-check.sh`, then
+  the touched e2e specs, then the full rendered walk (moved here from F4).
 - Before UAT:
   - a backup and restore round trip of the seed tenant (F0.2), rerun after F7 and F8;
   - a clean-tenant UAT load following F0.4;
@@ -919,6 +922,9 @@ modules and price lists all use picklists and the shared field types.
    replace H6's interim conversion), approvals, credit and stock policies.
 
 **F5 tax and F6 numbering come before F7.**
+
+One test pass for the whole step, after F6 (§6, owner 2026-10-08). Each phase still gets its
+own research and plan before its code (`13c` for F4).
 
 ### Step 8 — F7 accounting
 
