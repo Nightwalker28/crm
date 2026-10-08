@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, uncommitted and untested by the owner's rule; next F5 research and plan. One test pass for F4 + F5 + F6 after F6).
+Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, committed untested (`b3d5620`) by the owner's rule; F5 plan written (`13d`), its twelve §5 decisions awaiting the owner. One test pass for F4 + F5 + F6 after F6).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -181,8 +181,18 @@ tree, NOT committed, nothing run.** Migration `20261015_vendor_documents` (after
   documents (F12), report sources for them (F11), the vendor-documents e2e spec and the
   backup round-trip rows for the new tables (write in the test pass).
 
-**F4 is built (slices 4.1–4.4).** Next: F5 research and plan (`13d`), then build F5, then F6;
-the one test pass after F6.
+**F4 is built (slices 4.1–4.4)** and committed untested as `b3d5620`.
+
+**F5 plan written (2026-10-08): `13d-commercial-documents.md`.** Inventory of tax, printing,
+proposals, email, the line editor, receivables and the portal. It found that quote *Send*
+emails nobody and leaves the quote in *Draft*, that invoices compute the subtotal after
+discounts while quotes and orders compute it before (H16), and that every H14 and I9 item is
+still open. The benchmark covers Odoo, Business Central, NetSuite, Zoho Books, ERPNext and
+Xero/QuickBooks. The plan has seven slices (5.1 tax rates → 5.7 client portal) and six
+migrations (`20261016_tax_rates` … `20261021_client_portal`). **Twelve §5 decisions await the
+owner**: WeasyPrint for PDFs, tax inclusive per document (which differs from 13 F5.1's per
+rate), and opt-in reminders among them. No code changed. Next: the owner's decisions, then
+build F5, then F6, then the one test pass.
 
 ## Final fixes §7 Step 6 — picklists, standard records, one field system (done 2026-10-08)
 

@@ -924,7 +924,7 @@ modules and price lists all use picklists and the shared field types.
 **F5 tax and F6 numbering come before F7.**
 
 One test pass for the whole step, after F6 (§6, owner 2026-10-08). Each phase still gets its
-own research and plan before its code (`13c` for F4).
+own research and plan before its code (`13c` for F4, `13d` for F5).
 
 ### Step 8 — F7 accounting
 
