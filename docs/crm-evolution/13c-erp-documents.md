@@ -1,7 +1,7 @@
 # 13c — Step 7, F4: ERP documents get the record platform
 
 This is the plan for **F4** of `13-final-fixes.md`, the first phase of §7 Step 7 (F4 → F5 → F6).
-It was written on 2026-10-08. **The §5 decisions are awaiting the owner.**
+It was written on 2026-10-08. **The owner accepted all nine §5 decisions (2026-10-08).**
 
 **Test cadence (owner, 2026-10-08):** F4, F5 and F6 share **one** test pass after F6 is built
 (13 §6). Nothing in F4 is run on its own, not even its new test modules. Each slice below
@@ -404,7 +404,7 @@ E2e coverage:
 - new `vendor-documents.spec.ts` (return → credit → apply → refund);
 - `document-history.spec.ts` (comment on a PO and a delivery).
 
-## 5. Decisions (awaiting the owner)
+## 5. Decisions (owner accepted all, 2026-10-08)
 
 1. **PO line tax waits for F5's tax rates**, so it is not built twice in one step. PO lines
    get discount now.
@@ -441,3 +441,25 @@ These items stay out:
 - **Webhooks:** F10.
 - **Supplier portal for RFQ replies (ERPNext):** not planned.
 - **Blanket orders and purchase agreements:** after go-live (13 §5) unless a client needs them.
+
+## 7. Build notes (2026-10-08)
+
+F4 was built in four slices; STATUS.md lists each slice's files and migrations. Where the build
+differs from the design above:
+
+- **Payment date (§3.9):** already defaulted to the user's own today (`todayIsoDate`) before F4.
+- **Cost of goods sold (§3.9):** not built. The report source covers stock moves only, and
+  adding the bill-variance share needs a union in the report engine. F7's ledger carries cost
+  of goods, variances included.
+- **Presets (§3.2):** receipts, deliveries, returns, adjustments and transfers have no owner or
+  creator column, so they get no *Mine*. Returns get no *To credit*: it needs a join to credit
+  notes. Vendor returns and credits get *Mine*.
+- **Already built before F4 (§3.5):** the PO number heading, *Create bill*, the Receipts and
+  Bills sections, required marks (4e layouts), and the posted bill's vendor invoice number.
+- **Price-only vendor credits (§3.6):** revalue through `apply_vendor_credit`, with a new
+  revaluation kind `vendor_credit` and a `vendor_credit_line_id` column. Reusing the
+  bill-variance path would have put credit-line ids in `bill_line_id`.
+- **RFQ labels (§3.8):** the PO list and page say *Request for quotation* and *RFQ sent*;
+  numbering stays `PO` (decision 4).
+- **Deferred:** automation sources and triggers for vendor returns and credits (F12), and
+  report sources for them (F11).

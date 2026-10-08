@@ -78,6 +78,9 @@ const SOURCE_DOCUMENT_REFERENCES = new Set([
   "delivery_reference",
   "invoice_reference",
   "return_reference",
+  // 13c §3.6–3.7: a vendor credit from its bill or vendor return.
+  "purchase_bill_reference",
+  "vendor_return_reference",
 ]);
 
 /** Currency fields: a `select` of the company's currencies, the base one first by default. */

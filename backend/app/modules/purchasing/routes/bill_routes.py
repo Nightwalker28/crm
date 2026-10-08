@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
@@ -66,10 +67,10 @@ def list_bills(status: str | None = Query(default=None, pattern="^(draft|posted|
                vendor_id: int | None = Query(default=None, gt=0), order_id: int | None = Query(default=None, gt=0),
                search: str | None = Query(default=None, max_length=100), sort_by: str | None = Query(default=None, max_length=40),
                sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
-               pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
+               conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
                _module=Depends(require_module_access(BILLS)), _view=Depends(require_action_access(BILLS, "view"))):
     return jsonable_encoder(bills.list_bills(db, tenant_id=user.tenant_id, pagination=pagination, status=status, vendor_id=vendor_id,
-        order_id=order_id, search=search, sort_by=sort_by, sort_direction=sort_direction))
+        order_id=order_id, search=search, sort_by=sort_by, sort_direction=sort_direction, **conditions.as_filters()))
 
 
 @router.post("/bills", status_code=201)
@@ -90,10 +91,10 @@ def create_bill(payload: BillCreatePayload, db: Session = Depends(get_db), user=
 @router.post("/bills/export-job", status_code=202)
 def export_bills(status: str | None = Query(default=None, pattern="^(draft|posted|void|unpaid|overdue|variance)$"),
         vendor_id: int | None = Query(default=None, gt=0), order_id: int | None = Query(default=None, gt=0),
-        search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        search: str | None = Query(default=None, max_length=100), conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(BILLS)), _export=Depends(require_action_access(BILLS, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=BILLS, filters={"status": status, "vendor_id": vendor_id, "order_id": order_id, "search": search})
+    return start_document_export(db, user, module_key=BILLS, filters={"status": status, "vendor_id": vendor_id, "order_id": order_id, "search": search, **conditions.as_filters()})
 
 
 @router.get("/bills/{bill_id}")

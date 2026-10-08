@@ -7,7 +7,19 @@ export type RecordModuleKey =
   | "sales_orders"
   | "finance_pos"
   | "catalog_products"
-  | "catalog_services";
+  | "catalog_services"
+  // ERP documents (13c §3.1): notes and their own history, in `DocumentHistory`.
+  | "inventory_adjustments"
+  | "inventory_transfers"
+  | "inventory_deliveries"
+  | "inventory_returns"
+  | "purchase_orders"
+  | "purchase_receipts"
+  | "purchase_bills"
+  | "finance_credit_notes"
+  | "finance_payments"
+  | "purchase_vendor_returns"
+  | "purchase_vendor_credits";
 
 export type ActivityItem = {
   id: number;
@@ -29,6 +41,7 @@ export type ActivityItem = {
 export const RECORD_ACTIVITY_TYPES = [
   // Kept in the order the backend registers its adapters.
   "call",
+  "document",
   "email",
   "follow_up",
   "lifecycle",

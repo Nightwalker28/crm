@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.catalog.models import CatalogProduct
@@ -26,7 +27,19 @@ from app.modules.sales.models import SalesOrder, SalesOrderItem
 from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
-def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, delivery_id: int | None = None):
+def list_field_map() -> dict:
+    """The return list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": InventoryReturn.number, "type": "text"},
+        "status": {"expression": InventoryReturn.status, "type": "text"},
+        "reason": {"expression": InventoryReturn.reason, "type": "text"},
+        "order_id": {"expression": InventoryReturn.order_id, "type": "number"},
+        "warehouse_id": {"expression": InventoryReturn.warehouse_id, "type": "number"},
+        "received_at": {"expression": InventoryReturn.received_at, "type": "date"},
+        "created_at": {"expression": InventoryReturn.created_at, "type": "date"},
+    }
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, delivery_id: int | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The return list's rows. The list and its export both start here (13a A5)."""
     query = db.query(InventoryReturn).options(selectinload(InventoryReturn.lines)).filter(
         InventoryReturn.tenant_id == tenant_id, InventoryReturn.deleted_at.is_(None))
@@ -38,6 +51,7 @@ def list_query(db: Session, *, tenant_id: int, status: str | None = None, search
         pattern = f"%{search.strip()}%"
         query = query.join(SalesOrder, SalesOrder.id == InventoryReturn.order_id).filter(SalesOrder.tenant_id == tenant_id, or_(
             InventoryReturn.number.ilike(pattern), InventoryReturn.reason.ilike(pattern), SalesOrder.order_number.ilike(pattern)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 

@@ -14,6 +14,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import func, or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import get_finance_user_scope
@@ -329,7 +330,22 @@ def invoice_credit_notes(db: Session, *, tenant_id: int, invoice_id: int) -> lis
     return [serialize(db, row, include_lines=False) for row in rows]
 
 
-def list_query(db: Session, user, *, status: str | None = None, search: str | None = None, invoice_id: int | None = None):
+def list_field_map() -> dict:
+    """The credit note list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": FinanceCreditNote.number, "type": "text"},
+        "status": {"expression": FinanceCreditNote.status, "type": "text"},
+        "reason": {"expression": FinanceCreditNote.reason, "type": "text"},
+        "invoice_id": {"expression": FinanceCreditNote.invoice_id, "type": "number"},
+        "created_by": {"expression": FinanceCreditNote.created_by, "type": "number"},
+        "currency": {"expression": FinanceCreditNote.currency, "type": "text"},
+        "total_amount": {"expression": FinanceCreditNote.total_amount, "type": "number"},
+        "refund_due": {"expression": FinanceCreditNote.refund_due, "type": "number"},
+        "issue_date": {"expression": FinanceCreditNote.issue_date, "type": "date"},
+        "created_at": {"expression": FinanceCreditNote.created_at, "type": "date"},
+    }
+
+def list_query(db: Session, user, *, status: str | None = None, search: str | None = None, invoice_id: int | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The credit note list's rows, in the finance scope. The list and its export both start here (13a A5)."""
     query = _scoped(db.query(FinanceCreditNote).filter(FinanceCreditNote.tenant_id == user.tenant_id, FinanceCreditNote.deleted_at.is_(None)), db, user)
     if status in {"draft", "issued", "void"}:
@@ -344,12 +360,13 @@ def list_query(db: Session, user, *, status: str | None = None, search: str | No
             FinancePosInvoice.invoice_number.ilike(pattern), FinancePosInvoice.customer_name.ilike(pattern)))
         query = query.filter(or_(FinanceCreditNote.number.ilike(pattern), FinanceCreditNote.reason.ilike(pattern),
             FinanceCreditNote.invoice_id.in_(matching)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 
 def list_credit_notes(db: Session, user, *, pagination: Pagination, status: str | None = None, search: str | None = None,
-                      invoice_id: int | None = None) -> dict:
-    query = list_query(db, user, status=status, search=search, invoice_id=invoice_id)
+                      invoice_id: int | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None) -> dict:
+    query = list_query(db, user, status=status, search=search, invoice_id=invoice_id, filters_all=filters_all, filters_any=filters_any)
     total = query.count()
     rows = query.order_by(FinanceCreditNote.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response([serialize(db, row, include_lines=False) for row in rows], total, pagination)

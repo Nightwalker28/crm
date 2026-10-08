@@ -51,6 +51,7 @@ function VendorField({
         ariaDescribedBy={aria.describedBy}
         ariaInvalid={aria.invalid}
         createOption={canCreate ? { label: (text) => `Create vendor "${text}"`, onCreate: setCreating } : undefined}
+        suggestOnFocus
       />
       {canCreate ? (
         <OrganizationQuickCreate

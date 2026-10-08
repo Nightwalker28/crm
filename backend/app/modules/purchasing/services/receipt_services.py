@@ -12,6 +12,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy import or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.inventory.services.costing import base_currency, rate_for, unit
@@ -27,7 +28,20 @@ from app.modules.purchasing.services.purchase_order_services import (
 from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
-def list_query(db: Session, *, tenant_id: int, status: str | None = None, order_id: int | None = None, search: str | None = None):
+def list_field_map() -> dict:
+    """The receipt list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": PurchaseReceipt.number, "type": "text"},
+        "status": {"expression": PurchaseReceipt.status, "type": "text"},
+        "order_id": {"expression": PurchaseReceipt.order_id, "type": "number"},
+        "warehouse_id": {"expression": PurchaseReceipt.warehouse_id, "type": "number"},
+        "vendor_delivery_ref": {"expression": PurchaseReceipt.vendor_delivery_ref, "type": "text"},
+        "received_on": {"expression": PurchaseReceipt.received_on, "type": "date"},
+        "posted_at": {"expression": PurchaseReceipt.posted_at, "type": "date"},
+        "created_at": {"expression": PurchaseReceipt.created_at, "type": "date"},
+    }
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, order_id: int | None = None, search: str | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The receipt list's rows. The list and its export both start here (13a A5)."""
     query = db.query(PurchaseReceipt).options(selectinload(PurchaseReceipt.lines)).filter(PurchaseReceipt.tenant_id == tenant_id, PurchaseReceipt.deleted_at.is_(None))
     if status:
@@ -38,6 +52,7 @@ def list_query(db: Session, *, tenant_id: int, status: str | None = None, order_
         pattern = f"%{search.strip()}%"
         query = query.join(PurchaseOrder, PurchaseOrder.id == PurchaseReceipt.order_id).filter(PurchaseOrder.tenant_id == tenant_id, or_(
             PurchaseReceipt.number.ilike(pattern), PurchaseReceipt.vendor_delivery_ref.ilike(pattern), PurchaseOrder.number.ilike(pattern)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 
@@ -87,11 +102,12 @@ def _validated_lines(db: Session, *, order: PurchaseOrder, lines: list[dict]):
         line = by_id.get(line_id)
         if line is None:
             raise HTTPException(status_code=400, detail="Only this purchase order's lines can be received")
+        if not line.needs_receipt:
+            raise HTTPException(status_code=400, detail=f"{line.item_name} is a service; it is billed, not received")
         quantity = _quantity(payload["quantity"])
         left = to_receive(order, line, received.get(line_id, Decimal(0)))
         if quantity > left:
-            name = line.product.name if line.product else "This line"
-            raise HTTPException(status_code=409, detail=f"{name}: only {_units(left)} left to receive; edit the purchase order to receive more")
+            raise HTTPException(status_code=409, detail=f"{line.item_name}: only {_units(left)} left to receive; edit the purchase order to receive more")
         result.append((line, quantity))
     return result
 
@@ -111,7 +127,7 @@ def save_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, payl
     if raw_lines is None:
         received = received_by_line(db, tenant_id=tenant_id, line_ids=[line.id for line in order.lines])
         raw_lines = [{"order_line_id": line.id, "quantity": left} for line in order.lines
-                     if (left := to_receive(order, line, received.get(line.id, Decimal(0)))) > 0]
+                     if line.needs_receipt and (left := to_receive(order, line, received.get(line.id, Decimal(0)))) > 0]
         if not raw_lines:
             raise HTTPException(status_code=409, detail="Everything on this purchase order has been received")
     lines = _validated_lines(db, order=order, lines=raw_lines)
@@ -151,11 +167,13 @@ def post_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, rece
     rate = rate_for(db, tenant_id=tenant_id, currency=order.currency, exchange_rate=order.exchange_rate)
     if rate is None:
         raise HTTPException(status_code=409, detail=f"Set the purchase order's exchange rate from {order.currency} to {base_currency(db, tenant_id=tenant_id)} before receiving")
+    # Only tracked products go into stock; a non-stock product's receipt confirms the quantity
+    # for billing and moves nothing (13c §5 decision 2). Stock is costed after the line's discount.
     post_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, moves=[
         MoveSpec(product_id=line.product_id, warehouse_id=receipt.warehouse_id, quantity=quantity, move_type="receipt",
                  source_type="purchase_receipt", source_id=receipt.id, source_line_id=by_order_line[line.id].id,
-                 reason=f"Receipt {receipt.number} for {order.number}", unit_cost=unit(Decimal(line.unit_cost) * rate), cost_source="receipt")
-        for line, quantity in lines
+                 reason=f"Receipt {receipt.number} for {order.number}", unit_cost=unit(Decimal(line.net_unit_cost) * rate), cost_source="receipt")
+        for line, quantity in lines if line.product is not None and line.product.track_inventory
     ])
     receipt.status, receipt.posted_at, receipt.posted_by = "posted", datetime.now(timezone.utc), actor_user_id
     if receipt.received_on is None:
@@ -195,6 +213,12 @@ def cancel_receipt(db: Session, *, tenant_id: int, actor_user_id: int | None, re
     from app.modules.purchasing.services.bill_services import guard_receipt_cancel, refresh_bill_status
 
     guard_receipt_cancel(db, order=order, receipt=receipt)
+    from app.modules.purchasing.models import PurchaseVendorReturn
+
+    returned = db.query(PurchaseVendorReturn.number).filter(PurchaseVendorReturn.tenant_id == tenant_id, PurchaseVendorReturn.receipt_id == receipt.id,
+        PurchaseVendorReturn.deleted_at.is_(None), PurchaseVendorReturn.status.in_(["draft", "shipped"])).first()
+    if returned is not None:
+        raise HTTPException(status_code=409, detail=f"Vendor return {returned[0]} is against this receipt; cancel or remove it first")
     reverse_moves(db, tenant_id=tenant_id, actor_user_id=actor_user_id, source_type="purchase_receipt", source_id=receipt.id, reason=reason)
     receipt.status, receipt.cancel_reason = "cancelled", reason
     db.add(receipt)
@@ -243,11 +267,18 @@ def serialize_receipt(db: Session, *, tenant_id: int, receipt: PurchaseReceipt, 
         "total_quantity": sum((Decimal(line.quantity) for line in receipt.lines), Decimal(0)),
     }
     if include_lines and order is not None:
+        from app.modules.purchasing.services.vendor_return_services import returned_by_receipt_line
+
         lines = {line.id: line for line in order.lines}
         received = received_by_line(db, tenant_id=tenant_id, line_ids=list(lines))
+        # What vendor returns (drafts too) already hold per line (13c §3.7).
+        returned = returned_by_receipt_line(db, tenant_id=tenant_id, receipt_line_ids=[line.id for line in receipt.lines])
         result["lines"] = [{
+            "returned": returned.get(line.id, Decimal(0)),
+            "track_inventory": bool(lines[line.order_line_id].product.track_inventory)
+            if line.order_line_id in lines and lines[line.order_line_id].product else False,
             "id": line.id, "order_line_id": line.order_line_id, "product_id": line.product_id,
-            "product_name": lines[line.order_line_id].product.name if line.order_line_id in lines and lines[line.order_line_id].product else "Product",
+            "product_name": lines[line.order_line_id].item_name if line.order_line_id in lines else "Product",
             "sku": lines[line.order_line_id].product.sku if line.order_line_id in lines and lines[line.order_line_id].product else None,
             "quantity": line.quantity, "ordered": lines[line.order_line_id].quantity if line.order_line_id in lines else None,
             "unit_cost": lines[line.order_line_id].unit_cost if line.order_line_id in lines else None,

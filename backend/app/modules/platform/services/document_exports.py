@@ -30,6 +30,10 @@ class DocumentExport:
     order_column: Any
 
 
+#: Saved-view conditions (13c §3.2), carried by every list that takes them.
+CONDITION_KEYS = ("filters_all", "filters_any")
+
+
 def _date(value: Any) -> date | None:
     if value in (None, ""):
         return None
@@ -43,7 +47,7 @@ def _deliveries() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: delivery_services.list_query(db, tenant_id=user.tenant_id, **f),
         serialize=lambda db, user, rows: [delivery_services.serialize_delivery(db, tenant_id=user.tenant_id, doc=row, include_lines=False) for row in rows],
-        filter_keys=("status", "search", "order_id"),
+        filter_keys=("status", "search", "order_id", *CONDITION_KEYS),
         headers=("number", "status", "order_number", "customer_name", "warehouse_name", "shipped_on", "carrier", "tracking_number",
                  "total_quantity", "posted_at", "cancel_reason"),
         order_column=InventoryDelivery.id,
@@ -57,7 +61,7 @@ def _returns() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: return_services.list_query(db, tenant_id=user.tenant_id, **f),
         serialize=lambda db, user, rows: [return_services.serialize_return(db, tenant_id=user.tenant_id, doc=row, include_lines=False) for row in rows],
-        filter_keys=("status", "search", "delivery_id"),
+        filter_keys=("status", "search", "delivery_id", *CONDITION_KEYS),
         headers=("number", "status", "reason", "delivery_number", "order_number", "customer_name", "warehouse_name", "total_quantity",
                  "received_at", "cancel_reason"),
         order_column=InventoryReturn.id,
@@ -71,7 +75,7 @@ def _purchase_orders() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: purchase_order_services.list_query(db, tenant_id=user.tenant_id, **f),
         serialize=lambda db, user, rows: [purchase_order_services.serialize_order(db, tenant_id=user.tenant_id, order=row, include_lines=False) for row in rows],
-        filter_keys=("status", "vendor_id", "search"),
+        filter_keys=("status", "vendor_id", "search", *CONDITION_KEYS),
         headers=("number", "status", "receipt_status", "vendor_name", "warehouse_name", "currency", "subtotal", "expected_date",
                  "vendor_reference", "ordered_at", "close_reason", "cancel_reason"),
         order_column=PurchaseOrder.id,
@@ -85,7 +89,7 @@ def _receipts() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: receipt_services.list_query(db, tenant_id=user.tenant_id, **f),
         serialize=lambda db, user, rows: [receipt_services.serialize_receipt(db, tenant_id=user.tenant_id, receipt=row, include_lines=False) for row in rows],
-        filter_keys=("status", "order_id", "search"),
+        filter_keys=("status", "order_id", "search", *CONDITION_KEYS),
         headers=("number", "status", "order_number", "vendor_name", "warehouse_name", "received_on", "vendor_delivery_ref",
                  "total_quantity", "posted_at", "cancel_reason"),
         order_column=PurchaseReceipt.id,
@@ -99,7 +103,7 @@ def _bills() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: bill_services.list_query(db, tenant_id=user.tenant_id, **f),
         serialize=lambda db, user, rows: [bill_services.serialize_bill(db, tenant_id=user.tenant_id, bill=row, include_lines=False) for row in rows],
-        filter_keys=("status", "vendor_id", "order_id", "search"),
+        filter_keys=("status", "vendor_id", "order_id", "search", *CONDITION_KEYS),
         headers=("number", "status", "vendor_name", "vendor_invoice_number", "order_number", "bill_date", "due_date", "currency",
                  "subtotal", "tax_total", "total", "amount_paid", "balance_due", "payment_status", "match_status", "void_reason"),
         order_column=PurchaseBill.id,
@@ -140,7 +144,7 @@ def _credit_notes() -> DocumentExport:
     return DocumentExport(
         query=lambda db, user, f: credit_note_services.list_query(db, user, **f),
         serialize=lambda db, user, rows: [credit_note_services.serialize(db, row, include_lines=False) for row in rows],
-        filter_keys=("status", "search", "invoice_id"),
+        filter_keys=("status", "search", "invoice_id", *CONDITION_KEYS),
         headers=("number", "status", "invoice_number", "customer_name", "reason", "issue_date", "currency", "subtotal_amount",
                  "tax_amount", "total_amount", "refund_due", "void_reason"),
         order_column=FinanceCreditNote.id,
@@ -163,14 +167,83 @@ def _payments() -> DocumentExport:
     return DocumentExport(
         query=query,
         serialize=serialize,
-        filter_keys=("search", "direction", "status", "method", "date_from", "date_to"),
+        filter_keys=("search", "direction", "status", "method", "date_from", "date_to", *CONDITION_KEYS),
         headers=("number", "status", "direction", "kind", "paid_on", "party_name", "documents", "method", "reference", "currency",
                  "amount", "void_reason"),
         order_column=FinancePayment.id,
     )
 
 
+def _inventory_documents(kind: str) -> Callable[[], DocumentExport]:
+    def build() -> DocumentExport:
+        from app.modules.inventory.models import InventoryAdjustment, InventoryTransfer
+        from app.modules.inventory.services import document_services
+
+        adjustments = kind == "adjustments"
+        return DocumentExport(
+            query=lambda db, user, f: document_services.list_query(db, tenant_id=user.tenant_id, kind=kind, **f),
+            serialize=lambda db, user, rows: [document_services.serialize_document(db, tenant_id=user.tenant_id, kind=kind, doc=row, include_lines=False)
+                                              for row in rows],
+            filter_keys=("status", "search", *CONDITION_KEYS),
+            headers=(("number", "status", "warehouse_name", "mode", "reason", "line_count", "notes", "posted_at", "created_at") if adjustments
+                     else ("number", "status", "from_warehouse_name", "to_warehouse_name", "line_count", "notes", "posted_at", "created_at")),
+            order_column=InventoryAdjustment.id if adjustments else InventoryTransfer.id,
+        )
+
+    return build
+
+
+def _sales_orders() -> DocumentExport:
+    """Sales orders had no export (13c §3.3); the list's query and list-item shape."""
+    from app.modules.sales.models import SalesOrder
+    from app.modules.sales.schema import SalesOrderListItem
+    from app.modules.sales.services.orders_services import build_orders_query
+
+    return DocumentExport(
+        query=lambda db, user, f: build_orders_query(db, tenant_id=user.tenant_id, search=f.get("search"),
+                                                     all_filter_conditions=f.get("filters_all"), any_filter_conditions=f.get("filters_any")),
+        serialize=lambda db, user, rows: [SalesOrderListItem.model_validate(row).model_dump(mode="json") for row in rows],
+        filter_keys=("search", *CONDITION_KEYS),
+        headers=("order_number", "status", "delivery_status", "invoice_status", "priority", "organization_name", "contact_name",
+                 "opportunity_name", "source", "channel", "external_reference", "currency", "grand_total", "owner_name", "created_at"),
+        order_column=SalesOrder.id,
+    )
+
+
+def _vendor_returns() -> DocumentExport:
+    from app.modules.purchasing.models import PurchaseVendorReturn
+    from app.modules.purchasing.services import vendor_return_services
+
+    return DocumentExport(
+        query=lambda db, user, f: vendor_return_services.list_query(db, tenant_id=user.tenant_id, **f),
+        serialize=lambda db, user, rows: [vendor_return_services.serialize_return(db, tenant_id=user.tenant_id, doc=row, include_lines=False) for row in rows],
+        filter_keys=("status", "search", "receipt_id", *CONDITION_KEYS),
+        headers=("number", "status", "resolution", "vendor_name", "receipt_number", "order_number", "reason", "total_quantity", "shipped_at",
+                 "cancel_reason"),
+        order_column=PurchaseVendorReturn.id,
+    )
+
+
+def _vendor_credits() -> DocumentExport:
+    from app.modules.purchasing.models import PurchaseVendorCredit
+    from app.modules.purchasing.services import vendor_credit_services
+
+    return DocumentExport(
+        query=lambda db, user, f: vendor_credit_services.list_query(db, tenant_id=user.tenant_id, **f),
+        serialize=lambda db, user, rows: [vendor_credit_services.serialize_credit(db, tenant_id=user.tenant_id, credit=row, include_lines=False) for row in rows],
+        filter_keys=("status", "search", "bill_id", "vendor_id", *CONDITION_KEYS),
+        headers=("number", "status", "vendor_name", "vendor_reference", "bill_number", "vendor_return_number", "credit_date", "currency",
+                 "subtotal", "tax_total", "total", "credit_remaining", "reason", "void_reason"),
+        order_column=PurchaseVendorCredit.id,
+    )
+
+
 _EXPORTS: dict[str, Callable[[], DocumentExport]] = {
+    "purchase_vendor_returns": _vendor_returns,
+    "purchase_vendor_credits": _vendor_credits,
+    "sales_orders": _sales_orders,
+    "inventory_adjustments": _inventory_documents("adjustments"),
+    "inventory_transfers": _inventory_documents("transfers"),
     "inventory_deliveries": _deliveries,
     "inventory_returns": _returns,
     "purchase_orders": _purchase_orders,

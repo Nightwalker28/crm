@@ -64,6 +64,9 @@ OPTIONAL_INVENTORY_FILES = {
     "inventory_deliveries.json", "inventory_delivery_lines.json", "inventory_returns.json", "inventory_return_lines.json",
     "purchase_orders.json", "purchase_order_lines.json", "purchase_receipts.json", "purchase_receipt_lines.json",
     "purchase_bills.json", "purchase_bill_lines.json", "inventory_revaluations.json",
+    # 13c §3.6–3.7.
+    "purchase_vendor_returns.json", "purchase_vendor_return_lines.json", "purchase_vendor_credits.json",
+    "purchase_vendor_credit_lines.json", "purchase_vendor_credit_allocations.json",
 }
 
 
@@ -592,8 +595,9 @@ def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: in
     from app.modules.finance.models import FinanceCreditNote, FinancePosInvoice
     from app.modules.finance.services.invoice_balances import refresh_credit_note_balance, refresh_invoice_balance
     from app.modules.finance.services.invoicing_services import recompute_tenant
-    from app.modules.purchasing.models import PurchaseBill
+    from app.modules.purchasing.models import PurchaseBill, PurchaseVendorCredit
     from app.modules.purchasing.services.bill_services import refresh_bill_balance
+    from app.modules.purchasing.services.vendor_credit_services import refresh_vendor_credit_balance
 
     if mode in {"update_existing", "replace_module_data"}:
         raise HTTPException(status_code=409, detail="Invoices, credit notes and payments are final; restore them with create missing")
@@ -605,7 +609,9 @@ def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: in
         if filename == "finance_payment_allocations.json":
             # An allocation to a bill this tenant no longer has cannot be restored.
             bills = {row[0] for row in db.query(PurchaseBill.id).filter(PurchaseBill.tenant_id == tenant_id)}
-            rows = [row for row in rows if not row.get("bill_id") or int(row["bill_id"]) in bills]
+            credits = {row[0] for row in db.query(PurchaseVendorCredit.id).filter(PurchaseVendorCredit.tenant_id == tenant_id)}
+            rows = [row for row in rows if (not row.get("bill_id") or int(row["bill_id"]) in bills)
+                    and (not row.get("vendor_credit_id") or int(row["vendor_credit_id"]) in credits)]
         bundles.append((filename, model, rows))
     created = skipped = 0
     for _name, model, rows in bundles:
@@ -619,6 +625,8 @@ def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: in
         refresh_credit_note_balance(db, credit_note)
     for bill in db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id).all():
         refresh_bill_balance(db, bill)
+    for credit in db.query(PurchaseVendorCredit).filter(PurchaseVendorCredit.tenant_id == tenant_id).all():
+        refresh_vendor_credit_balance(db, credit)
     recompute_tenant(db, tenant_id=tenant_id)
     db.flush()
     _sync_id_sequences(db, [model for _name, model, _rows in bundles])

@@ -82,6 +82,16 @@ GLOBAL_SEARCH_MODULES = (
         "module_key": "purchase_bills",
         "module_label": "Bills",
     },
+    # ERP documents (13c §3.4).
+    {"module_key": "purchase_orders", "module_label": "Purchase orders"},
+    {"module_key": "purchase_receipts", "module_label": "Receipts"},
+    {"module_key": "inventory_deliveries", "module_label": "Deliveries"},
+    {"module_key": "inventory_returns", "module_label": "Returns"},
+    {"module_key": "inventory_adjustments", "module_label": "Stock adjustments"},
+    {"module_key": "inventory_transfers", "module_label": "Stock transfers"},
+    {"module_key": "finance_payments", "module_label": "Payments"},
+    {"module_key": "purchase_vendor_returns", "module_label": "Vendor returns"},
+    {"module_key": "purchase_vendor_credits", "module_label": "Vendor credits"},
 )
 GLOBAL_SEARCH_STATEMENT_TIMEOUT_MS = 1500
 
@@ -514,10 +524,120 @@ def _bill_results(db: Session, *, tenant_id: int, query: str, limit: int, curren
 
     pattern = f"%{query}%"
     rows = db.query(PurchaseBill).filter(PurchaseBill.tenant_id == tenant_id, PurchaseBill.deleted_at.is_(None),
-        or_(PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern))).order_by(PurchaseBill.id.desc()).limit(limit).all()
+        or_(PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern),
+            PurchaseBill.vendor_id.in_(_vendor_ids(db, tenant_id=tenant_id, pattern=pattern)))).order_by(PurchaseBill.id.desc()).limit(limit).all()
     return [{"module_key": "purchase_bills", "module_label": "Bills", "record_id": str(row.id), "title": row.number,
              "subtitle": " · ".join(part for part in [row.vendor.org_name if row.vendor else None, row.vendor_invoice_number, row.status.title()] if part) or None,
              "href": f"/dashboard/purchasing/bills/{row.id}"} for row in rows]
+
+
+def _vendor_ids(db: Session, *, tenant_id: int, pattern: str):
+    """Accounts whose name matches, as a subquery: a document found by its vendor or customer."""
+    return db.query(SalesOrganization.org_id).filter(SalesOrganization.tenant_id == tenant_id, SalesOrganization.org_name.ilike(pattern))
+
+
+def _order_ids(db: Session, *, tenant_id: int, pattern: str):
+    """Sales orders matching by number or by their account's name."""
+    return db.query(SalesOrder.id).filter(SalesOrder.tenant_id == tenant_id, or_(
+        SalesOrder.order_number.ilike(pattern), SalesOrder.organization_id.in_(_vendor_ids(db, tenant_id=tenant_id, pattern=pattern))))
+
+
+def _subtitle(*parts) -> str | None:
+    return " · ".join(part for part in parts if part) or None
+
+
+def _purchase_order_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.purchasing.models import PurchaseOrder
+
+    pattern = f"%{query}%"
+    rows = db.query(PurchaseOrder).filter(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.deleted_at.is_(None), or_(
+        PurchaseOrder.number.ilike(pattern), PurchaseOrder.vendor_reference.ilike(pattern),
+        PurchaseOrder.vendor_id.in_(_vendor_ids(db, tenant_id=tenant_id, pattern=pattern)))).order_by(PurchaseOrder.id.desc()).limit(limit).all()
+    return [{"module_key": "purchase_orders", "module_label": "Purchase orders", "record_id": str(row.id), "title": row.number,
+             "subtitle": _subtitle(row.vendor.org_name if row.vendor else None, row.vendor_reference, row.status.title()),
+             "href": f"/dashboard/purchasing/orders/{row.id}"} for row in rows]
+
+
+def _receipt_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.purchasing.models import PurchaseOrder, PurchaseReceipt
+
+    pattern = f"%{query}%"
+    orders = db.query(PurchaseOrder.id).filter(PurchaseOrder.tenant_id == tenant_id, PurchaseOrder.number.ilike(pattern))
+    rows = db.query(PurchaseReceipt).filter(PurchaseReceipt.tenant_id == tenant_id, PurchaseReceipt.deleted_at.is_(None), or_(
+        PurchaseReceipt.number.ilike(pattern), PurchaseReceipt.vendor_delivery_ref.ilike(pattern),
+        PurchaseReceipt.order_id.in_(orders))).order_by(PurchaseReceipt.id.desc()).limit(limit).all()
+    return [{"module_key": "purchase_receipts", "module_label": "Receipts", "record_id": str(row.id), "title": row.number,
+             "subtitle": _subtitle(row.vendor_delivery_ref, row.status.title()),
+             "href": f"/dashboard/purchasing/receipts/{row.id}"} for row in rows]
+
+
+def _delivery_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.inventory.models import InventoryDelivery
+
+    pattern = f"%{query}%"
+    rows = db.query(InventoryDelivery).filter(InventoryDelivery.tenant_id == tenant_id, InventoryDelivery.deleted_at.is_(None), or_(
+        InventoryDelivery.number.ilike(pattern), InventoryDelivery.tracking_number.ilike(pattern),
+        InventoryDelivery.order_id.in_(_order_ids(db, tenant_id=tenant_id, pattern=pattern)))).order_by(InventoryDelivery.id.desc()).limit(limit).all()
+    return [{"module_key": "inventory_deliveries", "module_label": "Deliveries", "record_id": str(row.id), "title": row.number,
+             "subtitle": _subtitle(row.carrier, row.tracking_number, row.status.title()),
+             "href": f"/dashboard/inventory/deliveries/{row.id}"} for row in rows]
+
+
+def _return_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.inventory.models import InventoryReturn
+
+    pattern = f"%{query}%"
+    rows = db.query(InventoryReturn).filter(InventoryReturn.tenant_id == tenant_id, InventoryReturn.deleted_at.is_(None), or_(
+        InventoryReturn.number.ilike(pattern), InventoryReturn.reason.ilike(pattern),
+        InventoryReturn.order_id.in_(_order_ids(db, tenant_id=tenant_id, pattern=pattern)))).order_by(InventoryReturn.id.desc()).limit(limit).all()
+    return [{"module_key": "inventory_returns", "module_label": "Returns", "record_id": str(row.id), "title": row.number,
+             "subtitle": _subtitle(row.reason, row.status.title()),
+             "href": f"/dashboard/inventory/returns/{row.id}"} for row in rows]
+
+
+def _inventory_document_results(kind: str):
+    def search(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+        from app.modules.inventory.services.document_services import document_model, list_query
+
+        label = "Stock adjustments" if kind == "adjustments" else "Stock transfers"
+        rows = list_query(db, tenant_id=tenant_id, kind=kind, search=query)
+        model = document_model(kind)
+        return [{"module_key": f"inventory_{kind}", "module_label": label, "record_id": str(row.id), "title": row.number,
+                 "subtitle": _subtitle(getattr(row, "reason", None), row.status.title()),
+                 "href": f"/dashboard/inventory/{kind}/{row.id}"} for row in rows.order_by(model.id.desc()).limit(limit).all()]
+
+    return search
+
+
+def _payment_results(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+    from app.modules.finance.models import FinancePayment
+    from app.modules.finance.services.payment_services import _scoped
+
+    pattern = f"%{query}%"
+    rows = _scoped(db.query(FinancePayment).filter(FinancePayment.tenant_id == tenant_id, or_(
+        FinancePayment.number.ilike(pattern), FinancePayment.party_name.ilike(pattern), FinancePayment.reference.ilike(pattern))),
+        db, current_user).order_by(FinancePayment.id.desc()).limit(limit).all()
+    return [{"module_key": "finance_payments", "module_label": "Payments", "record_id": str(row.id), "title": row.number,
+             "subtitle": _subtitle(row.party_name, "Received" if row.direction == "received" else "Made", row.status.title()),
+             "href": f"/dashboard/finance/payments/{row.id}"} for row in rows]
+
+
+def _vendor_document_results(module_key: str):
+    def search(db: Session, *, tenant_id: int, query: str, limit: int, current_user=None) -> list[dict]:
+        if module_key == "purchase_vendor_returns":
+            from app.modules.purchasing.models import PurchaseVendorReturn as Model
+            from app.modules.purchasing.services.vendor_return_services import list_query
+            label, path = "Vendor returns", "/dashboard/purchasing/vendor-returns"
+        else:
+            from app.modules.purchasing.models import PurchaseVendorCredit as Model
+            from app.modules.purchasing.services.vendor_credit_services import list_query
+            label, path = "Vendor credits", "/dashboard/purchasing/vendor-credits"
+        rows = list_query(db, tenant_id=tenant_id, search=query).order_by(Model.id.desc()).limit(limit).all()
+        return [{"module_key": module_key, "module_label": label, "record_id": str(row.id), "title": row.number or "Draft vendor credit",
+                 "subtitle": _subtitle(row.vendor.org_name if row.vendor else None, row.status.title()),
+                 "href": f"{path}/{row.id}"} for row in rows]
+
+    return search
 
 
 def _custom_module_results(db: Session, *, current_user, query: str, limit: int) -> list[dict]:
@@ -578,6 +698,15 @@ SEARCH_BUILDERS = {
     "finance_pos": _finance_pos_results,
     "finance_credit_notes": _credit_note_results,
     "purchase_bills": _bill_results,
+    "purchase_orders": _purchase_order_results,
+    "purchase_receipts": _receipt_results,
+    "inventory_deliveries": _delivery_results,
+    "inventory_returns": _return_results,
+    "inventory_adjustments": _inventory_document_results("adjustments"),
+    "inventory_transfers": _inventory_document_results("transfers"),
+    "finance_payments": _payment_results,
+    "purchase_vendor_returns": _vendor_document_results("purchase_vendor_returns"),
+    "purchase_vendor_credits": _vendor_document_results("purchase_vendor_credits"),
 }
 
 

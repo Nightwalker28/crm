@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.unit_of_work import unit_of_work
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_action_access, require_any_access, require_module_access
 from app.core.security import require_user
@@ -29,10 +31,14 @@ RECEIPTS = "purchase_receipts"
 
 
 class OrderLinePayload(BaseModel):
-    product_id: int = Field(gt=0)
+    # One of the two (13c §3.5): a product (tracked or not) or a service.
+    product_id: int | None = Field(default=None, gt=0)
+    catalog_service_id: int | None = Field(default=None, gt=0)
     description: str | None = None
     quantity: Decimal = Field(gt=0)
-    unit_cost: Decimal = Field(ge=0)
+    # Omitted: the vendor's last price, then the item's cost (`line_cost_default`).
+    unit_cost: Decimal | None = Field(default=None, ge=0)
+    discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
 
 
 class OrderPayload(BaseModel):
@@ -103,18 +109,38 @@ def search_vendors(query: str = Query(default="", max_length=100), limit: int = 
         SalesOrganization.is_vendor == 1)
     if query.strip():
         rows = rows.filter(SalesOrganization.org_name.ilike(f"%{query.strip()}%"))
-    return {"results": [{"id": row.org_id, "label": row.org_name, "email": row.primary_email}
-                        for row in rows.order_by(SalesOrganization.org_name, SalesOrganization.org_id).limit(limit)]}
+        found = rows.order_by(SalesOrganization.org_name, SalesOrganization.org_id).limit(limit).all()
+    else:
+        # Before any typing, the vendors bought from most recently come first (13c §3.5, H18).
+        recent = orders.recent_vendor_ids(db, tenant_id=user.tenant_id, limit=limit)
+        by_id = {row.org_id: row for row in rows.filter(SalesOrganization.org_id.in_(recent))} if recent else {}
+        found = [by_id[vendor_id] for vendor_id in recent if vendor_id in by_id]
+        if len(found) < limit:
+            found += rows.filter(SalesOrganization.org_id.notin_([row.org_id for row in found] or [0])).order_by(
+                SalesOrganization.org_name, SalesOrganization.org_id).limit(limit - len(found)).all()
+    return {"results": [{"id": row.org_id, "label": row.org_name, "email": row.primary_email} for row in found]}
+
+
+@router.get("/orders/line-defaults")
+def order_line_defaults(vendor_id: int = Query(gt=0), product_id: int | None = Query(default=None, gt=0),
+                        service_id: int | None = Query(default=None, gt=0), db: Session = Depends(get_db), user=Depends(require_user),
+                        _module=Depends(require_module_access(ORDERS)), _view=Depends(require_action_access(ORDERS, "view"))):
+    """The unit cost a new line starts at for this vendor and item (13c §5 decision 7)."""
+    if bool(product_id) == bool(service_id):
+        raise HTTPException(status_code=400, detail="Name one product or one service")
+    orders.get_vendor(db, tenant_id=user.tenant_id, vendor_id=vendor_id)
+    cost = orders.line_cost_default(db, tenant_id=user.tenant_id, vendor_id=vendor_id, product_id=product_id, service_id=service_id)
+    return {"unit_cost": cost}
 
 
 # Purchase orders -----------------------------------------------------------------------
 
 @router.get("/orders")
-def list_orders(status: str | None = Query(default=None, pattern="^(draft|ordered|received|closed|cancelled|open)$"),
+def list_orders(status: str | None = Query(default=None, pattern="^(draft|sent|ordered|received|closed|cancelled|open)$"),
                 vendor_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100),
-                pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
+                conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(ORDERS)), _view=Depends(require_action_access(ORDERS, "view"))):
-    query = orders.list_query(db, tenant_id=user.tenant_id, status=status, vendor_id=vendor_id, search=search)
+    query = orders.list_query(db, tenant_id=user.tenant_id, status=status, vendor_id=vendor_id, search=search, **conditions.as_filters())
     total = query.count()
     rows = query.order_by(PurchaseOrder.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([orders.serialize_order(db, tenant_id=user.tenant_id, order=row, include_lines=False) for row in rows]), total, pagination)
@@ -130,11 +156,11 @@ def create_order(payload: OrderPayload, db: Session = Depends(get_db), user=Depe
 
 
 @router.post("/orders/export-job", status_code=202)
-def export_orders(status: str | None = Query(default=None, pattern="^(draft|ordered|received|closed|cancelled|open)$"),
-        vendor_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+def export_orders(status: str | None = Query(default=None, pattern="^(draft|sent|ordered|received|closed|cancelled|open)$"),
+        vendor_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(ORDERS)), _export=Depends(require_action_access(ORDERS, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=ORDERS, filters={"status": status, "vendor_id": vendor_id, "search": search})
+    return start_document_export(db, user, module_key=ORDERS, filters={"status": status, "vendor_id": vendor_id, "search": search, **conditions.as_filters()})
 
 
 @router.get("/orders/{order_id}")
@@ -175,6 +201,34 @@ def set_order_exchange_rate(order_id: int, payload: ExchangeRatePayload, db: Ses
     return _order(db, user.tenant_id, order_id)
 
 
+class AlternativePayload(BaseModel):
+    vendor_id: int = Field(gt=0)
+
+
+@router.post("/orders/{order_id}/send")
+def send_order(order_id: int, db: Session = Depends(get_db), user=Depends(require_user),
+               _module=Depends(require_module_access(ORDERS)), _edit=Depends(require_action_access(ORDERS, "edit"))):
+    """*Mark as sent* (13c §3.8). F5's *Send* emails the RFQ and then does this."""
+    with unit_of_work(db):
+        orders.mark_sent(db, tenant_id=user.tenant_id, actor_user_id=user.id, order_id=order_id)
+    return _order(db, user.tenant_id, order_id)
+
+
+@router.post("/orders/{order_id}/alternatives", status_code=201)
+def create_alternative(order_id: int, payload: AlternativePayload, db: Session = Depends(get_db), user=Depends(require_user),
+                       _module=Depends(require_module_access(ORDERS)), _create=Depends(require_action_access(ORDERS, "create"))):
+    """The same request for another vendor, in the same comparison (13c §3.8)."""
+    with unit_of_work(db):
+        alternative = orders.create_alternative(db, tenant_id=user.tenant_id, actor_user_id=user.id, order_id=order_id, vendor_id=payload.vendor_id)
+    return _order(db, user.tenant_id, alternative.id)
+
+
+@router.get("/orders/{order_id}/compare")
+def compare_order(order_id: int, db: Session = Depends(get_db), user=Depends(require_user),
+                  _module=Depends(require_module_access(ORDERS)), _view=Depends(require_action_access(ORDERS, "view"))):
+    return jsonable_encoder(orders.compare_group(db, tenant_id=user.tenant_id, order_id=order_id))
+
+
 @router.post("/orders/{order_id}/close")
 def close_order(order_id: int, payload: ReasonPayload, db: Session = Depends(get_db), user=Depends(require_user),
                 _module=Depends(require_module_access(ORDERS)), _edit=Depends(require_action_access(ORDERS, "edit"))):
@@ -212,9 +266,9 @@ def restore_order(order_id: int, db: Session = Depends(get_db), user=Depends(req
 @router.get("/receipts")
 def list_receipts(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), order_id: int | None = Query(default=None, gt=0),
                   search: str | None = Query(default=None, max_length=100), pagination: Pagination = Depends(get_pagination),
-                  db: Session = Depends(get_db), user=Depends(require_user),
+                  conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(RECEIPTS)), _view=Depends(require_action_access(RECEIPTS, "view"))):
-    query = receipts.list_query(db, tenant_id=user.tenant_id, status=status, order_id=order_id, search=search)
+    query = receipts.list_query(db, tenant_id=user.tenant_id, status=status, order_id=order_id, search=search, **conditions.as_filters())
     total = query.count()
     rows = query.order_by(PurchaseReceipt.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([receipts.serialize_receipt(db, tenant_id=user.tenant_id, receipt=row, include_lines=False) for row in rows]), total, pagination)
@@ -233,10 +287,10 @@ def create_receipt(payload: ReceiptCreatePayload, db: Session = Depends(get_db),
 
 @router.post("/receipts/export-job", status_code=202)
 def export_receipts(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), order_id: int | None = Query(default=None, gt=0),
-        search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        search: str | None = Query(default=None, max_length=100), conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(RECEIPTS)), _export=Depends(require_action_access(RECEIPTS, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=RECEIPTS, filters={"status": status, "order_id": order_id, "search": search})
+    return start_document_export(db, user, module_key=RECEIPTS, filters={"status": status, "order_id": order_id, "search": search, **conditions.as_filters()})
 
 
 @router.get("/receipts/{receipt_id}")

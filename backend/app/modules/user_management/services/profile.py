@@ -29,6 +29,17 @@ SAVED_VIEW_MODULES = {
     "catalog_products",
     "catalog_services",
     "inventory_stock",
+    # ERP document lists (13c §3.2).
+    "finance_credit_notes",
+    "purchase_orders",
+    "purchase_receipts",
+    "purchase_bills",
+    "inventory_deliveries",
+    "inventory_returns",
+    "inventory_adjustments",
+    "inventory_transfers",
+    "purchase_vendor_returns",
+    "purchase_vendor_credits",
 }
 # Sentence case (design.md 3.5). Views stored under the old "Default View" are renamed by
 # _resync_system_saved_view on their next read, so no migration is needed.
@@ -712,6 +723,9 @@ def _get_or_create_system_saved_view(
     return system_view
 
 
+#: A preset condition's value meaning "the user the preset is seeded for".
+CURRENT_USER = "__current_user__"
+
 # Preset views a module ships with, as (name, all-conditions). Users who already had views
 # for the module when its presets arrived got them from that module's migration.
 PRESET_SAVED_VIEWS = {
@@ -730,12 +744,74 @@ PRESET_SAVED_VIEWS = {
     # E5 (12c-erp-invoicing.md §3.5); also in migration 20260904_invoicing.
     "finance_pos": (
         ("Overdue", [{"field": "overdue", "operator": "is", "value": True}]),
+        # 13c §3.2.
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("Unpaid", [{"field": "status", "operator": "is", "value": "issued"},
+                    {"field": "payment_status", "operator": "is_not", "value": "paid"}]),
     ),
     # E4; the same preset is in migration 20260903_purchasing for users who had account views.
     "sales_organizations": (
         ("Vendors", [{"field": "is_vendor", "operator": "is", "value": True}]),
     ),
+    # ERP document lists (13c §3.2). `CURRENT_USER` is the visiting user's id, filled in at
+    # seeding, so *Mine* needs no "me" operator. Documents with no owner or creator column
+    # (receipts, deliveries, adjustments, transfers) have no *Mine*.
+    "purchase_orders": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("RFQs sent", [{"field": "status", "operator": "is", "value": "sent"}]),
+        ("To receive", [{"field": "to_receive", "operator": "is", "value": True}]),
+        ("To bill", [{"field": "bill_status", "operator": "is", "value": "to_bill"}]),
+        ("Mine", [{"field": "owner_id", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "purchase_receipts": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+    ),
+    "purchase_bills": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("Overdue", [{"field": "overdue", "operator": "is", "value": True}]),
+        ("Unpaid", [{"field": "status", "operator": "is", "value": "posted"},
+                    {"field": "payment_status", "operator": "is_not", "value": "paid"}]),
+        ("Mine", [{"field": "owner_id", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "purchase_vendor_returns": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("Awaiting credit", [{"field": "awaiting_credit", "operator": "is", "value": True}]),
+        ("Mine", [{"field": "owner_id", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "purchase_vendor_credits": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("Open credit", [{"field": "open_credit", "operator": "is", "value": True}]),
+        ("Mine", [{"field": "owner_id", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "inventory_deliveries": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+    ),
+    "inventory_returns": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+    ),
+    "inventory_adjustments": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+    ),
+    "inventory_transfers": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+    ),
+    "finance_credit_notes": (
+        ("Drafts", [{"field": "status", "operator": "is", "value": "draft"}]),
+        ("Refund due", [{"field": "status", "operator": "is", "value": "issued"},
+                        {"field": "refund_due", "operator": "gt", "value": 0}]),
+        ("Mine", [{"field": "created_by", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "finance_payments": (
+        ("Received", [{"field": "direction", "operator": "is", "value": "received"}]),
+        ("Made", [{"field": "direction", "operator": "is", "value": "made"}]),
+        ("Refunds", [{"field": "kind", "operator": "is", "value": "refund"}]),
+        ("Mine", [{"field": "created_by", "operator": "is", "value": CURRENT_USER}]),
+    ),
 }
+
+
+def _for_user(condition: dict, user: User) -> dict:
+    return {**condition, "value": user.id} if condition.get("value") == CURRENT_USER else condition
 
 
 def _seed_preset_views(db: Session, user: User, module_key: str, visible_columns: list[str]) -> None:
@@ -750,7 +826,7 @@ def _seed_preset_views(db: Session, user: User, module_key: str, visible_columns
         slug = name.lower().replace(" ", "-")
         db.add(UserSavedView(user_id=user.id, module_key=module_key, name=name, is_default=0,
             config=_normalize_saved_view_config(module_key, {"visible_columns": visible_columns,
-                "filters": {"search": "", "all_conditions": [{"id": f"{slug}-{index}", **condition} for index, condition in enumerate(conditions)], "any_conditions": []}})))
+                "filters": {"search": "", "all_conditions": [{"id": f"{slug}-{index}", **_for_user(condition, user)} for index, condition in enumerate(conditions)], "any_conditions": []}})))
     db.commit()
 
 

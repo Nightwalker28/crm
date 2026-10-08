@@ -33,6 +33,7 @@ import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getReturnStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type ReturnHeader = RecordFormValue & {
@@ -320,6 +321,8 @@ export function ReturnDocumentPage({ returnId = null, deliveryId = null }: { ret
           </section>
         </>
       )}
+
+      {doc ? <DocumentHistory moduleKey="inventory_returns" entityId={doc.id} canEdit={Boolean(actions?.can_edit)} /> : null}
 
       {editable && !missingDelivery ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : doc ? "A draft moves no stock until it is received." : "Save a draft, then receive it when the goods arrive."}>

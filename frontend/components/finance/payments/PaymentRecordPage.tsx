@@ -22,10 +22,12 @@ import { isForbiddenError } from "@/lib/api";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 import { getPaymentRecordStatus } from "@/lib/statusStyles";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 function documentHref(allocation: PaymentAllocation) {
   if (allocation.document_type === "invoice") return `${DASHBOARD_ROUTES.invoices}/${allocation.document_id}`;
   if (allocation.document_type === "credit_note") return `${DASHBOARD_ROUTES.creditNotes}/${allocation.document_id}`;
+  if (allocation.document_type === "vendor_credit") return `${DASHBOARD_ROUTES.vendorCredits}/${allocation.document_id}`;
   return `${DASHBOARD_ROUTES.purchaseBills}/${allocation.document_id}`;
 }
 
@@ -104,13 +106,15 @@ export function PaymentRecordPage({ paymentId }: { paymentId: number | null }) {
               emptyState={{ title: "Nothing allocated" }}
               columns={[
                 { key: "document", label: "Document", size: "lg", render: (row) => <TextLink href={documentHref(row)}>{row.document_label ?? "Document"}</TextLink> },
-                { key: "type", label: "Type", size: "sm", render: (row) => (row.document_type === "invoice" ? "Invoice" : row.document_type === "bill" ? "Bill" : "Credit note") },
+                { key: "type", label: "Type", size: "sm", render: (row) => ({ invoice: "Invoice", bill: "Bill", credit_note: "Credit note", vendor_credit: "Vendor credit" }[row.document_type]) },
                 { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.amount} currency={payment.currency} /> },
               ]}
             />
           </section>
         </>
       ) : null}
+      {payment ? <DocumentHistory moduleKey="finance_payments" entityId={payment.id} canEdit={canEdit} /> : null}
+
       <EditorPanel
         open={voidOpen}
         onOpenChange={setVoidOpen}

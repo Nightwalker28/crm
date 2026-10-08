@@ -40,6 +40,15 @@ type Props = {
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   hideTrigger?: boolean;
+  /**
+   * Whether the endpoint takes the *all / selected / current page* body. Defaults to POST
+   * endpoints. The ERP document lists' `export-job` routes are POSTs that read the list's
+   * own filters from the query string and export the whole filtered view (13c §3.3), so they
+   * pass `false` and the dialog offers no modes they would ignore.
+   */
+  scopedExport?: boolean;
+  /** The dialog's sentence when the export is not scoped. */
+  description?: string;
 };
 
 type ExportExecutionResponse = {
@@ -71,6 +80,8 @@ export function ExportControls({
   open,
   onOpenChange,
   hideTrigger = false,
+  scopedExport,
+  description,
 }: Props) {
   const downloadedExportJobRef = useRef<number | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -84,7 +95,7 @@ export function ExportControls({
   const [exportJobId, setExportJobId] = useState<number | null>(null);
   const [exportSummary, setExportSummary] = useState<Record<string, unknown> | null>(null);
   const [exportError, setExportError] = useState<string | null>(null);
-  const supportsScopedExport = exportMethod === "POST";
+  const supportsScopedExport = scopedExport ?? exportMethod === "POST";
   const exportJob = useJobPoller<Record<string, unknown>>(
     exportJobId,
     (job) => {
@@ -137,9 +148,9 @@ export function ExportControls({
     try {
       const response = await apiFetch(exportEndpoint, {
         method: exportMethod,
-        headers: exportMethod === "POST" ? { "Content-Type": "application/json" } : undefined,
+        headers: supportsScopedExport ? { "Content-Type": "application/json" } : undefined,
         body:
-          exportMethod === "POST"
+          supportsScopedExport
             ? JSON.stringify({
                 ...(typeof exportBody === "object" && exportBody !== null ? exportBody : {}),
                 mode: exportMode,
@@ -204,7 +215,7 @@ export function ExportControls({
                     ? "The tenant-scoped export continues in the background. Its file downloads automatically when ready."
                     : supportsScopedExport
                       ? "Choose which records to export using the current view and selection."
-                      : "This module exports all records available to you as a CSV file."}
+                      : description ?? "This module exports all records available to you as a CSV file."}
                 </DialogDescription>
               </div>
             </DialogHeader>

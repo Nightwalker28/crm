@@ -82,6 +82,9 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "purchase_receipts", label: "Receipts", route: DASHBOARD_ROUTES.purchaseReceipts, group: "purchasing", status: "tier1", enabled: true, sortOrder: 20 },
   // Bills start from a purchase order or receipt, or blank for a service or expense (12c §3.5).
   { key: "purchase_bills", label: "Bills", route: DASHBOARD_ROUTES.purchaseBills, group: "purchasing", status: "tier1", enabled: true, sortOrder: 25, quickAction: { label: "New bill", description: "Record a vendor's invoice", href: `${DASHBOARD_ROUTES.purchaseBills}/new` } },
+  // 13c §3.6–3.7: a return starts from its receipt; a credit from a bill, a return, or blank.
+  { key: "purchase_vendor_returns", label: "Vendor returns", route: DASHBOARD_ROUTES.vendorReturns, group: "purchasing", status: "tier1", enabled: true, sortOrder: 26 },
+  { key: "purchase_vendor_credits", label: "Vendor credits", route: DASHBOARD_ROUTES.vendorCredits, group: "purchasing", status: "tier1", enabled: true, sortOrder: 27, quickAction: { label: "New vendor credit", description: "Record what a vendor owes back", href: `${DASHBOARD_ROUTES.vendorCredits}/new` } },
   { key: "purchase_reorder", label: "Reorder", route: DASHBOARD_ROUTES.purchaseReorder, group: "purchasing", status: "tier1", enabled: true, sortOrder: 30, requiredModuleKey: "purchase_orders" },
   { key: "documents", label: "Documents", route: DASHBOARD_ROUTES.documents, group: "workspace", status: "tier1", enabled: true, sortOrder: 10, quickAction: { label: "Upload document", description: "Open the document upload workflow", href: `${DASHBOARD_ROUTES.documents}/upload` } },
   { key: "calendar", label: "Calendar", route: DASHBOARD_ROUTES.calendar, group: "workspace", status: "tier1", enabled: true, sortOrder: 20, quickAction: { label: "Create event", description: "Schedule a calendar event", href: `${DASHBOARD_ROUTES.calendar}?action=create` } },

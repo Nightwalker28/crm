@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 # Planned outbound moves take only what no confirmed order holds. An adjustment or count
 # records physical reality instead, and releases holds that no longer fit (§3.2 of
 # 12a-erp-fulfilment.md).
-RESERVATION_RESPECTING_MOVES = {"sales_order", "transfer_out", "delivery"}
+RESERVATION_RESPECTING_MOVES = {"sales_order", "transfer_out", "delivery", "vendor_return"}
 
 
 @dataclass(frozen=True)
@@ -44,8 +44,9 @@ class MoveSpec:
     reverses_move_id: int | None = None
     reason: str | None = None
     note: str | None = None
-    # Inbound only: what one unit cost in the base currency, and where that came from
-    # (12d §3.2). Outbound moves and transfers take the product's average.
+    # Inbound: what one unit cost in the base currency, and where that came from (12d §3.2).
+    # Outbound moves and transfers take the product's average, except a vendor return, which
+    # leaves at its receipt's cost (`costing.OUTBOUND_AT_OWN_COST`, 13c §3.7).
     unit_cost: Decimal | None = None
     cost_source: str | None = None
     sales_order_item_id: int | None = None

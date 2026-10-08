@@ -34,11 +34,12 @@ import { formErrorMessage, formFieldErrors } from "@/lib/apiErrors";
 import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
-import { OVERDUE_STATUS, getBillMatchStatus, getBillStatus, getPaymentRecordStatus, getPosPaymentStatus } from "@/lib/statusStyles";
+import { OVERDUE_STATUS, getBillMatchStatus, getBillStatus, getPaymentRecordStatus, getPosPaymentStatus, getVendorCreditStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { PicklistText } from "@/components/picklists/PicklistText";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 type DraftLine = {
   key: number; orderLineId: number | null; receiptLineId: number | null; name: string; description: string;
@@ -85,6 +86,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "purchase_bills")?.actions;
   const canPay = Boolean(modules.find((module) => module.name === "finance_payments")?.actions?.can_create);
+  const canCredit = Boolean(modules.find((module) => module.name === "purchase_vendor_credits")?.actions?.can_create);
   const currencies = useCompanyCurrencies().data;
   const baseCurrency = useBaseCurrency();
   const query = usePurchaseBill(billId);
@@ -145,7 +147,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         const received = fromReceipt?.find((item) => item.order_line_id === line.id);
         const wanted = fromReceipt ? Math.min(Number(received?.quantity ?? 0), toBill) : toBill;
         return { key: nextKey++, orderLineId: line.id, receiptLineId: received?.id ?? null, name: line.product_name, description: line.description ?? line.product_name,
-          quantity: String(wanted), unitCost: String(Number(line.unit_cost)), tax: "0", poCost: line.unit_cost, billable: toBill };
+          quantity: String(wanted), unitCost: String(Number(line.net_unit_cost ?? line.unit_cost)), tax: "0", poCost: line.net_unit_cost ?? line.unit_cost, billable: toBill };
       }));
     } else {
       setLines([blankLine()]);
@@ -157,6 +159,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   const omitFieldKeys = [...(header?.order_id ? [] : ["order_id"]), ...(header?.receipt_id ? [] : ["receipt_id"])];
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
   const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0), 0);
+  // The match posting will find (H19): shown while the bill is still a draft, not after.
+  const priceDifferences = lines.filter((line) => line.poCost != null && Number(line.quantity) > 0 && Number(line.unitCost) !== Number(line.poCost));
 
   async function save(andPost: boolean) {
     if (!header) return;
@@ -263,7 +267,13 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
           {bill ? <StatusValue status={bill.is_overdue ? OVERDUE_STATUS : getBillStatus(bill.status)} context="record" /> : null}
           {bill?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post bill</Button> : null}
           {owing && canPay ? <Button onClick={() => { setError(null); setPayAmount(String(Number(bill?.balance_due ?? 0))); setPanel("pay"); }}>Record payment</Button> : null}
-          {bill?.status === "posted" && !paid && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("void"); }}>Void</Button> : null}
+          {/* 13c §3.6: what the vendor owes back on this bill. */}
+          {bill?.status === "posted" && canCredit ? (
+            <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.vendorCredits}/new?bill_id=${bill.id}`}>Create vendor credit</Link></Button>
+          ) : null}
+          {bill?.status === "posted" && !paid && actions?.can_edit && !(bill.vendor_credits ?? []).some((credit) => credit.status === "issued") ? (
+            <Button variant="outline" onClick={() => { setError(null); setPanel("void"); }}>Void</Button>
+          ) : null}
           {bill?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>
       }
@@ -372,7 +382,33 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
             ]}
           />
         )}
+        {editable && priceDifferences.length ? (
+          <p role="status" className="text-p-sm text-state-warning">
+            {priceDifferences.length === 1 ? `${priceDifferences[0].name} is` : `${priceDifferences.length} lines are`} priced differently from the
+            purchase order. Posting records the difference: stock still on hand is revalued, and the share on goods already sold goes to cost of goods.
+          </p>
+        ) : null}
       </section>
+
+      {bill?.vendor_credits?.length ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Vendor credits</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Vendor credits for this bill"
+            rows={bill.vendor_credits}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.vendorCredits}/${row.id}`}
+            emptyState={{ title: "No vendor credits" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number ?? "Draft"}</span> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getVendorCreditStatus(row.status)} /> },
+              { key: "applied", label: "Applied here", size: "sm", align: "right", render: (row) => <Money amount={row.applied} currency={row.currency} /> },
+              { key: "total", label: "Credit total", size: "sm", align: "right", render: (row) => <Money amount={row.total} currency={row.currency} /> },
+            ]}
+          />
+        </section>
+      ) : null}
 
       {bill?.payments?.length ? (
         <section className="flex flex-col gap-3">
@@ -395,6 +431,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
           />
         </section>
       ) : null}
+
+      {bill ? <DocumentHistory moduleKey="purchase_bills" entityId={bill.id} canEdit={Boolean(actions?.can_edit)} /> : null}
 
       {editable ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : "A draft is not owed until it is posted."}>

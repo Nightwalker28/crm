@@ -4,7 +4,10 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
+from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+from app.core.list_conditions import apply_list_conditions
 
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import (
@@ -249,6 +252,59 @@ def restore_draft(db: Session, *, tenant_id: int, actor_user_id: int, kind: str,
     _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, kind=kind, doc=doc, action="restore")
     db.commit(); db.refresh(doc)
     return doc
+
+
+DOCUMENT_STATUSES = frozenset({"draft", "posted", "cancelled"})
+
+
+def document_model(kind: str):
+    return InventoryAdjustment if kind == "adjustments" else InventoryTransfer
+
+
+def list_field_map(kind: str) -> dict:
+    """The adjustment or transfer list's saved-view fields (13c §3.2)."""
+    model = document_model(kind)
+    fields = {
+        "number": {"expression": model.number, "type": "text"},
+        "status": {"expression": model.status, "type": "text"},
+        "notes": {"expression": model.notes, "type": "text"},
+        "posted_at": {"expression": model.posted_at, "type": "date"},
+        "created_at": {"expression": model.created_at, "type": "date"},
+    }
+    if kind == "adjustments":
+        fields.update(
+            warehouse_id={"expression": InventoryAdjustment.warehouse_id, "type": "number"},
+            mode={"expression": InventoryAdjustment.mode, "type": "text"},
+            reason={"expression": InventoryAdjustment.reason, "type": "text"},
+        )
+    else:
+        fields.update(
+            from_warehouse_id={"expression": InventoryTransfer.from_warehouse_id, "type": "number"},
+            to_warehouse_id={"expression": InventoryTransfer.to_warehouse_id, "type": "number"},
+        )
+    return fields
+
+
+def list_query(db: Session, *, tenant_id: int, kind: str, status: str | None = None, search: str | None = None,
+               include_deleted: bool = False, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
+    """The adjustment or transfer list's rows. The list and its export both start here (13a A5)."""
+    if status and status not in DOCUMENT_STATUSES:
+        raise HTTPException(status_code=400, detail="Invalid document status")
+    model = document_model(kind)
+    query = (repo.adjustment_list if kind == "adjustments" else repo.transfer_list)(db, tenant_id=tenant_id, include_deleted=include_deleted)
+    if status:
+        query = query.filter(model.status == status)
+    if search and search.strip():
+        # By number, notes, a warehouse's name, and an adjustment's reason (13c §3.2).
+        pattern = f"%{search.strip()}%"
+        warehouses = db.query(InventoryWarehouse.id).filter(InventoryWarehouse.tenant_id == tenant_id, InventoryWarehouse.name.ilike(pattern))
+        matches = [model.number.ilike(pattern), model.notes.ilike(pattern)]
+        if kind == "adjustments":
+            matches += [InventoryAdjustment.reason.ilike(pattern), InventoryAdjustment.warehouse_id.in_(warehouses)]
+        else:
+            matches += [InventoryTransfer.from_warehouse_id.in_(warehouses), InventoryTransfer.to_warehouse_id.in_(warehouses)]
+        query = query.filter(or_(*matches))
+    return apply_list_conditions(query, field_map=list_field_map(kind), filters_all=filters_all, filters_any=filters_any)
 
 
 def serialize_document(db: Session, *, tenant_id: int, kind: str, doc, include_lines: bool = True) -> dict:

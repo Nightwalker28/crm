@@ -548,6 +548,51 @@ def _fetch_lifecycle(db, *, tenant_id, module_key, entity_id, limit, cursor, vie
     ]
 
 
+# ERP documents (13c §3.1). Their history is their own audit rows: posted, ordered, cancelled,
+# voided and so on are what the document's people need to see, so every action shows. A
+# document has no conversations, so only notes and this history apply to it.
+DOCUMENT_MODULE_KEYS = frozenset({
+    "inventory_adjustments", "inventory_transfers", "inventory_deliveries", "inventory_returns",
+    "purchase_orders", "purchase_receipts", "purchase_bills",
+    "finance_credit_notes", "finance_payments",
+    "purchase_vendor_returns", "purchase_vendor_credits",
+})
+DOCUMENT_ACTIVITY_TYPES = frozenset({"document", "note"})
+# Notes are the `note` source already; their audit rows would show each note twice.
+NOTE_AUDIT_ACTIONS = ("comment_added", "comment_deleted", "automation.note")
+
+
+def _fetch_document_history(db, *, tenant_id, module_key, entity_id, limit, cursor, viewer_user_id) -> list[ActivityItem]:
+    occurred = ActivityLog.created_at
+    query = (
+        db.query(ActivityLog, User)
+        .outerjoin(User, User.id == ActivityLog.actor_user_id)
+        .filter(
+            ActivityLog.tenant_id == tenant_id,
+            ActivityLog.module_key == module_key,
+            ActivityLog.entity_id == str(entity_id),
+            ActivityLog.action.notin_(NOTE_AUDIT_ACTIONS),
+        )
+    )
+    predicate = _keyset_filter(occurred, ActivityLog.id, item_type="document", cursor=cursor)
+    if predicate is not None:
+        query = query.filter(predicate)
+    rows = query.order_by(None).order_by(occurred.desc(), ActivityLog.id.desc()).limit(limit).all()
+    return [
+        ActivityItem(
+            type="document",
+            source_id=row.id,
+            source_module_key=module_key,
+            occurred_at=_as_utc(row.created_at),
+            title=row.description or row.action.replace("_", " ").replace(".", " ").capitalize(),
+            actor_user_id=row.actor_user_id,
+            actor_name=_user_label(actor),
+            meta={"action": row.action},
+        )
+        for row, actor in rows
+    ]
+
+
 def _lifecycle_links(row) -> dict[str, Any]:
     """The records a conversion made or linked, so the timeline can link them."""
     state = row.after_state if isinstance(row.after_state, dict) else {}
@@ -568,6 +613,8 @@ class _Adapter:
     applies_to: frozenset[str] | None = None
 
     def applies(self, module_key: str) -> bool:
+        if module_key in DOCUMENT_MODULE_KEYS:
+            return self.type in DOCUMENT_ACTIVITY_TYPES
         return self.applies_to is None or module_key in self.applies_to
 
 
@@ -579,6 +626,8 @@ ADAPTERS: tuple[_Adapter, ...] = (
     # and inherits the record's permission. There is no telephony module to gate on until a
     # provider exists (07 Phase 2).
     _Adapter("call", _fetch_calls, None, CALL_LOG_MODULE_KEYS),
+    # Record-scoped: a document's own audit rows (13c §3.1).
+    _Adapter("document", _fetch_document_history, None, DOCUMENT_MODULE_KEYS),
     _Adapter("email", _fetch_emails, "mail"),
     _Adapter("follow_up", _fetch_follow_ups, None),
     # Record-scoped: the record's own creation, shown on its timeline (13a H11).

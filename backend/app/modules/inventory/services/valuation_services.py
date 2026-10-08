@@ -38,12 +38,12 @@ def _lock_product(db: Session, *, tenant_id: int, product_id: int) -> CatalogPro
 
 def _record(db: Session, *, product: CatalogProduct, kind: str, on_hand: Decimal, average_before, average_after,
             stock_change: Decimal, cogs_change: Decimal, reason: str, actor_user_id: int | None,
-            bill_line_id: int | None = None, reverses_id: int | None = None) -> InventoryRevaluation:
+            bill_line_id: int | None = None, reverses_id: int | None = None, vendor_credit_line_id: int | None = None) -> InventoryRevaluation:
     from app.modules.platform.services.crm_events import stage_standard_crm_event
 
     row = InventoryRevaluation(tenant_id=product.tenant_id, product_id=product.id, kind=kind,
         number=allocate_business_number(db, tenant_id=product.tenant_id, scope="inventory_revaluations", prefix="REV"),
-        bill_line_id=bill_line_id, on_hand=on_hand, average_before=average_before, average_after=average_after,
+        bill_line_id=bill_line_id, vendor_credit_line_id=vendor_credit_line_id, on_hand=on_hand, average_before=average_before, average_after=average_after,
         stock_change=stock_change, cogs_change=cogs_change, reason=reason[:500], reverses_id=reverses_id, created_by=actor_user_id)
     db.add(row)
     db.flush()
@@ -122,6 +122,11 @@ def apply_bill_variance(db: Session, *, bill, actor_user_id: int | None) -> list
         product_id = line.catalog_product_id or next((po_line.product_id for po_line in order.lines if po_line.id == line.order_line_id), None)
         if product_id is None:
             continue
+        tracked = db.query(CatalogProduct.track_inventory).filter(CatalogProduct.tenant_id == bill.tenant_id,
+                                                                  CatalogProduct.id == product_id).scalar()
+        if not tracked:
+            # A non-stock product (13c §3.5) has no stock value to revalue.
+            continue
         product = _lock_product(db, tenant_id=bill.tenant_id, product_id=product_id)
         quantity = Decimal(line.quantity)
         difference = money((Decimal(line.unit_cost) - Decimal(line.po_unit_cost)) * quantity * rate)
@@ -167,13 +172,72 @@ def reverse_bill_variance(db: Session, *, bill, actor_user_id: int | None, reaso
     return rows
 
 
+def apply_vendor_credit(db: Session, *, credit, order, actor_user_id: int | None) -> list[InventoryRevaluation]:
+    """A vendor credit on billed goods with no return lowers what they cost (13c §5 decision 5):
+    the credited amount per unit comes off the stock still on hand, and the rest off cost of
+    goods, as a bill price difference does. Never commits."""
+    from app.modules.catalog.models import CatalogProduct as Product
+
+    rate = (rate_for(db, tenant_id=credit.tenant_id, currency=order.currency, exchange_rate=order.exchange_rate) if order is not None
+            else rate_for(db, tenant_id=credit.tenant_id, currency=credit.currency, exchange_rate=credit.exchange_rate)) or Decimal(1)
+    rows = []
+    for line in sorted(credit.lines, key=lambda row: row.id):
+        if not line.catalog_product_id or not line.bill_line_id:
+            continue
+        tracked = db.query(Product.track_inventory).filter(Product.tenant_id == credit.tenant_id, Product.id == line.catalog_product_id).scalar()
+        if not tracked:
+            continue
+        product = _lock_product(db, tenant_id=credit.tenant_id, product_id=line.catalog_product_id)
+        quantity = Decimal(line.quantity)
+        difference = -money(Decimal(line.unit_cost) * quantity * rate)
+        if difference == 0:
+            continue
+        stock_change, cogs_change, before, on_hand = _split_into_stock(db, product, difference=difference, quantity=quantity)
+        rows.append(_record(db, product=product, kind="vendor_credit", on_hand=on_hand, average_before=before,
+            average_after=Decimal(product.cost_price) if product.cost_price is not None else None,
+            stock_change=stock_change, cogs_change=cogs_change, vendor_credit_line_id=line.id, actor_user_id=actor_user_id,
+            reason=f"Vendor credit {credit.number}: {product.name} credited {line.unit_cost} per unit"))
+    return rows
+
+
+def reverse_vendor_credit(db: Session, *, credit, actor_user_id: int | None, reason: str) -> list[InventoryRevaluation]:
+    """Voiding a vendor credit undoes its revaluations, as voiding a bill does. Never commits."""
+    line_ids = [line.id for line in credit.lines]
+    if not line_ids:
+        return []
+    originals = db.query(InventoryRevaluation).filter(InventoryRevaluation.tenant_id == credit.tenant_id,
+        InventoryRevaluation.vendor_credit_line_id.in_(line_ids), InventoryRevaluation.reverses_id.is_(None)).order_by(InventoryRevaluation.id).all()
+    reversed_ids = {row.reverses_id for row in db.query(InventoryRevaluation.reverses_id).filter(InventoryRevaluation.tenant_id == credit.tenant_id,
+        InventoryRevaluation.reverses_id.in_([row.id for row in originals]))} if originals else set()
+    rows = []
+    for original in originals:
+        if original.id in reversed_ids:
+            continue
+        product = _lock_product(db, tenant_id=credit.tenant_id, product_id=original.product_id)
+        state = load_state(db, product)
+        total = -(Decimal(original.stock_change) + Decimal(original.cogs_change))
+        stock_change = -Decimal(original.stock_change) if state.quantity > 0 else Decimal(0)
+        if state.value + stock_change < 0:
+            stock_change = -state.value
+        before = state.average
+        if state.quantity > 0:
+            product.stock_value = state.value + stock_change
+            product.cost_price = unit(product.stock_value / state.quantity)
+        db.add(product)
+        rows.append(_record(db, product=product, kind="vendor_credit", on_hand=state.quantity, average_before=before,
+            average_after=Decimal(product.cost_price) if product.cost_price is not None else None,
+            stock_change=stock_change, cogs_change=total - stock_change, vendor_credit_line_id=original.vendor_credit_line_id,
+            reverses_id=original.id, actor_user_id=actor_user_id, reason=f"Vendor credit {credit.number} voided: {reason}"))
+    return rows
+
+
 def serialize_revaluation(row: InventoryRevaluation, *, product: CatalogProduct | None = None, actor_name: str | None = None) -> dict:
     product = product or row.product
     return {"id": row.id, "number": row.number, "kind": row.kind, "product_id": row.product_id,
             "product_name": product.name if product else None, "sku": product.sku if product else None,
             "on_hand": row.on_hand, "average_before": row.average_before, "average_after": row.average_after,
             "stock_change": row.stock_change, "cogs_change": row.cogs_change, "reason": row.reason,
-            "bill_line_id": row.bill_line_id, "reverses_id": row.reverses_id, "created_by": row.created_by,
+            "bill_line_id": row.bill_line_id, "vendor_credit_line_id": row.vendor_credit_line_id, "reverses_id": row.reverses_id, "created_by": row.created_by,
             "actor_name": actor_name, "created_at": row.created_at}
 
 

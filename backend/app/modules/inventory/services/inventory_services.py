@@ -187,10 +187,11 @@ def product_stock(db: Session, *, tenant_id: int, product_id: int, with_cost: bo
 def _document_number_sources():
     """source_type → (model, number column) for every document that posts stock."""
     from app.modules.inventory.models import InventoryDelivery, InventoryReturn
-    from app.modules.purchasing.models import PurchaseReceipt
+    from app.modules.purchasing.models import PurchaseReceipt, PurchaseVendorReturn
     from app.modules.sales.models import SalesOrder
 
     return {
+        "purchase_vendor_return": (PurchaseVendorReturn, PurchaseVendorReturn.number),
         "inventory_adjustment": (InventoryAdjustment, InventoryAdjustment.number),
         "inventory_transfer": (InventoryTransfer, InventoryTransfer.number),
         "inventory_delivery": (InventoryDelivery, InventoryDelivery.number),

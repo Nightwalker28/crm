@@ -39,6 +39,9 @@ DEFAULT_MODULES = [
     {"name": "purchase_orders", "base_route": "/dashboard/purchasing/orders", "description": "Purchase orders and reorder suggestions"},
     {"name": "purchase_receipts", "base_route": "/dashboard/purchasing/receipts", "description": "Stock received from vendors"},
     {"name": "purchase_bills", "base_route": "/dashboard/purchasing/bills", "description": "Vendor bills"},
+    # 13c §3.6–3.7.
+    {"name": "purchase_vendor_returns", "base_route": "/dashboard/purchasing/vendor-returns", "description": "Goods returned to vendors"},
+    {"name": "purchase_vendor_credits", "base_route": "/dashboard/purchasing/vendor-credits", "description": "Credits vendors owe back"},
     {"name": "documents", "base_route": "/dashboard/documents", "description": "Controlled document uploads and record-linked files"},
     {"name": "mail", "base_route": "/dashboard/mail", "description": "Mailbox integration and CRM communication history"},
     {"name": "calendar", "base_route": "/dashboard/calendar", "description": "Shared user calendar and scheduling"},

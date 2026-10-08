@@ -21,14 +21,16 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { TextLink } from "@/components/ui/TextLink";
 import { usePurchaseOrder, usePurchaseReceipt, usePurchasingActions, type PurchaseOrderLine, type ReceiptLine } from "@/hooks/purchasing/usePurchasing";
+import { useReceiptVendorReturns } from "@/hooks/purchasing/useVendorDocuments";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
 import { isForbiddenError } from "@/lib/api";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateTime, todayIsoDate } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
-import { getPurchaseReceiptStatus } from "@/lib/statusStyles";
+import { getPurchaseReceiptStatus, getVendorReturnResolution, getVendorReturnStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type ReceiptHeader = RecordFormValue & {
@@ -66,11 +68,13 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
   const { modules, isLoading: modulesLoading } = useAccessibleModules();
   const actions = modules.find((module) => module.name === "purchase_receipts")?.actions;
   const canBill = Boolean(modules.find((module) => module.name === "purchase_bills")?.actions?.can_create);
+  const canReturn = Boolean(modules.find((module) => module.name === "purchase_vendor_returns")?.actions?.can_create);
   const query = usePurchaseReceipt(receiptId);
   const receipt = query.data;
   const effectiveOrderId = receipt?.order_id ?? orderId;
   const order = usePurchaseOrder(effectiveOrderId ?? null);
   const mutations = usePurchasingActions();
+  const vendorReturns = useReceiptVendorReturns(receiptId);
 
   const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [header, setHeader] = useState<ReceiptHeader | null>(null);
@@ -84,7 +88,8 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
 
   const isNew = receiptId === null;
   const editable = isNew ? Boolean(actions?.can_create) : receipt?.status === "draft" && Boolean(actions?.can_edit);
-  const orderLines = order.data?.lines ?? [];
+  // Services are billed, never received (13c §3.5).
+  const orderLines = (order.data?.lines ?? []).filter((line) => line.needs_receipt !== false);
 
   // Seed once per loaded receipt (or purchase order, for a new one), while rendering.
   const seedKey = isNew ? (order.data ? `order-${order.data.id}` : null) : receipt && order.data ? `receipt-${receipt.id}-${receipt.status}` : null;
@@ -96,7 +101,8 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
       order_name: order.data?.number ?? receipt?.order_number ?? "",
       warehouse_id: receipt?.warehouse_id ?? order.data?.warehouse_id ?? null,
       warehouse_name: receipt?.warehouse_name ?? order.data?.warehouse_name ?? "",
-      received_on: receipt?.received_on ?? "",
+      // A new receipt is received today unless told otherwise (13c §3.5, H19).
+      received_on: receipt?.received_on ?? (isNew ? todayIsoDate() : ""),
       vendor_delivery_ref: receipt?.vendor_delivery_ref ?? "",
       notes: receipt?.notes ?? "",
     });
@@ -115,7 +121,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
     return !Number.isFinite(value) || value < 0 || value > Number(line.to_receive);
   });
 
-  async function save() {
+  async function save(andPost = false) {
     if (!effectiveOrderId || !header) return;
     const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, header, customValues) : {};
     setFieldErrors(nextErrors);
@@ -127,27 +133,38 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
       received_on: header.received_on || null, vendor_delivery_ref: header.vendor_delivery_ref.trim() || null, notes: header.notes.trim() || null,
       lines: receiving.map((line) => ({ order_line_id: line.id, quantity: quantities[line.id] })),
     };
+    // *Save and post* (H19): one step, as the bill has, after the same confirmation as *Post*.
+    if (andPost && !(await confirmPost(totalUnits, header.warehouse_name || order.data?.warehouse_name, order.data?.number))) return;
     try {
       setError(null);
+      let saved: { id: number; number: string } | null = receipt ?? null;
       if (isNew) {
-        const saved = await mutations.createReceipt({ ...payload, order_id: effectiveOrderId });
-        toast.success(`Draft ${saved.number} saved.`);
-        router.push(`${DASHBOARD_ROUTES.purchaseReceipts}/${saved.id}`);
+        saved = await mutations.createReceipt({ ...payload, order_id: effectiveOrderId });
       } else if (receipt) {
         await mutations.updateReceipt({ id: receipt.id, payload });
-        toast.success("Draft saved.");
-        setLoadedKey(null);
       }
+      if (saved && andPost) {
+        await mutations.postReceipt(saved.id);
+        toast.success(`${saved.number} posted.`);
+      } else {
+        toast.success(isNew && saved ? `Draft ${saved.number} saved.` : "Draft saved.");
+      }
+      if (isNew && saved) router.push(`${DASHBOARD_ROUTES.purchaseReceipts}/${saved.id}`);
+      else setLoadedKey(null);
     } catch (failure) { setError(failure instanceof Error ? failure.message : "The receipt could not be saved."); }
+  }
+
+  function confirmPost(units: number, warehouseName: string | null | undefined, orderNumber: string | null | undefined) {
+    const left = orderLines.reduce((sum, line) => sum + Number(line.to_receive), 0) - units;
+    const effect = `Posting adds ${plural(units, "unit")} to ${warehouseName || "the warehouse"} at the purchase order's cost; any confirmed sales orders waiting for them are reserved first.`;
+    const rest = left > 0 ? ` The rest of ${orderNumber ?? "the purchase order"} stays to receive.` : ` This completes ${orderNumber ?? "the purchase order"}.`;
+    return confirm({ title: receipt ? `Post ${receipt.number}?` : "Post this receipt?", description: `${effect}${rest} It can be undone by cancelling.`, confirmLabel: "Post receipt" });
   }
 
   async function post() {
     if (!receipt) return;
     const units = (receipt.lines ?? []).reduce((sum, line) => sum + Number(line.quantity), 0);
-    const left = orderLines.reduce((sum, line) => sum + Number(line.to_receive), 0) - units;
-    const effect = `Posting adds ${plural(units, "unit")} to ${receipt.warehouse_name ?? "the warehouse"} at the purchase order's cost; any confirmed sales orders waiting for them are reserved first.`;
-    const rest = left > 0 ? ` The rest of ${receipt.order_number} stays to receive.` : ` This completes ${receipt.order_number}.`;
-    if (!(await confirm({ title: `Post ${receipt.number}?`, description: `${effect}${rest} It can be undone by cancelling.`, confirmLabel: "Post receipt" }))) return;
+    if (!(await confirmPost(units, receipt.warehouse_name, receipt.order_number))) return;
     try { setError(null); await mutations.postReceipt(receipt.id); toast.success(`${receipt.number} posted.`); setLoadedKey(null); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "Posting failed."); }
   }
@@ -187,6 +204,10 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
           {receipt?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
           {receipt?.status === "posted" && canBill && order.data?.bill_status === "to_bill" ? (
             <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?receipt_id=${receipt.id}`}>Bill this receipt</Link></Button>
+          ) : null}
+          {/* 13c §3.7: goods go back against the receipt that brought them in. */}
+          {receipt?.status === "posted" && canReturn && (receipt.lines ?? []).some((line) => Number(line.quantity) > Number(line.returned ?? 0)) ? (
+            <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.vendorReturns}/new?receipt_id=${receipt.id}`}>Return to vendor</Link></Button>
           ) : null}
           {receipt?.status === "posted" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setCancelOpen(true); }}>Cancel receipt</Button> : null}
           {receipt?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
@@ -267,10 +288,34 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
         </>
       )}
 
+      {vendorReturns.data?.length ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Vendor returns</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Vendor returns against this receipt"
+            rows={vendorReturns.data}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.vendorReturns}/${row.id}`}
+            emptyState={{ title: "No vendor returns" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getVendorReturnStatus(row.status)} /> },
+              { key: "resolution", label: "Vendor will", size: "sm", render: (row) => <StatusValue status={getVendorReturnResolution(row.resolution)} /> },
+              { key: "reason", label: "Reason", render: (row) => row.reason },
+              { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.total_quantity)}</span> },
+            ]}
+          />
+        </section>
+      ) : null}
+
+      {receipt ? <DocumentHistory moduleKey="purchase_receipts" entityId={receipt.id} canEdit={Boolean(actions?.can_edit)} /> : null}
+
       {editable && !missingOrder ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : receipt ? "A draft adds no stock until it is posted." : "Save a draft, then post it to add the stock."}>
           <Button type="button" variant="outline" asChild><Link href={effectiveOrderId ? `${DASHBOARD_ROUTES.purchaseOrders}/${effectiveOrderId}` : DASHBOARD_ROUTES.purchaseReceipts}>Back</Link></Button>
-          <Button type="button" onClick={() => void save()} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save draft"}</Button>
+          <Button type="button" variant={actions?.can_edit ? "outline" : "default"} onClick={() => void save()} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save draft"}</Button>
+          {actions?.can_edit ? <Button type="button" onClick={() => void save(true)} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save and post"}</Button> : null}
         </FormFooter>
       ) : error ? <p role="alert" className="text-sm text-state-danger">{error}</p> : null}
 

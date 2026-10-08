@@ -36,6 +36,7 @@ MODULE_DISPLAY_NAMES = {
     "sales_organizations": "Organizations",
     "sales_opportunities": "Opportunities",
     "sales_quotes": "Quotes",
+    "sales_orders": "Orders",
     "reports": "Reports",
     "inventory_stock": "Inventory stock",
     "inventory_valuation": "Stock valuation",
@@ -44,6 +45,11 @@ MODULE_DISPLAY_NAMES = {
     "purchase_orders": "Purchase orders",
     "purchase_receipts": "Receipts",
     "purchase_bills": "Bills",
+    # 13c §3.3.
+    "purchase_vendor_returns": "Vendor returns",
+    "purchase_vendor_credits": "Vendor credits",
+    "inventory_adjustments": "Stock adjustments",
+    "inventory_transfers": "Stock transfers",
     "finance_pos": "Invoices",
     "finance_credit_notes": "Credit notes",
     "finance_payments": "Payments",
@@ -60,6 +66,7 @@ MODULE_LINKS = {
     "sales_organizations": "/dashboard/sales/organizations",
     "sales_opportunities": "/dashboard/sales/opportunities",
     "sales_quotes": "/dashboard/sales/quotes",
+    "sales_orders": "/dashboard/sales/orders",
     "reports": "/dashboard/reports",
     "inventory_stock": "/dashboard/inventory/stock",
     "inventory_valuation": "/dashboard/inventory/valuation",
@@ -68,6 +75,10 @@ MODULE_LINKS = {
     "purchase_orders": "/dashboard/purchasing/orders",
     "purchase_receipts": "/dashboard/purchasing/receipts",
     "purchase_bills": "/dashboard/purchasing/bills",
+    "purchase_vendor_returns": "/dashboard/purchasing/vendor-returns",
+    "purchase_vendor_credits": "/dashboard/purchasing/vendor-credits",
+    "inventory_adjustments": "/dashboard/inventory/adjustments",
+    "inventory_transfers": "/dashboard/inventory/transfers",
     "finance_pos": "/dashboard/finance/invoices",
     "finance_credit_notes": "/dashboard/finance/credit-notes",
     "finance_payments": "/dashboard/finance/payments",
@@ -595,6 +606,15 @@ def process_import_job(*, job_id: int) -> None:
                     duplicate_mode=duplicate_mode,
                     default_duplicate_mode=get_module_duplicate_mode(db, module_key, tenant_id=job.tenant_id),
                 )
+            elif module_key == "sales_orders":
+                # 13c §3.3: one row per line, one draft order per reference.
+                from app.modules.sales.services.orders_import import import_orders_from_csv
+
+                if current_user is None:
+                    raise ValueError("Order import has no actor")
+                require_data_transfer_module_access(db, current_user=current_user, module_key=module_key, action="create")
+                update_job_progress(db, job, progress_percent=65, progress_message="Importing orders.")
+                summary = import_orders_from_csv(db, file_bytes, current_user=current_user)
             elif module_key == "inventory_stock":
                 from app.modules.inventory.services.opening_import import import_opening_stock
 

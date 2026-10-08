@@ -12,7 +12,8 @@ from datetime import date, datetime, timezone
 from decimal import Decimal
 
 from fastapi import HTTPException
-from sqlalchemy import func, or_
+from sqlalchemy import and_, func, or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.pagination import Pagination, build_paged_response
@@ -63,6 +64,17 @@ def billed_by_line(db: Session, *, tenant_id: int, line_ids, statuses=("posted",
     return {line_id: Decimal(total or 0) for line_id, total in query.group_by(PurchaseBillLine.order_line_id)}
 
 
+SERVICE_BILLABLE_STATUSES = frozenset({"ordered", "received", "closed"})
+
+
+def billable_basis(order: PurchaseOrder, line, received: Decimal) -> Decimal:
+    """What a line can be billed for: a product what arrived, a service what was ordered once
+    the order is placed (13c §5 decision 2, Odoo's *ordered quantities*)."""
+    if line.needs_receipt:
+        return received
+    return Decimal(line.quantity) if order.status in SERVICE_BILLABLE_STATUSES else ZERO
+
+
 def billing_lines(db: Session, *, order: PurchaseOrder, exclude_bill_id: int | None = None) -> dict[int, dict]:
     """Per PO line: received, billed (posted), on draft bills, to bill."""
     line_ids = [line.id for line in order.lines]
@@ -70,19 +82,21 @@ def billing_lines(db: Session, *, order: PurchaseOrder, exclude_bill_id: int | N
     billed = billed_by_line(db, tenant_id=order.tenant_id, line_ids=line_ids, exclude_bill_id=exclude_bill_id)
     drafts = billed_by_line(db, tenant_id=order.tenant_id, line_ids=line_ids, statuses=("draft",), exclude_bill_id=exclude_bill_id)
     return {line.id: {"received": received.get(line.id, ZERO), "billed": billed.get(line.id, ZERO), "on_drafts": drafts.get(line.id, ZERO),
-                      "to_bill": max(received.get(line.id, ZERO) - billed.get(line.id, ZERO), ZERO)} for line in order.lines}
+                      "to_bill": max(billable_basis(order, line, received.get(line.id, ZERO)) - billed.get(line.id, ZERO), ZERO)}
+            for line in order.lines}
 
 
 def refresh_bill_status(db: Session, *, order: PurchaseOrder) -> str:
     rows = billing_lines(db, order=order)
     billed_any = any(row["billed"] > 0 for row in rows.values())
-    if not rows or (order.status in {"draft", "cancelled"} and not billed_any):
+    if not rows or (order.status in {"draft", "sent", "cancelled"} and not billed_any):
         value = "none"
     elif any(row["to_bill"] > 0 for row in rows.values()):
         value = "to_bill"
     else:
         # What the PO will come to: everything ordered while it is open, what arrived once it is done.
-        final = {line.id: (Decimal(line.quantity) if order.status == "ordered" else rows[line.id]["received"]) for line in order.lines}
+        final = {line.id: (Decimal(line.quantity) if order.status == "ordered" or not line.needs_receipt else rows[line.id]["received"])
+                 for line in order.lines}
         if billed_any and all(rows[line_id]["billed"] >= quantity for line_id, quantity in final.items()):
             value = "billed"
         elif billed_any:
@@ -104,9 +118,13 @@ def refresh_bill_balance(db: Session, bill: PurchaseBill) -> PurchaseBill:
             FinancePayment, FinancePayment.id == FinancePaymentAllocation.payment_id).filter(
             FinancePaymentAllocation.tenant_id == bill.tenant_id, FinancePaymentAllocation.bill_id == bill.id,
             FinancePayment.status == "posted").scalar())
+        # Applied vendor credits settle a bill as payments do (13c §3.6).
+        from app.modules.purchasing.services.vendor_credit_services import applied_to_bills
+
+        credited = applied_to_bills(db, tenant_id=bill.tenant_id, bill_id=bill.id)
         total = money(bill.total)
-        bill.amount_paid, bill.balance_due = paid, max(total - paid, ZERO)
-        bill.payment_status = payment_status_for(total=total, settled=paid, balance=bill.balance_due)
+        bill.amount_paid, bill.balance_due = paid, max(total - paid - credited, ZERO)
+        bill.payment_status = payment_status_for(total=total, settled=paid + credited, balance=bill.balance_due)
     db.add(bill)
     return bill
 
@@ -140,7 +158,7 @@ def _default_lines(db: Session, *, order: PurchaseOrder, receipt_id: int | None)
         lines = [{"order_line_id": line_id, "quantity": max(row["to_bill"] - row["on_drafts"], ZERO)} for line_id, row in rows.items()]
         lines = [line for line in lines if line["quantity"] > 0]
     if not lines:
-        raise HTTPException(status_code=409, detail="Nothing received on this purchase order is left to bill")
+        raise HTTPException(status_code=409, detail="Nothing on this purchase order is left to bill")
     return lines
 
 
@@ -162,10 +180,12 @@ def _apply_lines(db: Session, *, bill: PurchaseBill, order: PurchaseOrder | None
             if po_line is None:
                 raise HTTPException(status_code=400, detail="Only this purchase order's lines can be billed against it")
             requested[po_line.id] = requested.get(po_line.id, ZERO) + quantity
-        unit_cost = decimal_input(payload.get("unit_cost", po_line.unit_cost if po_line else None), field="Unit cost")
+        # A PO line is billed at its cost after discount (13c §3.5).
+        raw_cost = payload.get("unit_cost")
+        unit_cost = decimal_input(raw_cost if raw_cost is not None else (po_line.net_unit_cost if po_line else None), field="Unit cost")
         tax = money(decimal_input(payload.get("tax_amount") or 0, field="Tax", places=2))
         description = (payload.get("description") or "").strip() or (po_line.description if po_line and po_line.description else None) \
-            or (po_line.product.name if po_line and po_line.product else None)
+            or (po_line.item_name if po_line else None)
         if not description:
             raise HTTPException(status_code=400, detail="Describe every line")
         _net, total = line_amounts(quantity=quantity, unit_price=unit_cost, tax=tax, label=description)
@@ -173,14 +193,15 @@ def _apply_lines(db: Session, *, bill: PurchaseBill, order: PurchaseOrder | None
             tenant_id=bill.tenant_id, order_line_id=po_line.id if po_line else None,
             receipt_line_id=payload.get("receipt_line_id") if po_line else None,
             catalog_product_id=po_line.product_id if po_line else links[index][PRODUCT_LINK_FIELD],
-            catalog_service_id=None if po_line else links[index][SERVICE_LINK_FIELD],
-            description=description, quantity=quantity, unit_cost=unit_cost, po_unit_cost=po_line.unit_cost if po_line else None,
+            catalog_service_id=po_line.catalog_service_id if po_line else links[index][SERVICE_LINK_FIELD],
+            description=description, quantity=quantity, unit_cost=unit_cost, po_unit_cost=po_line.net_unit_cost if po_line else None,
             tax_amount=tax, line_total=total, sort_order=index))
     for line_id, quantity in requested.items():
         left = rows[line_id]["to_bill"]
         if quantity > left:
-            name = po_lines[line_id].product.name if po_lines[line_id].product else "This line"
-            raise HTTPException(status_code=409, detail=f"{name}: only {units(left)} received and not yet billed")
+            line = po_lines[line_id]
+            basis = "received" if line.needs_receipt else "ordered"
+            raise HTTPException(status_code=409, detail=f"{line.item_name}: only {units(left)} {basis} and not yet billed")
     bill.lines = result
     bill.subtotal = sum((money(Decimal(line.quantity) * Decimal(line.unit_cost)) for line in result), ZERO)
     bill.tax_total = sum((money(line.tax_amount) for line in result), ZERO)
@@ -203,7 +224,7 @@ def save_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, payload
         raise HTTPException(status_code=409, detail="Only a draft bill can be edited")
     order_id = bill.order_id if bill else payload.get("order_id")
     order = _order(db, tenant_id=tenant_id, order_id=int(order_id)) if order_id else None
-    if order is not None and order.status in {"draft", "cancelled"}:
+    if order is not None and order.status in {"draft", "sent", "cancelled"}:
         raise HTTPException(status_code=409, detail="Only a placed purchase order can be billed")
     vendor_id = order.vendor_id if order else (payload.get("vendor_id") or (bill.vendor_id if bill else None))
     if not vendor_id:
@@ -289,6 +310,13 @@ def void_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, bill_id
         raise HTTPException(status_code=409, detail="Only a posted bill can be voided; remove a draft instead")
     if has_posted_payments(db, tenant_id=tenant_id, bill_id=bill.id):
         raise HTTPException(status_code=409, detail="Payments are recorded against this bill; void them first")
+    from app.modules.purchasing.models import PurchaseVendorCredit, PurchaseVendorCreditAllocation
+
+    credit = db.query(PurchaseVendorCredit.number).filter(PurchaseVendorCredit.tenant_id == tenant_id, PurchaseVendorCredit.status == "issued",
+        or_(PurchaseVendorCredit.bill_id == bill.id, PurchaseVendorCredit.id.in_(db.query(PurchaseVendorCreditAllocation.credit_id).filter(
+            PurchaseVendorCreditAllocation.tenant_id == tenant_id, PurchaseVendorCreditAllocation.bill_id == bill.id)))).first()
+    if credit is not None:
+        raise HTTPException(status_code=409, detail=f"Vendor credit {credit[0]} is against this bill; void it first")
     order = _order(db, tenant_id=tenant_id, order_id=bill.order_id, lock=True) if bill.order_id else None
     bill.status, bill.voided_at, bill.void_reason = "void", datetime.now(timezone.utc), reason[:500]
     db.flush()
@@ -359,6 +387,9 @@ def serialize_bill(db: Session, *, tenant_id: int, bill: PurchaseBill, include_l
             "billable": rows.get(line.order_line_id, {}).get("to_bill") if line.order_line_id else None,
         } for line in bill.lines]
         result["payments"] = payments_for(db, tenant_id=tenant_id, bill_id=bill.id)
+        from app.modules.purchasing.services.vendor_credit_services import bill_credits
+
+        result["vendor_credits"] = bill_credits(db, tenant_id=tenant_id, bill_id=bill.id)
     if include_lines:
         result["custom_fields"] = load_custom_field_values(db, tenant_id=tenant_id, module_key="purchase_bills", record_id=bill.id)
     return result
@@ -368,8 +399,30 @@ BILL_SORT_FIELDS = {"number": PurchaseBill.number, "bill_date": PurchaseBill.bil
                     "total": PurchaseBill.total, "balance_due": PurchaseBill.balance_due, "status": PurchaseBill.status}
 
 
+def list_field_map() -> dict:
+    """The bill list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": PurchaseBill.number, "type": "text"},
+        "vendor_invoice_number": {"expression": PurchaseBill.vendor_invoice_number, "type": "text"},
+        "status": {"expression": PurchaseBill.status, "type": "text"},
+        "payment_status": {"expression": PurchaseBill.payment_status, "type": "text"},
+        "match_status": {"expression": PurchaseBill.match_status, "type": "text"},
+        "vendor_id": {"expression": PurchaseBill.vendor_id, "type": "number"},
+        "order_id": {"expression": PurchaseBill.order_id, "type": "number"},
+        "owner_id": {"expression": PurchaseBill.owner_id, "type": "number"},
+        "currency": {"expression": PurchaseBill.currency, "type": "text"},
+        "total": {"expression": PurchaseBill.total, "type": "number"},
+        "balance_due": {"expression": PurchaseBill.balance_due, "type": "number"},
+        "bill_date": {"expression": PurchaseBill.bill_date, "type": "date"},
+        "due_date": {"expression": PurchaseBill.due_date, "type": "date"},
+        "created_at": {"expression": PurchaseBill.created_at, "type": "date"},
+        # Posted, something still owed, and past its due date (as the list's own *Overdue*).
+        "overdue": {"expression": and_(PurchaseBill.status == "posted", PurchaseBill.balance_due > 0, PurchaseBill.due_date < date.today()),
+                    "type": "boolean"},
+    }
+
 def list_query(db: Session, *, tenant_id: int, status: str | None = None, vendor_id: int | None = None, order_id: int | None = None,
-               search: str | None = None):
+               search: str | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The bill list's rows. The list and its export both start here (13a A5)."""
     from app.modules.sales.models import SalesOrganization
 
@@ -390,12 +443,14 @@ def list_query(db: Session, *, tenant_id: int, status: str | None = None, vendor
         pattern = f"%{search.strip()}%"
         query = query.join(SalesOrganization, SalesOrganization.org_id == PurchaseBill.vendor_id).filter(or_(
             PurchaseBill.number.ilike(pattern), PurchaseBill.vendor_invoice_number.ilike(pattern), SalesOrganization.org_name.ilike(pattern)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 
 def list_bills(db: Session, *, tenant_id: int, pagination: Pagination, status: str | None = None, vendor_id: int | None = None,
-               order_id: int | None = None, search: str | None = None, sort_by: str | None = None, sort_direction: str | None = None) -> dict:
-    query = list_query(db, tenant_id=tenant_id, status=status, vendor_id=vendor_id, order_id=order_id, search=search)
+               order_id: int | None = None, search: str | None = None, sort_by: str | None = None, sort_direction: str | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None) -> dict:
+    query = list_query(db, tenant_id=tenant_id, status=status, vendor_id=vendor_id, order_id=order_id, search=search,
+                       filters_all=filters_all, filters_any=filters_any)
     total = query.count()
     column = BILL_SORT_FIELDS.get((sort_by or "").strip())
     if column is not None:

@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-08 (Step 6 complete and committed. Step 7 started: F4 research and plan, `13c-erp-documents.md`. Owner: one test pass for F4 + F5 + F6 together, after F6).
+Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, uncommitted and untested by the owner's rule; next F5 research and plan. One test pass for F4 + F5 + F6 after F6).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -40,10 +40,149 @@ between phases, not even new modules. Record each slice's migrations and touched
 
 **F4 plan written (2026-10-08): `13c-erp-documents.md`.** Benchmark of Odoo, Business Central,
 NetSuite, Zoho and ERPNext; four slices (4.1 history, 4.2 lists, 4.3 PO and receipt, 4.4
-vendor documents: RFQs, vendor returns, vendor credits); nine §5 decisions **awaiting the
-owner**. F4.5 (I3, I4) was already done in Step 3 and parts of H18 in Step 6 Phase 5, so the
+vendor documents: RFQs, vendor returns, vendor credits); nine §5 decisions, **all accepted by the
+owner (2026-10-08)**. F4.5 (I3, I4) was already done in Step 3 and parts of H18 in Step 6 Phase 5, so the
 plan drops them. Migrations planned: `20261014_po_lines`, `20261015_vendor_documents`. No code
 changed yet.
+
+**F4 slice 4.1 — document history (13c §3.1): built 2026-10-08, working tree, NOT committed,
+nothing run.** No migration.
+- Backend: `record_comments.RECORD_COMMENT_MODULES` gains the nine document modules (label
+  `number`). `record_activity`: `DOCUMENT_MODULE_KEYS`, a record-scoped `document` adapter
+  (`_fetch_document_history`: the document's own `activity_logs` rows, every action except
+  the note audit actions `comment_added`, `comment_deleted`, `automation.note`), and
+  `_Adapter.applies` gives document modules only `note` and `document`.
+  `automation_registry.NOTE_MODULE_KEYS` gains the documents that have automation sources.
+- Frontend: `components/recordActivity/DocumentHistory.tsx` (section heading + `RecordTimeline`,
+  which gained `emptyDescription` and the `document` type: filter *History*, label *Change*);
+  `RecordModuleKey` widened. Placed above the footer on the PO, receipt, bill, delivery,
+  return, adjustment/transfer, credit note and payment pages.
+- Tests written, not run: `tests/test_document_history.py`.
+- Found: the PO page already has its number heading, *Create bill* and Receipts/Bills sections
+  (H18 partly done before F4), so 4.3 is smaller.
+
+**F4 slice 4.2 — lists, export, import, search (13c §3.2–3.4): built 2026-10-08, working tree,
+NOT committed, nothing run.** No migration.
+- `app/core/list_conditions.py`: `ListConditions` + the `list_conditions` dependency
+  (`filters_all` / `filters_any`, or `filters` + `filter_logic`; bad payload = 400) and
+  `apply_list_conditions`. Each document service gained `list_field_map()` and
+  `filters_all` / `filters_any` on `list_query` (POs incl. derived `to_receive`, receipts,
+  bills incl. derived `overdue`, deliveries, returns, credit notes, payments). Their list and
+  `export-job` routes take `conditions` and pass `**conditions.as_filters()`; every
+  `DocumentExport.filter_keys` gained `CONDITION_KEYS`.
+- Adjustments/transfers: `document_services.list_query` (status, search by number, notes,
+  reason, warehouse name; conditions; `document_model(kind)`), routes gained `search` and
+  conditions, new `POST /inventory/{adjustments|transfers}/export-job`.
+- Sales orders: `POST /sales/orders/export-job` (`build_orders_query`, list-item shape);
+  import `POST /sales/orders/import/preview` and `/import` (+ background job branch in
+  `data_transfer_jobs`), `sales/services/orders_import.py` (§5 decision 6: one row per line,
+  grouped by `order_reference` → `external_reference`, drafts via `create_sales_order` inside
+  `unit_of_work.savepoint`, all-or-nothing per order, re-import skips existing references).
+- Saved views: `SAVED_VIEW_MODULES` + the eight document lists; `PRESET_SAVED_VIEWS` per §3.2
+  with a `CURRENT_USER` placeholder filled at seeding (`_for_user`). Deviation from 13c §3.2:
+  receipts, deliveries, returns, adjustments and transfers have no owner/creator column, so
+  no *Mine*; returns have no *To credit* (needs a credit-note join; left out). Invoices gained
+  *Drafts* and *Unpaid*.
+- Global search: POs, receipts, deliveries, returns, adjustments, transfers, payments; bills
+  also by vendor name.
+- Frontend: `components/transactions/DocumentListPage.tsx` (saved views, presets, inline
+  filters, column picker, quick status, export of the filtered view, paging) used by all nine
+  document lists (`InventoryDocumentListPage` is now a wrapper). `moduleViewConfigs` has the
+  nine definitions/defaults. `ExportControls`/`ModuleImportExportControls` gained
+  `scopedExport` + `description` (document exports have no selected/current-page modes).
+  Sales orders list gained import + export. The eight old list hooks (`usePurchaseOrders`,
+  `useDeliveries`, …) were deleted.
+- Tests written, not run: `test_document_lists.py`, `test_sales_order_import.py`;
+  `test_list_export_parity.py` updated (routes take `conditions`; three new exports).
+- **For the test pass:** e2e specs that used the old lists' `Filter status` combobox or
+  `SearchBar` placeholders will need their locators updated (the quick status is now
+  `<Title> status`).
+
+**F4 slice 4.3 — PO and receipt usability (13c §3.5, §3.9): built 2026-10-08, working tree,
+NOT committed, nothing run.** Migration `20261014_po_lines` (after `20261013_layout_overrides`).
+- `PurchaseOrderLine`: `product_id` nullable, `catalog_service_id`, `discount_amount` (Python
+  default 0), check one item; properties `item_name`, `needs_receipt` (products), `net_unit_cost`
+  (cost after discount). Downgrade refuses while service lines exist.
+- `purchase_order_services`: `_normalize_lines` takes products (tracked or not) and services,
+  discount ≤ line, cost omitted → `line_cost_default` (last posted bill price from this vendor,
+  then last PO price, then the item's `cost_price`; §5 decision 7); `to_receive` 0 for services;
+  `incoming` products only; `refresh_receipt_status` counts products only; placing an order with
+  services refreshes `bill_status`; serializer adds `catalog_service_id`, `kind`,
+  `track_inventory`, `needs_receipt`, `discount_amount`, `net_unit_cost`. `recent_vendor_ids`.
+- `bill_services`: `billable_basis` (services billable on the ordered quantity once
+  ordered/received/closed; §5 decision 2); PO-line bills default to and match against
+  `net_unit_cost`, carry the service link and `item_name`.
+- `receipt_services`: services refused ("billed, not received"), default lines products only;
+  stock moves only for tracked products, costed at `net_unit_cost`.
+- `valuation_services.apply_bill_variance` skips non-stock products (checked before
+  `_lock_product`, which refuses them). `report_catalog` *Purchase lines to receive* excludes
+  services. `clone_drafts` copies the new PO line fields.
+- Routes: `GET /purchasing/orders/line-defaults`; `/purchasing/vendors/search` with no query
+  lists the most recent vendors first. `OrderLinePayload` takes `catalog_service_id`,
+  optional `unit_cost`, `discount_amount`.
+- Frontend: PO line editor picks `catalog_item` (products and services), fetches
+  `line-defaults` on pick, has a Discount column; read-only lines show Item, Discount, and
+  *Not received* for services. `LinkedRecordPicker` gained `suggestOnFocus` (vendor picker
+  uses it). Receipt: *Save and post* (one confirmation), received-on defaults to today,
+  services hidden. Bill: lines from a PO start at the net cost; a draft warns of price
+  differences before posting.
+- Already done before F4, so nothing changed: the PO number heading, *Create bill*,
+  Receipts/Bills sections (pre-F4), required marks (4e layouts: vendor, vendor invoice number,
+  bill date), the posted bill's vendor invoice number (4e detail layout and subtitle), and the
+  payment date in the user's own today (`todayIsoDate`).
+- **Deviation:** the *Cost of goods sold* report source is stock moves only; adding the
+  bill-variance share needs a union in the report engine. Moved to F7, whose ledger carries
+  cost of goods including variances.
+- Tests written, not run: `test_purchase_order_lines.py`.
+
+**F4 slice 4.4 — RFQs, vendor returns, vendor credits (13c §3.6–3.8): built 2026-10-08, working
+tree, NOT committed, nothing run.** Migration `20261015_vendor_documents` (after `20261014_po_lines`).
+- Migration: PO status `sent`, `sent_at`, `sent_by`, `rfq_group_id` (+ index); tables
+  `purchase_vendor_returns` (+ lines), `purchase_vendor_credits` (+ lines, + allocations);
+  `finance_payment_allocations.vendor_credit_id` with the one-target check widened to four;
+  `inventory_revaluations.vendor_credit_line_id` and kind `vendor_credit`. Downgrade refuses
+  while any of the new rows, a `sent` PO or an RFQ group exist.
+- RFQs (`purchase_order_services`): `RFQ_STATUSES` (draft, sent) are editable and placeable;
+  `mark_sent`, `create_alternative` (one open request per vendor per group), `rfq_group`,
+  `compare_group`, placing one cancels the group's other open requests (`_cancel_alternatives`).
+  Routes `POST /purchasing/orders/{id}/send`, `/alternatives`, `GET …/compare`; list status
+  filter takes `sent`. Serializer: `sent_at`, `rfq_group_id`, `alternatives`, `vendor_returns`.
+- Vendor returns (`vendor_return_services.py`): from a posted receipt, up to received less
+  returns (drafts count); *ship* posts `vendor_return` moves at the receipt's cost
+  (`costing.OUTBOUND_AT_OWN_COST`; `vendor_return` also respects reservations); resolution
+  `replace` nets out of `received_by_line`; cancel reverses (refused while an issued credit
+  exists); a receipt with open returns cannot be cancelled. Movements name them (`document_numbers`).
+- Vendor credits (`vendor_credit_services.py`): from a bill (lines ≤ billed − credited), a
+  shipped *credit* return (bill's cost if billed, else the PO line's net cost), or blank;
+  issue allocates to its bill first; `apply_to_bills`; refunds are `received` + `refund`
+  payments allocated by `vendor_credit_id`; void only before refunds, undoing applications; a
+  price-only credit on tracked billed goods revalues via `valuation_services.apply_vendor_credit`
+  (reversed on void). `refresh_bill_balance` counts applied credits; a bill with an issued
+  credit cannot be voided.
+- Routes `app/modules/purchasing/routes/vendor_document_routes.py` (mounted in `api/v1/router.py`):
+  vendor-returns and vendor-credits list/create/get/patch/actions/delete/restore/export-job,
+  `GET /purchasing/receipts/{id}/vendor-returns`. Payments accept `vendor_credit_id`.
+- Registries: seed modules, custom fields, record layouts (`purchase_bill_reference`,
+  `vendor_return_reference` as source references), write rules, record comments, document
+  history, saved views + presets, document exports, global search, recycle bin + purge,
+  backup/restore (5 tables, optional on restore; finance restore drops allocations to missing
+  credits and refreshes credit balances), data-transfer labels and links.
+- Frontend: `hooks/purchasing/useVendorDocuments.ts`; pages `purchasing/vendor-returns`
+  (+ `new`, `[id]`), `purchasing/vendor-credits` (+ `new`, `[id]`), `purchasing/orders/[id]/compare`
+  (`RfqComparePage`); `VendorReturnDocumentPage`, `VendorCreditDocumentPage`. PO page: titled
+  *Request for quotation* until placed, *Mark as sent*, *Ask another vendor*, *Compare*,
+  Alternatives and Vendor returns sections. Receipt: *Return to vendor* + returns. Bill:
+  *Create vendor credit* + credits. Registry, routes, status styles, layout targets,
+  revaluation label, payment allocation links, both guard route lists.
+- Tests written, not run: `test_vendor_documents.py`; `test_purchase_order_lines.py` now has a
+  shared `PurchasingFixture`; `test_list_export_parity.py` expects the two new exports.
+  `purchasing.spec.ts` headings updated for RFQs.
+- **Left out of F4 (recorded in 13c §7):** automation record sources/triggers for the two new
+  documents (F12), report sources for them (F11), the vendor-documents e2e spec and the
+  backup round-trip rows for the new tables (write in the test pass).
+
+**F4 is built (slices 4.1–4.4).** Next: F5 research and plan (`13d`), then build F5, then F6;
+the one test pass after F6.
 
 ## Final fixes §7 Step 6 — picklists, standard records, one field system (done 2026-10-08)
 

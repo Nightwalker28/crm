@@ -13,6 +13,7 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy import or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.modules.sales.services.document_fields import format_address
@@ -30,7 +31,21 @@ from app.modules.sales.models import SalesOrder, SalesOrderItem
 from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 
 
-def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, order_id: int | None = None):
+def list_field_map() -> dict:
+    """The delivery list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": InventoryDelivery.number, "type": "text"},
+        "status": {"expression": InventoryDelivery.status, "type": "text"},
+        "order_id": {"expression": InventoryDelivery.order_id, "type": "number"},
+        "warehouse_id": {"expression": InventoryDelivery.warehouse_id, "type": "number"},
+        "carrier": {"expression": InventoryDelivery.carrier, "type": "text"},
+        "tracking_number": {"expression": InventoryDelivery.tracking_number, "type": "text"},
+        "shipped_on": {"expression": InventoryDelivery.shipped_on, "type": "date"},
+        "posted_at": {"expression": InventoryDelivery.posted_at, "type": "date"},
+        "created_at": {"expression": InventoryDelivery.created_at, "type": "date"},
+    }
+
+def list_query(db: Session, *, tenant_id: int, status: str | None = None, search: str | None = None, order_id: int | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The delivery list's rows. The list and its export both start here (13a A5)."""
     query = db.query(InventoryDelivery).options(selectinload(InventoryDelivery.lines)).filter(
         InventoryDelivery.tenant_id == tenant_id, InventoryDelivery.deleted_at.is_(None))
@@ -42,6 +57,7 @@ def list_query(db: Session, *, tenant_id: int, status: str | None = None, search
         pattern = f"%{search.strip()}%"
         query = query.join(SalesOrder, SalesOrder.id == InventoryDelivery.order_id).filter(SalesOrder.tenant_id == tenant_id, or_(
             InventoryDelivery.number.ilike(pattern), InventoryDelivery.tracking_number.ilike(pattern), SalesOrder.order_number.ilike(pattern)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 

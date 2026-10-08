@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
 import { apiFetch } from "@/lib/api";
@@ -29,7 +29,6 @@ export type DeliveryDraft = {
   lines: Array<{ order_line_id: number; quantity: string }>;
 };
 
-type Page<T> = { results: T[]; page: number; page_size: number; total_count: number; total_pages: number; range_start: number; range_end: number };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
@@ -37,16 +36,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.status === 204 ? (null as T) : (response.json() as Promise<T>);
 }
 
-export function useDeliveries(page: number, pageSize: number, status: string, search: string) {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  if (status) params.set("status", status);
-  if (search.trim()) params.set("search", search.trim());
-  return useQuery({
-    queryKey: ["inventory", "deliveries", page, pageSize, status, search],
-    queryFn: () => request<Page<Delivery>>(`/inventory/deliveries?${params}`),
-    placeholderData: keepPreviousData,
-  });
-}
 
 export function useDelivery(id: number | null) {
   return useQuery({ queryKey: ["inventory", "deliveries", "record", id], queryFn: () => request<Delivery>(`/inventory/deliveries/${id}`), enabled: id !== null });

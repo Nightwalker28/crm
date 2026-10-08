@@ -7,7 +7,7 @@ import { Copy, PackagePlus, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { CatalogItemQuickCreate } from "@/components/catalog/CatalogItemQuickCreate";
-import LinkedRecordPicker from "@/components/crm/LinkedRecordPicker";
+import LinkedRecordPicker, { type LinkedRecordOption } from "@/components/crm/LinkedRecordPicker";
 import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
@@ -28,7 +28,7 @@ import { StatusValue } from "@/components/ui/StatusValue";
 import { Textarea } from "@/components/ui/textarea";
 import { TextLink } from "@/components/ui/TextLink";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
-import { usePurchaseOrder, usePurchasingActions, type PurchaseOrder, type PurchaseOrderLine } from "@/hooks/purchasing/usePurchasing";
+import { fetchLineCostDefault, usePurchaseOrder, usePurchasingActions, type PurchaseOrder, type PurchaseOrderLine } from "@/hooks/purchasing/usePurchasing";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { cloneHref, useCloneDraft } from "@/hooks/useCloneDraft";
 import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
@@ -37,13 +37,30 @@ import { isForbiddenError } from "@/lib/api";
 import { formatMoney } from "@/lib/currency";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
-import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus } from "@/lib/statusStyles";
+import { OVERDUE_STATUS, getBillStatus, getPosPaymentStatus, getPurchaseOrderBillStatus, getPurchaseOrderStatus, getPurchaseReceiptStatus, getVendorReturnResolution, getVendorReturnStatus } from "@/lib/statusStyles";
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
-type DraftLine = { key: number; productId: number | null; name: string; description: string; quantity: string; unitCost: string };
+/** A line is a product (tracked or not) or a service (13c §3.5); `itemId` is that record's id. */
+type DraftLine = { key: number; kind: "product" | "service"; itemId: number | null; name: string; description: string; quantity: string; unitCost: string; discount: string };
 let nextKey = 1;
-const blankLine = (): DraftLine => ({ key: nextKey++, productId: null, name: "", description: "", quantity: "1", unitCost: "0" });
+const blankLine = (): DraftLine => ({ key: nextKey++, kind: "product", itemId: null, name: "", description: "", quantity: "1", unitCost: "0", discount: "" });
+const lineTotal = (line: Pick<DraftLine, "quantity" | "unitCost" | "discount">) =>
+  (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) - (Number(line.discount) || 0);
+const draftLine = (line: { product_id?: unknown; catalog_service_id?: unknown; product_name?: unknown; description?: unknown; quantity?: unknown; unit_cost?: unknown; discount_amount?: unknown }): DraftLine => {
+  const serviceId = (line.catalog_service_id as number | null | undefined) ?? null;
+  return {
+    key: nextKey++,
+    kind: serviceId ? "service" : "product",
+    itemId: serviceId ?? (line.product_id as number | null | undefined) ?? null,
+    name: String(line.product_name ?? ""),
+    description: String(line.description ?? ""),
+    quantity: String(Number(line.quantity ?? 1)),
+    unitCost: String(Number(line.unit_cost ?? 0)),
+    discount: Number(line.discount_amount ?? 0) ? String(Number(line.discount_amount)) : "",
+  };
+};
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type PurchaseOrderHeader = RecordFormValue & {
@@ -109,11 +126,14 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   const layoutQuery = useResolvedRecordLayout("purchase_orders", "full_form");
   const [error, setError] = useState<string | null>(null);
   const [customValues, setCustomValues] = useState<Record<string, unknown>>({});
-  const [panel, setPanel] = useState<"close" | "cancel" | null>(null);
+  const [panel, setPanel] = useState<"close" | "cancel" | "alternative" | null>(null);
+  const [alternativeVendor, setAlternativeVendor] = useState<{ id: number | null; name: string }>({ id: null, name: "" });
   const [reason, setReason] = useState("");
 
   const isNew = orderId === null;
-  const editable = isNew ? Boolean(actions?.can_create) : order?.status === "draft" && Boolean(actions?.can_edit);
+  // Before it is placed a purchase order is a request for quotation: draft, then sent (13c §3.8).
+  const isRfq = order?.status === "draft" || order?.status === "sent";
+  const editable = isNew ? Boolean(actions?.can_create) : isRfq && Boolean(actions?.can_edit);
   const activeWarehouses = warehouses.data?.filter((row) => row.is_active) ?? [];
   // What the currency select shows while the field is blank: the base currency.
   const defaultCurrency = baseCurrencyQuery.data ?? currencies?.[0] ?? "USD";
@@ -138,14 +158,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       vendor_reference: "",
       notes: fields.notes ?? "",
     });
-    const copied = clone.draft.lines.map((line) => ({
-      key: nextKey++,
-      productId: (line.product_id as number | null | undefined) ?? null,
-      name: String(line.product_name ?? ""),
-      description: String(line.description ?? ""),
-      quantity: String(Number(line.quantity ?? 1)),
-      unitCost: String(Number(line.unit_cost ?? 0)),
-    }));
+    const copied = clone.draft.lines.map((line) => draftLine(line));
     setLines(copied.length ? copied : [blankLine()]);
   } else if (seedKey && seedKey !== loadedKey) {
     setLoadedKey(seedKey);
@@ -162,13 +175,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       notes: order?.notes ?? "",
     });
     setExchangeRate(order?.exchange_rate ?? order?.suggested_exchange_rate ?? "");
-    setLines(order?.lines?.length ? order.lines.map((line) => ({
-      key: nextKey++, productId: line.product_id, name: line.product_name, description: line.description ?? "",
-      quantity: String(Number(line.quantity)), unitCost: String(Number(line.unit_cost)),
-    })) : [blankLine()]);
+    setLines(order?.lines?.length ? order.lines.map((line) => draftLine(line)) : [blankLine()]);
   }
 
-  const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0), 0);
+  const total = lines.reduce((sum, line) => sum + lineTotal(line), 0);
   const currencyCode = header?.currency || order?.currency || defaultCurrency;
   // Stock is costed in the base currency, so an order in another one carries a rate (12d §3.5).
   const baseCurrency = order?.base_currency ?? baseCurrencyQuery.data ?? defaultCurrency;
@@ -177,6 +187,15 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
 
   // A tenant with one warehouse never sees the choice; the rate only matters in another currency.
   const omitFieldKeys = [...(activeWarehouses.length > 1 ? [] : ["warehouse_id"]), ...(foreign ? [] : ["exchange_rate"])];
+
+  /** A picked item takes the vendor's last price, then the item's cost (13c §5 decision 7). */
+  async function pickItem(line: DraftLine, option: LinkedRecordOption) {
+    const kind = option.module_key === "catalog_services" ? "service" : "product";
+    updateLine({ ...line, kind, itemId: option.id, name: option.label });
+    if (!header?.vendor_id) return;
+    const cost = await fetchLineCostDefault(header.vendor_id, kind, option.id).catch(() => null);
+    if (cost != null) setLines((current) => current.map((row) => (row.key === line.key && row.itemId === option.id ? { ...row, unitCost: String(Number(cost)) } : row)));
+  }
 
   async function save() {
     if (!header) return;
@@ -190,14 +209,20 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       setError("Check the highlighted fields.");
       return;
     }
-    if (!lines.length || lines.some((line) => !line.productId || !(Number(line.quantity) > 0) || !(Number(line.unitCost) >= 0))) {
-      setError("Choose a product and enter a quantity above zero and a unit cost on every line."); return;
+    if (!lines.length || lines.some((line) => !line.itemId || !(Number(line.quantity) > 0) || !(Number(line.unitCost) >= 0))) {
+      setError("Choose a product or service and enter a quantity above zero and a unit cost on every line."); return;
+    }
+    if (lines.some((line) => (Number(line.discount) || 0) < 0 || lineTotal(line) < 0)) {
+      setError("A line's discount cannot be more than the line."); return;
     }
     const payload = {
       custom_fields: customValues,
       vendor_id: header.vendor_id!, warehouse_id: header.warehouse_id, currency: currencyCode, exchange_rate: foreign && header.exchange_rate.trim() ? header.exchange_rate.trim() : null, expected_date: header.expected_date || null,
       vendor_reference: header.vendor_reference.trim() || null, notes: header.notes.trim() || null,
-      lines: lines.map((line) => ({ product_id: line.productId!, description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost })),
+      lines: lines.map((line) => ({
+        product_id: line.kind === "product" ? line.itemId : null, catalog_service_id: line.kind === "service" ? line.itemId : null,
+        description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost, discount_amount: line.discount || "0",
+      })),
     };
     try {
       setError(null);
@@ -215,13 +240,32 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   async function place() {
     if (!order) return;
     const effect = `${order.vendor_name ?? "The vendor"} is expected to deliver ${quantity(order.total_quantity)} units to ${order.warehouse_name ?? "the warehouse"}. They count as incoming stock until received.`;
-    if (!(await confirm({ title: `Place ${order.number}?`, description: `${effect} A placed order can no longer be edited.`, confirmLabel: "Place order" }))) return;
+    const open = (order.alternatives ?? []).filter((item) => item.status === "draft" || item.status === "sent");
+    const others = open.length ? ` The other ${open.length === 1 ? "request" : `${open.length} requests`} in this comparison (${open.map((item) => item.number).join(", ")}) will be cancelled.` : "";
+    if (!(await confirm({ title: `Place ${order.number}?`, description: `${effect}${others} A placed order can no longer be edited.`, confirmLabel: "Place order" }))) return;
     try { setError(null); await mutations.placeOrder(order.id); toast.success(`${order.number} placed.`); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "The order could not be placed."); }
   }
 
+  async function markSent() {
+    if (!order) return;
+    try { setError(null); await mutations.sendOrder(order.id); toast.success(`${order.number} marked as sent.`); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "The request could not be marked as sent."); }
+  }
+
   async function submitPanel() {
     if (!order || !panel) return;
+    if (panel === "alternative") {
+      if (!alternativeVendor.id) { setError("Choose a vendor."); return; }
+      try {
+        setError(null);
+        const created = await mutations.createAlternative({ id: order.id, vendorId: alternativeVendor.id });
+        toast.success(`${created.number} asks ${created.vendor_name ?? "the vendor"} for the same.`);
+        setPanel(null); setAlternativeVendor({ id: null, name: "" });
+        router.push(`${DASHBOARD_ROUTES.purchaseOrders}/${created.id}`);
+      } catch (failure) { setError(failure instanceof Error ? failure.message : "The alternative could not be created."); }
+      return;
+    }
     if (!reason.trim()) { setError("Enter a reason."); return; }
     try {
       setError(null);
@@ -243,10 +287,11 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   return (
     <PageShell
       variant="document"
-      title={order ? `Purchase order ${order.number}` : "New purchase order"}
+      title={order ? `${isRfq ? "Request for quotation" : "Purchase order"} ${order.number}` : "New request for quotation"}
       description={order
-        ? [order.vendor_name, order.ordered_at ? `Placed ${formatDateTime(order.ordered_at)}` : "Not placed yet", order.expected_date ? `Expected ${formatDateOnly(order.expected_date)}` : null].filter(Boolean).join(" · ")
-        : "Choose a vendor and the products to order. Save a draft, then place it."}
+        ? [order.vendor_name, order.ordered_at ? `Placed ${formatDateTime(order.ordered_at)}` : order.sent_at ? `Sent ${formatDateTime(order.sent_at)}` : "Not sent yet",
+          order.expected_date ? `Expected ${formatDateOnly(order.expected_date)}` : null].filter(Boolean).join(" · ")
+        : "Choose a vendor and what to buy. Save it, send it for a price, then place it as an order."}
       backHref={DASHBOARD_ROUTES.purchaseOrders}
       isLoading={isNew ? modulesLoading || clone.isLoading : query.isLoading}
       isPermissionDenied={isForbiddenError(query.error) || isForbiddenError(clone.error) || (isNew && !modulesLoading && !actions?.can_create)}
@@ -255,7 +300,11 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       actions={
         <div className="flex flex-wrap gap-2">
           {order ? <StatusValue status={purchaseOrderStatus(order)} context="record" /> : null}
-          {order?.status === "draft" && actions?.can_edit ? <Button onClick={() => void place()} disabled={mutations.isSaving}>Place order</Button> : null}
+          {isRfq && actions?.can_edit ? <Button onClick={() => void place()} disabled={mutations.isSaving}>Place order</Button> : null}
+          {/* 13c §3.8: F5's *Send* emails the RFQ; until then the buyer marks it sent. */}
+          {order?.status === "draft" && actions?.can_edit ? <Button variant="outline" onClick={() => void markSent()} disabled={mutations.isSaving}>Mark as sent</Button> : null}
+          {isRfq && actions?.can_create ? <Button variant="outline" onClick={() => { setError(null); setPanel("alternative"); }}>Ask another vendor</Button> : null}
+          {order?.rfq_group_id ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseOrders}/${order.id}/compare`}>Compare</Link></Button> : null}
           {order?.status === "ordered" && toReceive && receiptActions?.can_create ? (
             <Button asChild><Link href={`${DASHBOARD_ROUTES.purchaseReceipts}/new?order_id=${order.id}`}><PackagePlus />Receive</Link></Button>
           ) : null}
@@ -267,7 +316,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           {/* 13b Phase 5: a new draft with this order's vendor and lines. */}
           {order && actions?.can_create ? <Button asChild variant="outline"><Link href={cloneHref(`${DASHBOARD_ROUTES.purchaseOrders}/new`, order.id)}><Copy />Clone</Link></Button> : null}
           {order?.status === "ordered" && order.receipt_status === "partial" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("close"); }}>Close remaining</Button> : null}
-          {(order?.status === "ordered" && order.receipt_status === "none") && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("cancel"); }}>Cancel order</Button> : null}
+          {((order?.status === "ordered" && order.receipt_status === "none") || order?.status === "sent") && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("cancel"); }}>{order?.status === "sent" ? "Cancel request" : "Cancel order"}</Button> : null}
           {order?.status === "draft" && actions?.can_delete ? <Button variant="destructiveGhost" onClick={() => void remove()}>Remove draft</Button> : null}
         </div>
       }
@@ -339,20 +388,18 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             lineKey={(line) => line.key}
             onChange={setLines}
             createLine={blankLine}
-            addLabel="Add product"
+            addLabel="Add line"
             lineLabel={(line) => line.name || "line"}
             columns={[
               { key: "product", label: "Product", size: "lg", share: 4, render: (line, { index, cellProps }) => {
                 const productCell = cellProps("product");
                 return (
                   <div className="flex min-w-0 flex-col gap-1.5">
-                    <LinkedRecordPicker inputId={`po-product-${line.key}`} ariaLabel={`Product, line ${index + 1}`} recordType="inventory_product" valueId={line.productId} displayValue={line.name}
-                      onDisplayValueChange={(value) => updateLine({ ...line, name: value, productId: null })}
-                      onSelect={(option) => {
-                        const raw = option.raw as { cost_price?: string | number | null } | undefined;
-                        updateLine({ ...line, productId: option.id, name: option.label, unitCost: raw?.cost_price != null ? String(Number(raw.cost_price)) : line.unitCost });
-                      }}
-                      onClear={() => updateLine({ ...line, productId: null, name: "" })} placeholder="Search tracked products"
+                    <LinkedRecordPicker inputId={`po-product-${line.key}`} ariaLabel={`Item, line ${index + 1}`} recordType="catalog_item" valueId={line.itemId} displayValue={line.name}
+                      queryKeyPrefix="po-catalog-item"
+                      onDisplayValueChange={(value) => updateLine({ ...line, name: value, itemId: null })}
+                      onSelect={(option) => void pickItem(line, option)}
+                      onClear={() => updateLine({ ...line, itemId: null, name: "" })} placeholder="Search products and services"
                       createOption={canCreateProduct ? { label: (text) => `Create product "${text}"`, onCreate: (text) => setCreatingLine({ key: line.key, name: text }) } : undefined}
                       onInputKeyDown={productCell.onKeyDown}
                       inputDataAttributes={{ "data-line-editor": productCell["data-line-editor"], "data-line-row": index, "data-line-field": "product" }} />
@@ -367,7 +414,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
               { key: "cost", label: "Unit cost", size: "sm", align: "right", share: 1.5, render: (line, { cellProps }) => (
                 <LineNumberInput cellProps={cellProps("cost")} ariaLabel={`Unit cost for ${line.name || "line"}`} step="0.0001" value={line.unitCost} onChange={(value) => updateLine({ ...line, unitCost: value })} />
               ) },
-              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0)} currency={currencyCode} /></span> },
+              { key: "discount", label: "Discount", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
+                <LineNumberInput cellProps={cellProps("discount")} ariaLabel={`Discount for ${line.name || "line"}`} step="0.01" value={line.discount} onChange={(value) => updateLine({ ...line, discount: value })} />
+              ) },
+              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={lineTotal(line)} currency={currencyCode} /></span> },
             ]}
           />
         ) : (
@@ -378,13 +428,18 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             rowKey={(line) => line.id}
             emptyState={{ title: "No lines" }}
             columns={[
-              { key: "product", label: "Product", size: "lg", render: (line) => <TextLink href={`${DASHBOARD_ROUTES.products}/${line.product_id}?tab=stock`}>{line.product_name}</TextLink> },
+              { key: "product", label: "Item", size: "lg", render: (line) => (line.catalog_service_id
+                ? <TextLink href={`${DASHBOARD_ROUTES.services}/${line.catalog_service_id}`}>{line.product_name}</TextLink>
+                : <TextLink href={`${DASHBOARD_ROUTES.products}/${line.product_id}${line.track_inventory ? "?tab=stock" : ""}`}>{line.product_name}</TextLink>) },
               { key: "vendor_sku", label: "Vendor SKU", size: "sm", render: (line) => line.vendor_sku ?? "—" },
               { key: "quantity", label: "Ordered", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.quantity)}</span> },
               { key: "cost", label: "Unit cost", size: "sm", align: "right", render: (line) => <Money amount={line.unit_cost} currency={order?.currency ?? currencyCode} /> },
+              { key: "discount", label: "Discount", size: "sm", align: "right", render: (line) => (Number(line.discount_amount) ? <Money amount={line.discount_amount} currency={order?.currency ?? currencyCode} /> : "—") },
               { key: "total", label: "Total", size: "sm", align: "right", render: (line) => <Money amount={line.line_total} currency={order?.currency ?? currencyCode} /> },
               { key: "received", label: "Received", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.received)}</span> },
-              { key: "to_receive", label: "To receive", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.to_receive)}</span> },
+              { key: "to_receive", label: "To receive", size: "sm", align: "right", render: (line) => (line.needs_receipt === false
+                ? <span className="text-copy-muted">Not received</span>
+                : <span className="tabular-nums">{quantity(line.to_receive)}</span>) },
               { key: "billed", label: "Billed", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.billed)}</span> },
             ]}
           />
@@ -412,6 +467,47 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
         </section>
       ) : null}
 
+      {order?.alternatives?.length ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading description="The same request asked of other vendors. Placing one cancels the others.">Alternatives</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Alternative requests"
+            rows={order.alternatives}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.purchaseOrders}/${row.id}`}
+            emptyState={{ title: "No alternatives" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getPurchaseOrderStatus(row.status)} /> },
+              { key: "vendor", label: "Vendor", size: "lg", render: (row) => row.vendor_name ?? "—" },
+              { key: "total", label: "Total", size: "sm", align: "right", render: (row) => <Money amount={row.subtotal} currency={row.currency} /> },
+            ]}
+          />
+        </section>
+      ) : null}
+
+      {order?.vendor_returns?.length ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Vendor returns</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Vendor returns for this purchase order"
+            rows={order.vendor_returns}
+            rowKey={(row) => row.id}
+            rowHref={(row) => `${DASHBOARD_ROUTES.vendorReturns}/${row.id}`}
+            emptyState={{ title: "No vendor returns" }}
+            columns={[
+              { key: "number", label: "Number", size: "sm", render: (row) => <span className="font-semibold text-copy-primary">{row.number}</span> },
+              { key: "status", label: "Status", size: "sm", render: (row) => <StatusValue status={getVendorReturnStatus(row.status)} /> },
+              { key: "resolution", label: "Vendor will", size: "sm", render: (row) => <StatusValue status={getVendorReturnResolution(row.resolution)} /> },
+              { key: "reason", label: "Reason", render: (row) => row.reason },
+              { key: "units", label: "Units", size: "sm", align: "right", render: (row) => <span className="tabular-nums">{quantity(row.total_quantity)}</span> },
+            ]}
+          />
+        </section>
+      ) : null}
+
       {order?.bills?.length ? (
         <section className="flex flex-col gap-3">
           <SectionHeading>Bills</SectionHeading>
@@ -433,8 +529,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
         </section>
       ) : null}
 
+      {order ? <DocumentHistory moduleKey="purchase_orders" entityId={order.id} canEdit={Boolean(actions?.can_edit)} /> : null}
+
       {editable ? (
-        <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : order ? "A draft is not ordered until you place it." : "Save a draft, then place it with the vendor."}>
+        <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : order ? "A request is not an order until you place it." : "Save the request, send it for a price, then place it."}>
           <Button type="button" variant="outline" asChild><Link href={DASHBOARD_ROUTES.purchaseOrders}>Back</Link></Button>
           <Button type="button" onClick={() => void save()} disabled={mutations.isSaving}>{mutations.isSaving ? "Saving…" : "Save draft"}</Button>
         </FormFooter>
@@ -443,14 +541,27 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       <EditorPanel
         open={panel !== null}
         onOpenChange={(open) => { if (!open) setPanel(null); }}
-        title={panel === "close" ? "Close the rest of this purchase order" : `Cancel ${order?.number ?? "purchase order"}`}
-        description={panel === "close" ? "What has not arrived will not be received: it stops counting as incoming stock. Cancelling a receipt reopens the order." : "Nothing has been received on this order. Cancelling it removes it from incoming stock."}
+        title={panel === "alternative" ? "Ask another vendor" : panel === "close" ? "Close the rest of this purchase order" : `Cancel ${order?.number ?? "purchase order"}`}
+        description={panel === "alternative"
+          ? "A new request with the same lines goes to the vendor you choose. Compare the prices they send back, then place the best one."
+          : panel === "close" ? "What has not arrived will not be received: it stops counting as incoming stock. Cancelling a receipt reopens the order."
+          : isRfq ? "The request is withdrawn; nothing counts as incoming." : "Nothing has been received on this order. Cancelling it removes it from incoming stock."}
         closeLabel="Close panel"
         onSubmit={() => void submitPanel()}
         status={error ? <span role="alert">{error}</span> : null}
-        footer={<><Button variant="outline" onClick={() => setPanel(null)}>Back</Button><Button type="submit" disabled={mutations.isSaving}>{panel === "close" ? "Close remaining" : "Cancel order"}</Button></>}
+        footer={<><Button variant="outline" onClick={() => setPanel(null)}>Back</Button><Button type="submit" disabled={mutations.isSaving}>
+          {panel === "alternative" ? "Create request" : panel === "close" ? "Close remaining" : isRfq ? "Cancel request" : "Cancel order"}</Button></>}
       >
-        <Field><FieldLabel htmlFor="po-panel-reason">Reason</FieldLabel><Textarea id="po-panel-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
+        {panel === "alternative" ? (
+          <Field>
+            <FieldLabel htmlFor="po-alternative-vendor">Vendor</FieldLabel>
+            <LinkedRecordPicker inputId="po-alternative-vendor" recordType="vendor" valueId={alternativeVendor.id} displayValue={alternativeVendor.name}
+              onDisplayValueChange={(name) => setAlternativeVendor({ id: null, name })} onSelect={(option) => setAlternativeVendor({ id: option.id, name: option.label })}
+              onClear={() => setAlternativeVendor({ id: null, name: "" })} placeholder="Search vendors" suggestOnFocus />
+          </Field>
+        ) : (
+          <Field><FieldLabel htmlFor="po-panel-reason">Reason</FieldLabel><Textarea id="po-panel-reason" maxLength={500} value={reason} onChange={(event) => setReason(event.target.value)} /></Field>
+        )}
       </EditorPanel>
 
       {/* *Create product "…"* on a line (13b Phase 5): a stock-tracked product bought from this vendor. */}
@@ -472,7 +583,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           onCreated={(record) => {
             if (!creatingLine) return;
             setLines((current) => current.map((line) => (line.key === creatingLine.key
-              ? { ...line, productId: record.id, name: record.name, unitCost: record.cost_price != null ? String(Number(record.cost_price)) : line.unitCost }
+              ? { ...line, kind: "product", itemId: record.id, name: record.name, unitCost: record.cost_price != null ? String(Number(record.cost_price)) : line.unitCost }
               : line)));
           }}
         />

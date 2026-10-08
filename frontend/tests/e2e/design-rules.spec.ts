@@ -48,6 +48,10 @@ const STATIC_ROUTES = [
   "/dashboard/purchasing/reorder",
   "/dashboard/purchasing/bills",
   "/dashboard/purchasing/bills/new",
+  // 13c §3.6–3.7.
+  "/dashboard/purchasing/vendor-returns",
+  "/dashboard/purchasing/vendor-credits",
+  "/dashboard/purchasing/vendor-credits/new",
   "/dashboard/catalog/products/new",
   "/dashboard/catalog/services",
   "/dashboard/catalog/services/new",
@@ -128,10 +132,13 @@ const LISTS: Array<{ list: string; re: string; suffixes: string[]; record?: bool
   { list: "/dashboard/inventory/transfers",       re: "^/dashboard/inventory/transfers/\\d+$",     suffixes: [""] },
   { list: "/dashboard/inventory/deliveries",      re: "^/dashboard/inventory/deliveries/\\d+$",    suffixes: [""] },
   { list: "/dashboard/inventory/returns",         re: "^/dashboard/inventory/returns/\\d+$",       suffixes: [""] },
-  { list: "/dashboard/purchasing/orders",        re: "^/dashboard/purchasing/orders/\\d+$",       suffixes: [""] },
+  // 13c §3.8: an order's RFQ comparison.
+  { list: "/dashboard/purchasing/orders",        re: "^/dashboard/purchasing/orders/\\d+$",       suffixes: ["", "/compare"] },
   { list: "/dashboard/purchasing/receipts",      re: "^/dashboard/purchasing/receipts/\\d+$",     suffixes: [""] },
   // E5 (12c-erp-invoicing.md).
   { list: "/dashboard/purchasing/bills",         re: "^/dashboard/purchasing/bills/\\d+$",        suffixes: [""] },
+  { list: "/dashboard/purchasing/vendor-returns", re: "^/dashboard/purchasing/vendor-returns/\\d+$", suffixes: [""] },
+  { list: "/dashboard/purchasing/vendor-credits", re: "^/dashboard/purchasing/vendor-credits/\\d+$", suffixes: [""] },
   { list: "/dashboard/finance/credit-notes",     re: "^/dashboard/finance/credit-notes/\\d+$",    suffixes: [""] },
   { list: "/dashboard/finance/payments",         re: "^/dashboard/finance/payments/\\d+$",        suffixes: [""] },
   { list: "/dashboard/settings/modules",        re: "^/dashboard/settings/modules/\\d+$",       suffixes: [""] },

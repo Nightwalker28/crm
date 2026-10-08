@@ -15,6 +15,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException
 from sqlalchemy import or_
+from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
 from app.core.access_control import get_finance_user_scope
@@ -37,7 +38,8 @@ def _audit(db: Session, *, tenant_id: int, actor_user_id: int | None, module_key
         entity_id=entity_id, action=action, description=description, commit=False)
 
 
-def has_posted_payments(db: Session, *, tenant_id: int, invoice_id: int | None = None, bill_id: int | None = None, credit_note_id: int | None = None) -> bool:
+def has_posted_payments(db: Session, *, tenant_id: int, invoice_id: int | None = None, bill_id: int | None = None, credit_note_id: int | None = None,
+                        vendor_credit_id: int | None = None) -> bool:
     query = db.query(FinancePaymentAllocation.id).join(FinancePayment, FinancePayment.id == FinancePaymentAllocation.payment_id).filter(
         FinancePaymentAllocation.tenant_id == tenant_id, FinancePayment.status == "posted")
     if invoice_id is not None:
@@ -46,6 +48,8 @@ def has_posted_payments(db: Session, *, tenant_id: int, invoice_id: int | None =
         query = query.filter(FinancePaymentAllocation.bill_id == bill_id)
     if credit_note_id is not None:
         query = query.filter(FinancePaymentAllocation.credit_note_id == credit_note_id)
+    if vendor_credit_id is not None:
+        query = query.filter(FinancePaymentAllocation.vendor_credit_id == vendor_credit_id)
     return query.first() is not None
 
 
@@ -80,10 +84,20 @@ def _lock_bill(db: Session, *, tenant_id: int, bill_id: int):
     return bill
 
 
+def _lock_vendor_credit(db: Session, *, tenant_id: int, vendor_credit_id: int):
+    from app.modules.purchasing.models import PurchaseVendorCredit
+
+    credit = db.query(PurchaseVendorCredit).filter(PurchaseVendorCredit.tenant_id == tenant_id, PurchaseVendorCredit.id == vendor_credit_id,
+        PurchaseVendorCredit.deleted_at.is_(None)).with_for_update().first()
+    if credit is None:
+        raise HTTPException(status_code=404, detail="Vendor credit not found")
+    return credit
+
+
 def _target(allocation: dict) -> tuple[str, int]:
-    targets = [(key, allocation.get(key)) for key in ("invoice_id", "credit_note_id", "bill_id") if allocation.get(key)]
+    targets = [(key, allocation.get(key)) for key in ("invoice_id", "credit_note_id", "bill_id", "vendor_credit_id") if allocation.get(key)]
     if len(targets) != 1:
-        raise HTTPException(status_code=400, detail="Each allocation names exactly one invoice, credit note or bill")
+        raise HTTPException(status_code=400, detail="Each allocation names exactly one invoice, credit note, bill or vendor credit")
     return targets[0][0], int(targets[0][1])
 
 
@@ -130,6 +144,17 @@ def record_payment(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
             invoice = document.invoice
             outstanding, currency, label = money(document.refund_due), document.currency, document.number
             party = (invoice.customer_organization_id, invoice.customer_contact_id, invoice.customer_name) if invoice else (None, None, None)
+        elif key == "vendor_credit_id":
+            from app.modules.purchasing.services.vendor_credit_services import refresh_vendor_credit_balance
+
+            document = _lock_vendor_credit(db, tenant_id=tenant_id, vendor_credit_id=document_id)
+            if direction != "received" or kind != "refund":
+                raise HTTPException(status_code=400, detail="A vendor credit is settled by a refund received from the vendor")
+            if document.status != "issued":
+                raise HTTPException(status_code=409, detail="Refunds are recorded against issued vendor credits only")
+            refresh_vendor_credit_balance(db, document)
+            outstanding, currency, label = money(document.credit_remaining), document.currency, document.number
+            party = (document.vendor_id, None, document.vendor.org_name if document.vendor else None)
         else:
             from app.modules.purchasing.services.bill_services import refresh_bill_balance
 
@@ -177,6 +202,12 @@ def record_payment(db: Session, *, tenant_id: int, actor_user_id: int | None, pa
             refresh_credit_note_balance(db, document)
             _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, module_key="finance_credit_notes", entity_type="finance_credit_note",
                 entity_id=document.id, action="refund.record", description=f"{what} {amount} {currency} ({payment.number})")
+        elif key == "vendor_credit_id":
+            from app.modules.purchasing.services.vendor_credit_services import refresh_vendor_credit_balance
+
+            refresh_vendor_credit_balance(db, document)
+            _audit(db, tenant_id=tenant_id, actor_user_id=actor_user_id, module_key="purchase_vendor_credits", entity_type="purchase_vendor_credit",
+                entity_id=document.id, action="refund.record", description=f"Refund received: {amount} {currency} ({payment.number})")
         else:
             from app.modules.purchasing.services.bill_services import refresh_bill_balance
 
@@ -232,6 +263,12 @@ def void_payment(db: Session, user, payment_id: int, *, reason: str) -> FinanceP
             refresh_credit_note_balance(db, _lock_credit_note(db, tenant_id=payment.tenant_id, credit_note_id=allocation.credit_note_id))
             _audit(db, tenant_id=payment.tenant_id, actor_user_id=user.id, module_key="finance_credit_notes", entity_type="finance_credit_note",
                 entity_id=allocation.credit_note_id, action="refund.void", description=f"Voided refund {payment.number}: {reason}")
+        elif allocation.vendor_credit_id:
+            from app.modules.purchasing.services.vendor_credit_services import refresh_vendor_credit_balance
+
+            refresh_vendor_credit_balance(db, _lock_vendor_credit(db, tenant_id=payment.tenant_id, vendor_credit_id=allocation.vendor_credit_id))
+            _audit(db, tenant_id=payment.tenant_id, actor_user_id=user.id, module_key="purchase_vendor_credits", entity_type="purchase_vendor_credit",
+                entity_id=allocation.vendor_credit_id, action="refund.void", description=f"Voided refund {payment.number}: {reason}")
         elif allocation.bill_id:
             from app.modules.purchasing.services.bill_services import refresh_bill_balance
 
@@ -244,9 +281,9 @@ def void_payment(db: Session, user, payment_id: int, *, reason: str) -> FinanceP
 
 
 def _document_labels(db: Session, payments: list[FinancePayment]) -> dict[tuple[str, int], str]:
-    from app.modules.purchasing.models import PurchaseBill
+    from app.modules.purchasing.models import PurchaseBill, PurchaseVendorCredit
 
-    invoice_ids, credit_ids, bill_ids = set(), set(), set()
+    invoice_ids, credit_ids, bill_ids, vendor_credit_ids = set(), set(), set(), set()
     for payment in payments:
         for allocation in payment.allocations:
             if allocation.invoice_id:
@@ -255,6 +292,8 @@ def _document_labels(db: Session, payments: list[FinancePayment]) -> dict[tuple[
                 credit_ids.add(allocation.credit_note_id)
             elif allocation.bill_id:
                 bill_ids.add(allocation.bill_id)
+            elif allocation.vendor_credit_id:
+                vendor_credit_ids.add(allocation.vendor_credit_id)
     labels: dict[tuple[str, int], str] = {}
     if invoice_ids:
         labels.update({("invoice", row.id): row.invoice_number or "Draft invoice" for row in db.query(FinancePosInvoice.id, FinancePosInvoice.invoice_number).filter(FinancePosInvoice.id.in_(invoice_ids))})
@@ -262,6 +301,8 @@ def _document_labels(db: Session, payments: list[FinancePayment]) -> dict[tuple[
         labels.update({("credit_note", row.id): row.number or "Draft credit note" for row in db.query(FinanceCreditNote.id, FinanceCreditNote.number).filter(FinanceCreditNote.id.in_(credit_ids))})
     if bill_ids:
         labels.update({("bill", row.id): f"{row.number} ({row.vendor_invoice_number})" for row in db.query(PurchaseBill.id, PurchaseBill.number, PurchaseBill.vendor_invoice_number).filter(PurchaseBill.id.in_(bill_ids))})
+    if vendor_credit_ids:
+        labels.update({("vendor_credit", row.id): row.number or "Draft vendor credit" for row in db.query(PurchaseVendorCredit.id, PurchaseVendorCredit.number).filter(PurchaseVendorCredit.id.in_(vendor_credit_ids))})
     return labels
 
 
@@ -273,6 +314,8 @@ def serialize_payment(payment: FinancePayment, labels: dict[tuple[str, int], str
             kind, document_id = "invoice", allocation.invoice_id
         elif allocation.credit_note_id:
             kind, document_id = "credit_note", allocation.credit_note_id
+        elif allocation.vendor_credit_id:
+            kind, document_id = "vendor_credit", allocation.vendor_credit_id
         else:
             kind, document_id = "bill", allocation.bill_id
         allocations.append({"id": allocation.id, "document_type": kind, "document_id": document_id,
@@ -296,7 +339,8 @@ def serialize_payments(db: Session, payments: list[FinancePayment]) -> list[dict
     return [{**serialize_payment(payment, labels), "custom_fields": custom.get(payment.id) or None} for payment in payments]
 
 
-def payments_for(db: Session, *, tenant_id: int, invoice_id: int | None = None, bill_id: int | None = None, credit_note_id: int | None = None) -> list[dict]:
+def payments_for(db: Session, *, tenant_id: int, invoice_id: int | None = None, bill_id: int | None = None, credit_note_id: int | None = None,
+                 vendor_credit_id: int | None = None) -> list[dict]:
     query = db.query(FinancePayment).options(selectinload(FinancePayment.allocations)).join(
         FinancePaymentAllocation, FinancePaymentAllocation.payment_id == FinancePayment.id).filter(FinancePayment.tenant_id == tenant_id)
     if invoice_id is not None:
@@ -305,6 +349,8 @@ def payments_for(db: Session, *, tenant_id: int, invoice_id: int | None = None, 
         query = query.filter(FinancePaymentAllocation.bill_id == bill_id)
     if credit_note_id is not None:
         query = query.filter(FinancePaymentAllocation.credit_note_id == credit_note_id)
+    if vendor_credit_id is not None:
+        query = query.filter(FinancePaymentAllocation.vendor_credit_id == vendor_credit_id)
     return serialize_payments(db, query.order_by(FinancePayment.paid_on, FinancePayment.id).distinct().all())
 
 
@@ -315,8 +361,26 @@ PAYMENT_SORT_FIELDS = {
 }
 
 
+def list_field_map() -> dict:
+    """The payment list's saved-view fields (13c §3.2)."""
+    return {
+        "number": {"expression": FinancePayment.number, "type": "text"},
+        "direction": {"expression": FinancePayment.direction, "type": "text"},
+        "kind": {"expression": FinancePayment.kind, "type": "text"},
+        "status": {"expression": FinancePayment.status, "type": "text"},
+        "party_name": {"expression": FinancePayment.party_name, "type": "text"},
+        "organization_id": {"expression": FinancePayment.organization_id, "type": "number"},
+        "method": {"expression": FinancePayment.method, "type": "text"},
+        "reference": {"expression": FinancePayment.reference, "type": "text"},
+        "created_by": {"expression": FinancePayment.created_by, "type": "number"},
+        "currency": {"expression": FinancePayment.currency, "type": "text"},
+        "amount": {"expression": FinancePayment.amount, "type": "number"},
+        "paid_on": {"expression": FinancePayment.paid_on, "type": "date"},
+        "created_at": {"expression": FinancePayment.created_at, "type": "date"},
+    }
+
 def list_query(db: Session, user, *, search: str | None = None, direction: str | None = None, status: str | None = None,
-               method: str | None = None, date_from: date | None = None, date_to: date | None = None):
+               method: str | None = None, date_from: date | None = None, date_to: date | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None):
     """The payment list's rows, in the finance scope. The list and its export both start here (13a A5)."""
     query = _scoped(db.query(FinancePayment).options(selectinload(FinancePayment.allocations)).filter(FinancePayment.tenant_id == user.tenant_id), db, user)
     if direction in DIRECTIONS:
@@ -335,13 +399,15 @@ def list_query(db: Session, user, *, search: str | None = None, direction: str |
             FinancePaymentAllocation.tenant_id == user.tenant_id, FinancePosInvoice.invoice_number.ilike(pattern))
         query = query.filter(or_(FinancePayment.number.ilike(pattern), FinancePayment.party_name.ilike(pattern),
             FinancePayment.reference.ilike(pattern), FinancePayment.method.ilike(pattern), FinancePayment.id.in_(invoice_hits)))
+    query = apply_list_conditions(query, field_map=list_field_map(), filters_all=filters_all, filters_any=filters_any)
     return query
 
 
 def list_payments(db: Session, user, *, pagination: Pagination, search: str | None = None, direction: str | None = None,
                   status: str | None = None, method: str | None = None, date_from: date | None = None, date_to: date | None = None,
-                  sort_by: str | None = None, sort_direction: str | None = None) -> dict:
-    query = list_query(db, user, search=search, direction=direction, status=status, method=method, date_from=date_from, date_to=date_to)
+                  sort_by: str | None = None, sort_direction: str | None = None, filters_all: list[dict] | None = None, filters_any: list[dict] | None = None) -> dict:
+    query = list_query(db, user, search=search, direction=direction, status=status, method=method, date_from=date_from, date_to=date_to,
+                       filters_all=filters_all, filters_any=filters_any)
     total = query.count()
     column = PAYMENT_SORT_FIELDS.get((sort_by or "").strip())
     if column is not None:

@@ -249,7 +249,8 @@ CLONE_SPECS: dict[str, CloneSpec] = {
         load=_purchase_order,
         fields=("vendor_id", "warehouse_id", "currency", "notes"),
         lines_key="lines",
-        line_fields=("product_id", "product_name", "sku", "description", "quantity", "unit_cost"),
+        line_fields=("product_id", "catalog_service_id", "kind", "product_name", "sku", "description", "quantity", "unit_cost",
+                     "discount_amount"),
         name_fields=("vendor_name", "warehouse_name"),
     ),
 }

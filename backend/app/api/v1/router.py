@@ -22,6 +22,7 @@ from app.modules.inventory.routes.return_routes import router as inventory_retur
 from app.modules.inventory.routes.valuation_routes import router as inventory_valuation_router
 from app.modules.purchasing.routes.bill_routes import router as purchasing_bill_router
 from app.modules.purchasing.routes.purchasing_routes import router as purchasing_router
+from app.modules.purchasing.routes.vendor_document_routes import router as purchasing_vendor_document_router
 from app.modules.catalog.routes.product_routes import router as catalog_products_router
 from app.modules.catalog.routes.service_routes import router as catalog_services_router
 from app.modules.documents.routes.document_routes import router as documents_router
@@ -137,6 +138,7 @@ router.include_router(inventory_return_router)
 router.include_router(inventory_valuation_router)
 router.include_router(purchasing_router)
 router.include_router(purchasing_bill_router)
+router.include_router(purchasing_vendor_document_router)
 router.include_router(documents_router)
 router.include_router(mail_router)
 router.include_router(finance_router)

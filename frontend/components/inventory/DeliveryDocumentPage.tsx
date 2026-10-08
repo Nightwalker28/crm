@@ -34,6 +34,7 @@ import { getDeliveryStatus, getReturnStatus } from "@/lib/statusStyles";
 import type { InventoryReturn } from "@/hooks/inventory/useReturns";
 import { formatQuantity as quantity } from "@/lib/quantity";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type DeliveryHeader = RecordFormValue & {
@@ -320,6 +321,8 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
         </section>
       ) : null}
       </>)}
+
+      {doc ? <DocumentHistory moduleKey="inventory_deliveries" entityId={doc.id} canEdit={Boolean(actions?.can_edit)} /> : null}
 
       {editable && !missingOrder ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : doc ? "A draft takes no stock until it is posted." : "Save a draft, then post it to take the stock out."}>

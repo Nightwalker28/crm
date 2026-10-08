@@ -12,6 +12,7 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 
 from app.core.database import get_db
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.pagination import Pagination, get_pagination
 from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
@@ -56,6 +57,8 @@ class AllocationPayload(BaseModel):
     invoice_id: int | None = Field(default=None, gt=0)
     credit_note_id: int | None = Field(default=None, gt=0)
     bill_id: int | None = Field(default=None, gt=0)
+    # A vendor's refund of a vendor credit (13c §3.6).
+    vendor_credit_id: int | None = Field(default=None, gt=0)
     amount: Decimal = Field(gt=0, max_digits=14, decimal_places=2)
 
 
@@ -81,9 +84,10 @@ def _credit_note(db: Session, user, credit_note_id: int) -> dict:
 @router.get("/credit-notes")
 def list_credit_notes(status_filter: str | None = Query(default=None, alias="status", pattern="^(draft|issued|void|refund_due)$"),
                       invoice_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100),
-                      pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
+                      conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
                       _module=Depends(require_module_access(CREDIT_NOTES)), _view=Depends(require_action_access(CREDIT_NOTES, "view"))):
-    return jsonable_encoder(credit_note_services.list_credit_notes(db, user, pagination=pagination, status=status_filter, search=search, invoice_id=invoice_id))
+    return jsonable_encoder(credit_note_services.list_credit_notes(db, user, pagination=pagination, status=status_filter, search=search, invoice_id=invoice_id,
+                                                                    **conditions.as_filters()))
 
 
 @router.get("/credit-notes/return-candidates")
@@ -110,10 +114,10 @@ def create_credit_note(payload: CreditNoteCreatePayload, db: Session = Depends(g
 
 @router.post("/credit-notes/export-job", status_code=202)
 def export_credit_notes(status_filter: str | None = Query(default=None, alias="status", pattern="^(draft|issued|void|refund_due)$"),
-        invoice_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), db: Session = Depends(get_db), user=Depends(require_user),
+        invoice_id: int | None = Query(default=None, gt=0), search: str | None = Query(default=None, max_length=100), conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(CREDIT_NOTES)), _export=Depends(require_action_access(CREDIT_NOTES, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=CREDIT_NOTES, filters={"status": status_filter, "search": search, "invoice_id": invoice_id})
+    return start_document_export(db, user, module_key=CREDIT_NOTES, filters={"status": status_filter, "search": search, "invoice_id": invoice_id, **conditions.as_filters()})
 
 
 @router.get("/credit-notes/{credit_note_id}")
@@ -172,10 +176,11 @@ def list_payments(direction: str | None = Query(default=None, pattern="^(receive
                   method: str | None = Query(default=None, max_length=100), search: str | None = Query(default=None, max_length=100),
                   date_from: date | None = None, date_to: date | None = None,
                   sort_by: str | None = Query(default=None, max_length=40), sort_direction: str | None = Query(default=None, pattern="^(asc|desc)$"),
-                  pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
+                  conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user),
                   _module=Depends(require_module_access(PAYMENTS)), _view=Depends(require_action_access(PAYMENTS, "view"))):
     return jsonable_encoder(payment_services.list_payments(db, user, pagination=pagination, search=search, direction=direction,
-        status=status_filter, method=method, date_from=date_from, date_to=date_to, sort_by=sort_by, sort_direction=sort_direction))
+        status=status_filter, method=method, date_from=date_from, date_to=date_to, sort_by=sort_by, sort_direction=sort_direction,
+        **conditions.as_filters()))
 
 
 @router.post("/payments", status_code=201)
@@ -188,6 +193,8 @@ def record_payment(payload: PaymentPayload, db: Session = Depends(get_db), user=
             require_access(db, user, CREDIT_NOTES, "view", detail="Recording a refund needs access to credit notes")
         elif allocation.bill_id:
             require_access(db, user, "purchase_bills", "view", detail="Paying a bill needs access to bills")
+        elif allocation.vendor_credit_id:
+            require_access(db, user, "purchase_vendor_credits", "view", detail="Recording a vendor's refund needs access to vendor credits")
     data = apply_user_write_rules(db, tenant_id=user.tenant_id, module_key=PAYMENTS, payload=payload.model_dump())
     payment = payment_services.record_payment(db, tenant_id=user.tenant_id, actor_user_id=user.id, payload=data, finance_user=user)
     db.commit()
@@ -198,10 +205,10 @@ def record_payment(payload: PaymentPayload, db: Session = Depends(get_db), user=
 def export_payments(direction: str | None = Query(default=None, pattern="^(received|made)$"),
         status_filter: str | None = Query(default=None, alias="status", pattern="^(posted|void)$"),
         method: str | None = Query(default=None, max_length=100), search: str | None = Query(default=None, max_length=100),
-        date_from: date | None = None, date_to: date | None = None, db: Session = Depends(get_db), user=Depends(require_user),
+        date_from: date | None = None, date_to: date | None = None, conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(PAYMENTS)), _export=Depends(require_action_access(PAYMENTS, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=PAYMENTS, filters={"direction": direction, "status": status_filter, "method": method, "search": search, "date_from": date_from, "date_to": date_to})
+    return start_document_export(db, user, module_key=PAYMENTS, filters={"direction": direction, "status": status_filter, "method": method, "search": search, "date_from": date_from, "date_to": date_to, **conditions.as_filters()})
 
 
 @router.get("/payments/{payment_id}")

@@ -23,6 +23,9 @@ type Props = {
   onExportSuccess?: () => void;
   /** The module whose `configure` grant lets the importer add unknown picklist values. */
   picklistModuleKey?: string;
+  /** See `ExportControls`: `false` for an export that takes the list's own query string. */
+  scopedExport?: boolean;
+  exportDescription?: string;
 };
 
 export function ModuleImportExportControls({
@@ -38,6 +41,8 @@ export function ModuleImportExportControls({
   currentPageIds = [],
   onExportSuccess,
   picklistModuleKey,
+  scopedExport,
+  exportDescription,
 }: Props) {
   const { modules } = useAccessibleModules();
   const canAddListValues = Boolean(
@@ -101,6 +106,8 @@ export function ModuleImportExportControls({
           selectedIds={selectedIds}
           currentPageIds={currentPageIds}
           onExportSuccess={onExportSuccess}
+          scopedExport={scopedExport}
+          description={exportDescription}
         />
       ) : null}
     </div>

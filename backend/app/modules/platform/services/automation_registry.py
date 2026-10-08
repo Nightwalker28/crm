@@ -278,8 +278,11 @@ AUTOMATION_CONDITION_FIELDS_BY_MODULE = {
 
 RECORD_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "documents", "tasks", "calendar", "inventory_stock", "inventory_adjustments", "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "finance_pos", "finance_credit_notes", "finance_payments", "purchase_bills", "inventory_valuation")
 # Record comments exist on these modules only (`record_comments.RECORD_COMMENT_MODULES`); a
-# note on a task or a document had nowhere to render.
-NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders")
+# note on a task or a file had nowhere to render. ERP documents show notes in their history
+# panel (13c §3.1).
+NOTE_MODULE_KEYS = ("sales_leads", "sales_opportunities", "sales_quotes", "sales_orders", "inventory_adjustments",
+                    "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "purchase_bills",
+                    "finance_credit_notes", "finance_payments")
 
 AUTOMATION_ACTIONS: tuple[AutomationAction, ...] = (
     AutomationAction(

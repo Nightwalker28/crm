@@ -59,6 +59,8 @@ type Props = {
   entityId: string | number;
   /** Enables the composer's note mode, and deleting a note from its own entry. */
   canEdit?: boolean;
+  /** What the empty feed tells the operator to do; a document has no calls to log. */
+  emptyDescription?: string;
   composer?: Omit<ComponentProps<typeof RecordTimelineComposer>, "moduleKey" | "entityId" | "canAddNote">;
 };
 
@@ -67,6 +69,7 @@ type Filter = "all" | RecordActivityType;
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
   { id: "note", label: "Notes" },
+  { id: "document", label: "History" },
   { id: "email", label: "Email" },
   { id: "call", label: "Calls" },
   { id: "whatsapp", label: "WhatsApp" },
@@ -77,6 +80,7 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
   call: Phone,
+  document: History,
   email: Mail,
   follow_up: PhoneCall,
   lifecycle: Sparkles,
@@ -88,6 +92,7 @@ const TYPE_ICONS: Record<RecordActivityType, LucideIcon> = {
 
 const TYPE_LABELS: Record<RecordActivityType, string> = {
   call: "Call",
+  document: "Change",
   email: "Email",
   follow_up: "Follow-up",
   lifecycle: "Record",
@@ -314,6 +319,7 @@ export default function RecordTimeline({
   moduleKey,
   entityId,
   canEdit = false,
+  emptyDescription = "Add a note or log a call above and it will appear here.",
   composer,
 }: Props) {
   const queryClient = useQueryClient();
@@ -447,7 +453,7 @@ export default function RecordTimeline({
             title={filter === "all" ? "Nothing on the timeline yet" : "Nothing of this type yet"}
             description={
               filter === "all"
-                ? "Add a note or log a call above and it will appear here."
+                ? emptyDescription
                 : "Try a different filter to see the rest of this record's history."
             }
           />

@@ -9,6 +9,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.core.database import Base
+from app.core.list_conditions import ListConditions
 from app.core.module_filters import parse_filter_conditions
 from app.core.pagination import create_pagination
 from app.modules.catalog.models import CatalogProduct
@@ -27,6 +28,11 @@ from app.modules.sales.repositories import organizations_repository
 from app.modules.sales.services.organizations_services import export_organizations_for_view
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
+
+
+NO_CONDITIONS = ListConditions()
+CONDITIONS = ListConditions(all=[{"field": "status", "operator": "is", "value": "draft"}],
+                            any=[{"field": "number", "operator": "contains", "value": "7"}])
 
 
 class _RecordingQuery:
@@ -90,45 +96,71 @@ class ListAndExportShareOneQueryTests(unittest.TestCase):
         self.assertEqual(DOCUMENT_EXPORT_MODULES, {
             "inventory_deliveries", "inventory_returns", "purchase_orders", "purchase_receipts", "purchase_bills",
             "finance_pos", "finance_credit_notes", "finance_payments",
+            # 13c §3.3.
+            "inventory_adjustments", "inventory_transfers", "sales_orders",
+            "purchase_vendor_returns", "purchase_vendor_credits",
         })
+
+    def test_adjustments_and_transfers(self):
+        from app.modules.inventory.routes import document_routes
+        from app.modules.inventory.services import document_services
+
+        for kind in ("adjustments", "transfers"):
+            with self.subTest(kind=kind):
+                route = document_routes.adjustments if kind == "adjustments" else document_routes.transfers
+                self._assert_parity(f"inventory_{kind}", document_services, "list_query",
+                    lambda: route(status="draft", search="ADJ", include_deleted=False, conditions=CONDITIONS, pagination=self.pagination,
+                                  db=self.db, user=self.user),
+                    {"status": "draft", "search": "ADJ", **CONDITIONS.as_filters()})
+
+    def test_saved_view_conditions_reach_the_export(self):
+        """13c §3.2: a saved view's conditions filter the list and its export alike."""
+        self._assert_parity("purchase_orders", purchase_order_services, "list_query",
+            lambda: purchasing_routes.list_orders(status=None, vendor_id=None, search=None, pagination=self.pagination,
+                                                  conditions=CONDITIONS, db=self.db, user=self.user),
+            CONDITIONS.as_filters())
+        self._assert_parity("purchase_bills", bill_services, "list_query",
+            lambda: bill_routes.list_bills(status=None, vendor_id=None, order_id=None, search=None, sort_by=None, sort_direction=None,
+                                           pagination=self.pagination, conditions=CONDITIONS, db=self.db, user=self.user),
+            CONDITIONS.as_filters())
 
     def test_deliveries(self):
         self._assert_parity("inventory_deliveries", delivery_services, "list_query",
-            lambda: delivery_routes.deliveries(status="posted", search="DEL", order_id=4, pagination=self.pagination, db=self.db, user=self.user),
+            lambda: delivery_routes.deliveries(status="posted", search="DEL", order_id=4, pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "posted", "search": "DEL", "order_id": 4})
 
     def test_returns(self):
         self._assert_parity("inventory_returns", return_services, "list_query",
-            lambda: return_routes.returns(status="received", search="R", delivery_id=3, pagination=self.pagination, db=self.db, user=self.user),
+            lambda: return_routes.returns(status="received", search="R", delivery_id=3, pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "received", "search": "R", "delivery_id": 3})
 
     def test_purchase_orders(self):
         self._assert_parity("purchase_orders", purchase_order_services, "list_query",
-            lambda: purchasing_routes.list_orders(status="open", vendor_id=5, search="PO", pagination=self.pagination, db=self.db, user=self.user),
+            lambda: purchasing_routes.list_orders(status="open", vendor_id=5, search="PO", pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "open", "vendor_id": 5, "search": "PO"})
 
     def test_receipts(self):
         self._assert_parity("purchase_receipts", receipt_services, "list_query",
-            lambda: purchasing_routes.list_receipts(status="posted", order_id=2, search="GRN", pagination=self.pagination, db=self.db, user=self.user),
+            lambda: purchasing_routes.list_receipts(status="posted", order_id=2, search="GRN", pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "posted", "order_id": 2, "search": "GRN"})
 
     def test_bills(self):
         self._assert_parity("purchase_bills", bill_services, "list_query",
             lambda: bill_routes.list_bills(status="overdue", vendor_id=5, order_id=None, search="B", sort_by=None, sort_direction=None,
-                                           pagination=self.pagination, db=self.db, user=self.user),
+                                           pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "overdue", "vendor_id": 5, "search": "B"})
 
     def test_credit_notes(self):
         self._assert_parity("finance_credit_notes", credit_note_services, "list_query",
             lambda: credit_payment_routes.list_credit_notes(status_filter="issued", invoice_id=9, search="CN", pagination=self.pagination,
-                                                            db=self.db, user=self.user),
+                                                            conditions=NO_CONDITIONS, db=self.db, user=self.user),
             {"status": "issued", "invoice_id": 9, "search": "CN"})
 
     def test_payments(self):
         self._assert_parity("finance_payments", payment_services, "list_query",
             lambda: credit_payment_routes.list_payments(direction="received", status_filter="posted", method="card", search="P",
                                                         date_from=date(2026, 1, 1), date_to=date(2026, 2, 1), sort_by=None,
-                                                        sort_direction=None, pagination=self.pagination, db=self.db, user=self.user),
+                                                        sort_direction=None, pagination=self.pagination, conditions=NO_CONDITIONS, db=self.db, user=self.user),
             # Dates travel through the job payload as ISO strings.
             {"direction": "received", "status": "posted", "method": "card", "search": "P", "date_from": "2026-01-01", "date_to": "2026-02-01"})
 
@@ -195,7 +227,7 @@ class ListAndExportReturnTheSameRowsTests(unittest.TestCase):
         for filters in ({}, {"status": "ordered"}, {"vendor_id": 5}, {"status": "draft", "vendor_id": 5}, {"search": "Grip"}):
             with self.subTest(filters=filters):
                 listed = purchasing_routes.list_orders(status=filters.get("status"), vendor_id=filters.get("vendor_id"), search=filters.get("search"),
-                    pagination=create_pagination(1, 50), db=self.db, user=self.user)
+                    pagination=create_pagination(1, 50), conditions=NO_CONDITIONS, db=self.db, user=self.user)
                 rows, _headers = document_export_rows(self.db, self.user, module_key="purchase_orders", filters=filters)
                 self.assertEqual(sorted(row["number"] for row in listed["results"]), sorted(row["number"] for row in rows))
 

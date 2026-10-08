@@ -39,7 +39,7 @@ test("a purchase order is placed, partly received and its stock arrives at cost"
   await expect(page.getByLabel(new RegExp(`^Quantity to order: ${product.name}( in Main)?$`))).toHaveValue("10");
 
   await page.goto("/dashboard/purchasing/orders/new");
-  await expect(page.getByRole("heading", { name: "New purchase order" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "New request for quotation" })).toBeVisible();
   await page.getByRole("combobox", { name: "Vendor", exact: true }).fill(vendor.org_name);
   await page.getByRole("option", { name: new RegExp(vendor.org_name) }).click();
   await page.getByPlaceholder("Search tracked products").fill(product.name);
@@ -54,7 +54,8 @@ test("a purchase order is placed, partly received and its stock arrives at cost"
     await page.evaluate((value) => localStorage.setItem("theme", value), theme);
     await page.goto(orderUrl);
     await expect(page.locator("html")).toHaveClass(new RegExp(theme));
-    await expect(page.getByRole("heading", { name: /^Purchase order PO-/ })).toBeVisible();
+    // Before it is placed, the order is a request for quotation (13c §3.8).
+    await expect(page.getByRole("heading", { name: /^Request for quotation PO-/ })).toBeVisible();
   }
 
   await page.getByRole("button", { name: "Place order", exact: true }).click();

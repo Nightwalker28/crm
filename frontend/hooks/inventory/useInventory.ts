@@ -61,11 +61,6 @@ export function useProductStock(productId: number | null) {
   return useQuery({ queryKey: ["inventory", "product", productId], queryFn: () => inventoryRequest<ProductStock>(`/products/${productId}/stock`), enabled: productId !== null });
 }
 
-export function useInventoryDocuments(kind: InventoryKind, page: number, pageSize: number, status: string) {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  if (status) params.set("status", status);
-  return useQuery({ queryKey: ["inventory", kind, page, pageSize, status], queryFn: () => inventoryRequest<Page<InventoryDocument>>(`/${kind}?${params}`), placeholderData: keepPreviousData });
-}
 
 export function useInventoryDocument(kind: InventoryKind, id: number | null) {
   return useQuery({ queryKey: ["inventory", kind, id], queryFn: () => inventoryRequest<InventoryDocument>(`/${kind}/${id}`), enabled: id !== null });
@@ -109,7 +104,7 @@ export type ValuationRow = { product_id: number; product_name: string; sku: stri
 export type ValuationSummary = { base_currency: string; as_of: string | null; total_value: string; products_in_stock: number; cost_missing: number;
   by_warehouse: Array<{ warehouse_id: number; warehouse_name: string; on_hand: string; stock_value: string }>;
   by_category: Array<{ category_id: number | null; category_name: string | null; stock_value: string }> };
-export type Revaluation = { id: number; number: string; kind: "manual" | "bill_variance" | "migration"; product_id: number; product_name: string | null; sku: string | null;
+export type Revaluation = { id: number; number: string; kind: "manual" | "bill_variance" | "vendor_credit" | "migration"; product_id: number; product_name: string | null; sku: string | null;
   on_hand: string; average_before: string | null; average_after: string | null; stock_change: string; cogs_change: string; reason: string;
   bill_line_id: number | null; reverses_id: number | null; created_by: number | null; actor_name: string | null; created_at: string };
 export type ValuationFilters = { asOf?: string; warehouseId?: string; categoryId?: string; search?: string; costMissing?: boolean; sortBy?: string; sortOrder?: "asc" | "desc" };

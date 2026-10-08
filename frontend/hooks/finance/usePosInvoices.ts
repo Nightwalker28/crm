@@ -30,7 +30,7 @@ export type PosInvoiceLine = {
   creditable?: number | null;
 };
 
-export type PaymentAllocation = { id: number; document_type: "invoice" | "credit_note" | "bill"; document_id: number; document_label: string | null; amount: string };
+export type PaymentAllocation = { id: number; document_type: "invoice" | "credit_note" | "bill" | "vendor_credit"; document_id: number; document_label: string | null; amount: string };
 
 export type PaymentRecord = {
   /** The one field system (13b §3.4). */

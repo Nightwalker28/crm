@@ -1,6 +1,6 @@
 "use client";
 
-import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
 import { apiFetch } from "@/lib/api";
@@ -50,10 +50,9 @@ export type OrderInvoicing = {
 
 export type PaymentDraft = {
   direction: "received" | "made"; kind?: "payment" | "refund"; paid_on?: string | null; method?: string | null; reference?: string | null;
-  notes?: string | null; allocations: Array<{ invoice_id?: number; credit_note_id?: number; bill_id?: number; amount: string }>;
+  notes?: string | null; allocations: Array<{ invoice_id?: number; credit_note_id?: number; bill_id?: number; vendor_credit_id?: number; amount: string }>;
 };
 
-type Page<T> = { results: T[]; page: number; page_size: number; total_count: number; total_pages: number; range_start: number; range_end: number };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await apiFetch(path, init);
@@ -63,12 +62,6 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 const json = (method: string, body: unknown): RequestInit => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
-export function useCreditNotes(page: number, pageSize: number, status: string, search: string) {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  if (status) params.set("status", status);
-  if (search.trim()) params.set("search", search.trim());
-  return useQuery({ queryKey: ["finance-credit-notes", page, pageSize, status, search], queryFn: () => request<Page<CreditNote>>(`/finance/credit-notes?${params}`), placeholderData: keepPreviousData });
-}
 
 export function useCreditNote(id: number | null) {
   return useQuery({ queryKey: ["finance-credit-notes", "record", id], queryFn: () => request<CreditNote>(`/finance/credit-notes/${id}`), enabled: id !== null });
@@ -82,13 +75,6 @@ export function useReturnCreditCandidates(returnId: number | null) {
   });
 }
 
-export function usePayments(page: number, pageSize: number, filters: { direction: string; status: string; search: string }) {
-  const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
-  if (filters.direction) params.set("direction", filters.direction);
-  if (filters.status) params.set("status", filters.status);
-  if (filters.search.trim()) params.set("search", filters.search.trim());
-  return useQuery({ queryKey: ["finance-payments", page, pageSize, filters], queryFn: () => request<Page<PaymentRecord>>(`/finance/payments?${params}`), placeholderData: keepPreviousData });
-}
 
 export function usePayment(id: number | null) {
   return useQuery({ queryKey: ["finance-payments", "record", id], queryFn: () => request<PaymentRecord>(`/finance/payments/${id}`), enabled: id !== null });

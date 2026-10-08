@@ -80,6 +80,10 @@ def next_average(state: CostState, *, quantity: Decimal, value: Decimal) -> Deci
     return state.last_cost
 
 
+#: Outbound moves that carry their own unit cost instead of taking the average.
+OUTBOUND_AT_OWN_COST = frozenset({"vendor_return"})
+
+
 def cost_move(state: CostState, *, quantity: Decimal, move_type: str, unit_cost: Decimal | None,
               cost_source: str | None, reversed_move=None) -> tuple[Decimal, Decimal, str]:
     """(unit cost, signed value, cost source) for one move, before it posts."""
@@ -102,6 +106,13 @@ def cost_move(state: CostState, *, quantity: Decimal, move_type: str, unit_cost:
             average = state.average
             cost, source = (average, "average") if average is not None and not state.cost_missing else (Decimal(0), "missing")
         value = money(quantity * cost)
+    elif unit_cost is not None and move_type in OUTBOUND_AT_OWN_COST:
+        # Goods sent back to the vendor leave at what they were received at, not the average
+        # (13c §3.7); the remaining stock keeps the difference. Never below zero value.
+        value = -money(abs(quantity) * Decimal(unit_cost))
+        if after_quantity == 0 or state.value + value < 0:
+            value = -state.value
+        source = cost_source or "receipt"
     else:
         if after_quantity == 0:
             # The last unit out takes what is left, so the value is zero whenever the quantity is.

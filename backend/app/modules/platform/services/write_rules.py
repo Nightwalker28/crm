@@ -36,6 +36,8 @@ _RECORD_MODELS: dict[str, str] = {
     "inventory_returns": "app.modules.inventory.models:InventoryReturn",
     "inventory_adjustments": "app.modules.inventory.models:InventoryAdjustment",
     "inventory_transfers": "app.modules.inventory.models:InventoryTransfer",
+    "purchase_vendor_returns": "app.modules.purchasing.models:PurchaseVendorReturn",
+    "purchase_vendor_credits": "app.modules.purchasing.models:PurchaseVendorCredit",
 }
 
 

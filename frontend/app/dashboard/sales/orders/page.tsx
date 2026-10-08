@@ -7,6 +7,7 @@ import { Plus } from "lucide-react";
 import OrdersTable from "@/components/orders/OrdersTable";
 import Pagination from "@/components/ui/Pagination";
 import { InlineSavedViewFilters } from "@/components/ui/InlineSavedViewFilters";
+import { ModuleImportExportControls } from "@/components/ui/ModuleImportExportControls";
 import { ModuleListToolbar } from "@/components/ui/ModuleListToolbar";
 import { PageShell } from "@/components/ui/PageShell";
 import { getConditionGroups } from "@/components/ui/SavedViewConditionEditor";
@@ -16,7 +17,9 @@ import { useOrders, type OrderSortState } from "@/hooks/sales/useOrders";
 import { useModuleCustomFields } from "@/hooks/useModuleCustomFields";
 import { useModuleFieldConfigs } from "@/hooks/useModuleFieldConfigs";
 import { useSavedViews } from "@/hooks/useSavedViews";
+import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { buildModuleViewDefinition, MODULE_VIEW_DEFAULTS, resolveSavedViewFilters, resolveVisibleColumns } from "@/lib/moduleViewConfigs";
+import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 
 export default function OrdersPage() {
   const { data: customFields = [] } = useModuleCustomFields("sales_orders");
@@ -38,11 +41,16 @@ export default function OrdersPage() {
   const { allConditions, anyConditions } = getConditionGroups(activeFilters);
   const activeFilterCount = allConditions.length + anyConditions.length;
   const hasActiveFilters = Boolean((typeof activeFilters.search === "string" && activeFilters.search.trim()) || activeFilterCount);
+  const { modules } = useAccessibleModules();
+  const orderActions = modules.find((module) => module.name === "sales_orders")?.actions;
+  // 13c §3.3: export the filtered view; import one row per line, one draft order per reference.
+  const exportParams = new URLSearchParams();
+  appendSavedViewFilterParams(exportParams, activeFilters);
   const clearFilters = () => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search: "", conditions: [], all_conditions: [], any_conditions: [] } }));
 
   return (
     <PageShell variant="list" title="Orders">
-      <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search orders" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} columnOptions={definition?.columns ?? []} visibleColumns={visibleColumns} onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))} onClearFilters={clearFilters} viewControls={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} primaryAction={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
+      <ModuleListToolbar searchValue={typeof activeFilters.search === "string" ? activeFilters.search : ""} onSearchChange={(search) => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, search } }))} searchPlaceholder="Search orders" filtersOpen={Boolean(activeFilters.filtersOpen)} activeFilterCount={activeFilterCount} onToggleFilters={() => setDraftConfig((current) => ({ ...current, filters: { ...current.filters, filtersOpen: !current.filters.filtersOpen } }))} columnOptions={definition?.columns ?? []} visibleColumns={visibleColumns} onVisibleColumnsChange={(nextColumns) => setDraftConfig((current) => ({ ...current, visible_columns: nextColumns }))} onClearFilters={clearFilters} viewControls={<SavedViewSelector moduleKey="sales_orders" views={views} selectedViewId={selectedViewId} onSelect={setSelectedViewId} />} actionControls={<ModuleImportExportControls importEndpoint={orderActions?.can_create ? "/sales/orders/import" : undefined} importLabel="Import orders" exportEndpoint={orderActions?.can_export ? `/sales/orders/export-job?${exportParams}` : undefined} exportMethod="POST" scopedExport={false} exportDescription="Exports every order in the current view, with its filters and search, as a CSV file." onImportSuccess={refresh} />} primaryAction={<Button asChild><Link href="/dashboard/sales/orders/new"><Plus />Create order</Link></Button>} />
       <InlineSavedViewFilters filterFields={definition?.filterFields ?? []} filters={activeFilters} onChange={(nextFilters) => setDraftConfig((current) => ({ ...current, filters: nextFilters }))} hideHeader />
       <OrdersTable
         orders={orders}

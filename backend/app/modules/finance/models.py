@@ -270,12 +270,13 @@ class FinancePaymentAllocation(Base):
         CheckConstraint("amount > 0", name="ck_finance_payment_allocations_positive"),
         CheckConstraint(
             "(CASE WHEN invoice_id IS NULL THEN 0 ELSE 1 END) + (CASE WHEN credit_note_id IS NULL THEN 0 ELSE 1 END)"
-            " + (CASE WHEN bill_id IS NULL THEN 0 ELSE 1 END) = 1",
+            " + (CASE WHEN bill_id IS NULL THEN 0 ELSE 1 END) + (CASE WHEN vendor_credit_id IS NULL THEN 0 ELSE 1 END) = 1",
             name="ck_finance_payment_allocations_one_target",
         ),
         Index("ix_finance_payment_allocations_tenant_invoice", "tenant_id", "invoice_id"),
         Index("ix_finance_payment_allocations_tenant_credit_note", "tenant_id", "credit_note_id"),
         Index("ix_finance_payment_allocations_tenant_bill", "tenant_id", "bill_id"),
+        Index("ix_finance_payment_allocations_tenant_vendor_credit", "tenant_id", "vendor_credit_id"),
     )
 
     id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
@@ -284,6 +285,8 @@ class FinancePaymentAllocation(Base):
     invoice_id = Column(BigInteger, ForeignKey("finance_pos_invoices.id", ondelete="RESTRICT"), nullable=True)
     credit_note_id = Column(BigInteger, ForeignKey("finance_credit_notes.id", ondelete="RESTRICT"), nullable=True)
     bill_id = Column(BigInteger, ForeignKey("purchase_bills.id", ondelete="RESTRICT"), nullable=True)
+    # A vendor's refund of a vendor credit (13c §3.6): a `received` payment of kind `refund`.
+    vendor_credit_id = Column(BigInteger, ForeignKey("purchase_vendor_credits.id", ondelete="RESTRICT"), nullable=True)
     amount = Column(Numeric(12, 2), nullable=False)
 
     payment = relationship("FinancePayment", back_populates="allocations")

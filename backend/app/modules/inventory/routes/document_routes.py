@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.modules.platform.services.write_rules import apply_user_write_rules
 from app.core.database import get_db
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_action_access, require_module_access
 from app.core.security import require_user
@@ -52,15 +53,12 @@ class CancellationPayload(BaseModel):
     reason: str = Field(min_length=1, max_length=120)
 
 
-def _list(db: Session, *, tenant_id: int, kind: str, status: str | None, include_deleted: bool, pagination: Pagination):
-    if status and status not in {"draft", "posted", "cancelled"}:
-        raise HTTPException(status_code=400, detail="Invalid document status")
-    query = (repo.adjustment_list if kind == "adjustments" else repo.transfer_list)(db, tenant_id=tenant_id, include_deleted=include_deleted)
-    if status:
-        model = query.column_descriptions[0]["entity"]
-        query = query.filter(model.status == status)
+def _list(db: Session, *, tenant_id: int, kind: str, status: str | None, search: str | None, include_deleted: bool,
+          conditions: ListConditions, pagination: Pagination):
+    query = service.list_query(db, tenant_id=tenant_id, kind=kind, status=status, search=search, include_deleted=include_deleted,
+                               **conditions.as_filters())
     total = query.count()
-    rows = query.order_by(query.column_descriptions[0]["entity"].id.desc()).offset(pagination.offset).limit(pagination.limit).all()
+    rows = query.order_by(service.document_model(kind).id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response([service.serialize_document(db, tenant_id=tenant_id, kind=kind, doc=row, include_lines=False) for row in rows], total, pagination)
 
 
@@ -72,11 +70,21 @@ def _get(db: Session, *, tenant_id: int, kind: str, document_id: int, include_de
 
 
 @router.get("/adjustments")
-def adjustments(status: str | None = None, include_deleted: bool = Query(default=False), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _view=Depends(require_action_access("inventory_adjustments", "view"))):
+def adjustments(status: str | None = None, search: str | None = Query(default=None, max_length=100), include_deleted: bool = Query(default=False),
+         conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_adjustments")), _view=Depends(require_action_access("inventory_adjustments", "view"))):
     if include_deleted:
         if not can_access(db, user, "inventory_adjustments", "restore"):
             raise HTTPException(status_code=403, detail="Restore access required")
-    return _list(db, tenant_id=user.tenant_id, kind="adjustments", status=status, include_deleted=include_deleted, pagination=pagination)
+    return _list(db, tenant_id=user.tenant_id, kind="adjustments", status=status, search=search, include_deleted=include_deleted,
+                 conditions=conditions, pagination=pagination)
+
+
+@router.post("/adjustments/export-job", status_code=202)
+def export_adjustments(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), search: str | None = Query(default=None, max_length=100),
+        conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access("inventory_adjustments")), _export=Depends(require_action_access("inventory_adjustments", "export"))):
+    """Exports what the list shows under the same filters (13c §3.3)."""
+    return start_document_export(db, user, module_key="inventory_adjustments", filters={"status": status, "search": search, **conditions.as_filters()})
 
 
 @router.post("/adjustments", status_code=201)
@@ -126,11 +134,21 @@ def restore_adjustment(document_id: int, db: Session = Depends(get_db), user=Dep
 
 
 @router.get("/transfers")
-def transfers(status: str | None = None, include_deleted: bool = Query(default=False), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_transfers")), _view=Depends(require_action_access("inventory_transfers", "view"))):
+def transfers(status: str | None = None, search: str | None = Query(default=None, max_length=100), include_deleted: bool = Query(default=False),
+         conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db), user=Depends(require_user), _module=Depends(require_module_access("inventory_transfers")), _view=Depends(require_action_access("inventory_transfers", "view"))):
     if include_deleted:
         if not can_access(db, user, "inventory_transfers", "restore"):
             raise HTTPException(status_code=403, detail="Restore access required")
-    return _list(db, tenant_id=user.tenant_id, kind="transfers", status=status, include_deleted=include_deleted, pagination=pagination)
+    return _list(db, tenant_id=user.tenant_id, kind="transfers", status=status, search=search, include_deleted=include_deleted,
+                 conditions=conditions, pagination=pagination)
+
+
+@router.post("/transfers/export-job", status_code=202)
+def export_transfers(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), search: str | None = Query(default=None, max_length=100),
+        conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
+        _module=Depends(require_module_access("inventory_transfers")), _export=Depends(require_action_access("inventory_transfers", "export"))):
+    """Exports what the list shows under the same filters (13c §3.3)."""
+    return start_document_export(db, user, module_key="inventory_transfers", filters={"status": status, "search": search, **conditions.as_filters()})
 
 
 @router.post("/transfers", status_code=201)

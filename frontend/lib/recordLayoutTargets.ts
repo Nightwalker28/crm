@@ -26,6 +26,8 @@ export const RECORD_LAYOUT_TARGETS: RecordLayoutTarget[] = [
   { moduleKey: "purchase_orders", label: "Purchase orders", surfaces: FORM_AND_DETAIL },
   { moduleKey: "purchase_receipts", label: "Receipts", surfaces: FORM_AND_DETAIL },
   { moduleKey: "purchase_bills", label: "Bills", surfaces: FORM_AND_DETAIL },
+  { moduleKey: "purchase_vendor_returns", label: "Vendor returns", surfaces: FORM_AND_DETAIL },
+  { moduleKey: "purchase_vendor_credits", label: "Vendor credits", surfaces: FORM_AND_DETAIL },
   { moduleKey: "inventory_deliveries", label: "Deliveries", surfaces: FORM_AND_DETAIL },
   { moduleKey: "inventory_returns", label: "Returns", surfaces: FORM_AND_DETAIL },
   { moduleKey: "inventory_adjustments", label: "Stock adjustments", surfaces: FORM_AND_DETAIL },

@@ -34,6 +34,7 @@ import { formatQuantity as quantity } from "@/lib/quantity";
 import { PicklistField } from "@/components/picklists/PicklistSelect";
 import { PicklistText } from "@/components/picklists/PicklistText";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
+import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type CreditNoteHeader = RecordFormValue & {
@@ -330,6 +331,8 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
           />
         </section>
       ) : null}
+
+      {note ? <DocumentHistory moduleKey="finance_credit_notes" entityId={note.id} canEdit={Boolean(actions?.can_edit)} /> : null}
 
       {editable && invoice && !noInvoice ? (
         <FormFooter status={error ? <span role="alert" className="text-state-danger">{error}</span> : "A draft changes nothing until it is issued."}>

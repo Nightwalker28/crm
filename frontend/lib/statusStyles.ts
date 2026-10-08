@@ -220,12 +220,32 @@ const RETURN_STATUS: Record<string, StatusDescriptor> = {
 
 /** Purchase orders (E4). *Partly received* is shown from `receipt_status` while ordered. */
 const PURCHASE_ORDER_STATUS: Record<string, StatusDescriptor> = {
-  draft: n("Draft"),
+  // Before it is placed, a purchase order is a request for quotation (13c §3.8).
+  draft: n("Request for quotation"),
+  sent: a("RFQ sent"),
   ordered: n("Ordered"),
   partial: n("Partly received"),
   received: s("Received"),
   closed: n("Closed"),
   cancelled: n("Cancelled"),
+};
+
+// 13c §3.6–3.7.
+const VENDOR_RETURN_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  shipped: s("Shipped"),
+  cancelled: n("Cancelled"),
+};
+
+const VENDOR_RETURN_RESOLUTION: Record<string, StatusDescriptor> = {
+  credit: n("For credit"),
+  replace: n("For replacement"),
+};
+
+const VENDOR_CREDIT_STATUS: Record<string, StatusDescriptor> = {
+  draft: n("Draft"),
+  issued: s("Issued"),
+  void: n("Void"),
 };
 
 const TASK_STATUS: Record<string, StatusDescriptor> = {
@@ -262,6 +282,9 @@ export const getDeliveryStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, 
 export const getReturnStatus = (v: string) => descriptorFrom(RETURN_STATUS, v);
 export const getPurchaseOrderStatus = (v: string) => descriptorFrom(PURCHASE_ORDER_STATUS, v);
 export const getPurchaseReceiptStatus = (v: string) => descriptorFrom(DELIVERY_STATUS, v);
+export const getVendorReturnStatus = (v: string) => descriptorFrom(VENDOR_RETURN_STATUS, v);
+export const getVendorReturnResolution = (v: string) => descriptorFrom(VENDOR_RETURN_RESOLUTION, v);
+export const getVendorCreditStatus = (v: string) => descriptorFrom(VENDOR_CREDIT_STATUS, v);
 export const getTaskStatus = (v: string) => descriptorFrom(TASK_STATUS, v);
 export const getCatalogStockStatus = (v: string) => descriptorFrom(CATALOG_STOCK_STATUS, v);
 

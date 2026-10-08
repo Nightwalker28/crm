@@ -1066,8 +1066,47 @@ PAYMENT_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("void_reason", "Void reason", "text", readonly=True),
 )
 
+# 13c §3.6–3.7: goods sent back to a vendor, and what the vendor owes back.
+VENDOR_RETURN_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("number", "Return number", "text", readonly=True),
+    RuntimeFieldDefinition("receipt_id", "Receipt", "purchase_receipt_reference", required=True),
+    RuntimeFieldDefinition("order_id", "Purchase order", "purchase_order_reference", readonly=True),
+    RuntimeFieldDefinition("vendor_id", "Vendor", "organization_reference", readonly=True),
+    RuntimeFieldDefinition("warehouse_id", "Ship from", "warehouse_reference", readonly=True),
+    RuntimeFieldDefinition("resolution", "Vendor will", "select", required=True,
+                           help_text="Credit: the vendor owes a credit. Replace: the goods are to receive again."),
+    RuntimeFieldDefinition("reason", "Reason", "text", required=True, placeholder="Damaged on arrival"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("owner_id", "Owner", "user_reference", readonly=True),
+    RuntimeFieldDefinition("status", "Status", "select", readonly=True),
+    RuntimeFieldDefinition("shipped_at", "Shipped", "datetime", readonly=True),
+    RuntimeFieldDefinition("cancel_reason", "Cancellation reason", "text", readonly=True),
+)
+
+VENDOR_CREDIT_SYSTEM_FIELDS = _field_map(
+    RuntimeFieldDefinition("number", "Vendor credit number", "text", readonly=True),
+    RuntimeFieldDefinition("vendor_id", "Vendor", "organization_reference", required=True),
+    RuntimeFieldDefinition("bill_id", "Bill", "purchase_bill_reference"),
+    RuntimeFieldDefinition("vendor_return_id", "Vendor return", "vendor_return_reference"),
+    RuntimeFieldDefinition("vendor_reference", "Vendor's credit note number", "text"),
+    RuntimeFieldDefinition("credit_date", "Credit date", "date"),
+    RuntimeFieldDefinition("reason", "Reason", "text", placeholder="Price agreed after delivery, damaged goods…"),
+    RuntimeFieldDefinition("notes", "Notes", "long_text"),
+    RuntimeFieldDefinition("currency", "Currency", "select"),
+    RuntimeFieldDefinition("owner_id", "Owner", "user_reference", readonly=True),
+    RuntimeFieldDefinition("status", "Status", "select", readonly=True),
+    RuntimeFieldDefinition("subtotal", "Subtotal", "currency", readonly=True),
+    RuntimeFieldDefinition("tax_total", "Tax", "currency", readonly=True),
+    RuntimeFieldDefinition("total", "Total", "currency", readonly=True),
+    RuntimeFieldDefinition("credit_remaining", "Credit left", "currency", readonly=True),
+    RuntimeFieldDefinition("issued_at", "Issued", "datetime", readonly=True),
+    RuntimeFieldDefinition("void_reason", "Void reason", "text", readonly=True),
+)
+
 MODULE_SYSTEM_FIELDS.update(
     {
+        "purchase_vendor_returns": VENDOR_RETURN_SYSTEM_FIELDS,
+        "purchase_vendor_credits": VENDOR_CREDIT_SYSTEM_FIELDS,
         "purchase_orders": PURCHASE_ORDER_SYSTEM_FIELDS,
         "purchase_receipts": PURCHASE_RECEIPT_SYSTEM_FIELDS,
         "purchase_bills": PURCHASE_BILL_SYSTEM_FIELDS,
@@ -1176,6 +1215,14 @@ _FULL_FORM_GROUPS: dict[str, tuple[str, list[tuple[str, str, list[str]]]]] = {
         ("bill", "Bill", ["vendor_id", "vendor_invoice_number", "bill_date", "due_date", "order_id", "receipt_id", "currency"]),
         ("notes", "Notes", ["notes"]),
     ]),
+    "purchase_vendor_returns": ("Vendor Return Form", [
+        ("return", "Return", ["receipt_id", "resolution", "reason"]),
+        ("notes", "Notes", ["notes"]),
+    ]),
+    "purchase_vendor_credits": ("Vendor Credit Form", [
+        ("credit", "Vendor credit", ["vendor_id", "bill_id", "vendor_return_id", "vendor_reference", "credit_date", "currency", "reason"]),
+        ("notes", "Notes", ["notes"]),
+    ]),
     "inventory_deliveries": ("Delivery Form", [
         ("delivery", "Delivery", ["order_id", "warehouse_id", "shipped_on", "carrier", "tracking_number"]),
         ("notes", "Notes", ["notes"]),
@@ -1217,6 +1264,15 @@ _ERP_DETAIL_GROUPS: dict[str, tuple[str, list[tuple[str, str, list[str]]]]] = {
     "purchase_bills": ("Bill Details", [
         ("bill", "Bill", ["vendor_id", "vendor_invoice_number", "bill_date", "due_date", "order_id", "receipt_id", "match_status", "owner_id"]),
         ("money", "Amounts", ["currency", "subtotal", "tax_total", "total", "amount_paid", "balance_due", "payment_status"]),
+        ("notes", "Notes", ["notes"]),
+    ]),
+    "purchase_vendor_returns": ("Vendor Return Details", [
+        ("return", "Return", ["vendor_id", "receipt_id", "order_id", "warehouse_id", "resolution", "reason", "shipped_at", "owner_id"]),
+        ("notes", "Notes", ["notes"]),
+    ]),
+    "purchase_vendor_credits": ("Vendor Credit Details", [
+        ("credit", "Vendor credit", ["vendor_id", "bill_id", "vendor_return_id", "vendor_reference", "credit_date", "reason", "issued_at", "owner_id"]),
+        ("money", "Amounts", ["currency", "subtotal", "tax_total", "total", "credit_remaining"]),
         ("notes", "Notes", ["notes"]),
     ]),
     "inventory_deliveries": ("Delivery Details", [

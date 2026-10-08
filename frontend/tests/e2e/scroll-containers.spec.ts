@@ -40,6 +40,10 @@ const ROUTES = [
   "/dashboard/purchasing/reorder",
   "/dashboard/purchasing/bills",
   "/dashboard/purchasing/bills/new",
+  // 13c §3.6–3.7.
+  "/dashboard/purchasing/vendor-returns",
+  "/dashboard/purchasing/vendor-credits",
+  "/dashboard/purchasing/vendor-credits/new",
   "/dashboard/catalog/products/new",
   "/dashboard/catalog/services",
   "/dashboard/catalog/services/new",

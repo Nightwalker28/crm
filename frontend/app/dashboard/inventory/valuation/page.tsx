@@ -31,7 +31,7 @@ type Tab = "value" | "revaluations";
 
 function quantity(value: string) { return Number(value).toLocaleString(undefined, { maximumFractionDigits: 4 }); }
 
-const KIND_LABELS: Record<Revaluation["kind"], string> = { manual: "Revalued", bill_variance: "Bill price difference", migration: "Cost set" };
+const KIND_LABELS: Record<Revaluation["kind"], string> = { manual: "Revalued", bill_variance: "Bill price difference", vendor_credit: "Vendor credit", migration: "Cost set" };
 
 /** Inventory → Valuation (ERP E6, 12d-erp-costing.md §3.5): what the stock on hand is worth. */
 export default function InventoryValuationPage() {

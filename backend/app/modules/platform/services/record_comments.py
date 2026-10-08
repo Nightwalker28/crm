@@ -10,7 +10,9 @@ from app.core.pagination import Pagination
 from app.modules.catalog.models import CatalogProduct, CatalogService
 from app.modules.platform.models import RecordComment
 from app.modules.platform.services.notifications import create_notification
-from app.modules.finance.models import FinancePosInvoice
+from app.modules.finance.models import FinanceCreditNote, FinancePayment, FinancePosInvoice
+from app.modules.inventory.models import InventoryAdjustment, InventoryDelivery, InventoryReturn, InventoryTransfer
+from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseReceipt, PurchaseVendorCredit, PurchaseVendorReturn
 from app.modules.sales.models import SalesContact, SalesLead, SalesOpportunity, SalesOrganization, SalesOrder, SalesQuote
 from app.modules.user_management.models import (
     DepartmentModulePermission,
@@ -86,6 +88,29 @@ RECORD_COMMENT_MODULES = {
         "entity_type": "catalog_service",
         "label_field": "name",
         "record_path": "/dashboard/catalog/services/{entity_id}",
+    },
+    # ERP documents (13c §3.1): notes sit in the document's history panel.
+    **{
+        module_key: {
+            "model": model,
+            "id_field": "id",
+            "entity_type": entity_type,
+            "label_field": "number",
+            "record_path": record_path,
+        }
+        for module_key, model, entity_type, record_path in (
+            ("inventory_adjustments", InventoryAdjustment, "inventory_adjustment", "/dashboard/inventory/adjustments/{entity_id}"),
+            ("inventory_transfers", InventoryTransfer, "inventory_transfer", "/dashboard/inventory/transfers/{entity_id}"),
+            ("inventory_deliveries", InventoryDelivery, "inventory_delivery", "/dashboard/inventory/deliveries/{entity_id}"),
+            ("inventory_returns", InventoryReturn, "inventory_return", "/dashboard/inventory/returns/{entity_id}"),
+            ("purchase_orders", PurchaseOrder, "purchase_order", "/dashboard/purchasing/orders/{entity_id}"),
+            ("purchase_receipts", PurchaseReceipt, "purchase_receipt", "/dashboard/purchasing/receipts/{entity_id}"),
+            ("purchase_bills", PurchaseBill, "purchase_bill", "/dashboard/purchasing/bills/{entity_id}"),
+            ("finance_credit_notes", FinanceCreditNote, "finance_credit_note", "/dashboard/finance/credit-notes/{entity_id}"),
+            ("finance_payments", FinancePayment, "finance_payment", "/dashboard/finance/payments/{entity_id}"),
+            ("purchase_vendor_returns", PurchaseVendorReturn, "purchase_vendor_return", "/dashboard/purchasing/vendor-returns/{entity_id}"),
+            ("purchase_vendor_credits", PurchaseVendorCredit, "purchase_vendor_credit", "/dashboard/purchasing/vendor-credits/{entity_id}"),
+        )
     },
 }
 INVALID_MENTION_DETAIL = "One or more mentioned users are invalid."

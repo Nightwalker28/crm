@@ -27,6 +27,8 @@ export const DASHBOARD_ROUTES = {
   purchaseReceipts: "/dashboard/purchasing/receipts",
   purchaseReorder: "/dashboard/purchasing/reorder",
   purchaseBills: "/dashboard/purchasing/bills",
+  vendorReturns: "/dashboard/purchasing/vendor-returns",
+  vendorCredits: "/dashboard/purchasing/vendor-credits",
   reports: "/dashboard/reports",
 } as const;
 

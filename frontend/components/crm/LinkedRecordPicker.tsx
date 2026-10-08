@@ -87,6 +87,11 @@ type Props = {
     label: (text: string) => string;
     onCreate: (text: string) => void;
   };
+  /**
+   * Search with an empty query on focus, so an empty field already lists what the endpoint
+   * suggests — the vendor picker's most recent vendors (13c §3.5, H18). Typing narrows it.
+   */
+  suggestOnFocus?: boolean;
 };
 
 function appendRelationshipFilters(params: URLSearchParams, filters?: LinkedRecordFilters) {
@@ -330,6 +335,7 @@ export default function LinkedRecordPicker({
   onInputKeyDown,
   inputDataAttributes,
   createOption,
+  suggestOnFocus = false,
 }: Props) {
   const generatedListboxId = useId();
   const listboxId = `${generatedListboxId}-options`;
@@ -340,7 +346,7 @@ export default function LinkedRecordPicker({
   const query = useQuery({
     queryKey: [queryKeyPrefix, recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction, allowedModuleKeys],
     queryFn: () => searchLinkedRecords(recordType, debouncedSearch, filters, linkedModuleKey, linkedEntityId, sourceModuleKey, sourceAction, allowedModuleKeys),
-    enabled: !disabled && isOpen && debouncedSearch.length > 0,
+    enabled: !disabled && isOpen && (debouncedSearch.length > 0 || suggestOnFocus),
     staleTime: 30_000,
   });
   const options = query.data ?? [];
@@ -396,7 +402,7 @@ export default function LinkedRecordPicker({
     onInputKeyDown?.(event);
   }
 
-  const isListOpen = isOpen && Boolean(displayValue.trim());
+  const isListOpen = isOpen && (Boolean(displayValue.trim()) || (suggestOnFocus && options.length > 0));
 
   // The list is a popover anchored to the field rather than an absolutely positioned child,
   // so a scroll container around the field (a line-items grid, an editor panel) cannot clip

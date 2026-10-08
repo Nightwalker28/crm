@@ -614,7 +614,9 @@ def _purchase_lines_query(db: Session, user, search: str | None):
     received = select(func.coalesce(func.sum(PurchaseReceiptLine.quantity), 0)).join(PurchaseReceipt, PurchaseReceipt.id == PurchaseReceiptLine.receipt_id).where(
         PurchaseReceiptLine.order_line_id == PurchaseOrderLine.id, PurchaseReceipt.status == "posted").scalar_subquery()
     query = db.query(PurchaseOrderLine).join(PurchaseOrder, and_(PurchaseOrder.id == PurchaseOrderLine.order_id, PurchaseOrder.tenant_id == PurchaseOrderLine.tenant_id)).filter(
-        PurchaseOrderLine.tenant_id == user.tenant_id, PurchaseOrder.status == "ordered", PurchaseOrder.deleted_at.is_(None), PurchaseOrderLine.quantity > received)
+        PurchaseOrderLine.tenant_id == user.tenant_id, PurchaseOrder.status == "ordered", PurchaseOrder.deleted_at.is_(None), PurchaseOrderLine.quantity > received,
+        # Services are billed, never received (13c §3.5).
+        PurchaseOrderLine.product_id.isnot(None))
     if search:
         query = query.join(CatalogProduct, CatalogProduct.id == PurchaseOrderLine.product_id).filter(or_(
             CatalogProduct.name.ilike(f"%{search}%"), CatalogProduct.sku.ilike(f"%{search}%"), PurchaseOrder.number.ilike(f"%{search}%")))

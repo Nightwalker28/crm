@@ -1,15 +1,20 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.module_filters import normalize_filter_logic, parse_filter_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import can_access, require_access, require_action_access, require_module_access
 from app.core.unit_of_work import unit_of_work
 from app.core.security import require_user
 from app.modules.platform.services.write_rules import apply_user_write_rules
+from app.modules.platform.services.document_exports import start_document_export
+from app.modules.platform.services.data_transfer_jobs import create_data_transfer_job, enqueue_import_job, persist_job_upload, should_background_data_transfer_with_size
+from app.modules.sales.services.orders_import import ORDER_IMPORT_ALIASES, ORDER_IMPORT_FIELDS, ORDER_IMPORT_REQUIRED, import_orders_from_csv
 from app.modules.platform.services.custom_fields import load_custom_field_values
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.crm_events import safe_publish_crm_event
@@ -114,6 +119,51 @@ def search_orders(
         sort_direction=sort_direction,
     )
     return build_paged_response([SalesOrderListItem.model_validate(order) for order in orders], total_count, pagination)
+
+
+@router.post("/export-job", status_code=status.HTTP_202_ACCEPTED)
+def export_orders(
+    search: str | None = Query(default=None, max_length=100),
+    conditions: ListConditions = Depends(list_conditions),
+    db: Session = Depends(get_db),
+    current_user=Depends(require_user),
+    require_module=Depends(require_module_access("sales_orders")),
+    require_permission=Depends(require_action_access("sales_orders", "export")),
+):
+    """Exports what the list shows under the same filters (13c §3.3)."""
+    return start_document_export(db, current_user, module_key="sales_orders", filters={"search": search, **conditions.as_filters()})
+
+
+@router.post("/import/preview")
+async def preview_order_import(file: UploadFile = File(...), db: Session = Depends(get_db), current_user=Depends(require_user),
+                               require_module=Depends(require_module_access("sales_orders")),
+                               require_permission=Depends(require_action_access("sales_orders", "create"))):
+    """One row per order line; rows sharing an order reference become one draft order (13c §3.3)."""
+    file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
+    source_headers, _ = rows_from_csv_bytes(file_bytes)
+    return {"source_headers": source_headers, "target_headers": ORDER_IMPORT_FIELDS, "required_headers": ORDER_IMPORT_REQUIRED,
+            "suggested_mapping": suggest_header_mapping(source_headers=source_headers, target_headers=ORDER_IMPORT_FIELDS, aliases=ORDER_IMPORT_ALIASES)}
+
+
+@router.post("/import", response_model=ImportExecutionResponse)
+async def import_orders(file: UploadFile = File(...), mapping_json: str | None = Form(default=None), db: Session = Depends(get_db),
+                        current_user=Depends(require_user), require_module=Depends(require_module_access("sales_orders")),
+                        require_permission=Depends(require_action_access("sales_orders", "create"))):
+    file_bytes = await read_upload_bytes(file, allowed_extensions={"csv"})
+    mapping = parse_mapping_json(mapping_json, target_headers=ORDER_IMPORT_FIELDS)
+    remapped = remap_csv_bytes(file_bytes, target_headers=ORDER_IMPORT_FIELDS, mapping=mapping)
+    row_count = count_csv_rows_bytes(remapped)
+    if should_background_data_transfer_with_size(row_count=row_count, file_size_bytes=len(remapped)):
+        job = create_data_transfer_job(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key="sales_orders",
+                                       operation_type="import", payload={"filename": file.filename, "row_count": row_count})
+        job.payload = {**(job.payload or {}), "source_file_path": persist_job_upload(job_id=job.id, filename="orders-import.csv", file_bytes=remapped)}
+        db.add(job)
+        db.commit()
+        db.refresh(job)
+        enqueue_import_job(job.id)
+        return ImportExecutionResponse(mode="background", message=f"Import queued in background as job #{job.id}.", job_id=job.id, job_status=job.status)
+    summary = import_orders_from_csv(db, remapped, current_user=current_user)
+    return ImportExecutionResponse(mode="inline", message=summary["message"], summary=StandardImportSummary(**summary))
 
 
 @router.post("", response_model=SalesOrderResponse, status_code=status.HTTP_201_CREATED)

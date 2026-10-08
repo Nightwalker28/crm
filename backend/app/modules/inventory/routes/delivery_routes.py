@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.list_conditions import ListConditions, list_conditions
 from app.core.pagination import Pagination, build_paged_response, get_pagination
 from app.core.permissions import require_access, require_action_access, require_module_access
 from app.core.security import require_user
@@ -58,9 +59,9 @@ def _get(db: Session, *, tenant_id: int, delivery_id: int) -> dict:
 
 @router.get("/deliveries")
 def deliveries(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), search: str | None = Query(default=None, max_length=100),
-               order_id: int | None = Query(default=None, gt=0), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db),
+               order_id: int | None = Query(default=None, gt=0), conditions: ListConditions = Depends(list_conditions), pagination: Pagination = Depends(get_pagination), db: Session = Depends(get_db),
                user=Depends(require_user), _module=Depends(require_module_access(MODULE)), _view=Depends(require_action_access(MODULE, "view"))):
-    query = service.list_query(db, tenant_id=user.tenant_id, status=status, search=search, order_id=order_id)
+    query = service.list_query(db, tenant_id=user.tenant_id, status=status, search=search, order_id=order_id, **conditions.as_filters())
     total = query.count()
     rows = query.order_by(InventoryDelivery.id.desc()).offset(pagination.offset).limit(pagination.limit).all()
     return build_paged_response(jsonable_encoder([service.serialize_delivery(db, tenant_id=user.tenant_id, doc=row, include_lines=False) for row in rows]), total, pagination)
@@ -128,7 +129,7 @@ def restore_delivery(delivery_id: int, db: Session = Depends(get_db), user=Depen
 
 @router.post("/deliveries/export-job", status_code=202)
 def export_deliveries(status: str | None = Query(default=None, pattern="^(draft|posted|cancelled)$"), search: str | None = Query(default=None, max_length=100),
-        order_id: int | None = Query(default=None, gt=0), db: Session = Depends(get_db), user=Depends(require_user),
+        order_id: int | None = Query(default=None, gt=0), conditions: ListConditions = Depends(list_conditions), db: Session = Depends(get_db), user=Depends(require_user),
         _module=Depends(require_module_access(MODULE)), _export=Depends(require_action_access(MODULE, "export"))):
     """Exports what the list shows under the same filters (13a A5)."""
-    return start_document_export(db, user, module_key=MODULE, filters={"status": status, "search": search, "order_id": order_id})
+    return start_document_export(db, user, module_key=MODULE, filters={"status": status, "search": search, "order_id": order_id, **conditions.as_filters()})

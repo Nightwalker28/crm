@@ -41,6 +41,9 @@ SUPPORTED_MODULE_KEYS: dict[str, str] = {
     "inventory_returns": "Returns",
     "inventory_adjustments": "Stock adjustments",
     "inventory_transfers": "Stock transfers",
+    # 13c §3.6–3.7.
+    "purchase_vendor_returns": "Vendor returns",
+    "purchase_vendor_credits": "Vendor credits",
 }
 CUSTOM_FIELD_FILTER_PREFIX = "custom:"
 AUTO_NUMBER_DEFAULT_PREFIX = "NO"

@@ -313,7 +313,7 @@ class InventoryRevaluation(Base):
     __tablename__ = "inventory_revaluations"
     __table_args__ = (
         UniqueConstraint("tenant_id", "number", name="uq_inventory_revaluation_number"),
-        CheckConstraint("kind IN ('manual', 'bill_variance', 'migration')", name="ck_inventory_revaluation_kind"),
+        CheckConstraint("kind IN ('manual', 'bill_variance', 'vendor_credit', 'migration')", name="ck_inventory_revaluation_kind"),
         Index("ix_inventory_revaluations_tenant_product_id", "tenant_id", "product_id", "id"),
         Index("uq_inventory_revaluation_reversal", "reverses_id", unique=True, postgresql_where=text("reverses_id IS NOT NULL"), sqlite_where=text("reverses_id IS NOT NULL")),
     )
@@ -325,6 +325,8 @@ class InventoryRevaluation(Base):
     kind = Column(String(20), nullable=False)
     # A posted bill line; no foreign key, because purchasing's models import these.
     bill_line_id = Column(BigInteger)
+    # An issued vendor credit line that corrected the price (13c §3.6); no foreign key, as above.
+    vendor_credit_line_id = Column(BigInteger)
     on_hand = Column(Numeric(12, 4), nullable=False)
     average_before = Column(Numeric(12, 4))
     average_after = Column(Numeric(12, 4))

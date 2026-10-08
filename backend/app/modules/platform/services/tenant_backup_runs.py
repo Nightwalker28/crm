@@ -18,7 +18,19 @@ from app.core.uploads import UPLOADS_DIR
 from app.modules.documents.models import Document, DocumentLink, DocumentVersion
 from app.modules.inventory.models import (InventoryAdjustment, InventoryAdjustmentLine, InventoryDelivery, InventoryDeliveryLine,
     InventoryReturn, InventoryReturnLine, InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryTransfer, InventoryTransferLine, InventoryWarehouse)
-from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.purchasing.models import (
+    PurchaseBill,
+    PurchaseBillLine,
+    PurchaseOrder,
+    PurchaseOrderLine,
+    PurchaseReceipt,
+    PurchaseReceiptLine,
+    PurchaseVendorCredit,
+    PurchaseVendorCreditAllocation,
+    PurchaseVendorCreditLine,
+    PurchaseVendorReturn,
+    PurchaseVendorReturnLine,
+)
 from app.modules.finance.models import (FinanceCreditAllocation, FinanceCreditNote, FinanceCreditNoteLine, FinancePayment,
     FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
@@ -95,6 +107,13 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("purchase_receipt_lines.json", PurchaseReceiptLine),
         ("purchase_bills.json", PurchaseBill),
         ("purchase_bill_lines.json", PurchaseBillLine),
+        # 13c §3.6–3.7: vendor returns (their moves follow), then the credits that point at
+        # them and at bills, then the credits' applications to bills.
+        ("purchase_vendor_returns.json", PurchaseVendorReturn),
+        ("purchase_vendor_return_lines.json", PurchaseVendorReturnLine),
+        ("purchase_vendor_credits.json", PurchaseVendorCredit),
+        ("purchase_vendor_credit_lines.json", PurchaseVendorCreditLine),
+        ("purchase_vendor_credit_allocations.json", PurchaseVendorCreditAllocation),
         ("inventory_stock_moves.json", InventoryStockMove),
         # E6: value-only changes; stock value and average are rebuilt from moves and these.
         ("inventory_revaluations.json", InventoryRevaluation),

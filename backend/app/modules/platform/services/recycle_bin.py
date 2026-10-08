@@ -87,6 +87,9 @@ SUPPORTED_RECYCLE_MODULES = {
     "finance_pos",
     "finance_credit_notes",
     "purchase_bills",
+    # 13c §3.6–3.7: drafts only, as bills.
+    "purchase_vendor_returns",
+    "purchase_vendor_credits",
 }
 INVENTORY_DOCUMENT_KINDS = {"inventory_adjustments": "adjustments", "inventory_transfers": "transfers"}
 
@@ -324,6 +327,21 @@ def list_recycle_items(
                 title, subtitle = item.number, details.get("vendor_name")
             serialized.append({"module_key": module_key, "record_id": item.id, "title": title, "subtitle": subtitle,
                 "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
+    if module_key in {"purchase_vendor_returns", "purchase_vendor_credits"}:
+        from app.modules.purchasing.models import PurchaseVendorCredit, PurchaseVendorReturn
+        from app.modules.purchasing.services import vendor_credit_services, vendor_return_services
+
+        model = PurchaseVendorReturn if module_key == "purchase_vendor_returns" else PurchaseVendorCredit
+        query = db.query(model).filter(model.tenant_id == tenant_id, model.deleted_at.isnot(None)).order_by(model.deleted_at.desc(), model.id.desc())
+        total = query.count()
+        serialized = []
+        for item in query.offset(pagination.offset).limit(pagination.limit).all():
+            details = vendor_return_services.serialize_return(db, tenant_id=tenant_id, doc=item, include_lines=False) \
+                if module_key == "purchase_vendor_returns" else vendor_credit_services.serialize_credit(db, tenant_id=tenant_id, credit=item, include_lines=False)
+            serialized.append({"module_key": module_key, "record_id": item.id, "title": item.number or "Draft vendor credit",
+                "subtitle": details.get("vendor_name"), "deleted_at": item.deleted_at, "details": jsonable_encoder(details)})
         return build_paged_response(serialized, total_count=total, pagination=pagination)
 
     if module_key == "inventory_returns":
@@ -573,6 +591,20 @@ def restore_recycle_item(
         restored = bill_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, bill_id=record_id)
         db.commit()
         return jsonable_encoder(bill_services.serialize_bill(db, tenant_id=current_user.tenant_id, bill=restored, include_lines=False))
+
+    if module_key == "purchase_vendor_returns":
+        from app.modules.purchasing.services import vendor_return_services
+
+        restored = vendor_return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)
+        db.commit()
+        return jsonable_encoder(vendor_return_services.serialize_return(db, tenant_id=current_user.tenant_id, doc=restored, include_lines=False))
+
+    if module_key == "purchase_vendor_credits":
+        from app.modules.purchasing.services import vendor_credit_services
+
+        restored = vendor_credit_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, credit_id=record_id)
+        db.commit()
+        return jsonable_encoder(vendor_credit_services.serialize_credit(db, tenant_id=current_user.tenant_id, credit=restored, include_lines=False))
 
     if module_key == "inventory_returns":
         restored = return_services.restore_draft(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, return_id=record_id)
