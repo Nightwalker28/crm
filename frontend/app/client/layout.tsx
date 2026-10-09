@@ -5,6 +5,7 @@ import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 
+import { ClientAccountMenu } from "@/components/client-portal/ClientAccountMenu";
 import { ClientPortalRail } from "@/components/client-portal/ClientPortalRail";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetOverlay, SheetPortal, SheetTitle } from "@/components/ui/sheet";
@@ -69,6 +70,7 @@ export default function ClientPortalLayout({ children }: { children: ReactNode }
             {/* Not an h1: this names the *section*, and `PageShell` names the page — exactly
                 one h1 per page (§8). The dashboard header makes the same call. */}
             {sectionLabel ? <div className="truncate text-sm font-semibold text-copy-primary">{sectionLabel}</div> : null}
+            <ClientAccountMenu />
           </header>
           <div className="scrollbar-hide h-full w-full overflow-y-auto px-4 py-6 sm:px-6 lg:px-8">
             {/* Ruling 4 — the layout owns the width. Six of them drifted because every page

@@ -3,8 +3,9 @@
 import { formatSnakeCaseLabel } from "@/lib/module-display";
 import type { FormEvent } from "react";
 import { useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Send } from "lucide-react";
+import { CircleCheck, Send } from "lucide-react";
 import { toast } from "sonner";
 
 import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
@@ -33,6 +34,8 @@ export default function ClientCatalogItemPage() {
   const { requestItem, isRequestingItem } = useClientCatalogRequestActions();
   const [quantity, setQuantity] = useState("1");
   const [details, setDetails] = useState("");
+  // 13d §3.7: after submitting, the request's reference and where to follow it.
+  const [submitted, setSubmitted] = useState<{ id: number; order_number: string } | null>(null);
   const item = itemQuery.data;
 
   async function submitRequest(event: FormEvent<HTMLFormElement>) {
@@ -45,9 +48,9 @@ export default function ClientCatalogItemPage() {
     try {
       const order = await requestItem({ kind: kind as ClientCatalogKind, itemId: Number(itemId), quantity, details });
       setDetails("");
-      toast.success(`Order ${order.order_number} submitted.`);
-    } catch {
-      toast.error("The request could not be submitted. Check your connection and try again.");
+      setSubmitted({ id: order.id, order_number: order.order_number });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The request could not be sent. Check your connection and try again.");
     }
   }
 
@@ -56,7 +59,7 @@ export default function ClientCatalogItemPage() {
     // row pointing at this record, not a column on it.
     <RecordWorkspace
       title={item?.name ?? "Catalog item"}
-      description="Review the item and request it from the team."
+      description="See the item and your price, and ask us for it."
       backHref="/client/catalog"
       backLabel="Catalog"
       isLoading={itemQuery.isLoading}
@@ -102,7 +105,23 @@ export default function ClientCatalogItemPage() {
             </div>
 
             <Card className="flex h-fit min-w-0 flex-col gap-4 p-6">
-              <PanelHeader title="Request this item" description="The team turns your request into an order." />
+              <PanelHeader title="Request this item" description="We confirm your request as an order and let you know." />
+              {submitted ? (
+                <div role="status" className="grid gap-3 rounded-[var(--radius-control)] border border-state-success/40 bg-state-success-muted p-4">
+                  <p className="flex items-center gap-2 text-sm font-medium text-copy-primary">
+                    <CircleCheck className="h-4 w-4 text-state-success" aria-hidden="true" />
+                    Request sent
+                  </p>
+                  <p className="text-sm text-copy-secondary">
+                    Your reference is <span className="font-semibold text-copy-primary">{submitted.order_number}</span>. It shows under Orders as
+                    awaiting confirmation until we confirm it.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild size="sm"><Link href={`/client/orders/${submitted.id}`}>View request</Link></Button>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setSubmitted(null)}>Request again</Button>
+                  </div>
+                </div>
+              ) : (
               <form className="grid gap-4" onSubmit={(event) => void submitRequest(event)}>
                 <Field>
                   <FieldLabel htmlFor="catalog-request-quantity">
@@ -122,14 +141,15 @@ export default function ClientCatalogItemPage() {
                     id="catalog-request-details"
                     value={details}
                     onChange={(event) => setDetails(event.target.value)}
-                    placeholder="Anything the team should know"
+                    placeholder="Delivery date, sizes, anything we should know"
                   />
                 </Field>
                 <Button type="submit" className="w-full" disabled={isRequestingItem}>
                   <Send />
-                  {isRequestingItem ? "Submitting…" : "Submit request"}
+                  {isRequestingItem ? "Sending…" : "Send request"}
                 </Button>
               </form>
+              )}
             </Card>
           </div>
         ) : null

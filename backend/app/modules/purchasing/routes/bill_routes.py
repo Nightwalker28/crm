@@ -33,6 +33,10 @@ class BillLinePayload(BaseModel):
     quantity: Decimal = Field(gt=0)
     unit_cost: Decimal | None = Field(default=None, ge=0)
     tax_amount: Decimal = Field(default=Decimal(0), ge=0)
+    # 13d §3.1: a rate, or `tax_manual` to keep the typed tax (0 = no tax); neither = the default.
+    tax_rate_id: int | None = Field(default=None, gt=0)
+    tax_manual: bool = False
+    unit: str | None = Field(default=None, max_length=40)
 
 
 class BillPayload(BaseModel):

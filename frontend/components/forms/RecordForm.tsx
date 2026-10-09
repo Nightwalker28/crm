@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { CategorySelect } from "@/components/catalog/CategorySelect";
 import LinkedRecordPicker, { type LinkedRecordType } from "@/components/crm/LinkedRecordPicker";
 import RecordTagInput from "@/components/crm/RecordTagInput";
+import { TaxRateSelect } from "@/components/finance/tax/TaxRateSelect";
 import { StateSelect } from "@/components/forms/AddressFields";
 import { WarehouseSelect } from "@/components/inventory/WarehouseSelect";
 import { OwnerSelect } from "@/components/forms/OwnerSelect";
@@ -136,6 +137,7 @@ export function recordFormDraws(field: ResolvedRecordLayoutField) {
       || field.field_type === "user_reference"
       || field.field_type === "warehouse_reference"
       || field.field_type === "category_reference"
+      || field.field_type === "tax_rate_reference"
       || SOURCE_DOCUMENT_REFERENCES.has(field.field_type)
     );
   }
@@ -340,6 +342,18 @@ export function RecordForm<TValue extends RecordFormValue>({
             label={field.label}
             value={(value[key] as number | null | undefined) ?? null}
             onChange={(categoryId, name) => set({ [key]: categoryId, [nameKey]: name })}
+            disabled={disabled}
+          />
+        );
+      }
+      case "tax_rate_reference": {
+        const nameKey = referenceNameKey(key);
+        return (
+          <TaxRateSelect
+            id={id}
+            label={field.label}
+            value={(value[key] as number | null | undefined) ?? null}
+            onChange={(rateId, name) => set({ [key]: rateId, [nameKey]: name })}
             disabled={disabled}
           />
         );

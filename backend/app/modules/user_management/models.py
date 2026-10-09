@@ -6,6 +6,7 @@ from sqlalchemy import (
     String,
     ForeignKey,
     Integer,
+    Numeric,
     SmallInteger,
     Text,
     DateTime,
@@ -520,6 +521,17 @@ class CompanyProfile(Base):
     # E5 (12c §3.5): tracked products invoice what was delivered, or what was ordered.
     invoicing_policy = Column(String(20), nullable=False, server_default="delivered")
     default_payment_terms_days = Column(Integer, nullable=True)
+    # 13d §3.1: whether new documents' prices include tax (`inclusive`) or not.
+    default_tax_mode = Column(String(10), nullable=False, default="exclusive", server_default="exclusive")
+    # 13d §3.3: how every PDF looks. `document_layout` is modern, classic or compact.
+    document_layout = Column(String(20), nullable=False, default="modern", server_default="modern")
+    brand_color = Column(String(20), nullable=True)
+    document_footer = Column(Text, nullable=True)
+    bank_details = Column(Text, nullable=True)
+    # 13d §3.5: a new quote's expiry is its issue date plus this many days.
+    quote_validity_days = Column(Integer, nullable=False, default=30, server_default="30")
+    # 13d §3.6: the largest balance any user may write off; 0 = only finance configure may.
+    write_off_limit = Column(Numeric(12, 2), nullable=False, default=0, server_default="0")
     # E6 (12d §3.1): the currency stock is valued in. Locked once any move carries a value.
     base_currency = Column(String(3), nullable=True)
     updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)

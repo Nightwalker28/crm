@@ -1,7 +1,7 @@
 """What is owed on an invoice and on a credit note (12c §3.2).
 
 Balances are derived from allocation rows and cached on the document. Nothing else writes
-`amount_paid`, `amount_credited`, `balance_due`, `payment_status` or `refund_due`.
+`amount_paid`, `amount_credited`, `amount_written_off`, `balance_due`, `payment_status` or `refund_due`.
 """
 
 from __future__ import annotations
@@ -18,6 +18,7 @@ from app.modules.finance.models import (
     FinancePayment,
     FinancePaymentAllocation,
     FinancePosInvoice,
+    FinanceWriteOff,
 )
 from app.modules.finance.services.document_amounts import ZERO, money
 
@@ -46,20 +47,28 @@ def payment_status_for(*, total: Decimal, settled: Decimal, balance: Decimal) ->
     return "partial" if settled > 0 else "unpaid"
 
 
+def written_off(db: Session, *, tenant_id: int, invoice_id: int) -> Decimal:
+    value = db.query(func.coalesce(func.sum(FinanceWriteOff.amount), 0)).filter(
+        FinanceWriteOff.tenant_id == tenant_id, FinanceWriteOff.invoice_id == invoice_id).scalar()
+    return money(value)
+
+
 def refresh_invoice_balance(db: Session, invoice: FinancePosInvoice) -> FinancePosInvoice:
     if invoice.status != "issued":
         invoice.amount_paid = ZERO
         invoice.amount_credited = ZERO
+        invoice.amount_written_off = ZERO
         invoice.balance_due = ZERO
         invoice.payment_status = "unpaid"
         db.add(invoice)
         return invoice
     paid = _payments_to(db, tenant_id=invoice.tenant_id, column=FinancePaymentAllocation.invoice_id, document_id=invoice.id, kind="payment")
     credited = credited_to_invoice(db, tenant_id=invoice.tenant_id, invoice_id=invoice.id)
+    off = written_off(db, tenant_id=invoice.tenant_id, invoice_id=invoice.id)
     total = money(invoice.total_amount)
-    balance = max(total - paid - credited, ZERO)
-    invoice.amount_paid, invoice.amount_credited, invoice.balance_due = paid, credited, balance
-    invoice.payment_status = payment_status_for(total=total, settled=paid + credited, balance=balance)
+    balance = max(total - paid - credited - off, ZERO)
+    invoice.amount_paid, invoice.amount_credited, invoice.amount_written_off, invoice.balance_due = paid, credited, off, balance
+    invoice.payment_status = payment_status_for(total=total, settled=paid + credited + off, balance=balance)
     db.add(invoice)
     return invoice
 

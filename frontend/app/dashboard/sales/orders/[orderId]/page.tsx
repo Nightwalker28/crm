@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { DocumentPdfMenuItem } from "@/components/transactions/DocumentPdfButton";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import { useWarehouses } from "@/hooks/inventory/useInventory";
 import type { Order } from "@/hooks/sales/useOrders";
@@ -221,16 +223,24 @@ export default function OrderDetailPage() {
        * that field (§4.7). The pre-5.3 page agreed by accident — it shipped `Edit order`
        * alone — and this makes it the archetype rather than an omission.
        */
-      actions={order && canEdit ? (
-        <Button asChild variant="outline">
-          <Link href={editHref}>
-            <Pencil />
-            Edit
-          </Link>
-        </Button>
+      actions={order ? (
+        <>
+          <DocumentSendAction moduleKey="sales_orders" recordId={order.id} />
+          {canEdit ? (
+            <Button asChild variant="outline">
+              <Link href={editHref}>
+                <Pencil />
+                Edit
+              </Link>
+            </Button>
+          ) : null}
+        </>
       ) : null}
-      overflowActions={order && canClone ? (
-        <RecordCloneMenuItem newHref="/dashboard/sales/orders/new" recordId={params.orderId} />
+      overflowActions={order ? (
+        <>
+          <DocumentPdfMenuItem moduleKey="sales_orders" recordId={order.id} />
+          {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/orders/new" recordId={params.orderId} /> : null}
+        </>
       ) : null}
       spine={
         <RecordSpine>
@@ -439,7 +449,8 @@ function OrderOverview({
         }
       />
       {order.items?.length ? (
-        <TransactionLineItemsTable items={order.items} currency={order.currency} linkCatalogItems />
+        <TransactionLineItemsTable items={order.items} currency={order.currency} linkCatalogItems
+          taxSummary={order.tax_summary} taxInclusive={order.tax_mode === "inclusive"} />
       ) : null}
     </div>
   );

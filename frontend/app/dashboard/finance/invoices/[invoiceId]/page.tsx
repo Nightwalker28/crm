@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Ban, CopyX, CreditCard, ExternalLink, FileMinus, Pencil, ReceiptText } from "lucide-react";
+import { Ban, CopyX, CreditCard, Eraser, ExternalLink, FileMinus, Pencil, ReceiptText, Repeat } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
@@ -39,6 +40,7 @@ import {
 } from "@/components/ui/RecordSpine";
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import {
   invoiceDisplayNumber,
@@ -47,7 +49,9 @@ import {
   PosInvoiceRequestError,
   type PosInvoice,
 } from "@/hooks/finance/usePosInvoices";
+import { jsonBody, receivablesRequest } from "@/hooks/finance/useReceivables";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
+import { useConfirm } from "@/hooks/useConfirm";
 import {
   useResolvedRecordLayout,
   type ResolvedRecordLayout as ResolvedRecordLayoutContract,
@@ -99,6 +103,11 @@ export default function InvoiceDetailPage() {
   const [voidPanel, setVoidPanel] = useState<"void" | "copy" | null>(null);
   const [voidReason, setVoidReason] = useState("");
   const [voidError, setVoidError] = useState<string | null>(null);
+  const [writingOff, setWritingOff] = useState(false);
+  const [writeOffReason, setWriteOffReason] = useState("");
+  const [writeOffError, setWriteOffError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const { confirm } = useConfirm();
 
   const invoiceId = /^\d+$/.test(params.invoiceId) ? Number(params.invoiceId) : null;
   const query = usePosInvoice(invoiceId);
@@ -116,6 +125,8 @@ export default function InvoiceDetailPage() {
   const canViewPayments = Boolean(moduleActions("finance_payments")?.can_view);
   const canCreateCredit = Boolean(moduleActions("finance_credit_notes")?.can_create);
   const canViewCredits = Boolean(moduleActions("finance_credit_notes")?.can_view);
+  const canCreateRecurring = Boolean(moduleActions("finance_recurring_invoices")?.can_create);
+  const canViewRecurring = Boolean(moduleActions("finance_recurring_invoices")?.can_view);
   const canViewTasks = Boolean(taskActions?.can_view);
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
@@ -163,11 +174,49 @@ export default function InvoiceDetailPage() {
     }
   }
 
+  /** *Write off balance* (13d §3.6): the open balance, as a tracked adjustment. */
+  async function submitWriteOff() {
+    if (!invoice) return;
+    if (!writeOffReason.trim()) { setWriteOffError("Enter a reason."); return; }
+    try {
+      setWriteOffError(null);
+      await receivablesRequest(`/finance/invoices/${invoice.id}/write-off`, jsonBody("POST", { reason: writeOffReason.trim() }),
+        "The balance could not be written off.");
+      await Promise.all([query.refetch(), queryClient.invalidateQueries({ queryKey: ["pos-invoices"] })]);
+      toast.success(`${invoiceName}: balance written off.`);
+      setWritingOff(false);
+      setWriteOffReason("");
+    } catch (failure) {
+      setWriteOffError(failure instanceof Error ? failure.message : "The balance could not be written off.");
+    }
+  }
+
+  async function reverseWriteOff(writeOffId: number) {
+    if (!invoice) return;
+    const ok = await confirm({
+      title: "Reverse this write-off?",
+      description: "The amount is owed again and the invoice reopens. Payment reminders can be sent for it again.",
+      confirmLabel: "Reverse write-off",
+    });
+    if (!ok) return;
+    try {
+      await receivablesRequest(`/finance/invoices/${invoice.id}/write-offs/${writeOffId}`, { method: "DELETE" }, "The write-off could not be reversed.");
+      await Promise.all([query.refetch(), queryClient.invalidateQueries({ queryKey: ["pos-invoices"] })]);
+      toast.success("Write-off reversed.");
+    } catch (failure) {
+      toast.error(failure instanceof Error ? failure.message : "The write-off could not be reversed.");
+    }
+  }
+
   const issued = invoice?.status === "issued";
   const isDraft = invoice?.status === "draft";
   const owing = issued && (invoice?.balance_due ?? 0) > 0;
   const hasMoney = Boolean(invoice?.payments?.some((payment) => payment.status === "posted"))
-    || Boolean(invoice?.credit_notes?.some((note) => note.status !== "void"));
+    || Boolean(invoice?.credit_notes?.some((note) => note.status !== "void"))
+    || Boolean(invoice?.write_offs?.length);
+  // Anyone who edits invoices may write off up to the company's limit; above it, finance admins.
+  const canWriteOff = owing && canEdit && Boolean(invoice)
+    && ((invoice?.balance_due ?? 0) <= (invoice?.write_off_limit ?? 0) || Boolean(invoice?.can_write_off_any));
   const trackId = invoice ? (invoice.status === "issued" && invoice.payment_status === "paid" ? "paid" : invoice.status) : "draft";
 
   return (
@@ -206,6 +255,7 @@ export default function InvoiceDetailPage() {
         <div className="flex flex-wrap gap-2">
           {isDraft && canEdit ? <Button onClick={() => void issue()} disabled={lifecycle.isSaving}>Issue invoice</Button> : null}
           {owing && canRecordPayment ? <Button onClick={() => setPaying(true)}><CreditCard />Record payment</Button> : null}
+          {issued ? <DocumentSendAction moduleKey="finance_pos" recordId={invoice.id} /> : null}
           {(isDraft || issued) && canEdit ? (
             <Button asChild variant="outline">
               <Link href={editHref}>
@@ -221,7 +271,7 @@ export default function InvoiceDetailPage() {
           <DropdownMenuItem asChild>
             <Link href={`${recordHref}/print`}>
               <ExternalLink />
-              Print
+              Preview and PDF
             </Link>
           </DropdownMenuItem>
           {issued && canCreateCredit ? (
@@ -229,6 +279,20 @@ export default function InvoiceDetailPage() {
               <Link href={`${DASHBOARD_ROUTES.creditNotes}/new?invoice_id=${invoice.id}`}>
                 <FileMinus />
                 Create credit note
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          {canWriteOff ? (
+            <DropdownMenuItem onSelect={() => { setWriteOffError(null); setWritingOff(true); }}>
+              <Eraser />
+              Write off balance
+            </DropdownMenuItem>
+          ) : null}
+          {canCreateRecurring && invoice.status !== "void" ? (
+            <DropdownMenuItem asChild>
+              <Link href={`${DASHBOARD_ROUTES.recurringInvoices}/new?from_invoice=${invoice.id}`}>
+                <Repeat />
+                Make recurring
               </Link>
             </DropdownMenuItem>
           ) : null}
@@ -297,6 +361,11 @@ export default function InvoiceDetailPage() {
                     <span className="tabular-nums">{money(invoice.amount_credited ?? 0, invoice.currency)}</span>
                   </RecordSpineField>
                 ) : null}
+                {issued && (invoice.amount_written_off ?? 0) > 0 ? (
+                  <RecordSpineField label="Written off">
+                    <span className="tabular-nums">{money(invoice.amount_written_off ?? 0, invoice.currency)}</span>
+                  </RecordSpineField>
+                ) : null}
                 {issued ? (
                   <RecordSpineField label="Paid">
                     <span className="tabular-nums">{money(invoice.amount_paid, invoice.currency)}</span>
@@ -316,6 +385,13 @@ export default function InvoiceDetailPage() {
 
               <RecordSpineBlock title="Connected">
                 <RecordSpineLink label="Raised by" value={invoice.user_name} />
+                {invoice.recurring_invoice_id ? (
+                  <RecordSpineLink
+                    label="Recurring invoice"
+                    value={invoice.recurring_invoice_name ?? "Recurring invoice"}
+                    href={canViewRecurring ? `${DASHBOARD_ROUTES.recurringInvoices}/${invoice.recurring_invoice_id}` : null}
+                  />
+                ) : null}
                 <RecordSpineLink
                   label="Order"
                   value={invoice.sales_order_number ?? null}
@@ -355,6 +431,7 @@ export default function InvoiceDetailPage() {
           onRetryLayout={() => void detailLayoutQuery.refetch()}
           showPayments={canViewPayments}
           showCredits={canViewCredits}
+          onReverseWriteOff={invoice.can_write_off_any ? (id) => void reverseWriteOff(id) : undefined}
         />
       ) : null}
       timeline={invoice ? (
@@ -408,6 +485,20 @@ export default function InvoiceDetailPage() {
     >
       <Field><FieldLabel htmlFor="invoice-void-reason">Reason</FieldLabel><Textarea id="invoice-void-reason" maxLength={500} value={voidReason} onChange={(event) => setVoidReason(event.target.value)} /></Field>
     </EditorPanel>
+    <EditorPanel
+      open={writingOff}
+      onOpenChange={(open) => { if (!open) setWritingOff(false); }}
+      title={`Write off ${invoiceName}`}
+      description={invoice
+        ? `${money(invoice.balance_due, invoice.currency)} stops being owed and the invoice reads Paid. The write-off stays on the invoice and can be reversed by a finance administrator.`
+        : ""}
+      closeLabel="Close panel"
+      onSubmit={() => void submitWriteOff()}
+      status={writeOffError ? <span role="alert">{writeOffError}</span> : null}
+      footer={<><Button variant="outline" onClick={() => setWritingOff(false)}>Back</Button><Button type="submit" variant="destructive">Write off balance</Button></>}
+    >
+      <Field><FieldLabel htmlFor="invoice-write-off-reason">Reason</FieldLabel><Textarea id="invoice-write-off-reason" maxLength={500} value={writeOffReason} placeholder="Bank charges, a small short payment, an uncollectable debt" onChange={(event) => setWriteOffReason(event.target.value)} /></Field>
+    </EditorPanel>
     </>
   );
 }
@@ -427,6 +518,7 @@ function InvoiceOverview({
   onRetryLayout,
   showPayments,
   showCredits,
+  onReverseWriteOff,
 }: {
   invoice: PosInvoice;
   layout?: ResolvedRecordLayoutContract;
@@ -435,6 +527,7 @@ function InvoiceOverview({
   onRetryLayout: () => void;
   showPayments: boolean;
   showCredits: boolean;
+  onReverseWriteOff?: (writeOffId: number) => void;
 }) {
   if (isLayoutLoading || !layout) {
     return (
@@ -459,8 +552,7 @@ function InvoiceOverview({
           if (MONEY_FIELDS.has(field.field_key)) {
             return formatMoney(value as number | null, invoice.currency) ?? undefined;
           }
-          if (field.field_key !== "tax_rate") return undefined;
-          return value === null || value === undefined || value === "" ? undefined : `${Number(value)}%`;
+          return undefined;
         }}
       />
       {invoice.lines?.length ? (
@@ -474,11 +566,13 @@ function InvoiceOverview({
             tax_amount: line.tax_amount ?? 0,
             line_total: line.line_total ?? line.quantity * line.unit_price,
             catalog_product_id: line.catalog_product_id,
-            catalog_service_id: line.catalog_service_id,
+            catalog_service_id: line.catalog_service_id, line_type: line.line_type, unit: line.unit,
           }))}
           currency={invoice.currency}
           itemLabel="Description"
           linkCatalogItems
+          taxSummary={invoice.tax_summary}
+          taxInclusive={invoice.tax_mode === "inclusive"}
         />
       ) : null}
       {showPayments && invoice.status !== "draft" ? (
@@ -518,6 +612,45 @@ function InvoiceOverview({
               { key: "issue_date", label: "Issued", size: "sm", render: (row) => (row.issue_date ? formatDateOnly(row.issue_date) : "—") },
               { key: "reason", label: "Reason", size: "lg", render: (row) => row.reason ?? "—" },
               { key: "total", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.total_amount} currency={row.currency} /> },
+            ]}
+          />
+        </section>
+      ) : null}
+      {(invoice.write_offs?.length ?? 0) > 0 ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Write-offs</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Balances written off this invoice"
+            rows={invoice.write_offs ?? []}
+            rowKey={(row) => row.id}
+            emptyState={{ title: "No write-offs" }}
+            columns={[
+              { key: "created_at", label: "Date", size: "sm", render: (row) => formatDateOnly(row.created_at) },
+              { key: "reason", label: "Reason", size: "lg", render: (row) => row.reason },
+              { key: "by", label: "By", size: "md", render: (row) => row.created_by_name ?? "—" },
+              { key: "amount", label: "Amount", size: "sm", align: "right", render: (row) => <Money amount={row.amount} currency={invoice.currency} /> },
+              ...(onReverseWriteOff ? [{ key: "reverse", label: <span className="sr-only">Actions</span>, size: "sm" as const, align: "right" as const, interactive: true,
+                render: (row: NonNullable<PosInvoice["write_offs"]>[number]) => (
+                  <Button variant="ghost" size="sm" onClick={() => onReverseWriteOff(row.id)}>Reverse</Button>
+                ) }] : []),
+            ]}
+          />
+        </section>
+      ) : null}
+      {(invoice.reminders?.length ?? 0) > 0 ? (
+        <section className="flex flex-col gap-3">
+          <SectionHeading>Payment reminders</SectionHeading>
+          <RecordTable
+            variant="readOnly"
+            label="Payment reminders for this invoice"
+            rows={invoice.reminders ?? []}
+            rowKey={(row) => `${row.rule_name}-${row.sent_at}`}
+            emptyState={{ title: "No reminders sent" }}
+            columns={[
+              { key: "sent_at", label: "Date", size: "sm", render: (row) => formatDateTime(row.sent_at) },
+              { key: "rule_name", label: "Reminder", size: "md", render: (row) => row.rule_name },
+              { key: "recipient", label: "To", size: "md", render: (row) => (row.outcome === "sent" ? row.recipient ?? "—" : `Not sent: ${row.detail ?? "no address"}`) },
             ]}
           />
         </section>

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{{ document.title }} {{ document.number }}</title>
+{#- One template for every commercial document (13d §3.3). The layout is a class on <body>;
+    the accent is the company's brand colour. Nothing is loaded from outside the document. -#}
+<style>
+  @page { size: A4; margin: 18mm 16mm 20mm; @bottom-center { content: counter(page) " / " counter(pages); font-size: 8pt; color: #6b7280; } }
+  * { box-sizing: border-box; }
+  body { font-family: "DejaVu Sans", "Liberation Sans", Arial, sans-serif; font-size: 9.5pt; color: #111827; line-height: 1.45; margin: 0; }
+  .accent { color: {{ company.brand_color }}; }
+  header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12mm; margin-bottom: 10mm; }
+  .brand img { max-height: 18mm; max-width: 60mm; display: block; margin-bottom: 3mm; }
+  .brand .name { font-weight: 700; font-size: 11pt; }
+  .brand .meta { color: #4b5563; font-size: 8.5pt; }
+  .heading { text-align: right; }
+  .heading h1 { margin: 0; font-size: 20pt; letter-spacing: 0.02em; color: {{ company.brand_color }}; }
+  .heading .number { font-size: 11pt; font-weight: 600; margin-top: 1mm; }
+  .facts { margin-top: 3mm; border-collapse: collapse; margin-left: auto; }
+  .facts td { padding: 0.6mm 0 0.6mm 4mm; font-size: 8.5pt; }
+  .facts td.label { color: #6b7280; text-align: right; }
+  .parties { display: flex; gap: 10mm; margin-bottom: 7mm; }
+  .party { flex: 1; }
+  .party .label { text-transform: uppercase; font-size: 7.5pt; letter-spacing: 0.06em; color: #6b7280; margin-bottom: 1mm; }
+  .party .name { font-weight: 600; }
+  .subject { font-weight: 600; margin-bottom: 4mm; }
+  table.lines { width: 100%; border-collapse: collapse; }
+  table.lines th { text-align: left; font-size: 8pt; text-transform: uppercase; letter-spacing: 0.04em; color: #4b5563; border-bottom: 1.5pt solid {{ company.brand_color }}; padding: 2mm 1.5mm; }
+  table.lines td { padding: 2mm 1.5mm; border-bottom: 0.5pt solid #e5e7eb; vertical-align: top; }
+  table.lines .num { text-align: right; white-space: nowrap; }
+  table.lines .description { color: #4b5563; font-size: 8.5pt; }
+  table.lines tr.section td { font-weight: 700; padding-top: 4mm; border-bottom: 0.75pt solid #9ca3af; }
+  table.lines tr.note td { color: #374151; font-style: italic; }
+  table.lines tr.optional td { color: #6b7280; }
+  .tag { font-size: 7.5pt; text-transform: uppercase; letter-spacing: 0.05em; color: #6b7280; }
+  .summary { display: flex; justify-content: space-between; gap: 10mm; margin-top: 5mm; }
+  table.tax, table.totals { border-collapse: collapse; }
+  table.tax td, table.tax th { padding: 1mm 2mm; font-size: 8.5pt; text-align: right; }
+  table.tax th { color: #6b7280; font-weight: 500; }
+  table.tax td:first-child, table.tax th:first-child { text-align: left; }
+  table.ageing { margin-top: 4mm; width: 100%; }
+  table.ageing td, table.ageing th { text-align: right; }
+  table.totals { margin-left: auto; min-width: 70mm; }
+  table.totals td { padding: 1.2mm 0 1.2mm 6mm; text-align: right; }
+  table.totals tr.strong td { font-weight: 700; border-top: 1pt solid #111827; font-size: 10.5pt; }
+  .inclusive { font-size: 8pt; color: #6b7280; text-align: right; margin-top: 1mm; }
+  section.block { margin-top: 7mm; page-break-inside: avoid; }
+  section.block h2 { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.06em; color: #6b7280; margin: 0 0 1.5mm; }
+  footer { margin-top: 10mm; color: #6b7280; font-size: 8pt; text-align: center; }
+  .draft { position: fixed; top: 40%; left: 0; right: 0; text-align: center; font-size: 72pt; color: rgba(17, 24, 39, 0.06); transform: rotate(-24deg); font-weight: 700; }
+  /* classic: serif, ruled; compact: tighter. */
+  body.classic { font-family: "DejaVu Serif", "Liberation Serif", Georgia, serif; }
+  body.classic .heading h1 { color: #111827; text-transform: uppercase; font-size: 16pt; letter-spacing: 0.12em; }
+  body.classic table.lines th { border-bottom: 1pt solid #111827; border-top: 1pt solid #111827; }
+  body.compact { font-size: 8.5pt; }
+  body.compact header { margin-bottom: 6mm; }
+  body.compact table.lines td, body.compact table.lines th { padding: 1.2mm 1mm; }
+  body.compact .heading h1 { font-size: 15pt; }
+</style>
+</head>
+<body class="{{ layout }}">
+{% if draft %}<div class="draft">DRAFT</div>{% endif %}
+<header>
+  <div class="brand">
+    {% if company.logo %}<img src="{{ company.logo }}" alt="">{% endif %}
+    <div class="name">{{ company.name }}</div>
+    <div class="meta">
+      {{ company.address | lines }}
+      {% if company.email or company.phone %}<br>{{ [company.email, company.phone] | select | join(" · ") }}{% endif %}
+      {% if company.website %}<br>{{ company.website }}{% endif %}
+    </div>
+  </div>
+  <div class="heading">
+    <h1>{{ document.title }}</h1>
+    <div class="number">{{ document.number }}</div>
+    {% if document.facts %}
+    <table class="facts">
+      {% for fact in document.facts %}
+      <tr><td class="label">{{ fact.label }}</td><td>{{ fact.value | date if fact.value is not string else fact.value }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+</header>
+
+{% if parties %}
+<div class="parties">
+  {% for party in parties %}
+  <div class="party">
+    <div class="label">{{ party.label }}</div>
+    <div class="name">{{ party.name }}</div>
+    {% for line in party.lines %}<div>{{ line }}</div>{% endfor %}
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if document.subject %}<div class="subject">{{ document.subject }}</div>{% endif %}
+
+{% if ledger is defined and ledger %}
+<table class="lines">
+  <thead>
+    <tr>{% for column in ledger.columns %}<th class="{{ 'num' if loop.index0 >= ledger.money_from else '' }}">{{ column }}</th>{% endfor %}</tr>
+  </thead>
+  <tbody>
+    {% for row in ledger.rows %}
+    <tr>
+      {% for cell in row %}
+      {% if loop.index0 >= ledger.money_from %}<td class="num">{% if cell is not none %}{{ cell | money }}{% endif %}</td>
+      {% elif cell is not none and cell is not string %}<td>{{ cell | date }}</td>
+      {% else %}<td>{{ cell or "" }}</td>{% endif %}
+      {% endfor %}
+    </tr>
+    {% endfor %}
+    {% if not ledger.rows %}<tr><td colspan="{{ ledger.columns | length }}">Nothing in this period.</td></tr>{% endif %}
+  </tbody>
+</table>
+{% if ageing is defined and ageing %}
+<table class="tax ageing">
+  <tr>{% for bucket in ageing %}<th>{{ bucket.label }}</th>{% endfor %}</tr>
+  <tr>{% for bucket in ageing %}<td>{{ bucket.amount | money }}</td>{% endfor %}</tr>
+</table>
+{% endif %}
+{% else %}
+<table class="lines">
+  <thead>
+    <tr>
+      <th>Item</th>
+      <th class="num">Quantity</th>
+      {% if columns.price %}<th class="num">Price</th>{% endif %}
+      {% if columns.discount %}<th class="num">Discount</th>{% endif %}
+      {% if columns.tax %}<th class="num">Tax</th>{% endif %}
+      {% if columns.price %}<th class="num">Amount</th>{% endif %}
+    </tr>
+  </thead>
+  <tbody>
+    {% set span = 2 + (2 if columns.price else 0) + (1 if columns.discount else 0) + (1 if columns.tax else 0) %}
+    {% for line in lines %}
+    {% if line.type == "section" %}
+    <tr class="section"><td colspan="{{ span }}">{{ line.name }}</td></tr>
+    {% elif line.type == "note" %}
+    <tr class="note"><td colspan="{{ span }}">{{ line.name | lines }}</td></tr>
+    {% else %}
+    <tr class="{{ 'optional' if line.optional else '' }}">
+      <td>
+        {{ line.name }}{% if line.optional %} <span class="tag">Optional</span>{% endif %}
+        {% if line.description %}<div class="description">{{ line.description }}</div>{% endif %}
+      </td>
+      <td class="num">{{ line.quantity | quantity }}{% if line.unit %} {{ line.unit }}{% endif %}</td>
+      {% if columns.price %}<td class="num">{{ line.unit_price | money }}</td>{% endif %}
+      {% if columns.discount %}<td class="num">{% if line.discount_percent is not none %}{{ line.discount_percent | percent }}{% elif line.discount and line.discount != 0 %}{{ line.discount | money }}{% endif %}</td>{% endif %}
+      {% if columns.tax %}<td class="num">{% if line.tax_rate %}{{ line.tax_rate }}{% elif line.tax and line.tax != 0 %}{{ line.tax | money }}{% endif %}</td>{% endif %}
+      {% if columns.price %}<td class="num">{{ line.total | money }}</td>{% endif %}
+    </tr>
+    {% endif %}
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if totals or tax_summary %}
+<div class="summary">
+  <div>
+    {% if tax_summary %}
+    <table class="tax">
+      <tr><th>Tax</th><th>Taxable</th><th>Amount</th></tr>
+      {% for row in tax_summary %}
+      <tr><td>{{ row.name }}</td><td>{{ row.taxable | money }}</td><td>{{ row.tax | money }}</td></tr>
+      {% endfor %}
+    </table>
+    {% endif %}
+  </div>
+  <div>
+    <table class="totals">
+      {% for row in totals %}
+      <tr class="{{ 'strong' if row.strong else '' }}"><td>{{ row.label }}</td><td>{{ row.amount | money(document.currency if row.strong else none) }}</td></tr>
+      {% endfor %}
+    </table>
+    {% if document.inclusive %}<div class="inclusive">Prices include tax.</div>{% endif %}
+  </div>
+</div>
+{% endif %}
+
+{% if payment %}
+<section class="block"><h2>Payment details</h2>{{ payment | lines }}</section>
+{% endif %}
+{% if terms %}
+<section class="block"><h2>Terms</h2>{{ terms | lines }}</section>
+{% endif %}
+{% if notes %}
+<section class="block"><h2>Notes</h2>{{ notes | lines }}</section>
+{% endif %}
+{% if company.footer %}<footer>{{ company.footer | lines }}</footer>{% endif %}
+</body>
+</html>

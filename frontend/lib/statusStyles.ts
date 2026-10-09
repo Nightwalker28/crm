@@ -157,6 +157,15 @@ const QUOTE_STATUS: Record<string, StatusDescriptor> = {
   accepted: s("Accepted"),
   expired: a("Expired"),
   declined: c("Declined"),
+  superseded: n("Superseded"),
+  converted: s("Converted"),
+};
+
+/** A recurring invoice (13d §3.6): running, paused by someone, or done with its schedule. */
+const RECURRING_INVOICE_STATUS: Record<string, StatusDescriptor> = {
+  active: s("Active"),
+  paused: n("Paused"),
+  finished: n("Finished"),
 };
 
 const ORDER_STATUS: Record<string, StatusDescriptor> = {
@@ -174,6 +183,16 @@ const ORDER_SOURCE: Record<string, StatusDescriptor> = {
 };
 
 /** The same order seen by the client in the portal: a draft is one the team has not confirmed. */
+/** A quote as the customer sees it in the portal (13d §3.5): what they can still do with it. */
+const CLIENT_QUOTE_STATE: Record<string, StatusDescriptor> = {
+  open: a("Awaiting your answer"),
+  pending: n("In preparation"),
+  accepted: s("Accepted"),
+  declined: n("Declined"),
+  expired: n("Expired"),
+  replaced: n("Replaced"),
+};
+
 const CLIENT_ORDER_STATUS: Record<string, StatusDescriptor> = {
   ...ORDER_STATUS,
   draft: n("Awaiting confirmation"),
@@ -273,7 +292,9 @@ export const getPurchaseOrderBillStatus = (v: string) => descriptorFrom(PURCHASE
 export const OVERDUE_STATUS: StatusDescriptor = { tone: "critical", label: "Overdue" };
 export const getQuoteStatus = (v: string) => descriptorFrom(QUOTE_STATUS, v);
 export const getOrderStatus = (v: string) => descriptorFrom(ORDER_STATUS, v);
+export const getRecurringInvoiceStatus = (v: string) => descriptorFrom(RECURRING_INVOICE_STATUS, v);
 export const getClientOrderStatus = (v: string) => descriptorFrom(CLIENT_ORDER_STATUS, v);
+export const getClientQuoteState = (v: string) => descriptorFrom(CLIENT_QUOTE_STATE, v);
 export const getOrderSource = (v: string) => descriptorFrom(ORDER_SOURCE, v);
 export const getOrderAvailability = (v: string) => descriptorFrom(ORDER_AVAILABILITY, v);
 export const getOrderDeliveryStatus = (v: string) => descriptorFrom(ORDER_DELIVERY_STATUS, v);

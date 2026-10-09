@@ -27,7 +27,8 @@ from app.modules.inventory.models import (
     InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryReturn, InventoryReturnLine,
     InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse,
 )
-from app.modules.purchasing.models import PurchaseBill, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
+from app.modules.finance.tax_models import FinanceTaxRate
+from app.modules.purchasing.models import PurchaseBill, PurchaseBillLine, PurchaseOrder, PurchaseOrderLine, PurchaseReceipt, PurchaseReceiptLine
 from app.core import field_types
 from app.modules.platform.models import CustomModuleDefinition, CustomModuleRecord, FieldValue
 from app.modules.platform.services import custom_modules
@@ -781,6 +782,53 @@ def _bill_fields(db: Session, user) -> list[ReportField]:
         *_custom_fields(db, tenant_id=user.tenant_id, module_key="purchase_bills", record_id_expression=PurchaseBill.id),
     ]
 
+# 13d §3.1: tax by rate and period, from issued invoices (output) and posted bills (input). Credit
+# notes and vendor credits reach the tax return through F7's ledger.
+
+def _rate_name(line_model):
+    return func.coalesce(select(FinanceTaxRate.name).where(FinanceTaxRate.id == line_model.tax_rate_id).scalar_subquery(), "No rate")
+
+
+def _rate_value(line_model):
+    return select(FinanceTaxRate.rate).where(FinanceTaxRate.id == line_model.tax_rate_id).scalar_subquery()
+
+
+def _sales_tax_fields(db: Session, user) -> list[ReportField]:
+    invoice = lambda column: select(column).where(FinancePosInvoice.id == FinancePosInvoiceLine.invoice_id).scalar_subquery()  # noqa: E731
+    return [
+        ReportField("tax_rate", "Tax rate", "text", _rate_name(FinancePosInvoiceLine)),
+        ReportField("rate", "Rate %", "number", _rate_value(FinancePosInvoiceLine)),
+        ReportField("invoice", "Invoice", "text", invoice(FinancePosInvoice.invoice_number), groupable=False),
+        ReportField("customer_name", "Customer", "text", invoice(FinancePosInvoice.customer_name)),
+        ReportField("issue_date", "Issue date", "date", invoice(FinancePosInvoice.issue_date)),
+        ReportField("currency", "Currency", "text", invoice(FinancePosInvoice.currency)),
+        ReportField("taxable", "Taxable amount", "money", FinancePosInvoiceLine.line_total - FinancePosInvoiceLine.tax_amount),
+        ReportField("tax", "Tax", "money", FinancePosInvoiceLine.tax_amount),
+    ]
+
+
+def _purchase_tax_query(db: Session, user, search: str | None):
+    query = db.query(PurchaseBillLine).join(PurchaseBill, PurchaseBill.id == PurchaseBillLine.bill_id).filter(
+        PurchaseBill.tenant_id == user.tenant_id, PurchaseBill.deleted_at.is_(None), PurchaseBill.status == "posted")
+    return query.filter(PurchaseBillLine.description.ilike(f"%{search}%")) if search else query
+
+
+def _purchase_tax_fields(db: Session, user) -> list[ReportField]:
+    bill = lambda column: select(column).where(PurchaseBill.id == PurchaseBillLine.bill_id).scalar_subquery()  # noqa: E731
+    vendor = select(SalesOrganization.org_name).join(PurchaseBill, PurchaseBill.vendor_id == SalesOrganization.org_id).where(
+        PurchaseBill.id == PurchaseBillLine.bill_id).scalar_subquery()
+    return [
+        ReportField("tax_rate", "Tax rate", "text", _rate_name(PurchaseBillLine)),
+        ReportField("rate", "Rate %", "number", _rate_value(PurchaseBillLine)),
+        ReportField("bill", "Bill", "text", bill(PurchaseBill.number), groupable=False),
+        ReportField("vendor", "Vendor", "text", vendor),
+        ReportField("bill_date", "Bill date", "date", bill(PurchaseBill.bill_date)),
+        ReportField("currency", "Currency", "text", bill(PurchaseBill.currency)),
+        ReportField("taxable", "Taxable amount", "money", PurchaseBillLine.line_total - PurchaseBillLine.tax_amount),
+        ReportField("tax", "Tax", "money", PurchaseBillLine.tax_amount),
+    ]
+
+
 BUILT_IN_SOURCES: dict[str, ReportSource] = {
     "inventory_deliveries": ReportSource(
         "inventory_deliveries", "Deliveries", InventoryDelivery, InventoryDelivery.id, lambda db: InventoryDelivery.number,
@@ -809,6 +857,14 @@ BUILT_IN_SOURCES: dict[str, ReportSource] = {
         "finance_invoice_lines", "Invoice lines", FinancePosInvoiceLine, FinancePosInvoiceLine.id, lambda db: FinancePosInvoiceLine.description,
         _invoice_lines_query, _invoice_line_fields, None, ("invoice", "customer_name", "issue_date", "quantity", "line_total"),
         default_date_field="issue_date", label_field="description", permission_module_key="finance_pos"),
+    "finance_sales_tax": ReportSource(
+        "finance_sales_tax", "Tax on sales", FinancePosInvoiceLine, FinancePosInvoiceLine.id, lambda db: FinancePosInvoiceLine.description,
+        _invoice_lines_query, _sales_tax_fields, None, ("tax_rate", "invoice", "customer_name", "issue_date", "taxable", "tax"),
+        default_date_field="issue_date", label_field="description", permission_module_key="finance_pos"),
+    "purchase_tax": ReportSource(
+        "purchase_tax", "Tax on purchases", PurchaseBillLine, PurchaseBillLine.id, lambda db: PurchaseBillLine.description,
+        _purchase_tax_query, _purchase_tax_fields, None, ("tax_rate", "bill", "vendor", "bill_date", "taxable", "tax"),
+        default_date_field="bill_date", label_field="description", permission_module_key="purchase_bills"),
     "finance_credit_notes": ReportSource(
         "finance_credit_notes", "Credit notes", FinanceCreditNote, FinanceCreditNote.id, lambda db: FinanceCreditNote.number,
         _credit_notes_query, _credit_note_fields, "/dashboard/finance/credit-notes/{id}",

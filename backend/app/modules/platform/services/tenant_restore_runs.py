@@ -12,7 +12,9 @@ from sqlalchemy import func, inspect as sqlalchemy_inspect, text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.sqltypes import Date, DateTime, Numeric
 
-from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantRestoreRun
+from app.modules.finance.models import FinanceReminderRule
+from app.modules.finance.tax_models import FinanceTaxGroupMember, FinanceTaxRate
+from app.modules.platform.models import DocumentSetting, FieldDefinition, MessageTemplate, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantRestoreRun
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryRevaluation, InventoryStockLevel, InventoryStockMove, InventoryWarehouse
 from app.modules.inventory.services.stock_ledger import rebuild_reservations
@@ -437,6 +439,31 @@ def _restore_picklists(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, au
         )
         db.flush()
     _sync_id_sequences(db, [Picklist, PicklistValue, PicklistDependency])
+    _restore_tax_rates(db, zipf, tenant_id=tenant_id, authoritative=authoritative)
+
+
+def _restore_tax_rates(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, authoritative: bool) -> None:
+    """Tax rates and groups (13d §3.1), before the lines that name them. They match by id, so
+    a line's rate is the rate it was computed from; a backup taken before rates restores none."""
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="finance_tax_rates.json"):
+        _upsert_child(db, tenant_id=tenant_id, model=FinanceTaxRate, row=row, authoritative=authoritative)
+        db.flush()
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="finance_tax_group_members.json"):
+        _upsert_child(db, tenant_id=tenant_id, model=FinanceTaxGroupMember, row=row, authoritative=authoritative,
+                      natural_key=("group_id", "rate_id"))
+        db.flush()
+    _sync_id_sequences(db, [FinanceTaxRate, FinanceTaxGroupMember])
+    template_ids = {row[0] for row in db.query(MessageTemplate.id).filter(MessageTemplate.tenant_id == tenant_id).all()}
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="document_settings.json"):
+        # A template that is not in this workspace any more leaves the type on none.
+        row = {**row, "email_template_id": row.get("email_template_id") if row.get("email_template_id") in template_ids else None}
+        _upsert_child(db, tenant_id=tenant_id, model=DocumentSetting, row=row, authoritative=authoritative, natural_key=("kind",))
+        db.flush()
+    _sync_id_sequences(db, [DocumentSetting])
+    for row in _child_rows(zipf, tenant_id=tenant_id, filename="finance_reminder_rules.json"):
+        _upsert_child(db, tenant_id=tenant_id, model=FinanceReminderRule, row=row, authoritative=authoritative)
+        db.flush()
+    _sync_id_sequences(db, [FinanceReminderRule])
 
 
 def _restore_field_values(db: Session, zipf: zipfile.ZipFile, *, tenant_id: int, module_key: str, model: Any, authoritative: bool) -> None:
@@ -612,6 +639,13 @@ def _restore_finance_bundle(db: Session, zipf: zipfile.ZipFile, *, tenant_id: in
             credits = {row[0] for row in db.query(PurchaseVendorCredit.id).filter(PurchaseVendorCredit.tenant_id == tenant_id)}
             rows = [row for row in rows if (not row.get("bill_id") or int(row["bill_id"]) in bills)
                     and (not row.get("vendor_credit_id") or int(row["vendor_credit_id"]) in credits)]
+        if filename == "finance_reminder_sends.json":
+            rules = {row[0] for row in db.query(FinanceReminderRule.id).filter(FinanceReminderRule.tenant_id == tenant_id)}
+            rows = [row for row in rows if row.get("rule_id") and int(row["rule_id"]) in rules]
+        if filename == "finance_recurring_invoices.json":
+            # Invoices name their profile, so profiles go first.
+            bundles.insert(0, (filename, model, rows))
+            continue
         bundles.append((filename, model, rows))
     created = skipped = 0
     for _name, model, rows in bundles:

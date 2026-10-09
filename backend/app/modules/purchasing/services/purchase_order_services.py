@@ -11,6 +11,8 @@ from decimal import Decimal, InvalidOperation
 
 from fastapi import HTTPException
 from sqlalchemy import and_, func, or_
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import clean_unit
 from app.core.list_conditions import apply_list_conditions
 from sqlalchemy.orm import Session, selectinload
 
@@ -161,8 +163,10 @@ def incoming(db: Session, *, tenant_id: int, product_ids=None, warehouse_id: int
     return result
 
 
-def _normalize_lines(db: Session, *, tenant_id: int, vendor_id: int, lines: list[dict]) -> list[PurchaseOrderLine]:
-    """Products (tracked or not) and services, each with an optional discount (13c §3.5)."""
+def _normalize_lines(db: Session, *, tenant_id: int, vendor_id: int, lines: list[dict], order: PurchaseOrder | None = None) -> list[PurchaseOrderLine]:
+    """Products (tracked or not) and services, each with an optional discount (13c §3.5) and
+    tax (13d §3.1). Purchase prices are before tax: the tax is recoverable, so stock is
+    costed at the net."""
     if not lines:
         raise HTTPException(status_code=400, detail="Add at least one line")
     product_ids = {int(line["product_id"]) for line in lines if line.get("product_id")}
@@ -171,6 +175,8 @@ def _normalize_lines(db: Session, *, tenant_id: int, vendor_id: int, lines: list
         CatalogProduct.deleted_at.is_(None))} if product_ids else {}
     services = {row.id: row for row in db.query(CatalogService).filter(CatalogService.tenant_id == tenant_id, CatalogService.id.in_(service_ids),
         CatalogService.deleted_at.is_(None))} if service_ids else {}
+    resolver = tax_rates.TaxResolver(db, tenant_id=tenant_id, side="purchases",
+                                     allowed_inactive=tax_rates.used_rate_ids(order.lines) if order is not None else ())
     result = []
     for index, line in enumerate(lines):
         if bool(line.get("product_id")) == bool(line.get("catalog_service_id")):
@@ -185,13 +191,17 @@ def _normalize_lines(db: Session, *, tenant_id: int, vendor_id: int, lines: list
                                          service_id=service.id if service else None)
         raw_cost = line.get("unit_cost")
         unit_cost = _decimal(raw_cost if raw_cost is not None else (default_cost or 0), field="Unit cost")
-        gross = (quantity * unit_cost).quantize(Decimal("0.01"))
         discount = _decimal(line.get("discount_amount") or 0, field="Discount").quantize(Decimal("0.01"))
-        if discount > gross:
+        if discount > (quantity * unit_cost).quantize(Decimal("0.01")):
             raise HTTPException(status_code=400, detail=f"{item.name}: the discount is more than the line")
+        _decimal(line.get("tax_amount") or 0, field="Tax")
+        link = {"catalog_product_id": product.id if product else None, "catalog_service_id": service.id if service else None}
+        choice, amounts = tax_rates.compute_payload_line(resolver, line, link, quantity=quantity, unit_price=unit_cost, discount=discount,
+                                                         label=item.name)
         result.append(PurchaseOrderLine(tenant_id=tenant_id, product_id=product.id if product else None,
             catalog_service_id=service.id if service else None, description=(line.get("description") or "").strip() or None,
-            quantity=quantity, unit_cost=unit_cost, discount_amount=discount, line_total=gross - discount, sort_order=index))
+            quantity=quantity, unit_cost=unit_cost, discount_amount=discount, tax_amount=amounts.tax, tax_rate_id=choice.rate_id,
+            tax_manual=choice.manual, line_total=amounts.total, unit=clean_unit(line.get("unit") or item.unit), sort_order=index))
     return result
 
 
@@ -262,7 +272,7 @@ def save_order(db: Session, *, tenant_id: int, actor_user_id: int | None, payloa
         raise HTTPException(status_code=404, detail="Warehouse not found")
     if not warehouse.is_active:
         raise HTTPException(status_code=409, detail=f"{warehouse.name} is inactive")
-    lines = _normalize_lines(db, tenant_id=tenant_id, vendor_id=vendor.org_id, lines=payload.get("lines") or [])
+    lines = _normalize_lines(db, tenant_id=tenant_id, vendor_id=vendor.org_id, lines=payload.get("lines") or [], order=order)
     if order is None:
         order = PurchaseOrder(tenant_id=tenant_id, number=allocate_business_number(db, tenant_id=tenant_id, scope="purchase_orders", prefix="PO"),
             owner_id=actor_user_id)
@@ -276,7 +286,9 @@ def save_order(db: Session, *, tenant_id: int, actor_user_id: int | None, payloa
     order.vendor_reference = (payload.get("vendor_reference") or "").strip() or None
     order.notes = (payload.get("notes") or "").strip() or None
     order.lines = lines
-    order.subtotal = sum((line.line_total for line in lines), Decimal(0))
+    order.tax_total = sum((Decimal(line.tax_amount) for line in lines), Decimal(0))
+    order.total = sum((Decimal(line.line_total) for line in lines), Decimal(0))
+    order.subtotal = order.total - order.tax_total
     db.add(order)
     db.flush()
     sync_custom_fields(db, tenant_id=tenant_id, module_key="purchase_orders", record=order, payload=payload, created=order_id is None,
@@ -383,7 +395,8 @@ def compare_group(db: Session, *, tenant_id: int, order_id: int) -> dict:
             row = items.setdefault(key, {"kind": key[0], "item_id": key[1], "name": line.item_name, "offers": {}})
             offer = row["offers"].setdefault(member.id, {"quantity": Decimal(0), "line_total": Decimal(0)})
             offer["quantity"] += Decimal(line.quantity)
-            offer["line_total"] += Decimal(line.line_total)
+            # Vendors are compared before tax (13d §3.1).
+            offer["line_total"] += Decimal(line.line_total) - Decimal(line.tax_amount or 0)
     for row in items.values():
         for offer in row["offers"].values():
             offer["unit_cost"] = (offer["line_total"] / offer["quantity"]).quantize(Decimal("0.0001")) if offer["quantity"] else None
@@ -508,7 +521,7 @@ def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, includ
         "currency": order.currency, "exchange_rate": order.exchange_rate, "base_currency": base_currency(db, tenant_id=tenant_id),
         "suggested_exchange_rate": default_exchange_rate(db, tenant_id=tenant_id, currency=order.currency) if order.exchange_rate is None else None,
         "expected_date": order.expected_date, "vendor_reference": order.vendor_reference, "notes": order.notes,
-        "subtotal": order.subtotal, "ordered_at": order.ordered_at, "ordered_by": order.ordered_by, "closed_at": order.closed_at,
+        "subtotal": order.subtotal, "tax_total": order.tax_total, "total": order.total, "ordered_at": order.ordered_at, "ordered_by": order.ordered_by, "closed_at": order.closed_at,
         "sent_at": order.sent_at, "rfq_group_id": order.rfq_group_id,
         "close_reason": order.close_reason, "cancel_reason": order.cancel_reason, "owner_id": order.owner_id,
         "created_at": order.created_at, "updated_at": order.updated_at, "is_deleted": order.deleted_at is not None,
@@ -527,10 +540,12 @@ def serialize_order(db: Session, *, tenant_id: int, order: PurchaseOrder, includ
             "vendor_sku": line.product.vendor_sku if line.product else None,
             "description": line.description, "quantity": line.quantity, "unit_cost": line.unit_cost,
             "discount_amount": line.discount_amount, "net_unit_cost": line.net_unit_cost, "line_total": line.line_total,
+            "tax_amount": line.tax_amount, "tax_rate_id": line.tax_rate_id, "tax_manual": bool(line.tax_manual), "unit": line.unit,
             "received": received.get(line.id, Decimal(0)), "to_receive": to_receive(order, line, received.get(line.id, Decimal(0))),
             "billed": billing[line.id]["billed"], "to_bill": billing[line.id]["to_bill"],
         } for line in order.lines]
         result["bills"] = order_bills(db, tenant_id=tenant_id, order_id=order.id)
+        result["tax_summary"] = order.tax_summary
         from app.modules.purchasing.services.vendor_return_services import receipt_returns
 
         result["vendor_returns"] = receipt_returns(db, tenant_id=tenant_id, order_id=order.id)

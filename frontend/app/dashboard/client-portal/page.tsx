@@ -153,6 +153,7 @@ export default function ClientPortalDashboardPage() {
   } = useClientPortalActions();
   const [accountForm, setAccountForm] = useState<AccountForm>(emptyAccountForm);
   const [lastSetupLink, setLastSetupLink] = useState<string | null>(null);
+  const [lastInvite, setLastInvite] = useState<{ sent: true; email: string } | { sent: false; error: string | null } | null>(null);
 
   async function copyText(value: string | null | undefined, label: string) {
     if (!value) return;
@@ -176,7 +177,8 @@ export default function ClientPortalDashboardPage() {
       });
       setAccountForm(emptyAccountForm);
       setLastSetupLink(account.setup_link ?? null);
-      toast.success("Client account created.");
+      setLastInvite(account.invite_sent ? { sent: true, email: account.email } : { sent: false, error: account.invite_error ?? null });
+      toast.success(account.invite_sent ? `Client account created; the invitation was emailed to ${account.email}.` : "Client account created. Share the setup link below.");
     } catch (error) {
       toast.error(errorMessage(error, "The client account could not be created. Check the email and try again."));
     }
@@ -214,8 +216,13 @@ export default function ClientPortalDashboardPage() {
     try {
       const account = await regenerateAccountSetupLink(accountId);
       setLastSetupLink(account.setup_link ?? null);
-      if (account.setup_link) await copyText(account.setup_link, "Setup link");
-      toast.success("Setup link regenerated.");
+      setLastInvite(account.invite_sent ? { sent: true, email: account.email } : { sent: false, error: account.invite_error ?? null });
+      if (account.invite_sent) {
+        toast.success(`A new invitation was emailed to ${account.email}.`);
+      } else {
+        if (account.setup_link) await copyText(account.setup_link, "Setup link");
+        toast.success("New setup link made and copied.");
+      }
     } catch (error) {
       toast.error(errorMessage(error, "A new setup link could not be created. Try again."));
     }
@@ -278,6 +285,14 @@ export default function ClientPortalDashboardPage() {
           {lastSetupLink ? (
             <div className="mt-4 rounded-[var(--radius-control)] border border-state-info/40 bg-state-info-muted p-3 text-sm">
               <div className="mb-2 text-xs font-medium text-copy-label">Latest setup link</div>
+              {/* 13d §3.7: the invitation is emailed when a sender is set up; the link stays here either way. */}
+              {lastInvite ? (
+                <p className="mb-2 text-xs text-copy-secondary">
+                  {lastInvite.sent
+                    ? `Emailed to ${lastInvite.email}. You can also copy it.`
+                    : `Not emailed${lastInvite.error ? `: ${lastInvite.error}` : ""}. Copy it and send it yourself.`}
+                </p>
+              ) : null}
               <div className="break-all text-copy-primary">{lastSetupLink}</div>
               <p className="mt-2 text-xs text-copy-muted">Share this link securely. Regenerating it invalidates the previous link.</p>
               <Button type="button" variant="outline" className="mt-3" onClick={() => void copyText(lastSetupLink, "Setup link")}>

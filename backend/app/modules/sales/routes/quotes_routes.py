@@ -1,6 +1,10 @@
+import hashlib
+
 from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, Response, UploadFile, status
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache_get_json, cache_set_json
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.list_fields import parse_list_fields as _parse_list_fields
 from app.core.module_csv import ImportExecutionResponse, StandardImportSummary, count_csv_rows_bytes, parse_mapping_json, read_upload_bytes, remap_csv_bytes, rows_from_csv_bytes, suggest_header_mapping
@@ -27,8 +31,9 @@ from app.modules.sales.schema import (
     SalesQuoteProposalDocumentResponse,
     SalesQuoteProposalEventsResponse,
     SalesQuoteProposalPublicEventRequest,
-    SalesQuoteProposalPublicResponse,
     SalesQuoteProposalSendRequest,
+    QuoteAcceptRequest,
+    QuoteDeclineRequest,
     SalesQuoteProposalSendResponse,
     SalesQuoteConvertToOrderRequest,
     SalesOrderResponse,
@@ -39,6 +44,12 @@ from app.modules.sales.services.followups import log_quote_follow_up
 from app.modules.sales.services.orders_services import convert_quote_to_order
 from app.modules.sales.services.quotes_services import (
     EXPORT_COLUMNS,
+    accept_quote,
+    announce_status_change,
+    decline_quote,
+    mark_converted,
+    public_proposal_view,
+    revise_quote,
     create_sales_quote,
     delete_sales_quote,
     generate_quote_proposal,
@@ -225,7 +236,7 @@ def export_quotes(payload: DataTransferExportRequest = Body(default=DataTransfer
     return DataTransferExecutionResponse(mode="background", message=f"Export queued in background as job #{job.id}.", job_id=job.id, job_status=job.status)
 
 
-@router.get("/proposal/public/{token}", response_model=SalesQuoteProposalPublicResponse)
+@router.get("/proposal/public/{token}")
 def view_public_quote_proposal(token: str, request: Request, response: Response, db: Session = Depends(get_db)):
     response.headers["Cache-Control"] = "private, no-store"
     proposal, quote = get_public_quote_proposal_or_404(db, token)
@@ -236,15 +247,73 @@ def view_public_quote_proposal(token: str, request: Request, response: Response,
         ip_address=request.client.host if request.client else None,
         user_agent=request.headers.get("user-agent"),
     )
-    return {
-        "quote_number": quote.quote_number,
-        "customer_name": quote.customer_name,
-        "title": proposal.title,
-        "content_text": proposal.content_text,
-        "currency": quote.currency,
-        "total_amount": quote.total_amount,
-        "expiry_date": quote.expiry_date,
-    }
+    return public_proposal_view(db, proposal, quote)
+
+
+def _client_ip(request: Request) -> str | None:
+    return request.client.host if request.client else None
+
+
+def _limit_proposal_answers(token: str, request: Request) -> None:
+    """Accept and decline are public: a few attempts per link and address per window."""
+    key = "quote-proposal-answer:" + hashlib.sha256(f"{token.strip()}|{_client_ip(request) or 'unknown'}".encode("utf-8")).hexdigest()
+    count = int((cache_get_json(key) or {}).get("count") or 0)
+    if count >= settings.PUBLIC_CLIENT_PAGE_ACTION_LIMIT:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail="Too many attempts. Try again in a few minutes")
+    cache_set_json(key, {"count": count + 1}, ttl_seconds=settings.PUBLIC_CLIENT_PAGE_ACTION_WINDOW_SECONDS)
+
+
+@router.post("/proposal/public/{token}/accept")
+def accept_public_quote(token: str, payload: QuoteAcceptRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    """The customer accepts on the proposal page (13d §3.5): the signed link is the authority."""
+    response.headers["Cache-Control"] = "private, no-store"
+    if not payload.agree:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agree to the terms to accept")
+    _limit_proposal_answers(token, request)
+    proposal, quote = get_public_quote_proposal_or_404(db, token)
+    with unit_of_work(db):
+        accept_quote(db, quote, signer_name=payload.name, signature=payload.signature, optional_item_ids=payload.optional_item_ids,
+                     signer_ip=_client_ip(request))
+    return public_proposal_view(db, proposal, quote)
+
+
+@router.post("/proposal/public/{token}/decline")
+def decline_public_quote(token: str, payload: QuoteDeclineRequest, request: Request, response: Response, db: Session = Depends(get_db)):
+    response.headers["Cache-Control"] = "private, no-store"
+    _limit_proposal_answers(token, request)
+    proposal, quote = get_public_quote_proposal_or_404(db, token)
+    with unit_of_work(db):
+        decline_quote(db, quote, reason=payload.reason, note=payload.note, signer_ip=_client_ip(request))
+    return public_proposal_view(db, proposal, quote)
+
+
+@router.get("/proposal/public/{token}/pdf")
+def download_public_quote_pdf(token: str, request: Request, db: Session = Depends(get_db)):
+    from types import SimpleNamespace
+
+    from app.modules.platform.services.document_pdfs import document_pdf
+
+    proposal, quote = get_public_quote_proposal_or_404(db, token)
+    try:
+        content, filename = document_pdf(db, SimpleNamespace(id=None, tenant_id=quote.tenant_id), "sales_quotes", quote.quote_id,
+                                         reason="customer download", as_issued=True)
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="The PDF is not available right now") from exc
+    db.commit()
+    record_quote_proposal_event(db, proposal=proposal, event_type="downloaded", ip_address=_client_ip(request), user_agent=request.headers.get("user-agent"))
+    return Response(content=content, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"})
+
+
+@router.post("/{quote_id}/revise", response_model=SalesQuoteResponse)
+def revise_quote_route(quote_id: int, db: Session = Depends(get_db), current_user=Depends(require_user),
+                       require_module=Depends(require_module_access("sales_quotes")), require_permission=Depends(require_action_access("sales_quotes", "create"))):
+    """*Revise* (13d §3.5): a new draft version; the old one is superseded."""
+    quote = get_quote_or_404(db, quote_id, tenant_id=current_user.tenant_id)
+    with unit_of_work(db):
+        revision = revise_quote(db, quote, current_user)
+    db.refresh(revision)
+    return revision
 
 
 @router.post("/proposal/public/{token}/events", response_model=SalesQuoteProposalEventsResponse)
@@ -315,6 +384,7 @@ def convert_quote_to_order_route(
     # The order, both timeline rows and the event commit together (13a E5).
     with unit_of_work(db):
         order = convert_quote_to_order(db, quote, current_user, allow_duplicate=payload.allow_duplicate)
+        mark_converted(db, quote, actor=current_user)
         log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id, action="convert_to_order", description=f"Converted quote {_display_quote_name(quote)} to order {order.order_number}", after_state={"order_id": order.id, "order_number": order.order_number})
         log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_orders", entity_type="sales_order", entity_id=order.id, action="create_from_quote", description=f"Created order {order.order_number} from quote {_display_quote_name(quote)}", after_state=SalesOrderResponse.model_validate(order).model_dump(mode="json"))
         safe_publish_crm_event(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, event_type="order.created", entity_type="sales_order", entity_id=order.id, payload={"order_number": order.order_number, "status": order.status, "quote_id": quote.quote_id})
@@ -338,26 +408,8 @@ def update_quote(quote_id: int, payload: SalesQuoteUpdateRequest, db: Session = 
     before_state = _serialize_quote(quote)
     updated = update_sales_quote(db, quote, update_data)
     log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id if current_user else None, module_key="sales_quotes", entity_type="sales_quote", entity_id=updated.quote_id, action="update", description=f"Updated quote {_display_quote_name(updated)}", before_state=before_state, after_state=_serialize_quote(updated))
-    if "status" in update_data and before_state.get("status") != updated.status:
-        safe_emit_crm_event(
-            db,
-            tenant_id=current_user.tenant_id,
-            actor_user_id=current_user.id if current_user else None,
-            event_type="quote.status_changed",
-            entity_type="sales_quote",
-            entity_id=updated.quote_id,
-            payload={
-                **actor_payload(current_user),
-                "quote_id": updated.quote_id,
-                "quote_number": updated.quote_number,
-                "customer_name": updated.customer_name,
-                "previous_status": before_state.get("status"),
-                "status": updated.status,
-                "field_changes": {"status": {"from": before_state.get("status"), "to": updated.status}},
-                "total_amount": str(updated.total_amount),
-                "href": f"/dashboard/sales/quotes/{updated.quote_id}",
-            },
-        )
+    if "status" in update_data:
+        announce_status_change(db, updated, before_state.get("status"), actor=current_user)
     return updated
 
 

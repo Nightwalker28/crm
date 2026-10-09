@@ -1057,6 +1057,8 @@ def _mail_template_values(db: Session, *, current_user: User, payload: dict) -> 
     values.setdefault("organization", _organization_token_values(organization))
     values.setdefault("opportunity", _opportunity_token_values(opportunity))
     values.setdefault("quote", _quote_token_values(quote))
+    # 13d §3.4: `{{document.number}}`, `{{document.total}}`, `{{document.public_link}}` …
+    values.setdefault("document", payload.get("document_tokens") or {})
     return values
 
 
@@ -1177,6 +1179,12 @@ def _resolve_participant_recipients(
             contact_ids.append(contact_id)
     if not contact_ids:
         return []
+    from app.modules.platform.services import document_send
+
+    if source_context and document_send.is_document(source_context["module_key"]):
+        # A commercial document (13d §3.4): its contact and its account's contacts.
+        allowed = document_send.document_contact_ids(db, current_user, source_context["module_key"], int(source_context["entity_id"]))
+        return _related_contact_targets(db, current_user=current_user, contact_ids=contact_ids, allowed=allowed, payload=payload)
     if not source_context or source_context["module_key"] != "sales_opportunities":
         raise MailSendError(VALIDATION, "Recipients can be chosen from participants only when sending from a deal.")
 
@@ -1216,6 +1224,32 @@ def _resolve_participant_recipients(
                 module_key="sales_contacts",
                 entity_id=str(contact_id),
             )
+        except HTTPException as exc:
+            raise MailSendError(VALIDATION, UNAVAILABLE_PARTICIPANT_DETAIL) from exc
+        name = contact_display_name(contact) or "This contact"
+        if contact.email_opt_out:
+            raise MailSendError(VALIDATION, f"{name} has opted out of email.")
+        if not contact.primary_email or contact.primary_email.strip().lower() not in recipients:
+            raise MailSendError(VALIDATION, f"{name} is not among the recipients.")
+        targets.append(target)
+    return targets
+
+
+def _related_contact_targets(db: Session, *, current_user: User, contact_ids: list[int], allowed: set[int], payload: dict) -> list[dict]:
+    """The chosen contacts as related link targets, when each is one the source allows, is
+    viewable, has not opted out and is among the recipients."""
+    recipients = {
+        str(address).strip().lower()
+        for address in [*(payload.get("to") or []), *(payload.get("cc") or []), *(payload.get("bcc") or [])]
+    }
+    targets = []
+    for contact_id in contact_ids:
+        contact = db.query(SalesContact).filter(SalesContact.tenant_id == current_user.tenant_id, SalesContact.contact_id == contact_id,
+                                                SalesContact.deleted_at.is_(None)).first()
+        if contact is None or contact_id not in allowed:
+            raise MailSendError(VALIDATION, UNAVAILABLE_PARTICIPANT_DETAIL)
+        try:
+            target = mail_associations.resolve_link_target(db, current_user=current_user, module_key="sales_contacts", entity_id=str(contact_id))
         except HTTPException as exc:
             raise MailSendError(VALIDATION, UNAVAILABLE_PARTICIPANT_DETAIL) from exc
         name = contact_display_name(contact) or "This contact"
@@ -1789,6 +1823,7 @@ def send_mail_message(
     current_user: User,
     payload: dict,
     require_source_context: bool = False,
+    extra_attachments: list[dict] | None = None,
 ) -> MailMessage:
     """Send one message through the user's connected mailbox.
 
@@ -1834,6 +1869,10 @@ def send_mail_message(
         current_user=current_user,
         document_ids=payload.get("attachment_document_ids") or [],
     )
+    # A document's own PDF, rendered for this send (13d §3.4); it is not a stored document.
+    attachments += extra_attachments or []
+    if sum(attachment["size_bytes"] for attachment in attachments) > MAIL_ATTACHMENT_TOTAL_BYTES:
+        raise MailSendError(VALIDATION, f"Attachments exceed the {MAIL_ATTACHMENT_TOTAL_BYTES} byte limit for one email.")
     payload = _render_mail_template_variables(db, current_user=current_user, payload=payload)
     connection = _mail_connection_for_user(
         db,
@@ -1917,6 +1956,32 @@ def send_mail_message(
     return message
 
 
+def _statement_attachment(db: Session, *, current_user: User, org_id: int, options: dict) -> dict:
+    """The account's statement as a PDF attachment (13d §3.6); same access as the statement page."""
+    from datetime import date as date_type
+
+    from app.core.permissions import require_access
+    from app.modules.finance.services import receivables
+
+    require_access(db, current_user, "finance_pos", "view", detail="Attaching a statement needs access to invoices")
+
+    def as_date(value):
+        return date_type.fromisoformat(value) if isinstance(value, str) and value else value or None
+
+    statement = receivables.customer_statement(db, tenant_id=current_user.tenant_id, org_id=org_id, start=as_date(options.get("start")),
+                                               end=as_date(options.get("end")), kind=options.get("kind") or "activity",
+                                               currency=options.get("currency"))
+    try:
+        content, filename = receivables.statement_pdf(db, tenant_id=current_user.tenant_id, statement=statement)
+    except ImportError as exc:
+        raise HTTPException(status_code=503, detail="PDFs are not available right now; send without the statement") from exc
+    return {
+        "attachments": [{"document_id": None, "filename": filename, "content_type": "application/pdf", "size_bytes": len(content), "content": content}],
+        "tokens": {},
+        "options": {"kind": statement["kind"], "currency": statement["currency"], "start": statement["start"].isoformat(), "end": statement["end"].isoformat()},
+    }
+
+
 def send_record_context_mail(
     db: Session,
     *,
@@ -1931,16 +1996,52 @@ def send_record_context_mail(
     linkage a caller asked for is the linkage that is validated and persisted.
     """
 
-    return send_mail_message(
+    from app.modules.platform.services import document_send
+
+    prepared = None
+    statement = payload.get("attach_statement")
+    if statement and module_key == "sales_organizations":
+        prepared = _statement_attachment(db, current_user=current_user, org_id=int(entity_id), options=statement)
+    elif document_send.is_document(module_key):
+        # A commercial document: its PDF and its tokens (a quote's link) before the send, its
+        # history and status after it (13d §3.4).
+        prepared = document_send.prepare(db, current_user, module_key, entity_id, attach_pdf=bool(payload.get("attach_document_pdf")),
+                                         recipients=[str(address) for address in payload.get("to") or []])
+    message = send_mail_message(
         db,
         current_user=current_user,
         payload={
             **payload,
             "source_module_key": module_key,
             "source_entity_id": entity_id,
+            **({"document_tokens": prepared["tokens"]} if prepared else {}),
         },
         require_source_context=True,
+        extra_attachments=prepared["attachments"] if prepared else None,
     )
+    if statement and module_key == "sales_organizations" and prepared is not None:
+        try:
+            from app.modules.platform.services.activity_logs import log_activity
+
+            log_activity(db, tenant_id=current_user.tenant_id, actor_user_id=current_user.id, module_key="sales_organizations",
+                         entity_type="sales_organization", entity_id=int(entity_id), action="statement.sent",
+                         description=f"Sent a statement to {', '.join(str(address) for address in payload.get('to') or [])}",
+                         after_state={"recipients": [str(address) for address in payload.get("to") or []], **prepared["options"]}, commit=False)
+            db.commit()
+        except Exception:
+            db.rollback()
+            logger.exception("Statement send bookkeeping failed after mail send", extra={"tenant_id": current_user.tenant_id})
+    elif prepared is not None:
+        try:
+            document_send.after_send(db, current_user, module_key, entity_id,
+                                     recipients=[str(address) for address in payload.get("to") or []],
+                                     attached_pdf=bool(prepared["attachments"]))
+        except Exception:
+            # The message is gone; failing to note it on the document must not report a failed send.
+            db.rollback()
+            logger.exception("Document send bookkeeping failed after mail send",
+                             extra={"tenant_id": current_user.tenant_id, "module_key": module_key, "entity_id": entity_id})
+    return message
 
 
 def _header(headers: list[dict], name: str) -> str | None:

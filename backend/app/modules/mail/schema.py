@@ -1,4 +1,5 @@
-from datetime import datetime
+from datetime import date, datetime
+from typing import Literal
 from enum import Enum
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
@@ -168,6 +169,13 @@ class MailSendRequest(MailComposeRequest):
     source_entity_id: str | None = Field(default=None, max_length=100)
 
 
+class MailStatementAttachment(BaseModel):
+    start: date | None = None
+    end: date | None = None
+    kind: Literal["activity", "open"] = "activity"
+    currency: str | None = Field(default=None, max_length=10)
+
+
 class MailRecordSendRequest(MailComposeRequest):
     """Contextual send. The source record comes from the route path."""
 
@@ -177,6 +185,11 @@ class MailRecordSendRequest(MailComposeRequest):
     # participant whose address is among the recipients; nothing is inferred
     # from addresses alone (see `mail_associations`).
     related_contact_ids: list[int] = Field(default_factory=list, max_length=50)
+    # Sending a commercial document: attach its PDF (13d §3.4).
+    attach_document_pdf: bool = False
+    # Sending from an account: attach its statement (13d §3.6).
+    attach_statement: MailStatementAttachment | None = None
+
 
 
 class MailProviderConnectResponse(BaseModel):

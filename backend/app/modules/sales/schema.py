@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 import json
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
@@ -48,6 +48,10 @@ class SalesOrganizationBase(BaseModel):
     is_vendor: bool = False
     # Days to pay, for invoices to this Account and bills from it (E5); none uses the company default.
     payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    # 13d §3.1: an exempt customer's sales lines default to no tax.
+    tax_exempt: bool | None = None
+    tax_exempt_reason: str | None = Field(default=None, max_length=500)
+    no_reminders: bool | None = None
     custom_fields: dict[str, Any] | None = None
 
 
@@ -80,6 +84,10 @@ class SalesOrganizationUpdate(BaseModel):
     shipping_country: str | None = None
     is_vendor: bool | None = None
     payment_terms_days: int | None = Field(default=None, ge=0, le=365)
+    # 13d §3.1: an exempt customer's sales lines default to no tax.
+    tax_exempt: bool | None = None
+    tax_exempt_reason: str | None = Field(default=None, max_length=500)
+    no_reminders: bool | None = None
     assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
 
@@ -378,6 +386,15 @@ class SalesQuoteItemBase(BaseModel):
     unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    # 13d §3.1: a rate, or `tax_manual` to keep the typed tax (0 = no tax); neither = the default.
+    tax_rate_id: int | None = Field(default=None, gt=0)
+    tax_manual: bool = False
+    # 13d §3.2: an item, or a section heading or note with no amounts; a percent discount; a unit.
+    line_type: Literal["item", "section", "note"] = "item"
+    discount_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    unit: str | None = Field(default=None, max_length=40)
+    # Offered, not sold: outside the total until the customer takes it.
+    is_optional: bool = False
     sort_order: int = Field(default=0, ge=0)
 
 
@@ -424,6 +441,7 @@ class SalesQuoteBase(BaseModel):
     discount_amount: Decimal = Decimal("0")
     tax_amount: Decimal = Decimal("0")
     total_amount: Decimal = Decimal("0")
+    tax_mode: Literal["exclusive", "inclusive"] | None = None
     notes: str | None = None
     custom_fields: dict[str, Any] | None = None
 
@@ -466,6 +484,7 @@ class SalesQuoteUpdateRequest(BaseModel):
     discount_amount: Decimal | None = None
     tax_amount: Decimal | None = None
     total_amount: Decimal | None = None
+    tax_mode: Literal["exclusive", "inclusive"] | None = None
     notes: str | None = None
     assigned_to: int | None = None
     custom_fields: dict[str, Any] | None = None
@@ -480,6 +499,16 @@ class SalesQuoteResponse(SalesQuoteBase):
     created_time: datetime
     updated_at: datetime | None = None
     items: list[SalesQuoteItemResponse] = Field(default_factory=list)
+    tax_summary: list[dict[str, Any]] = Field(default_factory=list)
+    revision: int = 1
+    revised_from_id: int | None = None
+    revised_from_number: str | None = None
+    superseded_by: dict[str, Any] | None = None
+    converted_order: dict[str, Any] | None = None
+    accepted_by_name: str | None = None
+    accepted_at: datetime | None = None
+    signature_data: str | None = None
+    decline_note: str | None = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -563,16 +592,6 @@ class SalesQuoteProposalPublicEventRequest(BaseModel):
     recipient_email: EmailStr | None = None
 
 
-class SalesQuoteProposalPublicResponse(BaseModel):
-    quote_number: str
-    customer_name: str
-    title: str
-    content_text: str
-    currency: str | None = None
-    total_amount: Decimal | None = None
-    expiry_date: date | None = None
-
-
 class ClientQuoteResponse(BaseModel):
     quote_id: int
     quote_number: str
@@ -589,21 +608,35 @@ class ClientQuoteResponse(BaseModel):
     notes: str | None = None
     contact_id: int | None = None
     organization_id: int | None = None
-    proposal_document_id: int | None = None
-    proposal_title: str | None = None
-    proposal_content_text: str | None = None
-    proposal_generated_at: datetime | None = None
+    # 13d §3.5: open (can be answered), pending, accepted, declined, expired or replaced.
+    state: str = "pending"
     can_respond: bool = False
+    accepted_by_name: str | None = None
+    accepted_at: datetime | None = None
     created_time: datetime
     updated_at: datetime | None = None
+    # The quote page only: the document as issued, the optional items, the decline reasons.
+    html: str | None = None
+    optional_items: list[dict[str, Any]] = Field(default_factory=list)
+    decline_reasons: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class ClientQuoteListResponse(BaseModel):
     results: list[ClientQuoteResponse]
 
 
-class ClientQuoteActionRequest(BaseModel):
-    message: str | None = Field(default=None, max_length=2000)
+class QuoteAcceptRequest(BaseModel):
+    """Accepting a quote, on the proposal page or in the portal (13d §3.5)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    signature: str | None = Field(default=None, max_length=300_000)
+    optional_item_ids: list[int] = Field(default_factory=list, max_length=200)
+    agree: bool
+
+
+class QuoteDeclineRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=120)
+    note: str | None = Field(default=None, max_length=2000)
 
 
 class SalesOrderItemBase(BaseModel):
@@ -615,6 +648,13 @@ class SalesOrderItemBase(BaseModel):
     unit_price: Decimal = Field(default=Decimal("0"), ge=0)
     discount_amount: Decimal = Field(default=Decimal("0"), ge=0)
     tax_amount: Decimal = Field(default=Decimal("0"), ge=0)
+    # 13d §3.1: a rate, or `tax_manual` to keep the typed tax (0 = no tax); neither = the default.
+    tax_rate_id: int | None = Field(default=None, gt=0)
+    tax_manual: bool = False
+    # 13d §3.2: an item, or a section heading or note with no amounts; a percent discount; a unit.
+    line_type: Literal["item", "section", "note"] = "item"
+    discount_percent: Decimal | None = Field(default=None, ge=0, le=100)
+    unit: str | None = Field(default=None, max_length=40)
     line_total: Decimal = Field(default=Decimal("0"), ge=0)
     sort_order: int = Field(default=0, ge=0)
 
@@ -645,6 +685,7 @@ class SalesOrderCreateRequest(BaseModel):
     tax_total: Decimal = Decimal("0")
     discount_total: Decimal = Decimal("0")
     grand_total: Decimal = Decimal("0")
+    tax_mode: Literal["exclusive", "inclusive"] | None = None
     delivery_date: date | None = None
     billing_address: str | None = None
     billing_street2: str | None = None
@@ -680,6 +721,7 @@ class SalesOrderUpdateRequest(BaseModel):
     status: str | None = None
     currency: str | None = None
     exchange_rate: Decimal | None = Field(default=None, gt=0)
+    tax_mode: Literal["exclusive", "inclusive"] | None = None
     owner_id: int | None = None
     delivery_date: date | None = None
     billing_address: str | None = None
@@ -763,7 +805,9 @@ class SalesOrderResponse(BaseModel):
     created_by_id: int | None = None
     created_at: datetime
     updated_at: datetime
+    tax_mode: str = "exclusive"
     items: list[SalesOrderItemResponse] = Field(default_factory=list)
+    tax_summary: list[dict[str, Any]] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 

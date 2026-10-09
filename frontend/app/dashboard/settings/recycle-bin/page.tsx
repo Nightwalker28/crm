@@ -57,6 +57,9 @@ const MODULE_OPTIONS = [
   "purchase_bills",
   "finance_pos",
   "finance_credit_notes",
+  "finance_recurring_invoices",
+  "purchase_vendor_returns",
+  "purchase_vendor_credits",
 ];
 
 async function fetchRecycleItems(moduleKey: string, page: number, pageSize: number): Promise<RecycleResponse> {

@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
 import { apiFetch } from "@/lib/api";
 import { apiErrorFromResponse } from "@/lib/apiErrors";
 
@@ -33,7 +34,9 @@ export type VendorCredit = {
   credit_remaining: string; reason: string | null; notes: string | null; issued_at: string | null; voided_at: string | null;
   void_reason: string | null; owner_id: number | null; created_at: string; updated_at: string; is_deleted: boolean;
   lines?: Array<{ id: number; bill_line_id: number | null; vendor_return_line_id: number | null; catalog_product_id: number | null;
-    catalog_service_id: number | null; description: string; quantity: string; unit_cost: string; tax_amount: string; line_total: string }>;
+    catalog_service_id: number | null; description: string; quantity: string; unit_cost: string; tax_amount: string; line_total: string;
+    tax_rate_id?: number | null; tax_manual?: boolean }>;
+  tax_summary?: TaxSummaryRow[];
   applications?: Array<{ id: number; bill_id: number; bill_number: string; amount: string; created_at: string }>;
   refunds?: PaymentRecord[];
   open_bills?: Array<{ id: number; number: string; vendor_invoice_number: string; due_date: string | null; balance_due: string; currency: string }>;
@@ -44,7 +47,8 @@ export type VendorCreditDraft = {
   vendor_id?: number | null; vendor_reference?: string | null; credit_date?: string | null; currency?: string | null;
   reason?: string | null; notes?: string | null;
   lines?: Array<{ bill_line_id?: number | null; vendor_return_line_id?: number | null; catalog_product_id?: number | null;
-    catalog_service_id?: number | null; description?: string | null; quantity: string; unit_cost?: string | null; tax_amount?: string | null }>;
+    catalog_service_id?: number | null; description?: string | null; quantity: string; unit_cost?: string | null; tax_amount?: string | null;
+    tax_rate_id?: number | null; tax_manual?: boolean }>;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

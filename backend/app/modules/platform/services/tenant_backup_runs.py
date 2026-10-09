@@ -32,14 +32,16 @@ from app.modules.purchasing.models import (
     PurchaseVendorReturnLine,
 )
 from app.modules.finance.models import (FinanceCreditAllocation, FinanceCreditNote, FinanceCreditNoteLine, FinancePayment,
-    FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine)
+    FinancePaymentAllocation, FinancePosInvoice, FinancePosInvoiceLine, FinanceRecurringInvoice, FinanceReminderRule, FinanceReminderSend,
+    FinanceWriteOff)
 from app.modules.documents.services.storage_backends import LocalDocumentStorage
 from app.modules.documents.services.document_services import (
     DOCUMENT_PROVIDER_GOOGLE_DRIVE,
     DOCUMENT_PROVIDER_MICROSOFT_ONEDRIVE,
     upload_document_storage_artifact,
 )
-from app.modules.platform.models import FieldDefinition, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantBackupSettings
+from app.modules.finance.tax_models import FinanceTaxGroupMember, FinanceTaxRate
+from app.modules.platform.models import DocumentSetting, FieldDefinition, FieldValue, Picklist, PicklistDependency, PicklistValue, TenantBackupRun, TenantBackupSettings
 from app.modules.platform.services.activity_logs import safe_log_activity
 from app.modules.platform.services.tenant_backup_settings import (
     _next_run_at,
@@ -134,6 +136,11 @@ MODULE_CHILD_EXPORTS: dict[str, list[tuple[str, Any]]] = {
         ("finance_credit_allocations.json", FinanceCreditAllocation),
         ("finance_payments.json", FinancePayment),
         ("finance_payment_allocations.json", FinancePaymentAllocation),
+        # 13d §3.6: profiles restore before the invoices that name them (the restore moves
+        # them first); write-offs and sent reminders after.
+        ("finance_recurring_invoices.json", FinanceRecurringInvoice),
+        ("finance_write_offs.json", FinanceWriteOff),
+        ("finance_reminder_sends.json", FinanceReminderSend),
     ],
     "documents": [("document_versions.json", DocumentVersion), ("document_links.json", DocumentLink)],
 }
@@ -148,6 +155,13 @@ CONFIGURATION_EXPORTS: list[tuple[str, Any]] = [
     # each set and are restored with that set.
     ("field_definitions.json", FieldDefinition),
     ("field_values.json", FieldValue),
+    # 13d §3.1: lines name their tax rate, so rates restore before any record.
+    ("finance_tax_rates.json", FinanceTaxRate),
+    ("finance_tax_group_members.json", FinanceTaxGroupMember),
+    # 13d §3.3: per-type titles, default texts and email templates.
+    ("document_settings.json", DocumentSetting),
+    # 13d §3.6: payment reminder rules.
+    ("finance_reminder_rules.json", FinanceReminderRule),
 ]
 
 

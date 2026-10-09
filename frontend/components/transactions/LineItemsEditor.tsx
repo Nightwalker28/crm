@@ -1,9 +1,10 @@
 "use client";
 
 import type { KeyboardEvent, ReactNode } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Copy, MoreHorizontal, Plus, Trash2 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { RecordTable, type RecordTableColumn } from "@/components/ui/RecordTable";
 
@@ -66,6 +67,12 @@ export function LineItemsEditor<Line>({
   error?: string | null;
   /** Under the grid, beside the add button: totals. */
   footer?: ReactNode;
+  /** Beside the add button: more kinds of line, e.g. *Add section* (13d §3.2). */
+  extraAddActions?: ReactNode;
+  /** A row menu with *Move up* and *Move down* (13d §3.2, D10). */
+  reorderable?: boolean;
+  /** A copy of the line, for the row menu's *Duplicate*. */
+  duplicateLine?: (line: Line) => Line;
 }) {
   function focusCell(index: number, field: string) {
     document.querySelector<HTMLInputElement>(`[data-line-editor="${id}"][data-line-row="${index}"][data-line-field="${field}"]`)?.focus();
@@ -109,10 +116,10 @@ export function LineItemsEditor<Line>({
         columns={tableColumns}
         rows={lines}
         rowKey={lineKey}
-        rowActionsLabel="Remove"
+        rowActionsLabel={reorderable || duplicateLine ? "Actions" : "Remove"}
         rowActions={createLine ? (line) => {
           const index = lines.indexOf(line);
-          return (
+          const remove = (
             <Button
               type="button"
               variant="ghost"
@@ -124,15 +131,44 @@ export function LineItemsEditor<Line>({
               <Trash2 />
             </Button>
           );
+          if (!reorderable && !duplicateLine) return remove;
+          return (
+            <div className="flex items-center justify-end gap-1">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="icon" aria-label={`More for ${lineLabel(line, index)}`}>
+                    <MoreHorizontal />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent>
+                  {reorderable ? (
+                    <>
+                      <DropdownMenuItem disabled={index === 0} onSelect={() => onChange(move(lines, index, index - 1))}><ArrowUp />Move up</DropdownMenuItem>
+                      <DropdownMenuItem disabled={index === lines.length - 1} onSelect={() => onChange(move(lines, index, index + 1))}><ArrowDown />Move down</DropdownMenuItem>
+                    </>
+                  ) : null}
+                  {duplicateLine ? (
+                    <DropdownMenuItem onSelect={() => onChange([...lines.slice(0, index + 1), duplicateLine(line), ...lines.slice(index + 1)])}>
+                      <Copy />Duplicate
+                    </DropdownMenuItem>
+                  ) : null}
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {remove}
+            </div>
+          );
         } : undefined}
       />
       {error ? <p role="alert" className="text-sm text-state-danger">{error}</p> : null}
       {createLine || footer ? (
         <div className="flex flex-wrap items-start justify-between gap-3">
           {createLine ? (
-            <Button type="button" variant="outline" onClick={() => addLine()}>
-              <Plus />{addLabel}
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button type="button" variant="outline" onClick={() => addLine()}>
+                <Plus />{addLabel}
+              </Button>
+              {extraAddActions}
+            </div>
           ) : <span />}
           {footer}
         </div>
@@ -202,4 +238,12 @@ export function LineTextInput({
       onChange={(event) => onChange(event.target.value)}
     />
   );
+}
+
+function move<Line>(lines: Line[], from: number, to: number): Line[] {
+  if (to < 0 || to >= lines.length) return lines;
+  const next = [...lines];
+  const [line] = next.splice(from, 1);
+  next.splice(to, 0, line);
+  return next;
 }

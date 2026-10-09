@@ -190,7 +190,7 @@ export default function PublicClientPage() {
               <h2 className="text-base font-semibold text-copy-primary">Response</h2>
               <p className="mt-1 text-sm text-copy-secondary">
                 {page.pricing_mode === "personalized"
-                  ? `Pricing resolved for ${page.customer_group?.name ?? "your account"}.`
+                  ? `Prices for ${page.customer_group?.name ?? "your account"}.`
                   : "Sign in to view any personalized pricing available to your account."}
               </p>
               <form className="mt-4 space-y-3" onSubmit={(event) => void submitAction("request-changes", event)}>

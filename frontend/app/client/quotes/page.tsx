@@ -8,7 +8,7 @@ import { PageShell } from "@/components/ui/PageShell";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientQuotes, type ClientQuote } from "@/hooks/useClientPortal";
 import { formatDateOnly, formatDateTime } from "@/lib/datetime";
-import { getQuoteStatus } from "@/lib/statusStyles";
+import { getClientQuoteState } from "@/lib/statusStyles";
 
 function quoteTitle(quote: ClientQuote) {
   return quote.title || quote.quote_number;
@@ -30,7 +30,7 @@ export default function ClientQuotesPage() {
       {quotes.length === 0 ? (
         <EmptyState
           title="No quotes yet"
-          description="Quotes prepared for your account will appear here for you to review and approve."
+          description="Quotes we send you appear here, for you to read, download and accept or decline."
         />
       ) : (
         <Card className="p-0">
@@ -48,7 +48,7 @@ export default function ClientQuotesPage() {
                 }
                 trailing={
                   <span className="flex items-center gap-3">
-                    <StatusValue status={getQuoteStatus(quote.status)} />
+                    <StatusValue status={getClientQuoteState(quote.state)} />
                     <Money amount={quote.total_amount} currency={quote.currency} className="font-medium text-copy-primary" />
                   </span>
                 }

@@ -26,7 +26,7 @@ from app.modules.finance.models import (
     FinancePosInvoice,
     FinancePosInvoiceLine,
 )
-from app.modules.finance.services.document_amounts import ZERO, decimal_input, line_amounts, money, pro_rata, units
+from app.modules.finance.services.document_amounts import ZERO, compute_line, decimal_input, document_totals, money, pro_rata, units
 from app.modules.finance.services.invoice_balances import refresh_credit_note_balance, refresh_invoice_balance
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
@@ -83,7 +83,9 @@ def creditable(db: Session, *, invoice: FinancePosInvoice, exclude_credit_note_i
     """Invoiced less already credited, per invoice line."""
     credited = credited_by_invoice_line(db, tenant_id=invoice.tenant_id, invoice_line_ids=[line.id for line in invoice.lines],
         exclude_credit_note_id=exclude_credit_note_id)
-    return {line.id: max(Decimal(line.quantity) - credited.get(line.id, ZERO), ZERO) for line in invoice.lines}
+    # A section heading or note carries nothing to credit (13d §3.2).
+    return {line.id: max(Decimal(line.quantity) - credited.get(line.id, ZERO), ZERO) for line in invoice.lines
+            if (line.line_type or "item") == "item"}
 
 
 def _issued_invoice(db: Session, user, invoice_id: int, *, lock: bool = False) -> FinancePosInvoice:
@@ -103,6 +105,7 @@ def _apply_lines(db: Session, *, credit_note: FinanceCreditNote, invoice: Financ
     left = creditable(db, invoice=invoice, exclude_credit_note_id=credit_note.id)
     seen: set[int] = set()
     result = []
+    amounts = []
     for index, payload in enumerate(lines):
         line_id = int(payload["invoice_line_id"])
         if line_id in seen:
@@ -112,27 +115,26 @@ def _apply_lines(db: Session, *, credit_note: FinanceCreditNote, invoice: Financ
         if invoice_line is None:
             raise HTTPException(status_code=400, detail="Only this invoice's lines can be credited")
         quantity = decimal_input(payload.get("quantity"), field="Quantity", positive=True)
+        if (invoice_line.line_type or "item") != "item":
+            raise HTTPException(status_code=400, detail="Only an invoice's items can be credited")
         if quantity > left.get(line_id, ZERO):
             raise HTTPException(status_code=409, detail=f"{invoice_line.description}: only {units(left.get(line_id, ZERO))} left to credit")
         discount = pro_rata(invoice_line.discount_amount or 0, quantity, invoice_line.quantity)
         tax = pro_rata(invoice_line.tax_amount or 0, quantity, invoice_line.quantity)
-        _net, total = line_amounts(quantity=quantity, unit_price=Decimal(invoice_line.unit_price), discount=discount, tax=tax, label=invoice_line.description)
+        # The invoice line's tax, pro rata, under its rate and in the invoice's tax mode (13d §3.1).
+        amount = compute_line(quantity=quantity, unit_price=Decimal(invoice_line.unit_price), discount=discount, tax=tax,
+                              inclusive=invoice.tax_mode == "inclusive", label=invoice_line.description)
+        amounts.append(amount)
         result.append(FinanceCreditNoteLine(tenant_id=credit_note.tenant_id, invoice_line_id=line_id,
             return_line_id=payload.get("return_line_id"), description=invoice_line.description, quantity=quantity,
-            unit_price=invoice_line.unit_price, discount_amount=discount, tax_amount=tax, line_total=total, sort_order=index))
+            unit_price=invoice_line.unit_price, discount_amount=discount, tax_amount=amount.tax, tax_rate_id=invoice_line.tax_rate_id,
+            unit=invoice_line.unit,
+            tax_manual=True, line_total=amount.total, sort_order=index))
     credit_note.lines = result
-    _apply_totals(credit_note, invoice)
-
-
-def _apply_totals(credit_note: FinanceCreditNote, invoice: FinancePosInvoice) -> None:
-    """Lines, plus the invoice's header discount and tax rate in the same proportion."""
-    subtotal = sum((money(Decimal(line.quantity) * Decimal(line.unit_price)) - money(line.discount_amount) for line in credit_note.lines), ZERO)
-    line_tax = sum((money(line.tax_amount) for line in credit_note.lines), ZERO)
-    discount = pro_rata(invoice.discount_amount or 0, subtotal, invoice.subtotal_amount or 0) if money(invoice.discount_amount) > 0 else ZERO
-    taxable = max(subtotal - discount, ZERO)
-    tax = line_tax + money(taxable * Decimal(invoice.tax_rate or 0) / Decimal(100))
-    credit_note.subtotal_amount, credit_note.discount_amount, credit_note.tax_amount = subtotal, discount, tax
-    credit_note.total_amount = money(taxable + tax)
+    credit_note.tax_mode = invoice.tax_mode or "exclusive"
+    totals = document_totals(amounts)
+    credit_note.subtotal_amount, credit_note.discount_amount = totals["subtotal"], totals["discount"]
+    credit_note.tax_amount, credit_note.total_amount = totals["tax"], totals["total"]
 
 
 def save_draft(db: Session, user, *, payload: dict, credit_note_id: int | None = None) -> FinanceCreditNote:
@@ -304,6 +306,7 @@ def serialize(db: Session, credit_note: FinanceCreditNote, *, include_lines: boo
         "return_id": credit_note.return_id, "reason": credit_note.reason, "issue_date": credit_note.issue_date,
         "currency": credit_note.currency, "subtotal_amount": credit_note.subtotal_amount, "discount_amount": credit_note.discount_amount,
         "tax_amount": credit_note.tax_amount, "total_amount": credit_note.total_amount, "refund_due": credit_note.refund_due,
+        "tax_mode": credit_note.tax_mode or "exclusive",
         "applied_amount": None, "notes": credit_note.notes, "issued_at": credit_note.issued_at, "voided_at": credit_note.voided_at,
         "void_reason": credit_note.void_reason, "created_at": credit_note.created_at, "updated_at": credit_note.updated_at,
         "is_deleted": credit_note.deleted_at is not None,
@@ -316,8 +319,9 @@ def serialize(db: Session, credit_note: FinanceCreditNote, *, include_lines: boo
         left = creditable(db, invoice=invoice, exclude_credit_note_id=credit_note.id) if invoice else {}
         result["lines"] = [{"id": line.id, "invoice_line_id": line.invoice_line_id, "return_line_id": line.return_line_id,
                             "description": line.description, "quantity": line.quantity, "unit_price": line.unit_price,
-                            "discount_amount": line.discount_amount, "tax_amount": line.tax_amount, "line_total": line.line_total,
-                            "creditable": left.get(line.invoice_line_id, ZERO)} for line in credit_note.lines]
+                            "discount_amount": line.discount_amount, "tax_amount": line.tax_amount, "tax_rate_id": line.tax_rate_id,
+                            "line_total": line.line_total, "creditable": left.get(line.invoice_line_id, ZERO)} for line in credit_note.lines]
+        result["tax_summary"] = credit_note.tax_summary
         result["refunds"] = payments_for(db, tenant_id=credit_note.tenant_id, credit_note_id=credit_note.id)
     if include_lines:
         result["custom_fields"] = load_custom_field_values(db, tenant_id=credit_note.tenant_id, module_key="finance_credit_notes", record_id=credit_note.id)

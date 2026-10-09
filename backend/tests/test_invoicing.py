@@ -171,14 +171,16 @@ class InvoicingTests(unittest.TestCase):
         self.assertEqual(invoice.payment_status, "paid")
         self.assertEqual(self.db.query(FinancePayment).filter_by(tenant_id=10).one().method, "cash")
 
-    def test_line_discount_and_tax_and_header_rate_total_correctly(self):
+    def test_line_discount_and_typed_tax_total_correctly(self):
+        # 13d §3.1: no header rate; the subtotal is before discount on every document (H16).
         invoice = pos_invoice_services.create_invoice(self.db, self.user, {
-            "customer_name": "Walk-in", "tax_rate": 10, "discount_amount": 5,
+            "customer_name": "Walk-in",
             "lines": [{"description": "A", "quantity": 2, "unit_price": 10, "discount_amount": 2, "tax_amount": 1}]})
-        # Net 18, header discount 5 → taxable 13, tax 1 + 1.30.
-        self.assertEqual(Decimal(invoice.subtotal_amount), Decimal("18.00"))
-        self.assertEqual(Decimal(invoice.tax_amount), Decimal("2.30"))
-        self.assertEqual(Decimal(invoice.total_amount), Decimal("15.30"))
+        self.assertEqual(Decimal(invoice.subtotal_amount), Decimal("20.00"))
+        self.assertEqual(Decimal(invoice.discount_amount), Decimal("2.00"))
+        self.assertEqual(Decimal(invoice.tax_amount), Decimal("1.00"))
+        self.assertEqual(Decimal(invoice.total_amount), Decimal("19.00"))
+        self.assertTrue(invoice.lines[0].tax_manual)
 
     def test_another_tenants_invoice_is_a_404(self):
         invoice = self.manual_invoice()

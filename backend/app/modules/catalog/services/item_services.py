@@ -42,6 +42,9 @@ def _option(record, *, kind: str) -> dict:
         # Lines start from the list price; the website price is the public feed's (13a C4).
         "unit_price": record.list_price if record.list_price is not None else record.public_unit_price,
         "category_name": category.full_name if category is not None else None,
+        # 13d §3.1: the rates a sales line and a purchase line start with.
+        "tax_rate_id": record.tax_rate_id,
+        "purchase_tax_rate_id": record.purchase_tax_rate_id,
     }
 
 

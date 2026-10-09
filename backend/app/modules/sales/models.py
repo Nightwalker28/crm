@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 
 from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Computed, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON, Numeric, SmallInteger, Text, UniqueConstraint, func, text
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import object_session, relationship
 from sqlalchemy.sql import expression
 
 from app.core.custom_field_cache import CustomFieldsMixin
@@ -80,6 +80,11 @@ class SalesOrganization(CustomFieldsMixin, Base):
     # Days from an invoice's or bill's date to its due date (12c §3.5); none uses the
     # company default.
     payment_terms_days = Column(Integer, nullable=True)
+    # 13d §3.1: an exempt customer's sales lines default to no tax.
+    tax_exempt = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    tax_exempt_reason = Column(Text, nullable=True)
+    # 13d §3.6: no payment reminders are emailed for this account.
+    no_reminders = Column(Boolean, nullable=False, default=False, server_default=expression.false())
     search_doc = Column(
         Text,
         Computed(
@@ -307,8 +312,10 @@ class SalesLeadScore(Base):
 class SalesQuote(CustomFieldsMixin, Base):
     __tablename__ = "sales_quotes"
     __table_args__ = (
+        CheckConstraint("tax_mode IN ('exclusive', 'inclusive')", name="ck_sales_quotes_tax_mode"),
         CheckConstraint(
-            "status IN ('draft', 'sent', 'accepted', 'declined', 'expired')",
+            # 13d §3.5: `superseded` by a revision, `converted` into an order.
+            "status IN ('draft', 'sent', 'accepted', 'declined', 'expired', 'superseded', 'converted')",
             name="ck_sales_quotes_status",
         ),
         Index("ix_sales_quotes_active_tenant", "tenant_id", postgresql_where=text("deleted_at IS NULL")),
@@ -334,6 +341,8 @@ class SalesQuote(CustomFieldsMixin, Base):
     subtotal_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # 13d §3.1: `exclusive` adds tax to the prices; `inclusive` prices already contain it.
+    tax_mode = Column(Text, nullable=False, default="exclusive", server_default="exclusive")
     total_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     notes = Column(Text, nullable=True)
     # Copied from the account when it is chosen, editable on the document (13a C3).
@@ -355,6 +364,14 @@ class SalesQuote(CustomFieldsMixin, Base):
     shipping_charge = Column(Numeric(18, 2), nullable=False, server_default="0")
     # Why the customer declined, from the `lost_reason` picklist.
     lost_reason = Column(Text, nullable=True)
+    # 13d §3.5: revisions share a number (`Q-…-R2`); acceptance records who and when.
+    revision = Column(Integer, nullable=False, default=1, server_default="1")
+    revised_from_id = Column(BigInteger, ForeignKey("sales_quotes.quote_id", ondelete="SET NULL"), nullable=True)
+    accepted_by_name = Column(Text, nullable=True)
+    accepted_at = Column(DateTime(timezone=True), nullable=True)
+    # The signer's drawn signature as a PNG `data:` URI, when they drew one.
+    signature_data = Column(Text, nullable=True)
+    decline_note = Column(Text, nullable=True)
     assigned_to = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     created_time = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -386,11 +403,47 @@ class SalesQuote(CustomFieldsMixin, Base):
         ).strip() or self.assigned_user.email
     items = relationship("SalesQuoteItem", back_populates="quote", cascade="all, delete-orphan", order_by="SalesQuoteItem.sort_order")
     proposal_documents = relationship("SalesQuoteDocument", back_populates="quote", cascade="all, delete-orphan")
+    revised_from = relationship("SalesQuote", remote_side=[quote_id], foreign_keys=[revised_from_id], lazy="select")
+
+    @property
+    def tax_summary(self) -> list[dict]:
+        """Tax by rate over the lines (13d §3.1)."""
+        from app.modules.finance.services.tax_rates import document_tax_summary
+
+        return document_tax_summary(self, self.items)
+
+    @property
+    def revised_from_number(self) -> str | None:
+        return self.revised_from.quote_number if self.revised_from_id and self.revised_from else None
+
+    @property
+    def superseded_by(self) -> dict | None:
+        """The revision that replaced this quote, for the *Superseded* banner."""
+        session = object_session(self)
+        if self.status != "superseded" or session is None:
+            return None
+        row = session.query(SalesQuote.quote_id, SalesQuote.quote_number).filter(
+            SalesQuote.tenant_id == self.tenant_id, SalesQuote.revised_from_id == self.quote_id, SalesQuote.deleted_at.is_(None),
+        ).order_by(SalesQuote.quote_id.desc()).first()
+        return {"quote_id": row.quote_id, "quote_number": row.quote_number} if row else None
+
+    @property
+    def converted_order(self) -> dict | None:
+        """The order a converted quote became, for the *Converted* banner."""
+        session = object_session(self)
+        if self.status != "converted" or session is None:
+            return None
+        row = session.query(SalesOrder.id, SalesOrder.order_number).filter(
+            SalesOrder.tenant_id == self.tenant_id, SalesOrder.quote_id == self.quote_id,
+        ).first()
+        return {"order_id": row.id, "order_number": row.order_number} if row else None
 
 
 class SalesQuoteItem(Base):
     __tablename__ = "sales_quote_items"
     __table_args__ = (
+        CheckConstraint("discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 100)", name="ck_sales_quote_items_discount_percent"),
+        CheckConstraint("line_type IN ('item', 'section', 'note')", name="ck_sales_quote_items_line_type"),
         ForeignKeyConstraint(
             ["tenant_id", "quote_id"],
             ["sales_quotes.tenant_id", "sales_quotes.quote_id"],
@@ -422,6 +475,16 @@ class SalesQuoteItem(Base):
     unit_price = Column(Numeric(18, 2), nullable=False, server_default="0")
     discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # 13d §3.1: the rate the tax was computed from; `tax_manual` keeps a typed amount as is.
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="RESTRICT"), nullable=True)
+    tax_manual = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    # 13d §3.2: `item`, or a `section` heading / `note` that carries no amounts and is skipped by
+    # fulfilment, invoicing and stock. `discount_percent` set = the discount is that share of the line.
+    line_type = Column(Text, nullable=False, default="item", server_default="item")
+    discount_percent = Column(Numeric(7, 4), nullable=True)
+    unit = Column(Text, nullable=True)
+    # Offered, not sold: outside the total until the customer takes it (13d §3.2).
+    is_optional = Column(Boolean, nullable=False, default=False, server_default=expression.false())
     line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     sort_order = Column(Integer, nullable=False, server_default="0")
 
@@ -489,6 +552,7 @@ class SalesQuoteOpenEvent(Base):
 class SalesOrder(Base):
     __tablename__ = "sales_orders"
     __table_args__ = (
+        CheckConstraint("tax_mode IN ('exclusive', 'inclusive')", name="ck_sales_orders_tax_mode"),
         CheckConstraint(
             "status IN ('draft', 'confirmed', 'fulfilled', 'cancelled')",
             name="ck_sales_orders_status",
@@ -528,6 +592,8 @@ class SalesOrder(Base):
     currency = Column(Text, nullable=False, server_default="USD")
     subtotal = Column(Numeric(18, 2), nullable=False, server_default="0")
     tax_total = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # 13d §3.1: `exclusive` adds tax to the prices; `inclusive` prices already contain it.
+    tax_mode = Column(Text, nullable=False, default="exclusive", server_default="exclusive")
     discount_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     grand_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     delivery_date = Column(Date, nullable=True)
@@ -628,10 +694,19 @@ class SalesOrder(Base):
             return None
         return " ".join(part for part in [self.owner_user.first_name, self.owner_user.last_name] if part).strip() or self.owner_user.email
 
+    @property
+    def tax_summary(self) -> list[dict]:
+        """Tax by rate over the lines (13d §3.1)."""
+        from app.modules.finance.services.tax_rates import document_tax_summary
+
+        return document_tax_summary(self, self.items)
+
 
 class SalesOrderItem(Base):
     __tablename__ = "sales_order_items"
     __table_args__ = (
+        CheckConstraint("discount_percent IS NULL OR (discount_percent >= 0 AND discount_percent <= 100)", name="ck_sales_order_items_discount_percent"),
+        CheckConstraint("line_type IN ('item', 'section', 'note')", name="ck_sales_order_items_line_type"),
         Index("ix_sales_order_items_tenant_order", "tenant_id", "order_id"),
         CheckConstraint(
             "catalog_product_id IS NULL OR catalog_service_id IS NULL",
@@ -650,6 +725,14 @@ class SalesOrderItem(Base):
     unit_price = Column(Numeric(18, 2), nullable=False, server_default="0")
     discount_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
     tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # 13d §3.1: the rate the tax was computed from; `tax_manual` keeps a typed amount as is.
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="RESTRICT"), nullable=True)
+    tax_manual = Column(Boolean, nullable=False, default=False, server_default=expression.false())
+    # 13d §3.2: `item`, or a `section` heading / `note` that carries no amounts and is skipped by
+    # fulfilment, invoicing and stock. `discount_percent` set = the discount is that share of the line.
+    line_type = Column(Text, nullable=False, default="item", server_default="item")
+    discount_percent = Column(Numeric(7, 4), nullable=True)
+    unit = Column(Text, nullable=True)
     line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     sort_order = Column(Integer, nullable=False, server_default="0")
 

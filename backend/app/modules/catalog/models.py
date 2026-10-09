@@ -17,6 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.modules.finance import tax_models as _tax_models  # noqa: F401 - items name their tax rates
 
 
 class CatalogCategory(Base):
@@ -94,6 +95,19 @@ class CatalogProduct(Base):
     # The price quotes and orders start from; `public_unit_price` is the website's (13a C4).
     list_price = Column(Numeric(12, 4), nullable=True)
     tax_category = Column(String(100), nullable=True)
+    # 13d §3.1: the rate a sales line and a purchase line default to (the category is a label).
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="SET NULL"), nullable=True)
+    purchase_tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="SET NULL"), nullable=True)
+    tax_rate = relationship("FinanceTaxRate", foreign_keys=[tax_rate_id], lazy="selectin")
+    purchase_tax_rate = relationship("FinanceTaxRate", foreign_keys=[purchase_tax_rate_id], lazy="selectin")
+
+    @property
+    def tax_rate_name(self) -> str | None:
+        return self.tax_rate.name if self.tax_rate is not None else None
+
+    @property
+    def purchase_tax_rate_name(self) -> str | None:
+        return self.purchase_tax_rate.name if self.purchase_tax_rate is not None else None
     weight = Column(Numeric(12, 4), nullable=True)
     weight_unit = Column(String(10), nullable=True)
     length = Column(Numeric(12, 4), nullable=True)
@@ -170,6 +184,19 @@ class CatalogService(Base):
     public_unit_price = Column(Numeric(12, 4), nullable=False, server_default="0")
     list_price = Column(Numeric(12, 4), nullable=True)
     tax_category = Column(String(100), nullable=True)
+    # 13d §3.1: the rate a sales line and a purchase line default to (the category is a label).
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="SET NULL"), nullable=True)
+    purchase_tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="SET NULL"), nullable=True)
+    tax_rate = relationship("FinanceTaxRate", foreign_keys=[tax_rate_id], lazy="selectin")
+    purchase_tax_rate = relationship("FinanceTaxRate", foreign_keys=[purchase_tax_rate_id], lazy="selectin")
+
+    @property
+    def tax_rate_name(self) -> str | None:
+        return self.tax_rate.name if self.tax_rate is not None else None
+
+    @property
+    def purchase_tax_rate_name(self) -> str | None:
+        return self.purchase_tax_rate.name if self.purchase_tax_rate is not None else None
     category_id = Column(BigInteger, ForeignKey("catalog_categories.id", ondelete="SET NULL"), nullable=True, index=True)
     cost_price = Column(Numeric(12, 4), nullable=True)
     unit = Column(String(40), nullable=False, server_default="unit")

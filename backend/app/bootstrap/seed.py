@@ -54,6 +54,8 @@ DEFAULT_MODULES = [
     {"name": "finance_pos", "base_route": "/dashboard/finance/invoices", "description": "Invoices, including POS and walk-in sales"},
     {"name": "finance_credit_notes", "base_route": "/dashboard/finance/credit-notes", "description": "Credit notes against invoices"},
     {"name": "finance_payments", "base_route": "/dashboard/finance/payments", "description": "Payments received and made"},
+    # 13d §3.6.
+    {"name": "finance_recurring_invoices", "base_route": "/dashboard/finance/recurring-invoices", "description": "Invoices made on a schedule"},
     {"name": "sales_leads", "base_route": "/dashboard/sales/leads", "description": "Sales leads"},
     {"name": "sales_contacts", "base_route": "/dashboard/sales/contacts", "description": "Sales contacts"},
     {"name": "sales_organizations", "base_route": "/dashboard/sales/organizations", "description": "Sales organizations"},
@@ -213,6 +215,14 @@ def seed_initial_data(
 
         ensure_default_opportunity_pipeline(db, tenant.id)
         ensure_system_picklists(db, tenant.id)
+        # 13d §3.4: the email each document type's *Send* starts with.
+        from app.modules.platform.services.document_send import ensure_document_email_templates
+
+        ensure_document_email_templates(db, tenant.id)
+        # 13d §3.6: the payment reminders, off until an admin turns one on (decision 12).
+        from app.modules.finance.services.receivables import ensure_default_reminder_rules
+
+        ensure_default_reminder_rules(db, tenant.id)
 
         db.commit()
         return {"seeded": True, "reason": "ok"}

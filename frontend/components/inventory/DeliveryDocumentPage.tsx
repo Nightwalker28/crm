@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
@@ -206,6 +207,7 @@ export function DeliveryDocumentPage({ deliveryId = null, orderId = null }: { de
           {doc ? <StatusValue status={getDeliveryStatus(doc.status)} context="record" /> : null}
           {doc?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
           {doc && doc.status !== "cancelled" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryDeliveries}/${doc.id}/print`}><Printer />Delivery note</Link></Button> : null}
+          {doc && doc.status === "posted" ? <DocumentSendAction moduleKey="inventory_deliveries" recordId={doc.id} /> : null}
           {canReturn && doc ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.inventoryReturns}/new?delivery_id=${doc.id}`}>Record return</Link></Button> : null}
           {/* E5 (12c §3.5): invoice exactly what this delivery shipped (Business Central's Get Shipment Lines). */}
           {doc?.status === "posted" && canInvoice ? (

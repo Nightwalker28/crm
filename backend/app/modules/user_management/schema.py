@@ -1,3 +1,4 @@
+from decimal import Decimal
 from typing import Any, List, Literal, Optional
 from datetime import datetime
 from enum import Enum
@@ -514,6 +515,13 @@ class CompanyProfileResponse(BaseModel):
     billing_address: Optional[str] = None
     logo_url: Optional[str] = None
     invoicing_policy: str = "delivered"
+    default_tax_mode: str = "exclusive"
+    document_layout: str = "modern"
+    brand_color: Optional[str] = None
+    document_footer: Optional[str] = None
+    bank_details: Optional[str] = None
+    quote_validity_days: int = 30
+    write_off_limit: float = 0
     default_payment_terms_days: Optional[int] = None
     # E6 (12d §3.1): stock is valued in this currency; it locks once valuation has started.
     base_currency: Optional[str] = None
@@ -536,6 +544,15 @@ class CompanyProfileUpdateRequest(BaseModel):
     billing_address: Optional[str] = None
     # E5: tracked products invoice what was delivered, or what was ordered (12c §3.5).
     invoicing_policy: Optional[Literal["delivered", "ordered"]] = None
+    default_tax_mode: Optional[Literal["exclusive", "inclusive"]] = None
+    # 13d §3.3: how every document PDF looks.
+    document_layout: Optional[Literal["modern", "classic", "compact"]] = None
+    brand_color: Optional[str] = Field(default=None, pattern=r"^(#[0-9a-fA-F]{6})?$")
+    document_footer: Optional[str] = Field(default=None, max_length=1000)
+    bank_details: Optional[str] = Field(default=None, max_length=2000)
+    quote_validity_days: Optional[int] = Field(default=None, ge=1, le=365)
+    # 13d §3.6: balances up to this may be written off by anyone who can edit invoices.
+    write_off_limit: Optional[Decimal] = Field(default=None, ge=0, le=1_000_000)
     default_payment_terms_days: Optional[int] = Field(default=None, ge=0, le=365)
     base_currency: Optional[str] = Field(default=None, min_length=3, max_length=3)
 

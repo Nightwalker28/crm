@@ -152,6 +152,9 @@ ORGANIZATION_SYSTEM_FIELDS = _field_map(
     # Billing and purchasing (12-erp E4, E5): on the full form since 13b Phase 4e.
     RuntimeFieldDefinition("is_vendor", "Vendor", "boolean"),
     RuntimeFieldDefinition("payment_terms_days", "Payment terms (days)", "number"),
+    RuntimeFieldDefinition("tax_exempt", "Tax exempt", "boolean", help_text="Sales lines for this account start with no tax."),
+    RuntimeFieldDefinition("tax_exempt_reason", "Exemption reason", "text"),
+    RuntimeFieldDefinition("no_reminders", "No payment reminders", "boolean", help_text="Payment reminders are not emailed to this account."),
 )
 
 # Opportunity keeps the legacy single primary contact. Multi-contact participants are
@@ -323,7 +326,6 @@ POS_INVOICE_SYSTEM_FIELDS = _field_map(
     RuntimeFieldDefinition("currency", "Currency", "select"),
     RuntimeFieldDefinition("subtotal_amount", "Subtotal", "text"),
     RuntimeFieldDefinition("discount_amount", "Discount", "text"),
-    RuntimeFieldDefinition("tax_rate", "Tax rate", "text"),
     RuntimeFieldDefinition("tax_amount", "Tax", "text"),
     RuntimeFieldDefinition("total_amount", "Total", "text"),
     RuntimeFieldDefinition("amount_paid", "Paid", "text", readonly=True),
@@ -369,6 +371,10 @@ CATALOG_PRODUCT_SYSTEM_FIELDS = _field_map(
     ),
     RuntimeFieldDefinition("public_unit_price", "Website price", "currency"),
     RuntimeFieldDefinition("tax_category", "Tax category", "picklist", picklist_key="tax_category"),
+    RuntimeFieldDefinition("tax_rate_id", "Sales tax", "tax_rate_reference",
+                           help_text="The rate sales lines start with. Blank uses the company's default."),
+    RuntimeFieldDefinition("purchase_tax_rate_id", "Purchase tax", "tax_rate_reference",
+                           help_text="The rate purchase lines start with. Blank uses the company's default."),
     RuntimeFieldDefinition("weight", "Weight", "decimal"),
     RuntimeFieldDefinition("weight_unit", "Weight unit", "text"),
     RuntimeFieldDefinition("length", "Length", "decimal"),
@@ -411,6 +417,10 @@ CATALOG_SERVICE_SYSTEM_FIELDS = _field_map(
     ),
     RuntimeFieldDefinition("public_unit_price", "Website price", "currency"),
     RuntimeFieldDefinition("tax_category", "Tax category", "picklist", picklist_key="tax_category"),
+    RuntimeFieldDefinition("tax_rate_id", "Sales tax", "tax_rate_reference",
+                           help_text="The rate sales lines start with. Blank uses the company's default."),
+    RuntimeFieldDefinition("purchase_tax_rate_id", "Purchase tax", "tax_rate_reference",
+                           help_text="The rate purchase lines start with. Blank uses the company's default."),
     RuntimeFieldDefinition("cost_price", "Cost", "text"),
     RuntimeFieldDefinition("currency", "Currency", "select"),
     RuntimeFieldDefinition("is_public", "Website feed", "boolean"),
@@ -829,7 +839,6 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     [
                         ("subtotal_amount", "half"),
                         ("discount_amount", "half"),
-                        ("tax_rate", "half"),
                         ("tax_amount", "half"),
                         ("total_amount", "half"),
                         ("amount_paid", "half"),
@@ -875,7 +884,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "pricing",
                     "Pricing",
                     1,
-                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half")],
+                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half"), ("tax_rate_id", "half"), ("purchase_tax_rate_id", "half")],
                 ),
                 _seed_section("inventory", "Inventory", 2, [("stock_quantity", "half")]),
             ],
@@ -903,7 +912,7 @@ MODULE_LAYOUT_SEEDS: dict[str, dict[str, RecordLayoutDefinitionPayload]] = {
                     "pricing",
                     "Pricing",
                     1,
-                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half")],
+                    [("list_price", "half"), ("public_unit_price", "half"), ("currency", "half"), ("cost_price", "half"), ("tax_category", "half"), ("tax_rate_id", "half"), ("purchase_tax_rate_id", "half")],
                 ),
             ],
         ),
@@ -1166,7 +1175,7 @@ _FULL_FORM_GROUPS: dict[str, tuple[str, list[tuple[str, str, list[str]]]]] = {
         ("reach", "Contact details", ["primary_email", "secondary_email", "primary_phone", "secondary_phone"]),
         ("billing", "Billing address", _address_keys("billing")),
         ("shipping", "Shipping address", _address_keys("shipping")),
-        ("purchasing", "Billing and purchasing", ["is_vendor", "payment_terms_days"]),
+        ("purchasing", "Billing and purchasing", ["is_vendor", "payment_terms_days", "tax_exempt", "tax_exempt_reason", "no_reminders"]),
         ("ownership", "Ownership", ["assigned_to"]),
     ]),
     "sales_opportunities": ("Deal Form", [
@@ -1194,13 +1203,13 @@ _FULL_FORM_GROUPS: dict[str, tuple[str, list[tuple[str, str, list[str]]]]] = {
     ]),
     "catalog_products": ("Product Form", [
         ("product", "Product", ["name", "sku", "barcode", "category_id", "unit", "description"]),
-        ("pricing", "Pricing", ["list_price", "public_unit_price", "cost_price", "currency", "tax_category"]),
+        ("pricing", "Pricing", ["list_price", "public_unit_price", "cost_price", "currency", "tax_category", "tax_rate_id", "purchase_tax_rate_id"]),
         ("shipping", "Size and weight", ["weight", "weight_unit", "length", "width", "height", "dimension_unit"]),
         ("website", "Website", ["slug"]),
     ]),
     "catalog_services": ("Service Form", [
         ("service", "Service", ["name", "sku", "category_id", "unit", "description"]),
-        ("pricing", "Pricing", ["list_price", "public_unit_price", "cost_price", "currency", "tax_category"]),
+        ("pricing", "Pricing", ["list_price", "public_unit_price", "cost_price", "currency", "tax_category", "tax_rate_id", "purchase_tax_rate_id"]),
         ("website", "Website", ["slug"]),
     ]),
     "purchase_orders": ("Purchase Order Form", [

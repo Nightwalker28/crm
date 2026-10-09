@@ -41,6 +41,17 @@ def _detail(db: Session, current_user, invoice) -> dict:
             left = credit_note_services.creditable(db, invoice=invoice)
             for line in data.get("lines", []):
                 line["creditable"] = float(left.get(line["id"], 0))
+    from app.modules.finance.services import receivables
+
+    data["write_offs"] = jsonable_encoder(receivables.invoice_write_offs(db, tenant_id=current_user.tenant_id, invoice_id=invoice.id))
+    data["reminders"] = jsonable_encoder(receivables.invoice_reminders(db, tenant_id=current_user.tenant_id, invoice_id=invoice.id))
+    data["write_off_limit"] = float(receivables.write_off_limit(db, tenant_id=current_user.tenant_id))
+    data["can_write_off_any"] = can_access(db, current_user, INVOICES, "configure")
+    if invoice.recurring_invoice_id:
+        from app.modules.finance.models import FinanceRecurringInvoice
+
+        data["recurring_invoice_name"] = db.query(FinanceRecurringInvoice.name).filter(
+            FinanceRecurringInvoice.tenant_id == current_user.tenant_id, FinanceRecurringInvoice.id == invoice.recurring_invoice_id).scalar()
     if invoice.sales_order_id:
         from app.modules.sales.models import SalesOrder
 

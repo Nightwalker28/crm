@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from decimal import Decimal, InvalidOperation
 import hashlib
+import re
 import secrets
 from typing import Sequence
 
@@ -26,6 +27,8 @@ from app.modules.platform.services.custom_fields import (
 )
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.catalog.services.line_links import normalize_catalog_line_links
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import document_totals, money
 from app.modules.sales.models import SalesQuote, SalesQuoteDocument, SalesQuoteItem, SalesQuoteOpenEvent
 from app.modules.sales.repositories import quotes_repository
 from app.modules.sales.services.opportunity_contacts_services import ensure_contact_on_opportunity
@@ -33,7 +36,12 @@ from app.modules.sales.services.time_utils import as_utc, utc_now
 from app.modules.user_management.models import User
 
 
-QUOTE_STATUSES = {"draft", "sent", "accepted", "declined", "expired"}
+QUOTE_STATUSES = {"draft", "sent", "accepted", "declined", "expired", "superseded", "converted"}
+# Set by the lifecycle (a revision, a conversion), never typed into the form (13d §3.5).
+SYSTEM_QUOTE_STATUSES = {"superseded", "converted"}
+LOCKED_QUOTE_STATUSES = {"superseded", "converted"}
+REVISABLE_QUOTE_STATUSES = {"sent", "expired", "declined"}
+SIGNATURE_MAX_CHARS = 300_000
 EXPORT_COLUMNS = [
     "quote_id",
     "quote_number",
@@ -103,9 +111,58 @@ def _parse_optional_int(value, field_name: str) -> int | None:
 
 def _validate_status(value: str | None) -> str:
     normalized = (value or "draft").strip().lower()
-    if normalized not in QUOTE_STATUSES:
+    if normalized not in QUOTE_STATUSES or normalized in SYSTEM_QUOTE_STATUSES:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid quote status")
     return normalized
+
+
+def _today():
+    from datetime import date
+
+    return date.today()
+
+
+def quote_is_past_expiry(quote: SalesQuote) -> bool:
+    return quote.status == "expired" or bool(quote.expiry_date and quote.expiry_date < _today())
+
+
+def _validity_days(db: Session, tenant_id: int) -> int:
+    from app.modules.user_management.models import CompanyProfile
+
+    days = db.query(CompanyProfile.quote_validity_days).filter(CompanyProfile.tenant_id == tenant_id).order_by(CompanyProfile.id).scalar()
+    return int(days or 30)
+
+
+def _apply_dates(db: Session, data: dict, *, tenant_id: int, quote: SalesQuote | None = None) -> None:
+    """A new quote is issued today and valid for the company's period; expiry never before
+    issue (H14, 13d §3.5)."""
+    for field in ("issue_date", "expiry_date"):
+        if isinstance(data.get(field), str):
+            try:
+                from datetime import date
+
+                data[field] = date.fromisoformat(data[field].strip()) if data[field].strip() else None
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{field.replace('_', ' ').capitalize()} must be a date") from exc
+    if quote is None:
+        data["issue_date"] = data.get("issue_date") or _today()
+        if not data.get("expiry_date"):
+            data["expiry_date"] = data["issue_date"] + timedelta(days=_validity_days(db, tenant_id))
+    issue = data["issue_date"] if "issue_date" in data else (quote.issue_date if quote else None)
+    expiry = data["expiry_date"] if "expiry_date" in data else (quote.expiry_date if quote else None)
+    if issue and expiry and expiry < issue:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The expiry date cannot be before the issue date")
+
+
+def _customer_name_from_account(db: Session, data: dict, *, tenant_id: int) -> None:
+    """The account's name, not the contact's, when the quote is for an account (H14)."""
+    if (data.get("customer_name") or "").strip() or not data.get("organization_id"):
+        return
+    from app.modules.sales.models import SalesOrganization
+
+    name = db.query(SalesOrganization.org_name).filter(SalesOrganization.org_id == data["organization_id"], SalesOrganization.tenant_id == tenant_id).scalar()
+    if name:
+        data["customer_name"] = name
 
 
 def _ensure_assigned_user(db: Session, user_id: int | None, *, tenant_id: int) -> None:
@@ -168,58 +225,86 @@ def _normalize_quote_payload(data: dict, *, partial: bool = False) -> dict:
     return normalized
 
 
-def _normalize_quote_items(db: Session, items: list[dict], *, tenant_id: int) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
+def _normalize_quote_items(db: Session, items: list[dict], *, tenant_id: int, organization_id: int | None = None,
+                           tax_mode: str = "exclusive", allowed_inactive=()) -> tuple[list[SalesQuoteItem], dict[str, Decimal]]:
+    resolver = tax_rates.TaxResolver(db, tenant_id=tenant_id, side="sales", allowed_inactive=allowed_inactive,
+                                     exempt=tax_rates.account_is_exempt(db, tenant_id=tenant_id, organization_id=organization_id))
     normalized_items: list[SalesQuoteItem] = []
-    subtotal = Decimal("0")
-    discount_total = Decimal("0")
-    tax_total = Decimal("0")
+    amounts = []
     catalog_links = normalize_catalog_line_links(db, tenant_id=tenant_id, lines=items)
     for index, item in enumerate(items):
         name = _coerce_required(item.get("name"), "Quote item name")
         quantity = _coerce_decimal(item.get("quantity", "1"))
         unit_price = _coerce_decimal(item.get("unit_price"))
         discount = _coerce_decimal(item.get("discount_amount"))
-        tax = _coerce_decimal(item.get("tax_amount"))
-        if quantity <= 0:
+        is_item = (item.get("line_type") or "item") == "item"
+        if is_item and quantity <= 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item quantity must be greater than zero")
-        if min(unit_price, discount, tax) < 0:
+        if is_item and min(unit_price, discount, _coerce_decimal(item.get("tax_amount"))) < 0:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item amounts cannot be negative")
-        extended = quantity * unit_price
-        line_total = extended - discount + tax
-        if line_total < 0:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote item discount cannot exceed its value and tax")
+        line = tax_rates.compute_sales_line(resolver, item, catalog_links[index], quantity=quantity, unit_price=unit_price,
+                                            discount=discount, inclusive=tax_mode == "inclusive", label=name)
+        optional = bool(item.get("is_optional")) and line.line_type == "item"
+        # An optional line is offered, not sold: it stays out of the total (13d §3.2).
+        if not optional:
+            amounts.append(line.amounts)
+        links = catalog_links[index] if line.line_type == "item" else {key: None for key in catalog_links[index]}
         normalized_items.append(
             SalesQuoteItem(
                 tenant_id=tenant_id,
-                **catalog_links[index],
+                **links,
                 name=name,
-                description=_coerce_optional(item.get("description")),
-                quantity=quantity,
-                unit_price=unit_price,
-                discount_amount=discount,
-                tax_amount=tax,
-                line_total=line_total.quantize(Decimal("0.01")),
+                description=_coerce_optional(item.get("description")) if line.line_type == "item" else None,
+                **tax_rates.sales_line_fields(line),
+                is_optional=optional,
                 sort_order=index,
             )
         )
-        subtotal += extended
-        discount_total += discount
-        tax_total += tax
-    totals = {
-        "subtotal_amount": subtotal.quantize(Decimal("0.01")),
-        "discount_amount": discount_total.quantize(Decimal("0.01")),
-        "tax_amount": tax_total.quantize(Decimal("0.01")),
-        "total_amount": (subtotal - discount_total + tax_total).quantize(Decimal("0.01")),
+    totals = document_totals(amounts)
+    return normalized_items, {
+        "subtotal_amount": totals["subtotal"],
+        "discount_amount": totals["discount"],
+        "tax_amount": totals["tax"],
+        "total_amount": totals["total"],
     }
-    return normalized_items, totals
+
+
+def _apply_default_texts(db: Session, data: dict, *, tenant_id: int, kind: str) -> None:
+    """A new document starts with its type's default terms and notes (13d §3.3)."""
+    from app.modules.platform.services.document_pdfs import default_texts
+
+    texts = default_texts(db, tenant_id=tenant_id, kind=kind)
+    if texts["terms"] and not (data.get("terms_and_conditions") or "").strip():
+        data["terms_and_conditions"] = texts["terms"]
+    if texts["notes"] and not (data.get("notes") or "").strip():
+        data["notes"] = texts["notes"]
+
+
+def _items_for(db: Session, data: dict, item_payloads: list[dict] | None, *, tenant_id: int, quote: SalesQuote | None = None):
+    """The quote's lines and totals from the submitted lines, or its current lines recomputed
+    when only the tax mode changed; (None, None) when neither applies."""
+    if item_payloads is None and quote is not None and "tax_mode" in data and data["tax_mode"] != quote.tax_mode and quote.items:
+        item_payloads = [_existing_item_payload(item) for item in quote.items]
+    if item_payloads is None:
+        return None, None
+    organization_id = data["organization_id"] if "organization_id" in data else (quote.organization_id if quote else None)
+    tax_mode = data.get("tax_mode") or (quote.tax_mode if quote else None) or tax_rates.default_tax_mode(db, tenant_id=tenant_id)
+    allowed = tax_rates.used_rate_ids(quote.items) if quote is not None else ()
+    return _normalize_quote_items(db, item_payloads, tenant_id=tenant_id, organization_id=organization_id, tax_mode=tax_mode, allowed_inactive=allowed)
+
+
+def _existing_item_payload(item: SalesQuoteItem) -> dict:
+    return {"catalog_product_id": item.catalog_product_id, "catalog_service_id": item.catalog_service_id, "name": item.name,
+            "description": item.description, "quantity": item.quantity, "unit_price": item.unit_price,
+            "discount_amount": item.discount_amount, **tax_rates.line_payload(item)}
 
 
 def _refresh_total(quote: SalesQuote) -> None:
-    """Lines plus the shipping charge (13b §5 decision 8)."""
-    money = lambda value: Decimal(value or 0)  # noqa: E731
+    """Lines plus the shipping charge (13b §5 decision 8); subtotal − discount + tax is the
+    lines' total in either tax mode (13d §3.1)."""
     quote.total_amount = (
         money(quote.subtotal_amount) - money(quote.discount_amount) + money(quote.tax_amount) + money(quote.shipping_charge)
-    ).quantize(Decimal("0.01"))
+    )
 
 
 def _generate_quote_number(db: Session, *, tenant_id: int) -> str:
@@ -273,8 +358,19 @@ def _ensure_client_quote_scope(*, contact_id: int | None, organization_id: int |
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Client account is not linked to a quote profile.")
 
 
+def client_quote_state(quote: SalesQuote) -> str:
+    """What the customer can do with the quote: answer it, or read how it ended (13d §3.5)."""
+    if quote.status in LOCKED_QUOTE_STATUSES:
+        return "replaced" if quote.status == "superseded" else "accepted"
+    if quote.status in {"accepted", "declined"}:
+        return quote.status
+    if quote_is_past_expiry(quote) or quote.status == "expired":
+        return "expired"
+    return "open" if quote.status in CLIENT_QUOTE_RESPONDABLE_STATUSES else "pending"
+
+
 def serialize_client_quote(db: Session, quote: SalesQuote) -> dict:
-    proposal = get_latest_quote_proposal(db, quote)
+    state = client_quote_state(quote)
     return {
         "quote_id": quote.quote_id,
         "quote_number": quote.quote_number,
@@ -291,11 +387,10 @@ def serialize_client_quote(db: Session, quote: SalesQuote) -> dict:
         "notes": quote.notes,
         "contact_id": quote.contact_id,
         "organization_id": quote.organization_id,
-        "proposal_document_id": proposal.id if proposal else None,
-        "proposal_title": proposal.title if proposal else None,
-        "proposal_content_text": proposal.content_text if proposal else None,
-        "proposal_generated_at": proposal.generated_at if proposal else None,
-        "can_respond": quote.status in CLIENT_QUOTE_RESPONDABLE_STATUSES,
+        "state": state,
+        "can_respond": state == "open",
+        "accepted_by_name": quote.accepted_by_name if state == "accepted" else None,
+        "accepted_at": quote.accepted_at if state == "accepted" else None,
         "created_time": quote.created_time,
         "updated_at": quote.updated_at,
     }
@@ -371,6 +466,8 @@ def list_client_quotes(
         .filter(
             SalesQuote.tenant_id == tenant_id,
             SalesQuote.deleted_at.is_(None),
+            # A draft is the team's work in progress; the client sees a quote once it is sent.
+            SalesQuote.status != "draft",
             or_(*_client_quote_conditions(contact_id=contact_id, organization_id=organization_id)),
         )
         .order_by(SalesQuote.updated_at.desc(), SalesQuote.quote_id.desc())
@@ -393,6 +490,8 @@ def get_client_quote_or_404(
             SalesQuote.tenant_id == tenant_id,
             SalesQuote.quote_id == quote_id,
             SalesQuote.deleted_at.is_(None),
+            # A draft is the team's work in progress; the client sees a quote once it is sent.
+            SalesQuote.status != "draft",
             or_(*_client_quote_conditions(contact_id=contact_id, organization_id=organization_id)),
         )
         .first()
@@ -402,52 +501,20 @@ def get_client_quote_or_404(
     return quote
 
 
-def respond_to_client_quote(db: Session, *, quote: SalesQuote, action: str, client_account_id: int, message: str | None = None) -> SalesQuote:
-    action = action.strip().lower()
-    if action not in {"approve", "reject"}:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Unsupported quote action.")
-    if quote.status not in CLIENT_QUOTE_RESPONDABLE_STATUSES:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quote is not open for portal response.")
-    before_status = quote.status
-    quote.status = "accepted" if action == "approve" else "declined"
-    db.add(quote)
-    action_label = "approved" if action == "approve" else "rejected"
-    audit_action = "portal.quote.approved" if action == "approve" else "portal.quote.rejected"
-    try:
-        log_activity(
-            db,
-            tenant_id=quote.tenant_id,
-            actor_user_id=None,
-            module_key="sales_quotes",
-            entity_type="sales_quote",
-            entity_id=quote.quote_id,
-            action=audit_action,
-            description=f"Client {action_label} quote {quote.quote_number}",
-            before_state={"status": before_status},
-            after_state={
-                "status": quote.status,
-                "client_account_id": client_account_id,
-                "message": (message or "").strip() or None,
-            },
-            commit=False,
-        )
-        db.commit()
-    except Exception:
-        db.rollback()
-        raise
-    db.refresh(quote)
-    return quote
-
 
 def create_sales_quote(db: Session, payload: dict, current_user, replace_duplicates: bool = False, skip_duplicates: bool = False, create_new_records: bool = False) -> SalesQuote:
     ensure_single_duplicate_action(replace_duplicates=replace_duplicates, skip_duplicates=skip_duplicates, create_new_records=create_new_records)
     data = dict(payload)
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=current_user.tenant_id) if item_payloads is not None else (None, None)
     explicit_assigned_to = "assigned_to" in data and data.get("assigned_to") is not None
     custom_data = validate_custom_field_payload(db, tenant_id=current_user.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields", None))
+    _customer_name_from_account(db, data, tenant_id=current_user.tenant_id)
     data = _normalize_quote_payload(data)
+    _apply_dates(db, data, tenant_id=current_user.tenant_id)
+    data["tax_mode"] = tax_rates.normalize_tax_mode(data.get("tax_mode"), default=tax_rates.default_tax_mode(db, tenant_id=current_user.tenant_id))
+    _apply_default_texts(db, data, tenant_id=current_user.tenant_id, kind="quote")
     normalize_document_fields(db, data, tenant_id=current_user.tenant_id, module_key="sales_quotes")
+    normalized_items, item_totals = _items_for(db, data, item_payloads, tenant_id=current_user.tenant_id)
     if item_totals is not None:
         data.update(item_totals)
     data["custom_data"] = custom_data
@@ -501,14 +568,24 @@ def create_sales_quote(db: Session, payload: dict, current_user, replace_duplica
 
 
 def update_sales_quote(db: Session, quote: SalesQuote, data: dict) -> SalesQuote:
+    if quote.status in LOCKED_QUOTE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                            detail=f"This quote is {quote.status} and can no longer change; revise it to make a new version")
+    if data.get("status") == "accepted" and quote.status != "accepted":
+        expiry = data.get("expiry_date", quote.expiry_date)
+        if quote.status == "expired" or (expiry and str(expiry) < _today().isoformat()):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="An expired quote cannot be accepted; revise it first")
     item_payloads = data.pop("items", None)
-    normalized_items, item_totals = _normalize_quote_items(db, item_payloads, tenant_id=quote.tenant_id) if item_payloads is not None else (None, None)
     custom_data_to_save: dict | None = None
     if "custom_fields" in data:
         custom_data_to_save = validate_custom_field_payload(db, tenant_id=quote.tenant_id, module_key="sales_quotes", payload=data.pop("custom_fields"), existing=load_custom_field_values_with_fallback(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=quote.quote_id, fallback=quote.custom_data))
         data["custom_data"] = custom_data_to_save
     data = _normalize_quote_payload(data, partial=True)
+    _apply_dates(db, data, tenant_id=quote.tenant_id, quote=quote)
+    if "tax_mode" in data:
+        data["tax_mode"] = tax_rates.normalize_tax_mode(data["tax_mode"], default=quote.tax_mode)
     normalize_document_fields(db, data, tenant_id=quote.tenant_id, module_key="sales_quotes", existing=quote)
+    normalized_items, item_totals = _items_for(db, data, item_payloads, tenant_id=quote.tenant_id, quote=quote)
     if item_totals is not None:
         data.update(item_totals)
     _ensure_assigned_user(db, data.get("assigned_to"), tenant_id=quote.tenant_id)
@@ -763,3 +840,234 @@ def export_quotes_to_csv(records: Sequence[SalesQuote], *, field_keys: list[str]
             row[column] = value.isoformat() if hasattr(value, "isoformat") else value
         rows.append(row)
     return dict_rows_to_csv_bytes(headers=columns, rows=rows)
+
+
+# Lifecycle (13d §3.5) -----------------------------------------------------------------------
+
+def announce_status_change(db: Session, quote: SalesQuote, previous_status: str | None, *, actor=None) -> None:
+    """`quote.status_changed`, from which `quote.sent`, `quote.accepted`, `quote.rejected` and
+    `quote.expired` are derived, whatever changed the status: the form, *Send*, the customer's
+    page, the portal or the expiry scan."""
+    if previous_status == quote.status:
+        return
+    from app.modules.platform.services.crm_events import actor_payload, safe_emit_crm_event
+
+    safe_emit_crm_event(
+        db,
+        tenant_id=quote.tenant_id,
+        actor_user_id=getattr(actor, "id", None),
+        event_type="quote.status_changed",
+        entity_type="sales_quote",
+        entity_id=quote.quote_id,
+        payload={
+            **(actor_payload(actor) if actor is not None else {"actor_user_id": None, "actor_name": None}),
+            "quote_id": quote.quote_id,
+            "quote_number": quote.quote_number,
+            "customer_name": quote.customer_name,
+            "previous_status": previous_status,
+            "status": quote.status,
+            "field_changes": {"status": {"from": previous_status, "to": quote.status}},
+            "total_amount": str(quote.total_amount),
+            "href": f"/dashboard/sales/quotes/{quote.quote_id}",
+        },
+    )
+
+
+def _notify_owner(db: Session, quote: SalesQuote, *, title: str, message: str) -> None:
+    if not quote.assigned_to:
+        return
+    from app.modules.platform.services.notifications import create_notification
+
+    create_notification(db, tenant_id=quote.tenant_id, user_id=quote.assigned_to, category="sales_quotes", title=title, message=message,
+                        link_url=f"/dashboard/sales/quotes/{quote.quote_id}", commit=False)
+
+
+def _respondable(quote: SalesQuote) -> None:
+    if quote.status in LOCKED_QUOTE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This quote has been replaced or converted; it can no longer be answered")
+    if quote_is_past_expiry(quote):
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This quote has expired; ask for a new one")
+    if quote.status not in CLIENT_QUOTE_RESPONDABLE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This quote is not open for an answer")
+
+
+def _take_optional_lines(db: Session, quote: SalesQuote, item_ids) -> list[str]:
+    """The optional lines the customer chose become ordinary lines, and the totals follow."""
+    wanted = {int(value) for value in item_ids or []}
+    optional = {item.id: item for item in quote.items if item.is_optional}
+    if wanted - set(optional):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Only this quote's optional items can be chosen")
+    if not wanted:
+        return []
+    payloads = [{**_existing_item_payload(item), "is_optional": item.is_optional and item.id not in wanted, "tax_manual": True}
+                for item in quote.items]
+    items, totals = _normalize_quote_items(db, payloads, tenant_id=quote.tenant_id, organization_id=quote.organization_id,
+                                           tax_mode=quote.tax_mode, allowed_inactive=tax_rates.used_rate_ids(quote.items))
+    quote.items = items
+    for field, value in totals.items():
+        setattr(quote, field, value)
+    _refresh_total(quote)
+    return [optional[item_id].name for item_id in sorted(wanted)]
+
+
+def accept_quote(db: Session, quote: SalesQuote, *, signer_name: str, signature: str | None = None, optional_item_ids=(),
+                 via: str = "proposal page", client_account_id: int | None = None, signer_ip: str | None = None) -> SalesQuote:
+    """The customer accepts: their name, an optional drawn signature and the optional items
+    they chose are kept; the owner is told. The order is made by the owner (decision 8)."""
+    _respondable(quote)
+    name = " ".join(str(signer_name or "").split())[:200]
+    if not name:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Enter your name to accept")
+    if signature and (not signature.startswith("data:image/png;base64,") or len(signature) > SIGNATURE_MAX_CHARS):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="The signature could not be read; draw it again")
+    chosen = _take_optional_lines(db, quote, optional_item_ids)
+    previous = quote.status
+    quote.status, quote.accepted_by_name, quote.accepted_at, quote.signature_data = "accepted", name, utc_now(), signature or None
+    db.add(quote)
+    db.flush()
+    description = f"{name} accepted quote {quote.quote_number} on the {via}" + (f", adding {', '.join(chosen)}" if chosen else "")
+    log_activity(db, tenant_id=quote.tenant_id, actor_user_id=None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id,
+                 action="quote.accepted", description=description, before_state={"status": previous},
+                 after_state={"status": quote.status, "accepted_by_name": name, "optional_items": chosen, "client_account_id": client_account_id,
+                              "ip_hash": _hash_value(signer_ip)},
+                 commit=False)
+    _notify_owner(db, quote, title=f"Quote {quote.quote_number} accepted", message=description)
+    announce_status_change(db, quote, previous)
+    return quote
+
+
+def decline_quote(db: Session, quote: SalesQuote, *, reason: str | None = None, note: str | None = None, via: str = "proposal page",
+                  client_account_id: int | None = None, signer_ip: str | None = None) -> SalesQuote:
+    """The customer declines, with a reason from the `lost_reason` picklist and a note."""
+    _respondable(quote)
+    if reason:
+        from app.modules.platform.services.picklists import PicklistResolver
+
+        reason = PicklistResolver(db, quote.tenant_id).resolve("lost_reason", reason, current=quote.lost_reason, field_key="lost_reason",
+                                                                field_label="Reason")
+    previous = quote.status
+    quote.status, quote.lost_reason = "declined", reason or quote.lost_reason
+    quote.decline_note = (note or "").strip()[:2000] or None
+    db.add(quote)
+    db.flush()
+    description = f"The customer declined quote {quote.quote_number} on the {via}" + (f": {quote.decline_note}" if quote.decline_note else "")
+    log_activity(db, tenant_id=quote.tenant_id, actor_user_id=None, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id,
+                 action="quote.declined", description=description, before_state={"status": previous},
+                 after_state={"status": quote.status, "lost_reason": quote.lost_reason, "client_account_id": client_account_id,
+                              "ip_hash": _hash_value(signer_ip)}, commit=False)
+    _notify_owner(db, quote, title=f"Quote {quote.quote_number} declined", message=description)
+    announce_status_change(db, quote, previous)
+    return quote
+
+
+def revise_quote(db: Session, quote: SalesQuote, current_user) -> SalesQuote:
+    """*Revise*: a new draft with the same number and the next `-R` suffix; the old one is
+    superseded and stays readable (decision 7)."""
+    if quote.status not in REVISABLE_QUOTE_STATUSES:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Only a sent, expired or declined quote can be revised")
+    base = re.sub(r"-R\d+$", "", quote.quote_number)
+    revision = (quote.revision or 1) + 1
+    copied = {column: getattr(quote, column) for column in (
+        "title", "customer_name", "contact_id", "organization_id", "opportunity_id", "currency", "tax_mode", "notes", "customer_po_reference",
+        "terms_and_conditions", "shipping_method", "shipping_charge", "assigned_to", "custom_data",
+        *(f"{prefix}_{part}" for prefix in ("billing", "shipping") for part in ("address", "street2", "city", "state", "postal_code", "country")),
+    )}
+    new = SalesQuote(tenant_id=quote.tenant_id, quote_number=f"{base}-R{revision}", revision=revision, revised_from_id=quote.quote_id,
+                     status="draft", **copied)
+    dates = {}
+    _apply_dates(db, dates, tenant_id=quote.tenant_id)
+    new.issue_date, new.expiry_date = dates["issue_date"], dates["expiry_date"]
+    items, totals = _normalize_quote_items(db, [_existing_item_payload(item) for item in quote.items], tenant_id=quote.tenant_id,
+                                           organization_id=quote.organization_id, tax_mode=quote.tax_mode,
+                                           allowed_inactive=tax_rates.used_rate_ids(quote.items))
+    new.items = items
+    for field, value in totals.items():
+        setattr(new, field, value)
+    _refresh_total(new)
+    previous = quote.status
+    quote.status = "superseded"
+    db.add_all([new, quote])
+    db.flush()
+    save_custom_field_values(db, tenant_id=quote.tenant_id, module_key="sales_quotes", record_id=new.quote_id, values=quote.custom_data or {})
+    actor_id = getattr(current_user, "id", None)
+    log_activity(db, tenant_id=quote.tenant_id, actor_user_id=actor_id, module_key="sales_quotes", entity_type="sales_quote", entity_id=quote.quote_id,
+                 action="quote.revised", description=f"Revised as {new.quote_number}", after_state={"revision_id": new.quote_id}, commit=False)
+    log_activity(db, tenant_id=quote.tenant_id, actor_user_id=actor_id, module_key="sales_quotes", entity_type="sales_quote", entity_id=new.quote_id,
+                 action="create", description=f"Revision {revision} of {quote.quote_number}", commit=False)
+    announce_status_change(db, quote, previous, actor=current_user)
+    return new
+
+
+def mark_converted(db: Session, quote: SalesQuote, *, actor=None) -> None:
+    """A quote made into an order is locked (H14)."""
+    previous = quote.status
+    quote.status = "converted"
+    db.add(quote)
+    db.flush()
+    announce_status_change(db, quote, previous, actor=actor)
+
+
+def scan_expired_quotes(db: Session, *, today=None) -> int:
+    """The daily scan (A7): a draft or sent quote past its expiry date becomes *Expired*, once."""
+    today = today or _today()
+    quotes = db.query(SalesQuote).filter(SalesQuote.deleted_at.is_(None), SalesQuote.status.in_(["draft", "sent"]),
+                                         SalesQuote.expiry_date.isnot(None), SalesQuote.expiry_date < today).all()
+    for quote in quotes:
+        previous = quote.status
+        quote.status = "expired"
+        db.add(quote)
+        db.flush()
+        log_activity(db, tenant_id=quote.tenant_id, actor_user_id=None, module_key="sales_quotes", entity_type="sales_quote",
+                     entity_id=quote.quote_id, action="quote.expired", description=f"Quote {quote.quote_number} expired on {quote.expiry_date.isoformat()}",
+                     before_state={"status": previous}, after_state={"status": "expired"}, commit=False)
+        announce_status_change(db, quote, previous)
+    db.commit()
+    return len(quotes)
+
+
+def public_proposal_view(db: Session, proposal: SalesQuoteDocument, quote: SalesQuote) -> dict:
+    """What the customer's quote page shows (H7): the branded document, its optional items,
+    and whether it can still be answered. No internal status, owner or notes."""
+    from types import SimpleNamespace
+
+    from app.core.document_pdf import render_html
+    from app.modules.platform.services.document_pdfs import build_context
+    from app.modules.platform.services.picklists import PicklistResolver
+
+    _kind, _record, context = build_context(db, SimpleNamespace(id=None, tenant_id=quote.tenant_id), "sales_quotes", quote.quote_id, as_issued=True)
+    if quote.status in LOCKED_QUOTE_STATUSES:
+        state = "replaced" if quote.status == "superseded" else "accepted"
+    elif quote.status in {"accepted", "declined"}:
+        state = quote.status
+    elif quote_is_past_expiry(quote):
+        state = "expired"
+    else:
+        state = "open"
+    reasons = []
+    if state == "open":
+        from app.modules.platform.models import PicklistValue
+
+        picklist = PicklistResolver(db, quote.tenant_id).picklist("lost_reason")
+        reasons = [{"key": value.key, "label": value.label} for value in db.query(PicklistValue).filter(
+            PicklistValue.picklist_id == picklist.id, PicklistValue.is_active.is_(True)).order_by(PicklistValue.sort_order)]
+    return {
+        "quote_number": quote.quote_number,
+        "title": quote.title,
+        "company_name": context["company"]["name"],
+        "brand_color": context["company"]["brand_color"],
+        "customer_name": quote.customer_name,
+        "currency": quote.currency,
+        "total_amount": quote.total_amount,
+        "expiry_date": quote.expiry_date,
+        "state": state,
+        "can_respond": state == "open",
+        "accepted_by_name": quote.accepted_by_name if state == "accepted" else None,
+        "accepted_at": quote.accepted_at if state == "accepted" else None,
+        "html": render_html("document.html", context),
+        "optional_items": [
+            {"id": item.id, "name": item.name, "description": item.description, "quantity": item.quantity, "unit": item.unit,
+             "line_total": item.line_total}
+            for item in quote.items if item.is_optional and item.line_type == "item"
+        ] if state == "open" else [],
+        "decline_reasons": reasons,
+    }

@@ -1,9 +1,12 @@
+import hashlib
 import ipaddress
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import FileResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.core.access_control import require_department_module_access, require_role_module_action_access
@@ -39,6 +42,11 @@ from app.modules.client_portal.schema import (
     ClientMeResponse,
     ClientOverviewResponse,
     ClientSetupPasswordRequest,
+    ClientForgotPasswordRequest,
+    ClientResetPasswordRequest,
+    ClientChangePasswordRequest,
+    ClientInvoiceListResponse,
+    ClientInvoiceResponse,
     CustomerGroupAssignmentRequest,
     CustomerGroupCreateRequest,
     CustomerGroupResponse,
@@ -100,12 +108,14 @@ from app.modules.documents.services.document_services import (
     serialize_client_document_share,
 )
 from app.modules.platform.services.activity_logs import safe_log_activity
-from app.modules.platform.services.crm_events import safe_publish_crm_event
-from app.modules.sales.schema import ClientQuoteActionRequest, ClientQuoteListResponse, ClientQuoteResponse
+from app.modules.client_portal.services import client_access_services, client_documents_services
+from app.modules.sales.schema import ClientQuoteListResponse, ClientQuoteResponse, QuoteAcceptRequest, QuoteDeclineRequest
 from app.modules.sales.services.quotes_services import (
+    accept_quote,
+    decline_quote,
     get_client_quote_or_404,
     list_client_quotes,
-    respond_to_client_quote,
+    public_proposal_view,
     serialize_client_quote,
 )
 from app.modules.user_management.models import Tenant
@@ -120,6 +130,7 @@ client_documents_router = APIRouter(prefix="/client-documents", tags=["Client Do
 client_quotes_router = APIRouter(prefix="/client-quotes", tags=["Client Quotes"])
 client_bookings_router = APIRouter(prefix="/client-bookings", tags=["Client Bookings"])
 client_overview_router = APIRouter(prefix="/client-overview", tags=["Client Overview"])
+client_invoices_router = APIRouter(prefix="/client-invoices", tags=["Client Invoices"])
 client_bearer = HTTPBearer(auto_error=False)
 
 
@@ -369,6 +380,13 @@ def get_client_accounts_cursor(
     )
 
 
+def _with_invite(db: Session, account, setup_token: str, *, actor_user_id: int | None) -> ClientAccountResponse:
+    """Email the setup link (13d §3.7); the link is still returned for the admin to copy."""
+    payload = serialize_client_account(account, setup_token=setup_token)
+    sent, error = client_access_services.send_invite(db, account=account, setup_link=payload["setup_link"], actor_user_id=actor_user_id)
+    return ClientAccountResponse.model_validate({**payload, "invite_sent": sent, "invite_error": error})
+
+
 @router.post("/accounts", response_model=ClientAccountResponse, status_code=status.HTTP_201_CREATED)
 def create_client_account_route(
     payload: ClientAccountCreateRequest,
@@ -390,7 +408,7 @@ def create_client_account_route(
         actor_user_id=current_user.id,
         payload=payload.model_dump(),
     )
-    return ClientAccountResponse.model_validate(serialize_client_account(account, setup_token=setup_token))
+    return _with_invite(db, account, setup_token, actor_user_id=current_user.id)
 
 
 @router.post("/accounts/{account_id}/setup-link", response_model=ClientAccountResponse)
@@ -410,7 +428,7 @@ def regenerate_client_setup_link_route(
         action="edit",
     )
     account, setup_token = regenerate_client_setup_link(db, account=account, actor_user_id=current_user.id)
-    return ClientAccountResponse.model_validate(serialize_client_account(account, setup_token=setup_token))
+    return _with_invite(db, account, setup_token, actor_user_id=current_user.id)
 
 
 @router.put("/accounts/{account_id}/status", response_model=ClientAccountResponse)
@@ -579,6 +597,30 @@ def setup_client_password_route(
     return ClientAccountResponse.model_validate(serialize_client_account(account))
 
 
+class ClientSetupInfoRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=200)
+    tenant_slug: str | None = Field(default=None, max_length=120)
+
+
+@client_auth_router.post("/setup-info")
+def client_setup_info_route(payload: ClientSetupInfoRequest, request: Request, db: Session = Depends(get_db)):
+    """Whose invitation a valid setup link is, so the page can say "Set your password to sign
+    in to {company}" (13d §3.7). An invalid or expired link says nothing more than that."""
+    invalid = HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="This setup link is invalid or has expired. Ask for a new one.")
+    client_host = _client_ip_for_rate_limit(request)
+    check_public_client_page_action_rate_limit(token=payload.token, client_host=client_host)
+    record_public_client_page_action_attempt(token=payload.token, client_host=client_host)
+    account = client_portal_repository.get_client_account_by_setup_hash(db, token_hash=hashlib.sha256(payload.token.encode("utf-8")).hexdigest())
+    if account is None or not account.setup_token_expires_at or account.status == "inactive":
+        raise invalid
+    expires = account.setup_token_expires_at if account.setup_token_expires_at.tzinfo else account.setup_token_expires_at.replace(tzinfo=timezone.utc)
+    if expires <= datetime.now(timezone.utc):
+        raise invalid
+    if payload.tenant_slug and int(_tenant_by_slug_or_400(db, payload.tenant_slug).id) != account.tenant_id:
+        raise invalid
+    return {"company_name": client_access_services._company_name(db, account.tenant_id), "email": account.email}
+
+
 @client_auth_router.post("/login", response_model=ClientLoginResponse)
 def login_client_route(
     payload: ClientLoginRequest,
@@ -630,6 +672,43 @@ def login_client_route(
     }
 
 
+FORGOT_RESPONSE = {"detail": "If an account uses that address, we have emailed a link to reset its password. It works for an hour."}
+
+
+@client_auth_router.post("/forgot", status_code=status.HTTP_202_ACCEPTED)
+def forgot_client_password_route(payload: ClientForgotPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    """Always the same answer, so it reveals nothing about who has an account (13d §3.7)."""
+    email = str(payload.email)
+    try:
+        tenant = _resolve_client_auth_tenant(db, request, email=email, tenant_slug=payload.tenant_slug)
+    except HTTPException:
+        return FORGOT_RESPONSE
+    client_host = _client_ip_for_rate_limit(request)
+    check_client_login_rate_limit(tenant_id=tenant.id, email=email, client_host=client_host)
+    # Counted like a failed sign-in, so the endpoint cannot be used to flood a mailbox.
+    record_failed_client_login_attempt(tenant_id=tenant.id, email=email, client_host=client_host)
+    client_access_services.request_password_reset(db, tenant_id=tenant.id, email=email)
+    return FORGOT_RESPONSE
+
+
+@client_auth_router.post("/reset")
+def reset_client_password_route(payload: ClientResetPasswordRequest, request: Request, db: Session = Depends(get_db)):
+    expected_tenant_id = int(_tenant_by_slug_or_400(db, payload.tenant_slug).id) if payload.tenant_slug else None
+    client_host = _client_ip_for_rate_limit(request)
+    check_public_client_page_action_rate_limit(token=payload.token, client_host=client_host)
+    record_public_client_page_action_attempt(token=payload.token, client_host=client_host)
+    account = client_access_services.reset_password(db, token=payload.token, password=payload.password, expected_tenant_id=expected_tenant_id)
+    return {"detail": "Your password is changed. Sign in with the new one.", "email": account.email}
+
+
+@client_auth_router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+def change_client_password_route(payload: ClientChangePasswordRequest, request: Request,
+                                 credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer), db: Session = Depends(get_db)):
+    account = _require_client_account(request, credentials, db)
+    client_access_services.change_password(db, account=account, current_password=payload.current_password, new_password=payload.new_password)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 @client_auth_router.get("/me", response_model=ClientMeResponse)
 def get_client_me(
     request: Request,
@@ -648,6 +727,7 @@ def get_client_me(
         "contact_name": serialized_account["contact_name"],
         "organization_name": serialized_account["organization_name"],
         "customer_group": serialize_customer_group(group),
+        "company_name": client_access_services._company_name(db, account.tenant_id),
     }
 
 
@@ -733,6 +813,48 @@ def get_client_order_route(
     return ClientPortalOrderResponse.model_validate(serialize_client_order(order))
 
 
+def _pdf_response(content: bytes, filename: str) -> Response:
+    return Response(content=content, media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="{filename}"', "Cache-Control": "private, no-store"})
+
+
+@client_orders_router.get("/{order_id}/pdf")
+def download_client_order_pdf_route(order_id: int, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+                                    db: Session = Depends(get_db)):
+    account = _require_client_account(request, credentials, db)
+    content, filename = client_documents_services.document_pdf(db, account=account, module_key="sales_orders", record_id=order_id)
+    db.commit()
+    return _pdf_response(content, filename)
+
+
+@client_invoices_router.get("", response_model=ClientInvoiceListResponse)
+def list_client_invoices_route(request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+                               db: Session = Depends(get_db)):
+    """Issued invoices of the client's account, with what is still owed (13d §3.7). *Pay* waits
+    for payment links."""
+    account = _require_client_account(request, credentials, db)
+    return {"results": [client_documents_services.serialize_invoice(invoice) for invoice in client_documents_services.list_invoices(db, account=account)]}
+
+
+@client_invoices_router.get("/{invoice_id}", response_model=ClientInvoiceResponse)
+def get_client_invoice_route(invoice_id: int, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+                             db: Session = Depends(get_db)):
+    account = _require_client_account(request, credentials, db)
+    return client_documents_services.serialize_invoice(client_documents_services.get_invoice(db, account=account, invoice_id=invoice_id))
+
+
+@client_invoices_router.get("/{invoice_id}/pdf")
+def download_client_invoice_pdf_route(invoice_id: int, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+                                      db: Session = Depends(get_db)):
+    account = _require_client_account(request, credentials, db)
+    content, filename = client_documents_services.document_pdf(db, account=account, module_key="finance_pos", record_id=invoice_id)
+    db.commit()
+    safe_log_activity(db, tenant_id=account.tenant_id, actor_user_id=None, module_key="finance_pos", entity_type="finance_pos_invoice",
+                      entity_id=invoice_id, action="portal.invoice.download", description=f"Client {account.email} downloaded the invoice PDF",
+                      after_state={"client_account_id": account.id})
+    return _pdf_response(content, filename)
+
+
 @client_documents_router.get("", response_model=ClientDocumentListResponse)
 def list_client_documents_route(
     request: Request,
@@ -814,92 +936,53 @@ def get_client_quote_route(
         organization_id=account.organization_id,
         quote_id=quote_id,
     )
+    view = public_proposal_view(db, None, quote)
+    return ClientQuoteResponse.model_validate({**serialize_client_quote(db, quote), "html": view["html"],
+                                               "optional_items": view["optional_items"], "decline_reasons": view["decline_reasons"]})
+
+
+def _client_quote(db: Session, account, quote_id: int):
+    return get_client_quote_or_404(db, tenant_id=account.tenant_id, contact_id=account.contact_id, organization_id=account.organization_id,
+                                   quote_id=quote_id)
+
+
+@client_quotes_router.get("/{quote_id}/pdf")
+def download_client_quote_pdf_route(quote_id: int, request: Request, credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
+                                    db: Session = Depends(get_db)):
+    account = _require_client_account(request, credentials, db)
+    content, filename = client_documents_services.document_pdf(db, account=account, module_key="sales_quotes", record_id=quote_id)
+    db.commit()
+    safe_log_activity(db, tenant_id=account.tenant_id, actor_user_id=None, module_key="sales_quotes", entity_type="sales_quote",
+                      entity_id=quote_id, action="portal.quote.download", description=f"Client {account.email} downloaded the quote PDF",
+                      after_state={"client_account_id": account.id})
+    return _pdf_response(content, filename)
+
+
+@client_quotes_router.post("/{quote_id}/accept", response_model=ClientQuoteResponse)
+def accept_client_quote_route(quote_id: int, payload: QuoteAcceptRequest, request: Request,
+                              credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer), db: Session = Depends(get_db)):
+    """The proposal page's *Accept*, signed in (13d §3.5): the same names, signature and choices."""
+    account = _require_client_account(request, credentials, db)
+    if not payload.agree:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Agree to the terms to accept")
+    quote = _client_quote(db, account, quote_id)
+    accept_quote(db, quote, signer_name=payload.name, signature=payload.signature, optional_item_ids=payload.optional_item_ids,
+                 via="client portal", client_account_id=account.id, signer_ip=_client_ip_for_rate_limit(request))
+    db.commit()
+    db.refresh(quote)
     return ClientQuoteResponse.model_validate(serialize_client_quote(db, quote))
 
 
-@client_quotes_router.get("/{quote_id}/proposal/download")
-def download_client_quote_proposal_route(
-    quote_id: int,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
+@client_quotes_router.post("/{quote_id}/decline", response_model=ClientQuoteResponse)
+def decline_client_quote_route(quote_id: int, payload: QuoteDeclineRequest, request: Request,
+                               credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer), db: Session = Depends(get_db)):
     account = _require_client_account(request, credentials, db)
-    quote = get_client_quote_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        quote_id=quote_id,
-    )
-    payload = serialize_client_quote(db, quote)
-    content = (payload.get("proposal_content_text") or "").strip()
-    if not content:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote proposal not found.")
-    safe_log_activity(
-        db,
-        tenant_id=quote.tenant_id,
-        actor_user_id=None,
-        module_key="sales_quotes",
-        entity_type="sales_quote",
-        entity_id=quote.quote_id,
-        action="portal.quote.download",
-        description=f"Client downloaded quote proposal {quote.quote_number}",
-        after_state={"client_account_id": account.id, "quote_id": quote.quote_id},
-    )
-    return Response(
-        content=content,
-        media_type="text/plain; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="{quote.quote_number}-proposal.txt"'},
-    )
-
-
-@client_quotes_router.post("/{quote_id}/{action}", response_model=ClientQuoteResponse)
-def respond_to_client_quote_route(
-    quote_id: int,
-    action: str,
-    payload: ClientQuoteActionRequest,
-    request: Request,
-    credentials: HTTPAuthorizationCredentials | None = Depends(client_bearer),
-    db: Session = Depends(get_db),
-):
-    account = _require_client_account(request, credentials, db)
-    if action not in {"approve", "reject"}:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Quote action not found.")
-    quote = get_client_quote_or_404(
-        db,
-        tenant_id=account.tenant_id,
-        contact_id=account.contact_id,
-        organization_id=account.organization_id,
-        quote_id=quote_id,
-    )
-    previous_status = quote.status
-    updated = respond_to_client_quote(
-        db,
-        quote=quote,
-        action=action,
-        client_account_id=account.id,
-        message=payload.message,
-    )
-    safe_publish_crm_event(
-        db,
-        tenant_id=updated.tenant_id,
-        actor_user_id=None,
-        event_type="quote.status_changed",
-        entity_type="sales_quote",
-        entity_id=updated.quote_id,
-        payload={
-            "quote_id": updated.quote_id,
-            "quote_number": updated.quote_number,
-            "client_account_id": account.id,
-            "previous_status": previous_status,
-            "status": updated.status,
-            "field_changes": {"status": {"from": previous_status, "to": updated.status}},
-            "message": (payload.message or "").strip() or None,
-            "href": f"/dashboard/sales/quotes/{updated.quote_id}",
-        },
-    )
-    return ClientQuoteResponse.model_validate(serialize_client_quote(db, updated))
+    quote = _client_quote(db, account, quote_id)
+    decline_quote(db, quote, reason=payload.reason, note=payload.note, via="client portal", client_account_id=account.id,
+                  signer_ip=_client_ip_for_rate_limit(request))
+    db.commit()
+    db.refresh(quote)
+    return ClientQuoteResponse.model_validate(serialize_client_quote(db, quote))
 
 
 @client_bookings_router.get("", response_model=ClientMeetingBookingListResponse)

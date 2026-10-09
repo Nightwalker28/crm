@@ -3,6 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import type { PaymentRecord } from "@/hooks/finance/usePosInvoices";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
 import { apiFetch } from "@/lib/api";
 import { apiErrorFromResponse } from "@/lib/apiErrors";
 
@@ -17,6 +18,10 @@ export type PurchaseOrderLine = {
   quantity: string; unit_cost: string; discount_amount?: string;
   /** The unit cost after the line's discount: what a bill matches against. */
   net_unit_cost?: string;
+  /** 13d §3.1: purchase tax, before which the cost is counted. */
+  tax_amount?: string; tax_rate_id?: number | null; tax_manual?: boolean;
+  /** The item's unit when the line was made (13d §3.2). */
+  unit?: string | null;
   line_total: string; received: string; to_receive: string;
   billed?: string; to_bill?: string;
 };
@@ -31,6 +36,7 @@ export type PurchaseOrder = {
   /** E6: base-currency units per one unit of `currency`; null in the base currency (12d §3.1). */
   exchange_rate?: string | null; base_currency?: string; suggested_exchange_rate?: string | null;
   expected_date: string | null; vendor_reference: string | null; notes: string | null; subtotal: string;
+  tax_total?: string; total?: string; tax_summary?: TaxSummaryRow[];
   ordered_at: string | null; closed_at: string | null; close_reason: string | null; cancel_reason: string | null;
   created_at: string; updated_at: string; is_deleted: boolean; line_count: number; total_quantity: string;
   lines?: PurchaseOrderLine[];
@@ -60,6 +66,7 @@ export function useRfqComparison(orderId: number | null) {
 export type PurchaseBillLine = {
   id: number; order_line_id: number | null; receipt_line_id: number | null; catalog_product_id: number | null; catalog_service_id: number | null;
   description: string; quantity: string; unit_cost: string; po_unit_cost: string | null; tax_amount: string; line_total: string;
+  tax_rate_id?: number | null; tax_manual?: boolean;
   price_variance: boolean; received: string | null; billable: string | null;
   /** E6: what a price difference did to stock value and cost of goods (12d §3.2). */
   variance_stock_change?: string | null; variance_cogs_change?: string | null;
@@ -74,7 +81,7 @@ export type PurchaseBill = {
   bill_date: string; due_date: string | null; currency: string; subtotal: string; tax_total: string; total: string;
   amount_paid: string; balance_due: string; notes: string | null; posted_at: string | null; voided_at: string | null;
   void_reason: string | null; created_at: string; updated_at: string; is_deleted: boolean;
-  lines?: PurchaseBillLine[]; payments?: PaymentRecord[];
+  lines?: PurchaseBillLine[]; payments?: PaymentRecord[]; tax_summary?: TaxSummaryRow[];
   /** Vendor credits drawn from or applied to this bill (13c §3.6). */
   vendor_credits?: Array<{ id: number; number: string | null; status: string; total: string; currency: string; applied: string }>;
 };
@@ -83,12 +90,13 @@ export type PurchaseBillDraft = {
   vendor_id?: number | null; vendor_invoice_number: string; bill_date?: string | null; due_date?: string | null; currency?: string | null;
   notes?: string | null; order_id?: number | null; receipt_id?: number | null;
   lines?: Array<{ order_line_id?: number | null; receipt_line_id?: number | null; catalog_product_id?: number | null; catalog_service_id?: number | null;
-    description?: string | null; quantity: string; unit_cost?: string | null; tax_amount?: string }>;
+    description?: string | null; quantity: string; unit_cost?: string | null; tax_amount?: string; tax_rate_id?: number | null; tax_manual?: boolean; }>;
 };
 
 export type PurchaseOrderDraft = {
   vendor_id: number; warehouse_id?: number | null; currency?: string | null; exchange_rate?: string | null; expected_date: string | null; vendor_reference: string | null; notes: string | null;
-  lines: Array<{ product_id: number | null; catalog_service_id?: number | null; description: string | null; quantity: string; unit_cost: string; discount_amount?: string }>;
+  lines: Array<{ product_id: number | null; catalog_service_id?: number | null; description: string | null; quantity: string; unit_cost: string; discount_amount?: string;
+    tax_amount?: string; tax_rate_id?: number | null; tax_manual?: boolean; }>;
 };
 
 export type ReceiptLine = {

@@ -3,7 +3,7 @@
 The handover for `CODEX-RUNBOOK.md`: a new session reads this instead of reconstructing
 progress from the code. Update it at the end of every wave run, including partial ones.
 
-Last updated 2026-10-08 (Step 7: F4 built, slices 4.1–4.4, committed untested (`b3d5620`) by the owner's rule; F5 plan written (`13d`), all twelve §5 decisions accepted; building F5 slice 5.1. One test pass for F4 + F5 + F6 after F6).
+Last updated 2026-10-09 (Step 7: F4 built, slices 4.1–4.4, committed untested (`b3d5620`) by the owner's rule; F5 plan written (`13d`), all twelve §5 decisions accepted; F5 built (slices 5.1–5.7), uncommitted; F6 plan written (`13e`), decisions awaiting the owner. One test pass for F4 + F5 + F6 after F6).
 
 | Wave | State | Evidence |
 |---|---|---|
@@ -191,6 +191,247 @@ still open. The benchmark covers Odoo, Business Central, NetSuite, Zoho Books, E
 Xero/QuickBooks. The plan has seven slices (5.1 tax rates → 5.7 client portal) and six
 migrations (`20261016_tax_rates` … `20261021_client_portal`). **The owner accepted all twelve §5 decisions (2026-10-08)**; changes, if any, after client UAT. They include: WeasyPrint for PDFs, tax inclusive per document (which differs from 13 F5.1's per
 rate), and opt-in reminders among them. Next: build F5 (5.1 → 5.7), then F6, then the one test pass.
+
+**F5 slice 5.1 — tax rates (13d §3.1): built 2026-10-09, working tree, NOT committed, nothing
+run.** Migration `20261016_tax_rates` (after `20261015_vendor_documents`).
+- Backend: `finance/tax_models.py` (`FinanceTaxRate`, `FinanceTaxGroupMember`; imported by the
+  catalog models so every area can point at a rate). `finance/services/tax_rates.py`: settings
+  CRUD (a rate in use cannot change its figure or be deleted; one default per side),
+  `TaxResolver` (line choice → exempt account → item rate → company default; a typed tax with
+  no rate is manual; `tax_manual` + 0 = no tax), `compute_payload_line`, `tax_summary` (groups
+  split into components). `document_amounts.compute_line` / `document_totals` (exclusive and
+  inclusive, half up per line; subtotal − discount + tax = total everywhere). Routes
+  `GET|POST /finance/tax-rates`, `PATCH|DELETE /finance/tax-rates/{id}` (writes admin only).
+- All seven documents compute lines through it: quotes and orders (`_normalize_*`, mode change
+  recomputes the lines), invoices (`_apply_lines` sets the totals; header discount and header
+  rate gone, H16), credit notes (invoice line's rate, pro rata, manual), POs (line tax, header
+  `tax_total`/`total`; RFQ comparison is before tax), bills (a PO line's tax when the line names
+  none), vendor credits (a bill line's tax pro rata). Quote → order → invoice and PO → bill
+  carry the rate with `tax_manual`. `tax_summary` is a model property on each document.
+- Catalog `tax_rate_id` / `purchase_tax_rate_id` (+ names, `tax_rate_reference` layout field);
+  accounts `tax_exempt` / `tax_exempt_reason` (layout fields); company `default_tax_mode`;
+  catalog search returns the item's rates; clone copies tax fields and mode; backup/restore
+  carries rates and groups (configuration files, matched by id); report sources *Tax on sales*
+  (issued invoice lines) and *Tax on purchases* (posted bill lines).
+- Frontend: `lib/money.ts` (BigInt decimal mirror of `compute_line`, A6),
+  `hooks/finance/useTaxRates.ts`, `components/finance/tax/` (`TaxRateSelect`, `LineTaxSelect`,
+  `TaxSummary`, `purchaseLineTax`), `TransactionLineItemsEditor` tax column (Automatic / rate /
+  No tax / Custom amount) and *Tax exclusive / inclusive* switch; quote, order and invoice forms
+  send `tax_mode`; invoice form lost its header discount and tax rate; PO, bill and vendor credit
+  editors use the shared tax cell; tax summary on quote, order, invoice, PO, bill and vendor
+  credit pages. New page `settings/taxes` (in `SETTINGS_ROUTES`, the settings nav and both
+  guard route lists).
+- Tests written, not run: `test_tax_rates.py`; `test_invoicing.py` and
+  `test_finance_pos_invoices.py` updated for the removed header rate.
+
+**F5 slice 5.2 — line editor (13d §3.2): built 2026-10-09, working tree, NOT committed, nothing
+run.** Migration `20261017_line_editor` (after `20261016_tax_rates`).
+- Backend: quote, order and invoice lines gain `line_type` (item, section, note),
+  `discount_percent` and `unit`; quote lines `is_optional`; credit note, PO and bill lines
+  `unit`. `document_amounts`: `line_type_of`, `percent_input`, `resolve_discount`, `clean_unit`;
+  `tax_rates.compute_sales_line` / `sales_line_fields` (a section or note is a zero line with no
+  catalog link). Optional quote lines stay out of the total and out of the converted order.
+  `invoicing_lines` skips sections and notes; an invoice drafted from an order brings the
+  sections and notes ahead of the first line it bills under them (`draft_from_sources` links by
+  position, not `zip` over the wanted lines); credit notes refuse non-item lines. PO lines take
+  the item's unit; bill lines the PO line's. Clone copies the new fields.
+- Frontend: `LineItemsEditor` gained `reorderable` (row menu *Move up* / *Move down*),
+  `duplicateLine` and `extraAddActions`; `TransactionLineItemsEditor`: *Add section*, *Add note*,
+  Discount takes "10" or "10%", a Unit column once a line has a unit (catalog picks fill it),
+  *Optional* on quote lines (`allowOptional`); totals skip sections, notes and optional lines;
+  `lib/money.percentOf`. `TransactionLineItemsTable` draws sections and notes across the row,
+  marks optional lines and shows units. PO lines show their unit.
+- Tests written, not run: `test_line_editor.py`.
+
+**F5 slice 5.3 — PDFs (13d §3.3): built 2026-10-09, working tree, NOT committed, nothing run.**
+Migration `20261018_document_pdfs` (after `20261017_line_editor`).
+- **For the test pass, first:** recompile the backend lock (`requirements.in` gained `jinja2` and
+  `weasyprint`; see the comment at its top) and rebuild the image (the Dockerfile gained Pango
+  and fonts). Both are imported lazily, so the app boots without them; a PDF route answers 503
+  until they are installed.
+- Backend: `app/core/document_pdf.py` (sandboxed Jinja2, `money`/`quantity`/`percent`/`date`/
+  `lines` filters, WeasyPrint with a fetcher that refuses everything but `data:`,
+  `image_data_uri` for the logo); `app/templates/documents/document.html` (one template; layouts
+  modern / classic / compact as body classes; sections, notes, optional lines, tax summary,
+  totals, payment details, terms, notes, footer, DRAFT watermark). `platform/services/
+  document_pdfs.py`: a `DocumentKind` per module (quote, sales order, invoice, credit note, PO
+  or RFQ, bill, vendor credit, delivery note, goods received note), `build_context`,
+  `render_preview`, `document_pdf` (issued = snapshot, taken on first download and again when
+  the document changed since; draft = live), document settings. Models `DocumentPdfSnapshot`
+  (files under `uploads/document-pdfs/`, not public media) and `DocumentSetting`; company
+  `document_layout`, `brand_color`, `document_footer`, `bank_details`. Routes
+  `GET /records/{module}/{id}/pdf` and `/preview` (view access on the document's module; the
+  preview carries a `default-src 'none'` CSP), `GET /document-settings`,
+  `PUT /document-settings/{kind}` (admin). New quotes, orders and invoices start with their
+  type's default terms and notes. Backup/restore carries document settings.
+- Frontend: `lib/documentPdf.ts`, `components/transactions/DocumentPdfButton` (+ menu item),
+  `DocumentPreviewPage` (sandboxed iframe). The invoice, PO and delivery print pages are now
+  that preview (same URLs); the `@media print` block in `globals.css` was deleted. *Download PDF*
+  on quote and order menus and on credit note, bill, vendor credit and receipt pages. New page
+  `settings/documents` (settings nav, both guard route lists).
+- Tests written, not run: `test_document_pdf.py` (renders without WeasyPrint by patching
+  `render_pdf`; needs Jinja2).
+
+**F5 slice 5.4 — Send by email (13d §3.4): built 2026-10-09, working tree, NOT committed,
+nothing run.** No migration.
+- Backend: `platform/services/document_send.py`: `send_context` (the document's contact, then
+  its account's contacts, or the vendor's; the type's template; subject; PDF filename; drafts
+  only for quotes and POs), `prepare` (a quote's proposal link via `send_quote_proposal`, the PDF
+  rendered *as issued* so a quote's first send or an RFQ carries no DRAFT mark, `document.*`
+  tokens), `after_send` (a draft quote → *Sent* through `update_sales_quote`; a draft PO →
+  `mark_sent`; `document.sent` on the history with the recipients),
+  `document_contact_ids`, `ensure_document_email_templates` (one system template per type,
+  set as the type's default; called from `bootstrap/seed.py`). `mail_services`:
+  `send_record_context_mail` prepares and settles a document send; `send_mail_message` takes
+  `extra_attachments`; `{{document.*}}` tokens; `_related_contact_targets` lets a document's
+  people be filed beside it. `MailRecordSendRequest.attach_document_pdf`. Route
+  `GET /records/{module}/{id}/send-context`.
+- Frontend: `DocumentSendAction` (the record composer with the document's people, template,
+  subject and PDF); `RecordEmailComposer` gained `defaultSubject`, `defaultTemplateId`,
+  `documentPdf` (*Attach PDF* row). *Send* on quotes, orders, issued invoices, issued credit
+  notes, posted bills, issued vendor credits, POs (*Send request* while draft) and posted
+  deliveries.
+- Tests written, not run: `test_document_send.py`.
+
+**F5 slice 5.5 — quote lifecycle (13d §3.5): built 2026-10-09, working tree, NOT committed,
+nothing run.** Migration `20261019_quote_lifecycle` (after `20261018_document_pdfs`).
+- Backend: statuses `superseded` / `converted` (not settable from the form); `revision`,
+  `revised_from_id`, `accepted_by_name`, `accepted_at`, `signature_data`, `decline_note`; company
+  `quote_validity_days`. `quotes_services`: issue date defaults to today, expiry to issue +
+  validity, expiry before issue refused, customer name from the account; locked statuses refuse
+  edits; accepting an expired quote refused; `announce_status_change` (used by the edit route,
+  *Send*, accept/decline, revise, convert, expiry scan); `accept_quote` (name, PNG signature,
+  chosen optional lines become ordinary, hashed signer IP on the history), `decline_quote`
+  (lost_reason + note), owner notified; `revise_quote` (`-R2`), `mark_converted` (convert
+  route), `scan_expired_quotes` (Celery `app.tasks.quotes.scan_expired`, `tasks/quote_tasks.py`,
+  beat daily 00:20 UTC), `public_proposal_view`; portal `respond_to_client_quote` uses
+  accept/decline. Model properties `revised_from_number`, `superseded_by`, `converted_order`,
+  all on `SalesQuoteResponse` with the acceptance fields. Routes: `POST /sales/quotes/{id}/revise`,
+  public `…/proposal/public/{token}` (the view), `…/accept`, `…/decline` (rate-limited per link
+  and address with the public-page limits), `…/pdf`. `SalesQuoteProposalPublicResponse` deleted.
+  Automation status options gained the two statuses.
+- Frontend: `components/quotes/QuoteResponse.tsx` (`QuoteAcceptForm` with name, `SignaturePad`,
+  optional items with a live total and agreement; `QuoteDeclineForm` with the `lost_reason`
+  picklist and a note; shared with the portal in 5.7). Public proposal page rebuilt: the issued
+  document in a blank-sandbox frame, *Download PDF* (the snapshot), Accept / Decline panel, closed
+  states (accepted, declined, expired, replaced). Quote page: *Revise* (sent, expired, declined),
+  convert opens the new order, Edit and status hidden while locked, a lifecycle notice
+  (accepted by + signature, declined reason/note, superseded by, converted into, revision of).
+  Quote form: issue today and expiry from `quote_validity_days` on create, expiry-before-issue
+  check. Settings → Documents: *Quotes valid for*. Status styles and the quote list filter know
+  `superseded` / `converted`.
+- Tests written, not run: `test_quote_lifecycle.py`.
+- **Deviation:** *Revise* is not offered on a converted quote (§3.5 said "*Revise* still
+  allowed"); decision 7 lists sent, expired and declined, and the service follows it. A
+  converted quote's change belongs on its order.
+- 5.6 and 5.7 below.
+
+**F5 slice 5.6 — receivables (13d §3.6): built 2026-10-09, working tree, NOT committed, nothing
+run.** Migration `20261020_receivables` (after `20261019_quote_lifecycle`).
+- Models (`finance/models.py`): `FinanceRecurringInvoice` (lines as JSON in the invoice payload
+  shape, frequency weekly/monthly/quarterly/yearly × `interval_count`, start, end date or
+  `max_count`, `next_run_date`, `action` draft / issue_and_send, `active`, `last_error`),
+  `FinanceReminderRule` (`days_offset` −60…365, subject, body, `attach_pdf`, inactive by default),
+  `FinanceReminderSend` (one per rule per invoice, `sent` or `skipped`), `FinanceWriteOff`;
+  invoices gain `recurring_invoice_id` and `amount_written_off`; accounts `no_reminders`
+  (layout field in *Billing and purchasing*); company `write_off_limit`.
+- `finance/services/recurring_invoices.py`: `advance` (months keep the start day, clamped),
+  `first_run_on_or_after` (a past start begins at the next date, no backlog), `save_profile`
+  (lines dry-run through `_apply_lines` on an unsaved invoice), `run_profile` (through
+  `create_invoice` as a system actor; logs on profile and invoice), `scan_due` (hourly, one
+  invoice per due profile per run; a failure is kept in `last_error` and retried next hour),
+  `_send` (issued + emailed with PDF via workspace SMTP; a failed send is noted, not retried),
+  `draft_from_invoice` (*Make recurring*), soft delete / restore (restores paused).
+- `finance/services/receivables.py`: automatic mail helpers (`render_tokens`,
+  `send_invoice_email`, the invoice type's template), reminder rules (seeded three inactive by
+  `ensure_default_reminder_rules`, called from bootstrap and the rules route), `scan_reminders`
+  (daily; six days' catch-up; a before-due rule never reaches a due invoice; accounts with
+  `no_reminders` skipped; no workspace sender = tenant skipped without recording), write-off
+  (whole open balance; above `write_off_limit` needs `finance_pos` *configure*;
+  `reverse_write_off`), statements (`customer_statement` activity/open per currency, opening
+  balance, running balance, ageing of today's open balances; `statement_html` / `statement_pdf`
+  through the document template's new `ledger` branch).
+- `refresh_invoice_balance` counts write-offs; an invoice with a write-off cannot be voided
+  until reversed. PDF totals show *Written off*.
+- Routes (`finance/routes/receivables_routes.py`): `/finance/recurring-invoices` list (+ saved
+  views, presets *Active*, *Issue and send*), create, get, patch, `/run`, delete, restore,
+  `/from-invoice/{id}`; `/finance/reminder-rules` (admin); `/finance/statements/{org_id}` (+
+  `/preview`, `/pdf`; invoice view + account view); `POST /finance/invoices/{id}/write-off`,
+  `DELETE …/write-offs/{id}` (configure). Invoice detail adds `write_offs`, `reminders`,
+  `write_off_limit`, `can_write_off_any`, `recurring_invoice_name`. Mail record send takes
+  `attach_statement` on an account (statement PDF attached; `statement.sent` on its history).
+- Celery `app.tasks.receivables.run_recurring_invoices` (hourly :05) and
+  `…send_payment_reminders` (daily 09:00 UTC). Seed module `finance_recurring_invoices`.
+  Recycle bin and purge, backup (profiles, write-offs, reminder sends in the finance set;
+  rules as configuration) and restore (profiles before invoices; sends whose rule is missing
+  dropped).
+- Frontend: `hooks/finance/useReceivables.ts`; `finance/recurring-invoices` list (shared
+  `DocumentListPage`), `new` (also `?from_invoice=`), `[recurringId]`
+  (`RecurringInvoiceFormPage`: details, lines through `TransactionLineItemsEditor`, schedule,
+  draft vs issue-and-email, on/paused, progress, *Make the next invoice now*, invoices made);
+  invoice page: *Write off balance* panel, *Make recurring*, *Written off* and *Recurring
+  invoice* on the rail, Write-offs (with *Reverse* for configure) and Payment reminders
+  sections; account page *Statement* tab (`AccountStatementPanel`: activity / open, period,
+  currency, sandboxed preview, *Download PDF*, *Send statement* through the composer, whose
+  `documentPdf` gained `payload`); `settings/receivables` (write-off limit, reminder rules
+  with editor, on/off, delete). Registries: routes, module registry (+ quick action), settings
+  nav, view configs, status styles, recycle bin page (also lists vendor returns and credits,
+  missing since 4.4), both guard route lists.
+- Tests written, not run: `test_receivables.py`.
+
+**F5 slice 5.7 — client portal (13d §3.7): built 2026-10-09, working tree, NOT committed,
+nothing run.** Migration `20261021_client_portal` (after `20261020_receivables`).
+- `ClientPasswordReset` (hash only, one hour, single use; a new request ends the older ones;
+  not backed up). `client_portal/services/client_access_services.py`: `send_invite` (setup
+  link through `send_transactional_message`; returns sent / why not), `request_password_reset`,
+  `reset_password`, `change_password`. Routes: `POST /client-auth/forgot` (always the same
+  202 answer; rate-limited with the login counter), `/reset` (rate-limited per token and
+  address), `/password` (client auth), `/setup-info` (company name and email for a valid setup
+  link). Creating a client account and *Regenerate link* email the invite; the response gains
+  `invite_sent` / `invite_error` and still carries the link.
+- `client_portal/services/client_documents_services.py`: orders = the account's (or a
+  contact-only account's contact's) orders past draft, plus the client's own requests; issued
+  and void invoices of the account; `document_pdf` checks scope, then renders through
+  `document_pdfs` as issued (drafts refused). Routes `GET /client-orders/{id}/pdf`,
+  `/client-invoices` (+ `/{id}`, `/{id}/pdf`; new router mounted in `api/v1/router.py`),
+  `/client-quotes/{id}/pdf`, `POST /client-quotes/{id}/accept` and `/decline` (the proposal
+  page's `QuoteAcceptRequest` / `QuoteDeclineRequest`, now shared in `sales/schema.py`). The
+  quote detail carries the issued `html`, optional items and decline reasons. Removed: the
+  text proposal download, `POST /client-quotes/{id}/{approve|reject}` and
+  `respond_to_client_quote` (no users yet). Draft quotes are no longer shown to clients.
+  `ClientQuoteResponse` has `state` (open / pending / accepted / declined / expired /
+  replaced). `/client-auth/me` adds `company_name`; orders add `delivery_status`,
+  `is_request`, `has_document`. The overview counts open invoices and leads with the most
+  urgent one; plain copy for pricing.
+- Frontend: `hooks/useClientPortal.ts` (server refusals shown in their own words,
+  `publicFile` for named downloads, `useClientMe`, `useClientInvoices`, `downloadClientPdf`,
+  accept/decline, forgot/reset/change/setup-info); `ClientPasswordFields`, `ClientPdfButton`,
+  `ClientAccountMenu` (top bar: name, company, *Change password*, *Sign out*); pages
+  `client/forgot`, `client/reset`, `client/account`, `client/invoices`; setup says "Set your
+  password to sign in to {company}"; login has *Forgot your password?*; orders list and detail
+  with delivery and PDF; quotes list with customer-facing states; quote page with the issued
+  document, PDF and the shared `QuoteAcceptForm` / `QuoteDeclineForm`; catalog request shows
+  a confirmation with its reference; admin portal page says whether the invite was emailed.
+  Portal nav gains *Invoices*; both guard route lists gain the new portal routes.
+- Tests written, not run: `test_client_portal_f5.py`; `test_client_portal.py`'s two quote
+  answer tests moved to `accept_quote` / `decline_quote`.
+- **For the test pass:** the portal e2e spec needs its quote steps moved to Accept/Decline
+  (name + agree) and its download step to *PDF*.
+
+**F5 is built (slices 5.1–5.7)**, uncommitted.
+
+**F6 plan written (2026-10-09): `13e-erp-settings.md`. Research only; no code changed.**
+Inventory: no company timezone or date format (34 server-today calls in 15 files, numbers on
+the UTC day); numbering fixed in code; units already a managed picklist (only conversion is
+left); payment terms are day counts; no price lists, and **H6 is still open** (the line picker
+filters items to the document's currency; F0's interim conversion was never built);
+customer-group discounts are portal-only (C8); no approvals, no user manager link; no credit
+limit; negative stock refused by the ledger and a check constraint. Already done, so dropped:
+document defaults (F5.3) and hiding empty form sections (H25's second half). Benchmark: Odoo,
+Business Central, NetSuite, Zoho Books / Inventory, ERPNext. Seven slices (6.1 company dates →
+6.7 approvals), seven migrations (`20261022_company_dates` … `20261028_approvals`), twelve §5
+decisions **awaiting the owner**. Next: the owner's answer on 13e §5, then build F6, then the one
+test pass for F4 + F5 + F6.
 
 ## Final fixes §7 Step 6 — picklists, standard records, one field system (done 2026-10-08)
 

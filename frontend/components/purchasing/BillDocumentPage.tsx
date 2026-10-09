@@ -9,6 +9,12 @@ import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import { vendorFieldRenderer } from "@/components/purchasing/vendorFieldRenderer";
+import {
+  emptyPurchaseLineTax, PurchaseLineTaxCell, purchaseLinePreview, purchaseLineTaxFrom, purchaseLineTaxPayload, usePurchaseTaxRates, type PurchaseLineTax,
+} from "@/components/finance/tax/purchaseLineTax";
+import { TaxSummary } from "@/components/finance/tax/TaxSummary";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
+import { DocumentPdfButton } from "@/components/transactions/DocumentPdfButton";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
@@ -43,10 +49,10 @@ import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 type DraftLine = {
   key: number; orderLineId: number | null; receiptLineId: number | null; name: string; description: string;
-  quantity: string; unitCost: string; tax: string; poCost: string | null; billable: number | null;
+  quantity: string; unitCost: string; tax: PurchaseLineTax; poCost: string | null; billable: number | null;
 };
 let nextKey = 1;
-const blankLine = (): DraftLine => ({ key: nextKey++, orderLineId: null, receiptLineId: null, name: "", description: "", quantity: "1", unitCost: "0", tax: "0", poCost: null, billable: null });
+const blankLine = (): DraftLine => ({ key: nextKey++, orderLineId: null, receiptLineId: null, name: "", description: "", quantity: "1", unitCost: "0", tax: emptyPurchaseLineTax(), poCost: null, billable: null });
 
 /** The header the `full_form` layout draws (13b Phase 4e), keyed by field key. */
 type BillHeader = RecordFormValue & {
@@ -137,7 +143,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
     if (bill?.lines?.length) {
       setLines(bill.lines.map((line) => ({
         key: nextKey++, orderLineId: line.order_line_id, receiptLineId: line.receipt_line_id, name: line.description, description: line.description,
-        quantity: String(Number(line.quantity)), unitCost: String(Number(line.unit_cost)), tax: String(Number(line.tax_amount)),
+        quantity: String(Number(line.quantity)), unitCost: String(Number(line.unit_cost)), tax: purchaseLineTaxFrom(line),
         poCost: line.po_unit_cost, billable: line.billable != null ? Number(line.billable) : null,
       })));
     } else if (order.data) {
@@ -147,7 +153,9 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
         const received = fromReceipt?.find((item) => item.order_line_id === line.id);
         const wanted = fromReceipt ? Math.min(Number(received?.quantity ?? 0), toBill) : toBill;
         return { key: nextKey++, orderLineId: line.id, receiptLineId: received?.id ?? null, name: line.product_name, description: line.description ?? line.product_name,
-          quantity: String(wanted), unitCost: String(Number(line.net_unit_cost ?? line.unit_cost)), tax: "0", poCost: line.net_unit_cost ?? line.unit_cost, billable: toBill };
+          // *Automatic* takes the PO line's tax (13d §3.1).
+          quantity: String(wanted), unitCost: String(Number(line.net_unit_cost ?? line.unit_cost)), tax: { ...emptyPurchaseLineTax(), auto_rate_id: line.tax_rate_id ?? null },
+          poCost: line.net_unit_cost ?? line.unit_cost, billable: toBill };
       }));
     } else {
       setLines([blankLine()]);
@@ -158,7 +166,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
   // The source documents show only when there is one; a bill from an order takes its vendor and currency.
   const omitFieldKeys = [...(header?.order_id ? [] : ["order_id"]), ...(header?.receipt_id ? [] : ["receipt_id"])];
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
-  const total = lines.reduce((sum, line) => sum + (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0), 0);
+  const taxRates = usePurchaseTaxRates();
+  const total = lines.reduce((sum, line) => sum + purchaseLinePreview(line, taxRates).total, 0);
   // The match posting will find (H19): shown while the bill is still a draft, not after.
   const priceDifferences = lines.filter((line) => line.poCost != null && Number(line.quantity) > 0 && Number(line.unitCost) !== Number(line.poCost));
 
@@ -184,7 +193,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
       vendor_id: fromOrder ? null : header.vendor_id, vendor_invoice_number: header.vendor_invoice_number.trim(), bill_date: header.bill_date || null, due_date: header.due_date || null,
       currency: fromOrder ? null : currencyCode, notes: header.notes.trim() || null,
       lines: chosen.map((line) => ({ order_line_id: line.orderLineId, receipt_line_id: line.receiptLineId, description: line.description.trim() || null,
-        quantity: line.quantity, unit_cost: line.unitCost, tax_amount: line.tax || "0" })),
+        quantity: line.quantity, unit_cost: line.unitCost, ...purchaseLineTaxPayload(line.tax) })),
     };
     try {
       setError(null);
@@ -265,6 +274,8 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
       actions={
         <div className="flex flex-wrap gap-2">
           {bill ? <StatusValue status={bill.is_overdue ? OVERDUE_STATUS : getBillStatus(bill.status)} context="record" /> : null}
+          {bill?.id ? <DocumentPdfButton moduleKey="purchase_bills" recordId={bill.id} /> : null}
+          {bill?.id && bill.status !== "draft" ? <DocumentSendAction moduleKey="purchase_bills" recordId={bill.id} /> : null}
           {bill?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post bill</Button> : null}
           {owing && canPay ? <Button onClick={() => { setError(null); setPayAmount(String(Number(bill?.balance_due ?? 0))); setPanel("pay"); }}>Record payment</Button> : null}
           {/* 13c §3.6: what the vendor owes back on this bill. */}
@@ -350,10 +361,11 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
               { key: "cost", label: "Unit cost", size: "sm", align: "right", share: 1.5, render: (line, { cellProps }) => (
                 <LineNumberInput cellProps={cellProps("cost")} ariaLabel={`Unit cost for ${line.name || "line"}`} step="0.0001" value={line.unitCost} onChange={(value) => updateLine({ ...line, unitCost: value })} />
               ) },
-              { key: "tax", label: "Tax", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
-                <LineNumberInput cellProps={cellProps("tax")} ariaLabel={`Tax for ${line.name || "line"}`} value={line.tax} onChange={(value) => updateLine({ ...line, tax: value })} />
+              { key: "tax", label: "Tax", size: "md", share: 1.75, render: (line, { cellProps }) => (
+                <PurchaseLineTaxCell value={line.tax} rates={taxRates} label={line.name || "line"} cellProps={cellProps("tax")}
+                  onChange={(tax) => updateLine({ ...line, tax })} />
               ) },
-              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={(Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0)} currency={currencyCode} /></span> },
+              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={purchaseLinePreview(line, taxRates).total} currency={currencyCode} /></span> },
             ]}
           />
         ) : (
@@ -382,6 +394,7 @@ export function BillDocumentPage({ billId = null, orderId = null, receiptId = nu
             ]}
           />
         )}
+        {!editable ? <TaxSummary rows={bill?.tax_summary} currency={bill?.currency} /> : null}
         {editable && priceDifferences.length ? (
           <p role="status" className="text-p-sm text-state-warning">
             {priceDifferences.length === 1 ? `${priceDifferences[0].name} is` : `${priceDifferences.length} lines are`} priced differently from the

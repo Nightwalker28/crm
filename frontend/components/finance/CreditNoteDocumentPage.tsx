@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
+import { DocumentPdfButton } from "@/components/transactions/DocumentPdfButton";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
@@ -215,6 +217,8 @@ export function CreditNoteDocumentPage({ creditNoteId = null, invoiceId = null, 
       actions={
         <div className="flex flex-wrap gap-2">
           {note ? <StatusValue status={getCreditNoteStatus(note.status)} context="record" /> : null}
+          {note?.id ? <DocumentPdfButton moduleKey="finance_credit_notes" recordId={note.id} /> : null}
+          {note?.id && note.status !== "draft" ? <DocumentSendAction moduleKey="finance_credit_notes" recordId={note.id} /> : null}
           {note?.status === "draft" && actions?.can_edit ? <Button onClick={() => void issue()} disabled={mutations.isSaving}>Issue credit note</Button> : null}
           {note?.status === "issued" && Number(note.refund_due) > 0 && canRefund ? <Button onClick={() => { setError(null); setPanel("refund"); }}>Record refund</Button> : null}
           {note?.status === "issued" && actions?.can_edit && !(note.refunds ?? []).some((refund) => refund.status === "posted") ? (

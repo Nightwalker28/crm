@@ -62,6 +62,8 @@ export type RecordMailSendPayload = {
   body_text?: string;
   template_id?: number | null;
   attachment_document_ids?: number[];
+  /** A commercial document's own PDF (13d §3.4). */
+  attach_document_pdf?: boolean;
   /** Stable across retries of one compose attempt, so a retry never duplicates. */
   idempotency_key?: string;
   /**

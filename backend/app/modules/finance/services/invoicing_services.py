@@ -71,6 +71,8 @@ def invoicing_lines(db: Session, *, order: SalesOrder, policy: str | None = None
     open_order = order.status in INVOICEABLE_ORDER_STATUSES
     result = []
     for item in sorted(order.items, key=lambda row: (row.sort_order or 0, row.id or 0)):
+        if (item.line_type or "item") != "item":
+            continue  # a section heading or note is never invoiced (13d §3.2)
         ordered = Decimal(item.quantity or 0)
         is_tracked = item.id in tracked
         delivered = delivered_quantity(db, item) if is_tracked else ZERO
@@ -268,28 +270,49 @@ def draft_from_sources(db: Session, current_user, *, sources: list[dict]) -> Fin
         pending_drafts = any(row["on_drafts"] > 0 for row in rows.values())
         raise HTTPException(status_code=409, detail="Everything invoiceable is already on a draft invoice; open it from the order"
                             if pending_drafts else "Nothing is left to invoice on this order yet")
-    lines = []
-    for item, quantity, _delivery_line_id in wanted:
-        discount, tax = _line_amounts_for(rows[item.id], item, quantity)
-        lines.append({"description": item.name, "quantity": quantity, "unit_price": item.unit_price or 0, "discount_amount": discount,
-                      "tax_amount": tax, "catalog_product_id": item.catalog_product_id, "catalog_service_id": item.catalog_service_id})
+    wanted_by_item: dict[int, list[tuple[Decimal, int | None]]] = defaultdict(list)
+    for item, quantity, delivery_line_id in wanted:
+        wanted_by_item[item.id].append((quantity, delivery_line_id))
+    lines: list[dict] = []
+    # What each invoice line invoices: (order line, delivery line), or None for a heading.
+    sources: list[tuple[SalesOrderItem, int | None] | None] = []
+    # Section headings and notes come across in place, ahead of the first line they head
+    # that this invoice bills; one with nothing billed under it stays on the order (13d §3.2).
+    pending: list[SalesOrderItem] = []
+    for item in sorted(order.items, key=lambda row: (row.sort_order or 0, row.id or 0)):
+        if item.line_type in {"section", "note"}:
+            pending = [item] if item.line_type == "section" else [*pending, item]
+            continue
+        for quantity, delivery_line_id in wanted_by_item.get(item.id, []):
+            for heading in pending:
+                lines.append({"description": heading.name, "line_type": heading.line_type})
+                sources.append(None)
+            pending = []
+            discount, tax = _line_amounts_for(rows[item.id], item, quantity)
+            lines.append({"description": item.name, "quantity": quantity, "unit_price": item.unit_price or 0, "discount_amount": discount,
+                          "tax_amount": tax, "catalog_product_id": item.catalog_product_id, "catalog_service_id": item.catalog_service_id,
+                          "unit": item.unit,
+                          # The order's tax, pro rata, under the order line's rate (13d §3.1).
+                          "tax_rate_id": item.tax_rate_id, "tax_manual": True})
+            sources.append((item, delivery_line_id))
     # The shipping charge reaches the order's first invoice, once (13b §5 decision 8).
     if money(order.shipping_charge) > 0 and not _shipping_invoiced(db, order=order):
         lines.append({"description": SHIPPING_LINE_DESCRIPTION, "quantity": Decimal("1"), "unit_price": money(order.shipping_charge),
-                      "discount_amount": ZERO, "tax_amount": ZERO})
-    payload = {**_customer_payload(order), "currency": order.currency, "payment_terms": order.payment_terms,
+                      "discount_amount": ZERO, "tax_amount": ZERO, "tax_manual": True})
+    payload = {**_customer_payload(order), "currency": order.currency, "payment_terms": order.payment_terms, "tax_mode": order.tax_mode,
                "source": "sales_order", "notes": None, "lines": lines}
     invoice = pos_invoice_services.create_invoice(db, current_user, payload, commit=False)
     # zip stops at the order lines; a shipping line after them links to no order line.
-    for invoice_line, (item, _quantity, delivery_line_id) in zip(invoice.lines, wanted):
-        invoice_line.sales_order_item_id = item.id
-        invoice_line.delivery_line_id = delivery_line_id
+    for invoice_line, source_line in zip(invoice.lines, sources):
+        if source_line is not None:
+            invoice_line.sales_order_item_id = source_line[0].id
+            invoice_line.delivery_line_id = source_line[1]
     invoice.sales_order_id = order.id
     db.add(invoice)
     db.flush()
     check_order_lines(db, invoice=invoice, issuing=False)
     log_order_activity(db, order=order, actor_user_id=current_user.id, action="sales_order.invoice_drafted",
-        description=f"Drafted an invoice for {len(lines)} line{'s' if len(lines) != 1 else ''}")
+        description=f"Drafted an invoice for {len(wanted)} line{'s' if len(wanted) != 1 else ''}")
     db.commit()
     db.refresh(invoice)
     return invoice

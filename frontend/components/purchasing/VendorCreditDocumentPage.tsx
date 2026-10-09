@@ -12,6 +12,12 @@ import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import { vendorFieldRenderer } from "@/components/purchasing/vendorFieldRenderer";
 import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
+import {
+  emptyPurchaseLineTax, PurchaseLineTaxCell, purchaseLinePreview, purchaseLineTaxFrom, purchaseLineTaxPayload, usePurchaseTaxRates, type PurchaseLineTax,
+} from "@/components/finance/tax/purchaseLineTax";
+import { TaxSummary } from "@/components/finance/tax/TaxSummary";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
+import { DocumentPdfButton } from "@/components/transactions/DocumentPdfButton";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
@@ -58,13 +64,12 @@ type CreditHeader = RecordFormValue & {
 
 type DraftLine = {
   key: number; billLineId: number | null; returnLineId: number | null; productId: number | null; serviceId: number | null;
-  description: string; quantity: string; unitCost: string; tax: string;
+  description: string; quantity: string; unitCost: string; tax: PurchaseLineTax;
 };
 let nextKey = 1;
-const blankLine = (): DraftLine => ({ key: nextKey++, billLineId: null, returnLineId: null, productId: null, serviceId: null, description: "", quantity: "1", unitCost: "0", tax: "" });
+const blankLine = (): DraftLine => ({ key: nextKey++, billLineId: null, returnLineId: null, productId: null, serviceId: null, description: "", quantity: "1", unitCost: "0", tax: emptyPurchaseLineTax() });
 
 const inputId = (fieldKey: string) => `vendor-credit-${fieldKey.replace(/_/g, "-")}`;
-const lineTotal = (line: DraftLine) => (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) + (Number(line.tax) || 0);
 
 /**
  * A vendor credit (13c §3.6): what a vendor owes back, the mirror of a bill.
@@ -136,11 +141,13 @@ export function VendorCreditDocumentPage({ creditId = null, billId = null, vendo
     setLines(credit?.lines?.length ? credit.lines.map((line) => ({
       key: nextKey++, billLineId: line.bill_line_id, returnLineId: line.vendor_return_line_id, productId: line.catalog_product_id,
       serviceId: line.catalog_service_id, description: line.description, quantity: String(Number(line.quantity)),
-      unitCost: String(Number(line.unit_cost)), tax: Number(line.tax_amount) ? String(Number(line.tax_amount)) : "",
+      unitCost: String(Number(line.unit_cost)), tax: purchaseLineTaxFrom(line),
     })) : [blankLine()]);
   }
 
   const currencyCode = header?.currency || credit?.currency || baseCurrency || currencies?.[0] || "USD";
+  const taxRates = usePurchaseTaxRates();
+  const lineTotal = (line: DraftLine) => purchaseLinePreview(line, taxRates).total;
   const total = lines.reduce((sum, line) => sum + lineTotal(line), 0);
   const updateLine = (updated: DraftLine) => setLines((current) => current.map((line) => (line.key === updated.key ? updated : line)));
   // A new credit from a source lets the server take the lines; everything else edits them here.
@@ -165,7 +172,9 @@ export function VendorCreditDocumentPage({ creditId = null, billId = null, vendo
       ...(showLines ? { lines: chosen.map((line) => ({
         bill_line_id: line.billLineId, vendor_return_line_id: line.returnLineId, catalog_product_id: line.billLineId ? null : line.productId,
         catalog_service_id: line.billLineId ? null : line.serviceId, description: line.description.trim() || null,
-        quantity: line.quantity, unit_cost: line.unitCost, tax_amount: line.tax || null,
+        quantity: line.quantity, unit_cost: line.unitCost, ...purchaseLineTaxPayload(line.tax),
+        // *Automatic* on a bill's line: the bill's tax on the credited share (13c §3.6).
+        ...(line.billLineId && !line.tax.tax_manual && !line.tax.tax_rate_id ? { tax_amount: null } : {}),
       })) } : {}),
     };
     if (andIssue && !(await confirm({ title: credit?.number ? `Issue ${credit.number}?` : "Issue this vendor credit?",
@@ -254,6 +263,8 @@ export function VendorCreditDocumentPage({ creditId = null, billId = null, vendo
       actions={
         <div className="flex flex-wrap gap-2">
           {credit ? <StatusValue status={getVendorCreditStatus(credit.status)} context="record" /> : null}
+          {credit?.id ? <DocumentPdfButton moduleKey="purchase_vendor_credits" recordId={credit.id} /> : null}
+          {credit?.id && credit.status !== "draft" ? <DocumentSendAction moduleKey="purchase_vendor_credits" recordId={credit.id} /> : null}
           {credit?.status === "issued" && remaining > 0 && actions?.can_edit && credit.open_bills?.length ? <Button onClick={openApply}>Apply to bills</Button> : null}
           {credit?.status === "issued" && remaining > 0 && canRefund ? (
             <Button variant="outline" onClick={() => { setRefundAmount(remaining.toFixed(2)); setError(null); setPanel("refund"); }}>Record refund</Button>
@@ -323,8 +334,9 @@ export function VendorCreditDocumentPage({ creditId = null, billId = null, vendo
                 { key: "cost", label: "Unit cost", size: "sm", align: "right", share: 1.5, render: (line, { cellProps }) => (
                   <LineNumberInput cellProps={cellProps("cost")} ariaLabel={`Unit cost for ${line.description || "line"}`} step="0.0001" value={line.unitCost} onChange={(value) => updateLine({ ...line, unitCost: value })} />
                 ) },
-                { key: "tax", label: "Tax", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
-                  <LineNumberInput cellProps={cellProps("tax")} ariaLabel={`Tax for ${line.description || "line"}`} value={line.tax} onChange={(value) => updateLine({ ...line, tax: value })} />
+                { key: "tax", label: "Tax", size: "md", share: 1.75, render: (line, { cellProps }) => (
+                  <PurchaseLineTaxCell value={line.tax} rates={taxRates} label={line.description || "line"} cellProps={cellProps("tax")}
+                    onChange={(tax) => updateLine({ ...line, tax })} />
                 ) },
                 { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={lineTotal(line)} currency={currencyCode} /></span> },
               ]}
@@ -345,6 +357,7 @@ export function VendorCreditDocumentPage({ creditId = null, billId = null, vendo
               ]}
             />
           )}
+          {!editable ? <TaxSummary rows={credit?.tax_summary} currency={credit?.currency} /> : null}
         </section>
       ) : null}
 

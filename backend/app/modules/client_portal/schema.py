@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Literal
 
@@ -92,12 +92,31 @@ class ClientAccountResponse(BaseModel):
     last_login_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+    # 13d §3.7: whether the setup link was emailed, and why not.
+    invite_sent: bool | None = None
+    invite_error: str | None = None
 
 
 class ClientSetupPasswordRequest(BaseModel):
     token: str = Field(min_length=16)
     password: str = Field(min_length=MIN_PASSWORD_LENGTH)
     tenant_slug: str | None = Field(default=None, max_length=120)
+
+
+class ClientForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    tenant_slug: str | None = Field(default=None, max_length=120)
+
+
+class ClientResetPasswordRequest(BaseModel):
+    token: str = Field(min_length=16, max_length=200)
+    password: str = Field(min_length=MIN_PASSWORD_LENGTH)
+    tenant_slug: str | None = Field(default=None, max_length=120)
+
+
+class ClientChangePasswordRequest(BaseModel):
+    current_password: str = Field(min_length=1)
+    new_password: str = Field(min_length=MIN_PASSWORD_LENGTH)
 
 
 class ClientLoginRequest(BaseModel):
@@ -122,6 +141,7 @@ class ClientMeResponse(BaseModel):
     contact_name: str | None = None
     organization_name: str | None = None
     customer_group: CustomerGroupResponse | None = None
+    company_name: str | None = None
 
 
 class ClientOverviewMetricResponse(BaseModel):
@@ -191,6 +211,11 @@ class ClientPortalOrderResponse(BaseModel):
     id: int
     order_number: str
     status: str
+    delivery_status: str | None = None
+    # A request the client made here, rather than an order the team entered.
+    is_request: bool = False
+    # Confirmed, so it has a PDF.
+    has_document: bool = False
     currency: str
     grand_total: Decimal
     notes: str | None = None
@@ -200,6 +225,24 @@ class ClientPortalOrderResponse(BaseModel):
 
 class ClientPortalOrderListResponse(BaseModel):
     results: list[ClientPortalOrderResponse]
+
+
+class ClientInvoiceResponse(BaseModel):
+    id: int
+    invoice_number: str | None = None
+    status: str
+    payment_status: str
+    is_overdue: bool = False
+    issue_date: date | None = None
+    due_date: date | None = None
+    currency: str
+    total_amount: Decimal
+    amount_paid: Decimal
+    balance_due: Decimal
+
+
+class ClientInvoiceListResponse(BaseModel):
+    results: list[ClientInvoiceResponse]
 
 
 class ClientPagePricingItemRequest(BaseModel):

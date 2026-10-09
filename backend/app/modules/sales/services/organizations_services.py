@@ -42,6 +42,9 @@ def _apply_org_payload(organization: SalesOrganization, payload: SalesOrganizati
             setattr(organization, f"{prefix}_{part}", getattr(payload, f"{prefix}_{part}"))
     organization.is_vendor = int(bool(getattr(payload, "is_vendor", False)))
     organization.payment_terms_days = getattr(payload, "payment_terms_days", None)
+    organization.tax_exempt = bool(getattr(payload, "tax_exempt", False))
+    organization.tax_exempt_reason = (getattr(payload, "tax_exempt_reason", None) or "").strip() or None
+    organization.no_reminders = bool(getattr(payload, "no_reminders", False))
     organization.custom_data = payload.custom_fields or None
     organization.assigned_to = payload.assigned_to if payload.assigned_to is not None else current_user.id if current_user else None
 
@@ -289,6 +292,12 @@ def update_existing_organization(
     PicklistResolver(db, tenant_id).normalize("sales_organizations", data, existing=organization)
     if "is_vendor" in data:
         data["is_vendor"] = int(bool(data["is_vendor"]))
+    if "tax_exempt" in data:
+        data["tax_exempt"] = bool(data["tax_exempt"])
+    if "tax_exempt_reason" in data:
+        data["tax_exempt_reason"] = (data["tax_exempt_reason"] or "").strip() or None
+    if "no_reminders" in data:
+        data["no_reminders"] = bool(data["no_reminders"])
     if "assigned_to" in data:
         if data["assigned_to"] is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="assigned_to cannot be null")

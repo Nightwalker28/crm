@@ -6,6 +6,7 @@ import { ApiError, apiFetch } from "@/lib/api";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList, type PagedListSort } from "@/hooks/usePagedList";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
 
 export type OrderItem = {
   id: number;
@@ -18,6 +19,13 @@ export type OrderItem = {
   unit_price: string | number;
   discount_amount: string | number;
   tax_amount: string | number;
+  /** 13d §3.1: the rate the tax came from; `tax_manual` = a typed amount. */
+  tax_rate_id?: number | null;
+  tax_manual?: boolean;
+  /** 13d §3.2: an item, or a section heading or note with no amounts. */
+  line_type?: "item" | "section" | "note";
+  discount_percent?: string | number | null;
+  unit?: string | null;
   line_total: string | number;
   sort_order: number;
 };
@@ -44,6 +52,8 @@ export type Order = {
   tax_total?: string | number | null;
   discount_total?: string | number | null;
   grand_total: string | number;
+  tax_mode?: "exclusive" | "inclusive";
+  tax_summary?: TaxSummaryRow[];
   owner_id: number | null;
   owner_name?: string | null;
   /** Where the order's stock is held and shipped from. */

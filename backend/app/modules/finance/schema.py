@@ -1,6 +1,6 @@
 from datetime import date
 from decimal import Decimal
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 
@@ -9,10 +9,17 @@ class PosInvoiceLineRequest(BaseModel):
     catalog_product_id: Optional[int] = None
     catalog_service_id: Optional[int] = None
     description: str = Field(min_length=1)
-    quantity: float = Field(gt=0)
-    unit_price: float = Field(ge=0)
+    quantity: float = Field(default=1, gt=0)
+    unit_price: float = Field(default=0, ge=0)
     discount_amount: float = Field(default=0, ge=0)
     tax_amount: float = Field(default=0, ge=0)
+    # 13d §3.1: a rate, or `tax_manual` to keep the typed tax (0 = no tax); neither = the default.
+    tax_rate_id: Optional[int] = Field(default=None, gt=0)
+    tax_manual: bool = False
+    # 13d §3.2: an item, or a section heading or note with no amounts.
+    line_type: Literal["item", "section", "note"] = "item"
+    discount_percent: Optional[float] = Field(default=None, ge=0, le=100)
+    unit: Optional[str] = Field(default=None, max_length=40)
 
 
 class PosInvoicePaidNow(BaseModel):
@@ -38,8 +45,7 @@ class PosInvoiceBase(BaseModel):
     template_id: str = "modern"
     accent_color: str = "#14b8a6"
     currency: str = "USD"
-    discount_amount: float = Field(default=0, ge=0)
-    tax_rate: float = Field(default=0, ge=0, le=100)
+    tax_mode: Optional[Literal["exclusive", "inclusive"]] = None
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     lines: list[PosInvoiceLineRequest] = Field(min_length=1)
@@ -68,8 +74,7 @@ class PosInvoiceUpdateRequest(BaseModel):
     template_id: Optional[str] = None
     accent_color: Optional[str] = None
     currency: Optional[str] = None
-    discount_amount: Optional[float] = Field(default=None, ge=0)
-    tax_rate: Optional[float] = Field(default=None, ge=0, le=100)
+    tax_mode: Optional[Literal["exclusive", "inclusive"]] = None
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
     lines: Optional[list[PosInvoiceLineRequest]] = Field(default=None, min_length=1)
@@ -109,6 +114,11 @@ class PosInvoiceLineResponse(BaseModel):
     unit_price: float
     discount_amount: float = 0
     tax_amount: float = 0
+    tax_rate_id: Optional[int] = None
+    tax_manual: bool = False
+    line_type: str = "item"
+    discount_percent: Optional[float] = None
+    unit: Optional[str] = None
     line_total: float
     sort_order: int
     # Issued invoices: invoiced less already credited (12c §3.3).
@@ -140,11 +150,12 @@ class PosInvoiceResponse(BaseModel):
     currency: str
     subtotal_amount: float
     discount_amount: float
-    tax_rate: float
+    tax_mode: str = "exclusive"
     tax_amount: float
     total_amount: float
     amount_paid: float
     amount_credited: float = 0
+    amount_written_off: float = 0
     balance_due: float
     payment_terms: Optional[str] = None
     notes: Optional[str] = None
@@ -155,8 +166,15 @@ class PosInvoiceResponse(BaseModel):
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
     lines: list[PosInvoiceLineResponse] = Field(default_factory=list)
+    tax_summary: list[dict[str, Any]] = Field(default_factory=list)
     payments: list[dict[str, Any]] = Field(default_factory=list)
     credit_notes: list[dict[str, Any]] = Field(default_factory=list)
+    write_offs: list[dict[str, Any]] = Field(default_factory=list)
+    recurring_invoice_id: Optional[int] = None
+    recurring_invoice_name: Optional[str] = None
+    reminders: list[dict[str, Any]] = Field(default_factory=list)
+    write_off_limit: float = 0
+    can_write_off_any: bool = False
     sales_order_number: Optional[str] = None
 
 
@@ -173,6 +191,7 @@ class PosInvoiceListItem(BaseModel):
     total_amount: float
     amount_paid: float
     amount_credited: float = 0
+    amount_written_off: float = 0
     balance_due: float
     issue_date: Optional[str] = None
     due_date: Optional[str] = None

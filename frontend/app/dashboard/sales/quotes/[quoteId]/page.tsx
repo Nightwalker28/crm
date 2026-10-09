@@ -2,10 +2,10 @@
 
 import { formatSnakeCaseLabel } from "@/lib/module-display";
 import Link from "next/link";
-import { useState } from "react";
-import { useParams } from "next/navigation";
+import { useState, type ReactNode } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { ExternalLink, FileText, Pencil, RefreshCw, Send, ShoppingCart } from "lucide-react";
+import { CopyPlus, ExternalLink, FileText, Pencil, RefreshCw, Send, ShoppingCart } from "lucide-react";
 import { toast } from "sonner";
 
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
@@ -39,6 +39,10 @@ import {
 import { RouteNotFoundState } from "@/components/ui/RouteStates";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { StatusValue } from "@/components/ui/StatusValue";
+import { TextLink } from "@/components/ui/TextLink";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
+import { DocumentPdfMenuItem } from "@/components/transactions/DocumentPdfButton";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useConfirm } from "@/hooks/useConfirm";
@@ -94,12 +98,24 @@ type QuoteSummary = {
     discount_amount?: string | number | null;
     tax_amount?: string | number | null;
     total_amount?: string | number | null;
+    tax_mode?: "exclusive" | "inclusive";
+    tax_summary?: TaxSummaryRow[];
     notes?: string | null;
     assigned_to?: number | null;
     assigned_to_name?: string | null;
     created_time?: string | null;
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
+    revision?: number;
+    revised_from_id?: number | null;
+    revised_from_number?: string | null;
+    superseded_by?: { quote_id: number; quote_number: string } | null;
+    converted_order?: { order_id: number; order_number: string } | null;
+    accepted_by_name?: string | null;
+    accepted_at?: string | null;
+    signature_data?: string | null;
+    decline_note?: string | null;
+    lost_reason?: string | null;
     items?: Array<{
       id: number;
       catalog_product_id?: number | null;
@@ -132,6 +148,10 @@ type QuoteSummary = {
 };
 
 const QUOTE_STATUS_VALUES = ["draft", "sent", "accepted", "declined", "expired"] as const;
+
+/** Set by *Revise* and *Convert to order* only, and final: no edits, no status change (13d §3.5). */
+const LOCKED_QUOTE_STATUSES = new Set(["superseded", "converted"]);
+const REVISABLE_QUOTE_STATUSES = new Set(["sent", "expired", "declined"]);
 
 const QUOTE_STATUS_OPTIONS: InlineFieldEditOption[] = QUOTE_STATUS_VALUES.map((value) => ({
   value,
@@ -201,9 +221,11 @@ function contactLabel(contact: QuoteSummary["contact"]) {
 export default function QuoteDetailPage() {
   const params = useParams<{ quoteId: string }>();
   const queryClient = useQueryClient();
+  const router = useRouter();
   const { confirm } = useConfirm();
   const { modules } = useAccessibleModules();
   const [converting, setConverting] = useState(false);
+  const [revising, setRevising] = useState(false);
 
   const moduleActions = (moduleKey: string) =>
     modules.find((module) => module.name === moduleKey)?.actions;
@@ -242,7 +264,8 @@ export default function QuoteDetailPage() {
   const recordHref = `/dashboard/sales/quotes/${params.quoteId}`;
   const editHref = useRecordTabHref(`${recordHref}/edit`);
   const quoteTotal = quote ? formatMoney(quote.total_amount, quote.currency) : null;
-  const canEditStatus = canEdit && isModuleFieldEnabled(moduleFields, "status");
+  const locked = LOCKED_QUOTE_STATUSES.has(status);
+  const canEditStatus = canEdit && !locked && isModuleFieldEnabled(moduleFields, "status");
 
   /**
    * A quote status change publishes `quote.status_changed` on the automation bus, so it is
@@ -303,13 +326,39 @@ export default function QuoteDetailPage() {
       if (!res.ok) throw new Error(body?.detail ?? "We could not convert this quote to an order.");
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["sales-orders"] }),
-        summaryQuery.refetch(),
+        queryClient.invalidateQueries({ queryKey: ["sales-quotes"] }),
       ]);
-      toast.success("Quote converted to order.");
+      toast.success(`Order ${body?.order_number ?? ""} created from this quote.`.replace("  ", " "));
+      // The order is the next thing to work on, so it opens (13d §3.5).
+      router.push(`/dashboard/sales/orders/${body.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "The quote could not be converted. Check that it is accepted and try again.");
     } finally {
       setConverting(false);
+    }
+  }
+
+  /** *Revise*: a new draft with the next `-R` number; this quote becomes *Superseded*. */
+  async function reviseQuote() {
+    if (revising || !quote) return;
+    const ok = await confirm({
+      title: "Revise this quote?",
+      description: `A new draft copies ${quote.quote_number} with the next revision number. This quote becomes Superseded, and its proposal link stops accepting answers.`,
+      confirmLabel: "Revise",
+    });
+    if (!ok) return;
+    try {
+      setRevising(true);
+      const res = await apiFetch(`/sales/quotes/${params.quoteId}/revise`, { method: "POST" });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(body?.detail ?? "The quote could not be revised.");
+      await queryClient.invalidateQueries({ queryKey: ["sales-quotes"] });
+      toast.success(`Revision ${body.quote_number} created.`);
+      router.push(`/dashboard/sales/quotes/${body.quote_id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "The quote could not be revised. Try again.");
+    } finally {
+      setRevising(false);
     }
   }
 
@@ -342,9 +391,11 @@ export default function QuoteDetailPage() {
         <>
           {/*
             No channel buttons — same reason as the deal: a quote owns no address, so these
-            were the linked contact's, filed against the quote (4.7).
+            were the linked contact's, filed against the quote (4.7). *Send* emails the quote
+            itself, with its PDF and proposal link (13d §3.4).
           */}
-          {canEdit ? (
+          <DocumentSendAction moduleKey="sales_quotes" recordId={quote.quote_id} />
+          {canEdit && !locked ? (
             <Button asChild variant="outline">
               <Link href={editHref}>
                 <Pencil />
@@ -365,10 +416,17 @@ export default function QuoteDetailPage() {
               {converting ? "Converting…" : "Convert to order"}
             </Button>
           ) : null}
+          {REVISABLE_QUOTE_STATUSES.has(status) && canClone ? (
+            <Button type="button" variant="outline" onClick={reviseQuote} disabled={revising}>
+              {revising ? <RefreshCw className="animate-spin" /> : <CopyPlus />}
+              {revising ? "Revising…" : "Revise"}
+            </Button>
+          ) : null}
         </>
       ) : null}
-      overflowActions={quote && (canClone || canDelete) ? (
+      overflowActions={quote ? (
         <>
+          <DocumentPdfMenuItem moduleKey="sales_quotes" recordId={quote.quote_id} />
           {canClone ? <RecordCloneMenuItem newHref="/dashboard/sales/quotes/new" recordId={params.quoteId} /> : null}
           {canDelete ? (
             <RecordDeleteButton
@@ -586,6 +644,7 @@ function QuoteOverview({
 
   return (
     <div className="grid gap-4">
+      <QuoteLifecycleNotice quote={quote} />
       <ReadOnlyRecordLayout
         layout={layout}
         values={quote as unknown as Record<string, unknown>}
@@ -598,7 +657,8 @@ function QuoteOverview({
         }
       />
       {quote.items?.length ? (
-        <TransactionLineItemsTable items={quote.items} currency={quote.currency} linkCatalogItems />
+        <TransactionLineItemsTable items={quote.items} currency={quote.currency} linkCatalogItems
+          taxSummary={quote.tax_summary} taxInclusive={quote.tax_mode === "inclusive"} />
       ) : null}
     </div>
   );
@@ -769,6 +829,77 @@ function proposalEvents(summary: QuoteSummary): RecordModuleEvent[] {
     label: `Proposal ${event.event_type.replace(/_/g, " ")}`,
     detail: event.recipient_email || "Signed link",
   }));
+}
+
+/**
+ * What happened to the quote after it left the team (13d §3.5): who accepted it and how,
+ * why it was declined, and where a revision or an order took over. One muted block above the
+ * details; nothing when the quote is still with the team.
+ */
+function QuoteLifecycleNotice({ quote }: { quote: NonNullable<QuoteSummary["quote"]> }) {
+  const rows: ReactNode[] = [];
+  if (quote.superseded_by) {
+    rows.push(
+      <p key="superseded">
+        Replaced by revision{" "}
+        <TextLink href={`/dashboard/sales/quotes/${quote.superseded_by.quote_id}`}>{quote.superseded_by.quote_number}</TextLink>.
+        This quote can no longer be edited or answered.
+      </p>,
+    );
+  }
+  if (quote.converted_order) {
+    rows.push(
+      <p key="converted">
+        Converted into order{" "}
+        <TextLink href={`/dashboard/sales/orders/${quote.converted_order.order_id}`}>{quote.converted_order.order_number}</TextLink>.
+        The quote is locked; change the order instead.
+      </p>,
+    );
+  }
+  if (quote.accepted_by_name) {
+    rows.push(
+      <div key="accepted" className="grid gap-2">
+        <p>
+          Accepted by {quote.accepted_by_name}
+          {quote.accepted_at ? ` on ${formatDateTime(quote.accepted_at)}` : ""}.
+        </p>
+        {quote.signature_data?.startsWith("data:image/png;base64,") ? (
+          // A data URI the server checked on the way in; there is nothing to optimise.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={quote.signature_data}
+            alt={`Signature of ${quote.accepted_by_name}`}
+            className={"h-16 w-fit rounded-[var(--radius-control-sm)] border border-line-subtle bg-white p-1" /* design-exempt: dark ink signed on white; the signature must read as drawn in both themes */}
+          />
+        ) : null}
+      </div>,
+    );
+  }
+  if (quote.status === "declined" && (quote.lost_reason || quote.decline_note)) {
+    rows.push(
+      <p key="declined">
+        Declined{quote.lost_reason ? `: ${formatSnakeCaseLabel(quote.lost_reason)}` : ""}
+        {quote.decline_note ? ` — “${quote.decline_note}”` : ""}
+      </p>,
+    );
+  }
+  if (quote.revised_from_id && quote.revised_from_number) {
+    rows.push(
+      <p key="revised-from">
+        Revision {quote.revision} of{" "}
+        <TextLink href={`/dashboard/sales/quotes/${quote.revised_from_id}`}>{quote.revised_from_number}</TextLink>.
+      </p>,
+    );
+  }
+  if (!rows.length) return null;
+  return (
+    <div
+      role="status"
+      className="grid gap-2 rounded-[var(--radius-control)] border border-line-default bg-surface-muted px-4 py-3 text-sm text-copy-secondary"
+    >
+      {rows}
+    </div>
+  );
 }
 
 function QuoteStatus({ status }: { status: string }) {

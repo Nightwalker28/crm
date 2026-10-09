@@ -23,7 +23,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.list_conditions import apply_list_conditions
 from app.modules.catalog.services.line_links import PRODUCT_LINK_FIELD, SERVICE_LINK_FIELD, normalize_catalog_line_links
-from app.modules.finance.services.document_amounts import ZERO, decimal_input, line_amounts, money, units
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import ZERO, decimal_input, money, units
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.custom_fields import load_custom_field_values, sync_custom_fields
 from app.modules.platform.services.numbering import allocate_business_number
@@ -166,6 +167,8 @@ def _apply_lines(db: Session, *, credit: PurchaseVendorCredit, bill: PurchaseBil
     held = credited_by_bill_line(db, tenant_id=credit.tenant_id, bill_line_ids=list(bill_lines), exclude_credit_id=credit.id) if bill else {}
     links = normalize_catalog_line_links(db, tenant_id=credit.tenant_id, lines=[
         {PRODUCT_LINK_FIELD: line.get("catalog_product_id"), SERVICE_LINK_FIELD: line.get("catalog_service_id")} for line in lines])
+    resolver = tax_rates.TaxResolver(db, tenant_id=credit.tenant_id, side="purchases",
+                                     allowed_inactive=tax_rates.used_rate_ids(credit.lines) | tax_rates.used_rate_ids(bill_lines.values()))
     requested: dict[int, Decimal] = {}
     result = []
     for index, payload in enumerate(lines):
@@ -178,20 +181,25 @@ def _apply_lines(db: Session, *, credit: PurchaseVendorCredit, bill: PurchaseBil
             requested[bill_line.id] = requested.get(bill_line.id, ZERO) + quantity
         raw_cost = payload.get("unit_cost")
         unit_cost = decimal_input(raw_cost if raw_cost is not None else (bill_line.unit_cost if bill_line else None), field="Unit cost")
-        tax = money(decimal_input(payload.get("tax_amount") or 0, field="Tax", places=2))
-        if bill_line is not None and payload.get("tax_amount") is None and Decimal(bill_line.quantity):
-            # The bill's tax on the credited share, so a full credit nets the bill to zero.
-            tax = money(Decimal(bill_line.tax_amount) * quantity / Decimal(bill_line.quantity))
+        decimal_input(payload.get("tax_amount") or 0, field="Tax", places=2)
+        if bill_line is not None and payload.get("tax_amount") is None and not payload.get("tax_rate_id") and Decimal(bill_line.quantity):
+            # The bill's tax on the credited share, under its rate, so a full credit nets the bill to zero.
+            payload = {**payload, "tax_rate_id": bill_line.tax_rate_id, "tax_manual": True,
+                       "tax_amount": money(Decimal(bill_line.tax_amount) * quantity / Decimal(bill_line.quantity))}
         description = (payload.get("description") or "").strip() or (bill_line.description if bill_line else None)
         if not description:
             raise HTTPException(status_code=400, detail="Describe every line")
-        _net, total = line_amounts(quantity=quantity, unit_price=unit_cost, tax=tax, label=description)
+        link = {PRODUCT_LINK_FIELD: bill_line.catalog_product_id if bill_line else (payload.get("catalog_product_id") or links[index][PRODUCT_LINK_FIELD]),
+                SERVICE_LINK_FIELD: bill_line.catalog_service_id if bill_line else links[index][SERVICE_LINK_FIELD]}
+        choice, amounts = tax_rates.compute_payload_line(resolver, payload, link, quantity=quantity, unit_price=unit_cost, label=description)
+        tax, total = amounts.tax, amounts.total
         result.append(PurchaseVendorCreditLine(
             tenant_id=credit.tenant_id, bill_line_id=bill_line.id if bill_line else None,
             vendor_return_line_id=payload.get("vendor_return_line_id"),
             catalog_product_id=bill_line.catalog_product_id if bill_line else (payload.get("catalog_product_id") or links[index][PRODUCT_LINK_FIELD]),
             catalog_service_id=bill_line.catalog_service_id if bill_line else links[index][SERVICE_LINK_FIELD],
-            description=description, quantity=quantity, unit_cost=unit_cost, tax_amount=tax, line_total=total, sort_order=index))
+            description=description, quantity=quantity, unit_cost=unit_cost, tax_amount=tax, tax_rate_id=choice.rate_id,
+            tax_manual=choice.manual, line_total=total, sort_order=index))
     for line_id, quantity in requested.items():
         left = Decimal(bill_lines[line_id].quantity) - held.get(line_id, ZERO)
         if quantity > left:
@@ -277,7 +285,7 @@ def issue_credit(db: Session, *, tenant_id: int, actor_user_id: int | None, cred
     if bill is not None:
         _apply_lines(db, credit=credit, bill=bill, lines=[{
             "bill_line_id": line.bill_line_id, "vendor_return_line_id": line.vendor_return_line_id, "description": line.description,
-            "quantity": line.quantity, "unit_cost": line.unit_cost, "tax_amount": line.tax_amount,
+            "quantity": line.quantity, "unit_cost": line.unit_cost, "tax_amount": line.tax_amount, **tax_rates.line_tax_fields(line),
             "catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id} for line in credit.lines])
     if money(credit.total) <= 0:
         raise HTTPException(status_code=400, detail="A vendor credit must be for more than zero")
@@ -484,7 +492,9 @@ def serialize_credit(db: Session, *, tenant_id: int, credit: PurchaseVendorCredi
         result["lines"] = [{"id": line.id, "bill_line_id": line.bill_line_id, "vendor_return_line_id": line.vendor_return_line_id,
                             "catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id,
                             "description": line.description, "quantity": line.quantity, "unit_cost": line.unit_cost,
-                            "tax_amount": line.tax_amount, "line_total": line.line_total} for line in credit.lines]
+                            "tax_amount": line.tax_amount, "tax_rate_id": line.tax_rate_id, "tax_manual": bool(line.tax_manual),
+                            "line_total": line.line_total} for line in credit.lines]
+        result["tax_summary"] = credit.tax_summary
         allocations = db.query(PurchaseVendorCreditAllocation, PurchaseBill).join(PurchaseBill, PurchaseBill.id == PurchaseVendorCreditAllocation.bill_id).filter(
             PurchaseVendorCreditAllocation.tenant_id == tenant_id, PurchaseVendorCreditAllocation.credit_id == credit.id).order_by(
             PurchaseVendorCreditAllocation.id).all()

@@ -7,6 +7,7 @@ import { apiErrorFromBody } from "@/lib/apiErrors";
 import { appendSavedViewFilterParams } from "@/lib/savedViewQuery";
 import type { SavedViewFilters } from "@/hooks/useSavedViews";
 import { usePagedList } from "@/hooks/usePagedList";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
 
 // E5 (12c-erp-invoicing.md §3.3): issued is final; payment status is derived from payments.
 export type PosInvoiceStatus = "draft" | "issued" | "void";
@@ -25,6 +26,13 @@ export type PosInvoiceLine = {
   unit_price: number;
   discount_amount?: number;
   tax_amount?: number;
+  /** 13d §3.1: the rate the tax came from; `tax_manual` = a typed amount. */
+  tax_rate_id?: number | null;
+  tax_manual?: boolean;
+  /** 13d §3.2: an item, or a section heading or note with no amounts. */
+  line_type?: "item" | "section" | "note";
+  discount_percent?: number | null;
+  unit?: string | null;
   line_total?: number;
   sort_order?: number;
   creditable?: number | null;
@@ -73,11 +81,13 @@ export type PosInvoice = {
   currency: string;
   subtotal_amount: number;
   discount_amount: number;
-  tax_rate: number;
+  tax_mode?: "exclusive" | "inclusive";
   tax_amount: number;
   total_amount: number;
   amount_paid: number;
   amount_credited?: number;
+  /** 13d §3.6: balances written off, counted like credit. */
+  amount_written_off?: number;
   balance_due: number;
   payment_terms?: string | null;
   notes?: string | null;
@@ -88,8 +98,15 @@ export type PosInvoice = {
   created_at?: string | null;
   updated_at?: string | null;
   lines?: PosInvoiceLine[];
+  tax_summary?: TaxSummaryRow[];
   payments?: PaymentRecord[];
   credit_notes?: InvoiceCreditNoteSummary[];
+  write_offs?: Array<{ id: number; amount: number; reason: string; created_at: string; created_by_name: string | null }>;
+  reminders?: Array<{ rule_name: string; recipient: string | null; outcome: "sent" | "skipped"; detail: string | null; sent_at: string }>;
+  write_off_limit?: number;
+  can_write_off_any?: boolean;
+  recurring_invoice_id?: number | null;
+  recurring_invoice_name?: string | null;
 };
 
 export type RecordPaymentPayload = { amount: number; payment_method?: string | null; paid_on?: string | null; reference?: string | null; notes?: string | null; custom_fields?: Record<string, unknown> };

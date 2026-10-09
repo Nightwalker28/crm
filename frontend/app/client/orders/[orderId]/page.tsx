@@ -2,13 +2,14 @@
 
 import { useParams } from "next/navigation";
 
+import { ClientPdfButton } from "@/components/client-portal/ClientPdfButton";
 import { RecordWorkspace } from "@/components/recordWorkspace/RecordWorkspace";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
 import { Money } from "@/components/ui/Money";
 import { StatusValue } from "@/components/ui/StatusValue";
 import { useClientOrder } from "@/hooks/useClientPortal";
 import { formatDateTime } from "@/lib/datetime";
-import { getClientOrderStatus } from "@/lib/statusStyles";
+import { getClientOrderStatus, getOrderDeliveryStatus } from "@/lib/statusStyles";
 
 export default function ClientOrderDetailPage() {
   const params = useParams();
@@ -21,18 +22,23 @@ export default function ClientOrderDetailPage() {
     // so the rail would be 20rem of read-only fields.
     <RecordWorkspace
       title={order?.order_number ?? "Order"}
-      description={order?.notes ? `Your note: ${order.notes}` : "Review the order's line items and total."}
+      description={order?.notes ? `Your note: ${order.notes}` : order?.status === "draft"
+        ? "We have your request and will confirm it shortly."
+        : "The order's items and total."}
       backHref="/client/orders"
       backLabel="Orders"
       isLoading={orderQuery.isLoading}
       hasError={Boolean(orderQuery.error) || (!orderQuery.isLoading && !order)}
       onRetry={() => void orderQuery.refetch()}
       status={order ? <StatusValue status={getClientOrderStatus(order.status)} context="record" /> : null}
+      actions={order?.has_document ? <ClientPdfButton kind="orders" id={order.id} name={order.order_number} /> : null}
       subtitle={
         order ? (
           <>
             <Money amount={order.grand_total} currency={order.currency} />
             <span>Placed {formatDateTime(order.created_at)}</span>
+            {order.status !== "draft" && order.delivery_status && order.delivery_status !== "none"
+              ? <span>{getOrderDeliveryStatus(order.delivery_status).label}</span> : null}
           </>
         ) : null
       }

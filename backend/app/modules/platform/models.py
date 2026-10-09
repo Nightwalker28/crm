@@ -1000,3 +1000,47 @@ class IntegrationSyncRun(Base):
     error_message = Column(Text, nullable=True)
 
     connection = relationship("IntegrationConnection", back_populates="sync_runs")
+
+
+class DocumentPdfSnapshot(Base):
+    """The PDF an issued document was sent and kept as (13d §3.3). A later change to an issued
+    document takes a new version; the earlier ones stay as the record of what was issued."""
+
+    __tablename__ = "document_pdf_snapshots"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "module_key", "entity_id", "version", name="uq_document_pdf_snapshots_version"),
+        Index("ix_document_pdf_snapshots_record", "tenant_id", "module_key", "entity_id"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_key = Column(String(100), nullable=False)
+    entity_id = Column(BigInteger, nullable=False)
+    version = Column(Integer, nullable=False, default=1, server_default="1")
+    # Under uploads/document-pdfs/, never the public media folder.
+    file_path = Column(String(500), nullable=False)
+    filename = Column(String(255), nullable=False)
+    size_bytes = Column(Integer, nullable=False, default=0, server_default="0")
+    reason = Column(String(100), nullable=True)
+    created_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+
+class DocumentSetting(Base):
+    """Per document type (13d §3.3): the printed title, the terms and notes new documents start
+    with, and the email template *Send* starts with."""
+
+    __tablename__ = "document_settings"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "kind", name="uq_document_settings_tenant_kind"),
+    )
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    kind = Column(String(40), nullable=False)
+    title = Column(String(120), nullable=True)
+    default_terms = Column(Text, nullable=True)
+    default_notes = Column(Text, nullable=True)
+    email_template_id = Column(BigInteger, ForeignKey("message_templates.id", ondelete="SET NULL"), nullable=True)
+    updated_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False)

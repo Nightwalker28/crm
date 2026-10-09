@@ -8,6 +8,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Pencil, Plus } from "lucide-react";
 
 import { ContactQuickCreate } from "@/components/contacts/ContactQuickCreate";
+import { AccountStatementPanel } from "@/components/finance/statements/AccountStatementPanel";
 import RecordDocumentsPanel from "@/components/documents/RecordDocumentsPanel";
 import { ReadOnlyRecordLayout } from "@/components/forms/ReadOnlyRecordLayout";
 import { OpportunityQuickCreate } from "@/components/opportunities/OpportunityQuickCreate";
@@ -190,6 +191,8 @@ export default function OrganizationDetailPage() {
   const canCreateTasks = Boolean(taskActions?.can_create);
   const canEditTasks = Boolean(taskActions?.can_edit);
   const canViewDocuments = Boolean(documentActions?.can_view);
+  // 13d §3.6: the statement reads invoices, so it needs invoice access as well as the account.
+  const canViewStatement = Boolean(moduleActions("finance_pos")?.can_view);
   const canCreateDocuments = Boolean(documentActions?.can_create);
   const canEditDocuments = Boolean(documentActions?.can_edit);
   const canDeleteDocuments = Boolean(documentActions?.can_delete);
@@ -534,6 +537,17 @@ export default function OrganizationDetailPage() {
               />
             ),
           },
+          ...(canViewStatement ? [{
+            id: "statement",
+            label: "Statement",
+            content: (
+              <AccountStatementPanel
+                orgId={summary.organization.org_id}
+                orgName={summary.organization.org_name}
+                orgEmail={summary.organization.primary_email}
+              />
+            ),
+          }] : []),
         ] : []}
       />
 

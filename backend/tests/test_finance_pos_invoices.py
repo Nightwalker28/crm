@@ -14,6 +14,19 @@ from app.modules.finance.services import pos_invoice_services
 from app.modules.finance.services.pos_invoice_services import serialize_invoice
 
 
+def _empty_session():
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.core.database import Base
+    from app.modules.platform import models as _platform_models  # noqa: F401
+    from app.modules.user_management import models as _user_management_models  # noqa: F401
+
+    engine = create_engine("sqlite:///:memory:")
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)()
+
+
 class FakePosInvoiceQuery:
     def __init__(self):
         self.operations = []
@@ -86,7 +99,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
             currency="USD",
             subtotal_amount=Decimal("10.00"),
             discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
             tax_amount=Decimal("0.00"),
             total_amount=Decimal("10.00"),
             amount_paid=Decimal("0.00"),
@@ -112,7 +124,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
             currency="USD",
             subtotal_amount=Decimal("10.00"),
             discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
             tax_amount=Decimal("0.00"),
             total_amount=Decimal("10.00"),
             amount_paid=Decimal("0.00"),
@@ -141,7 +152,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
             currency="USD",
             subtotal_amount=Decimal("10.00"),
             discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
             tax_amount=Decimal("0.00"),
             total_amount=Decimal("10.00"),
             amount_paid=Decimal("0.00"),
@@ -205,7 +215,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
             currency="USD",
             subtotal_amount=Decimal("10.00"),
             discount_amount=Decimal("0.00"),
-            tax_rate=Decimal("0.00"),
             tax_amount=Decimal("0.00"),
             total_amount=Decimal("10.00"),
             amount_paid=Decimal("0.00"),
@@ -227,14 +236,6 @@ class FinancePosInvoiceTests(unittest.TestCase):
         self.assertIn("deleted_at IS NULL", str(index.dialect_options["postgresql"]["where"]))
         self.assertIn("deleted_at IS NULL", str(index.dialect_options["sqlite"]["where"]))
 
-    def test_apply_totals_rejects_tax_rate_over_100(self):
-        invoice = FinancePosInvoice(discount_amount=Decimal("0"), tax_rate=Decimal("0"), amount_paid=Decimal("0"))
-
-        with self.assertRaises(HTTPException) as exc:
-            pos_invoice_services._apply_totals(invoice, Decimal("100.00"), {"tax_rate": 101})
-
-        self.assertEqual(exc.exception.status_code, 400)
-
     def test_apply_lines_preserves_existing_rows_by_id(self):
         invoice = FinancePosInvoice(id=1, tenant_id=10, invoice_number="POS-1")
         existing = FinancePosInvoiceLine(
@@ -249,9 +250,10 @@ class FinancePosInvoiceTests(unittest.TestCase):
         )
         invoice.lines = [existing]
 
-        # No line carries a catalog link, so the link check never touches the session.
-        subtotal = pos_invoice_services._apply_lines(
-            None,
+        # No line carries a catalog link or an account; the tax resolver finds no rates.
+        db = _empty_session()
+        pos_invoice_services._apply_lines(
+            db,
             invoice,
             [
                 {"id": 7, "description": "Updated", "quantity": 2, "unit_price": 15},
@@ -259,7 +261,8 @@ class FinancePosInvoiceTests(unittest.TestCase):
             ],
         )
 
-        self.assertEqual(subtotal, Decimal("35.00"))
+        self.assertEqual(invoice.subtotal_amount, Decimal("35.00"))
+        self.assertEqual(invoice.total_amount, Decimal("35.00"))
         self.assertIs(invoice.lines[0], existing)
         self.assertEqual(invoice.lines[0].description, "Updated")
         self.assertIsNone(invoice.lines[1].id)

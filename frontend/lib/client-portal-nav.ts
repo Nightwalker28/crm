@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { CalendarDays, FileText, PackageSearch, ScrollText, ShoppingCart } from "lucide-react";
+import { CalendarDays, FileText, PackageSearch, Receipt, ScrollText, ShoppingCart } from "lucide-react";
 
 /**
  * The client portal's sections — one source, read by the rail and by the hub's metric
@@ -20,6 +20,7 @@ export type ClientPortalSection = {
 export const CLIENT_PORTAL_SECTIONS: ClientPortalSection[] = [
   { key: "quotes", label: "Quotes", href: "/client/quotes", icon: ScrollText },
   { key: "orders", label: "Orders", href: "/client/orders", icon: ShoppingCart },
+  { key: "invoices", label: "Invoices", href: "/client/invoices", icon: Receipt },
   { key: "documents", label: "Documents", href: "/client/documents", icon: FileText },
   { key: "bookings", label: "Bookings", href: "/client/bookings", icon: CalendarDays },
   { key: "catalog", label: "Catalog", href: "/client/catalog", icon: PackageSearch },
@@ -29,12 +30,15 @@ export const CLIENT_PORTAL_ROUTES = {
   home: "/client",
   login: "/client/login",
   setup: "/client/setup",
+  forgot: "/client/forgot",
+  reset: "/client/reset",
+  account: "/client/account",
 } as const;
 
 /**
  * Routes under `/client` that do **not** take the portal chrome.
  *
- * Two shapes, for two different reasons. The doors — `login` and `setup` — are pre-auth,
+ * Two shapes, for two different reasons. The doors — `login`, `setup`, `forgot` and `reset` — are pre-auth,
  * and a rail of destinations you cannot reach yet is a wall with handles drawn on it; they
  * take the auth atmosphere instead (§9, ruling 3). `pages/[token]` is a shared proposal
  * link rendered in the *tenant's* branding, with the tenant's logo, accent and company
@@ -43,6 +47,7 @@ export const CLIENT_PORTAL_ROUTES = {
 export function isPortalChromeRoute(pathname: string) {
   if (pathname === CLIENT_PORTAL_ROUTES.login || pathname.startsWith(`${CLIENT_PORTAL_ROUTES.login}/`)) return false;
   if (pathname === CLIENT_PORTAL_ROUTES.setup || pathname.startsWith(`${CLIENT_PORTAL_ROUTES.setup}/`)) return false;
+  if (pathname === CLIENT_PORTAL_ROUTES.forgot || pathname === CLIENT_PORTAL_ROUTES.reset) return false;
   if (pathname.startsWith("/client/pages/")) return false;
   return true;
 }

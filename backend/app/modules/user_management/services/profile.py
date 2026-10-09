@@ -40,6 +40,7 @@ SAVED_VIEW_MODULES = {
     "inventory_transfers",
     "purchase_vendor_returns",
     "purchase_vendor_credits",
+    "finance_recurring_invoices",
 }
 # Sentence case (design.md 3.5). Views stored under the old "Default View" are renamed by
 # _resync_system_saved_view on their next read, so no migration is needed.
@@ -235,6 +236,17 @@ def update_company_profile(db: Session, current_user: User, payload: dict) -> Co
         policy_changed = True
     if "default_payment_terms_days" in payload:
         profile.default_payment_terms_days = payload["default_payment_terms_days"]
+    if payload.get("default_tax_mode") in {"exclusive", "inclusive"}:
+        profile.default_tax_mode = payload["default_tax_mode"]
+    if payload.get("document_layout") in {"modern", "classic", "compact"}:
+        profile.document_layout = payload["document_layout"]
+    for field in ("brand_color", "document_footer", "bank_details"):
+        if field in payload:
+            setattr(profile, field, _clean(payload[field]))
+    if payload.get("quote_validity_days"):
+        profile.quote_validity_days = int(payload["quote_validity_days"])
+    if payload.get("write_off_limit") is not None:
+        profile.write_off_limit = payload["write_off_limit"]
     if payload.get("base_currency"):
         requested = str(payload["base_currency"]).strip().upper()
         if not requested.isalpha() or len(requested) != 3:
@@ -806,6 +818,10 @@ PRESET_SAVED_VIEWS = {
         ("Made", [{"field": "direction", "operator": "is", "value": "made"}]),
         ("Refunds", [{"field": "kind", "operator": "is", "value": "refund"}]),
         ("Mine", [{"field": "created_by", "operator": "is", "value": CURRENT_USER}]),
+    ),
+    "finance_recurring_invoices": (
+        ("Active", [{"field": "active", "operator": "is", "value": True}]),
+        ("Issue and send", [{"field": "action", "operator": "is", "value": "issue_and_send"}]),
     ),
 }
 

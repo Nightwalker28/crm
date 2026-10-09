@@ -376,11 +376,14 @@ def serialize_client_catalog_item(item: CatalogProduct | CatalogService, *, grou
 
 def serialize_client_order(order: SalesOrder) -> dict:
     """A portal order is a sales order (13 F1.3); the client sees its number, status and lines.
-    `draft` is an order the team has not confirmed yet."""
+    `draft` is a request the team has not confirmed yet, so it has no document (13d §3.7)."""
     return {
         "id": order.id,
         "order_number": order.order_number,
         "status": order.status,
+        "delivery_status": order.delivery_status,
+        "is_request": order.source == PORTAL_SOURCE,
+        "has_document": order.status != "draft",
         "currency": order.currency,
         "grand_total": order.grand_total,
         "notes": order.notes,
@@ -422,6 +425,10 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
         organization_id=account.organization_id,
     )
     bookings = list_client_bookings(db, tenant_id=account.tenant_id, email=account.email)
+    from app.modules.client_portal.services import client_documents_services
+
+    invoices = client_documents_services.list_invoices(db, account=account)
+    open_invoices = [invoice for invoice in invoices if invoice.status == "issued" and invoice.balance_due and invoice.balance_due > 0]
     quote_payloads = [serialize_client_quote(db, quote) for quote in quotes]
     pending_orders = [order for order in orders if order.status in {"draft", "confirmed"}]
 
@@ -432,10 +439,22 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
             {
                 "key": f"quote-{quote_to_review['quote_id']}",
                 "label": f"Review quote {quote_to_review['quote_number']}",
-                "description": quote_to_review.get("proposal_title") or quote_to_review.get("title") or "Quote is waiting for your response.",
+                "description": quote_to_review.get("title") or "Waiting for your answer.",
                 "href": f"/client/quotes/{quote_to_review['quote_id']}",
                 "status": quote_to_review.get("status"),
                 "created_at": quote_to_review.get("created_time"),
+            }
+        )
+    if open_invoices:
+        invoice = sorted(open_invoices, key=lambda row: (row.due_date is None, row.due_date))[0]
+        actions.append(
+            {
+                "key": f"invoice-{invoice.id}",
+                "label": f"Invoice {invoice.invoice_number} is open",
+                "description": f"{invoice.currency} {_money(invoice.balance_due)} due" + (f" on {invoice.due_date.isoformat()}" if invoice.due_date else ""),
+                "href": "/client/invoices",
+                "status": "open",
+                "created_at": invoice.issued_at,
             }
         )
     if pending_orders:
@@ -479,7 +498,7 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
             {
                 "key": "catalog",
                 "label": "Browse products and services",
-                "description": "See pricing resolved for your client account.",
+                "description": "See what we offer, at your prices.",
                 "href": "/client/catalog",
                 "status": None,
                 "created_at": None,
@@ -500,6 +519,7 @@ def build_client_overview(db: Session, *, account: ClientAccount) -> dict:
         "metrics": [
             {"key": "quotes", "label": "Quotes", "value": len(quotes), "href": "/client/quotes"},
             {"key": "orders", "label": "Orders", "value": len(orders), "href": "/client/orders"},
+            {"key": "invoices", "label": "Open invoices", "value": len(open_invoices), "href": "/client/invoices"},
             {"key": "documents", "label": "Shared documents", "value": len(documents), "href": "/client/documents"},
             {"key": "bookings", "label": "Bookings", "value": len(bookings), "href": "/client/bookings"},
             {"key": "catalog", "label": "Catalog items", "value": len(catalog_items), "href": "/client/catalog"},
@@ -1130,19 +1150,16 @@ def create_client_catalog_order(
 
 
 def list_client_orders(db: Session, *, account: ClientAccount) -> list[SalesOrder]:
-    return client_portal_repository.list_client_orders(db, tenant_id=account.tenant_id, client_account_id=account.id)
+    """The account's confirmed orders and the client's own requests (13d §3.7)."""
+    from app.modules.client_portal.services import client_documents_services
+
+    return client_documents_services.list_orders(db, account=account)
 
 
 def get_client_order_or_404(db: Session, *, account: ClientAccount, order_id: int) -> SalesOrder:
-    order = client_portal_repository.get_client_order(
-        db,
-        tenant_id=account.tenant_id,
-        client_account_id=account.id,
-        order_id=order_id,
-    )
-    if not order:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
-    return order
+    from app.modules.client_portal.services import client_documents_services
+
+    return client_documents_services.get_order(db, account=account, order_id=order_id)
 
 
 def get_client_account_or_404(db: Session, *, tenant_id: int, account_id: int) -> ClientAccount:

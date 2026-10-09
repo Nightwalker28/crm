@@ -141,3 +141,18 @@ class ClientPageAction(Base):
     tenant = relationship("Tenant")
     client_page = relationship("ClientPage")
     client_account = relationship("ClientAccount")
+
+
+class ClientPasswordReset(Base):
+    """A single-use, one-hour password reset for a client account (13d §3.7). Only the token's
+    hash is kept; using it, or asking for a new one, ends the others."""
+
+    __tablename__ = "client_password_resets"
+
+    id = Column(BigInteger().with_variant(Integer, "sqlite"), primary_key=True)
+    tenant_id = Column(BigInteger, ForeignKey("tenants.id", ondelete="CASCADE"), nullable=False, index=True)
+    client_account_id = Column(BigInteger, ForeignKey("client_accounts.id", ondelete="CASCADE"), nullable=False, index=True)
+    token_hash = Column(String(64), nullable=False, unique=True)
+    expires_at = Column(DateTime(timezone=True), nullable=False)
+    used_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)

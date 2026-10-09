@@ -154,7 +154,7 @@ export default function InvoicesTable({
       rowLabel={(invoice) => `Open invoice ${invoice.invoice_number}`}
       rowActions={(invoice) => (
         <Button asChild variant="ghost" size="icon-sm">
-          <Link href={`/dashboard/finance/invoices/${invoice.id}/print`} aria-label={`Print invoice ${invoice.invoice_number}`}>
+          <Link href={`/dashboard/finance/invoices/${invoice.id}/print`} aria-label={`Preview invoice ${invoice.invoice_number ?? "draft"} and its PDF`}>
             <Printer />
           </Link>
         </Button>

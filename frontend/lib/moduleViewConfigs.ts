@@ -63,6 +63,7 @@ export const CUSTOM_FIELD_MODULE_LABELS: Record<string, string> = {
   finance_pos: "Invoices",
   finance_credit_notes: "Credit notes",
   finance_payments: "Payments",
+  finance_recurring_invoices: "Recurring invoices",
   purchase_orders: "Purchase orders",
   purchase_receipts: "Receipts",
   purchase_bills: "Bills",
@@ -339,6 +340,11 @@ export const MODULE_VIEW_DEFAULTS: Record<string, SavedViewConfig> = {
     filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [], status: "all", filtersOpen: false },
     sort: null,
   },
+  finance_recurring_invoices: {
+    visible_columns: ["name", "customer_name", "schedule", "next_run_date", "action", "issued_count", "status"],
+    filters: { search: "", logic: "all", conditions: [], all_conditions: [], any_conditions: [], status: "all", filtersOpen: false },
+    sort: null,
+  },
   admin_users: {
     visible_columns: ["name", "team_name", "role_name", "email", "mfa_enabled", "is_active"],
     filters: {
@@ -591,6 +597,8 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
           { value: "accepted", label: "Accepted" },
           { value: "declined", label: "Declined" },
           { value: "expired", label: "Expired" },
+          { value: "superseded", label: "Superseded" },
+          { value: "converted", label: "Converted" },
         ],
       },
       { key: "issue_date", label: "Issue date", type: "date", operators: DATE_OPERATORS },
@@ -1076,6 +1084,34 @@ export const MODULE_VIEW_DEFINITIONS: Record<string, ModuleViewDefinition> = {
       { key: "paid_on", label: "Paid on", type: "date", operators: DATE_OPERATORS },
     ],
     defaultConfig: MODULE_VIEW_DEFAULTS.finance_payments,
+  },
+  finance_recurring_invoices: {
+    key: "finance_recurring_invoices",
+    label: "Recurring invoices",
+    route: "/dashboard/finance/recurring-invoices",
+    columns: [
+      { key: "name", label: "Name" },
+      { key: "customer_name", label: "Customer" },
+      { key: "schedule", label: "Repeats" },
+      { key: "next_run_date", label: "Next invoice" },
+      { key: "action", label: "Then" },
+      { key: "issued_count", label: "Invoices made" },
+      { key: "status", label: "Status" },
+      { key: "end_date", label: "Ends" },
+    ],
+    filterFields: [
+      { key: "name", label: "Name", type: "text", operators: TEXT_OPERATORS },
+      { key: "customer_name", label: "Customer", type: "text", operators: TEXT_OPERATORS },
+      { key: "frequency", label: "Frequency", type: "select", operators: SELECT_OPERATORS, options: [
+        { value: "weekly", label: "Weekly" }, { value: "monthly", label: "Monthly" }, { value: "quarterly", label: "Quarterly" }, { value: "yearly", label: "Yearly" },
+      ] },
+      { key: "action", label: "Then", type: "select", operators: SELECT_OPERATORS, options: [
+        { value: "draft", label: "Save a draft" }, { value: "issue_and_send", label: "Issue and email" },
+      ] },
+      { key: "next_run_date", label: "Next invoice", type: "date", operators: DATE_OPERATORS },
+      { key: "currency", label: "Currency", type: "text", operators: TEXT_OPERATORS },
+    ],
+    defaultConfig: MODULE_VIEW_DEFAULTS.finance_recurring_invoices,
   },
   catalog_products: {
     key: "catalog_products",

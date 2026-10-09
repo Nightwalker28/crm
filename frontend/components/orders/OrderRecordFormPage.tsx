@@ -30,7 +30,10 @@ import {
   serializeTransactionItems,
   transactionCatalogLink,
   transactionItemsFromCopy,
+  transactionLineFields,
+  transactionTaxFields,
   TransactionLineItemsEditor,
+  useTransactionTax,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
@@ -58,6 +61,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDefaultTaxMode, type TaxMode } from "@/hooks/finance/useTaxRates";
 import { useCloneDraft, type CloneDraft } from "@/hooks/useCloneDraft";
 import { useBaseCurrency, useCompanyCurrencies } from "@/hooks/useCompanyCurrencies";
 import { useResolvedRecordLayout, type ResolvedRecordLayoutField } from "@/hooks/useResolvedRecordLayout";
@@ -92,6 +96,8 @@ type OrderForm = RecordFormValue & {
   warehouse_id: number | null;
   warehouse_name: string;
   priority: string;
+  /** "" until chosen: the company's default applies (13d §3.1). */
+  tax_mode: string;
 };
 const EMPTY_FORM: OrderForm = {
   ...EMPTY_DOCUMENT_HEADER,
@@ -113,6 +119,7 @@ const EMPTY_FORM: OrderForm = {
   warehouse_id: null,
   warehouse_name: "",
   priority: "normal",
+  tax_mode: "",
 };
 const STATUSES = [
   { value: "draft", label: "Draft" },
@@ -196,6 +203,7 @@ function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
       warehouse_id: order.warehouse_id ?? null,
       warehouse_name: order.warehouse_name ?? "",
       priority: order.priority ?? "normal",
+      tax_mode: order.tax_mode ?? "",
     },
     items: order.items?.length
       ? order.items.map((item) => ({
@@ -207,7 +215,8 @@ function orderSeed(order?: Order, deal?: DealForDocument | null): OrderSeed {
           quantity: String(item.quantity),
           unit_price: String(item.unit_price),
           discount_amount: String(item.discount_amount),
-          tax_amount: String(item.tax_amount),
+          ...transactionTaxFields(item),
+          ...transactionLineFields(item),
         }))
       : [createTransactionLineItem("order")],
     customValues: order.custom_fields ?? {},
@@ -326,7 +335,10 @@ function OrderRecordFormEditor({
   const [submitting, setSubmitting] = useState(false);
   // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
   const layoutQuery = useResolvedRecordLayout("sales_orders", "full_form");
-  const totals = useMemo(() => calculateTransactionTotals(items), [items]);
+  const defaultTaxMode = useDefaultTaxMode();
+  const taxMode: TaxMode = form.tax_mode === "inclusive" || form.tax_mode === "exclusive" ? form.tax_mode : (defaultTaxMode.data ?? "exclusive");
+  const tax = useTransactionTax(taxMode);
+  const totals = useMemo(() => calculateTransactionTotals(items, tax), [items, tax]);
   const shippingCharge = shippingChargeAmount(form);
   const snapshot = useMemo(() => JSON.stringify([form, items, customValues]), [form, items, customValues]);
   const dirty = snapshot !== initialSnapshot;
@@ -383,6 +395,7 @@ function OrderRecordFormEditor({
             ...(form.warehouse_id ? { warehouse_id: form.warehouse_id } : {}),
             priority: form.priority,
             custom_fields: customValues,
+            tax_mode: taxMode,
             items: serializeTransactionItems(items),
           }),
         },
@@ -503,6 +516,8 @@ function OrderRecordFormEditor({
                   currency={currency}
                   error={itemsError}
                   idPrefix="order"
+                  taxMode={taxMode}
+                  onTaxModeChange={(next) => setForm({ ...form, tax_mode: next })}
                 />
               ),
             },

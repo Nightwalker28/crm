@@ -6,12 +6,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 
 import { AuthAtmosphere } from "@/components/auth/AuthAtmosphere";
 import { Button } from "@/components/ui/button";
+import { TextLink } from "@/components/ui/TextLink";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CLIENT_TOKEN_STORAGE_KEY, clientLogin } from "@/hooks/useClientPortal";
 
 function getError() {
-  return "Sign-in failed. Check your credentials and try again.";
+  return "That email and password do not match an account. Check them and try again.";
 }
 
 function safeClientRedirect(value: string | null) {
@@ -67,7 +68,7 @@ function ClientLoginContent() {
         Lynk
       </h1>
 
-      <p className="mb-6 text-sm text-copy-secondary">Sign in to your client portal.</p>
+      <p className="mb-6 text-sm text-copy-secondary">Sign in to see your quotes, orders and invoices.</p>
 
       <form className="space-y-4 text-left" onSubmit={handleSubmit}>
         <div className="space-y-2">
@@ -97,7 +98,13 @@ function ClientLoginContent() {
         </Button>
       </form>
 
-      {error ? <p className="mt-3 text-xs text-state-danger">{error}</p> : null}
+      <p className="mt-4 text-sm">
+        <TextLink href={tenantSlug ? `/client/forgot?tenant=${encodeURIComponent(tenantSlug)}` : "/client/forgot"}>
+          Forgot your password?
+        </TextLink>
+      </p>
+
+      {error ? <p role="alert" className="mt-3 text-xs text-state-danger">{error}</p> : null}
     </>
   );
 }

@@ -20,6 +20,8 @@ celery_app = Celery(
         "app.tasks.report_subscription_tasks",
         "app.tasks.tenant_backup_tasks",
         "app.tasks.platform_tasks",
+        "app.tasks.quote_tasks",
+        "app.tasks.receivables_tasks",
     ],
 )
 
@@ -65,6 +67,19 @@ celery_app.conf.update(
         "scan-due-tenant-backups": {
             "task": "app.tasks.tenant_backups.scan_due_backup_schedules",
             "schedule": settings.TENANT_BACKUP_SCHEDULE_SCAN_INTERVAL_SECONDS,
+        },
+        "scan-expired-quotes": {
+            "task": "app.tasks.quotes.scan_expired",
+            "schedule": crontab(minute=20, hour=0),
+        },
+        # 13d §3.6: recurring invoices hourly; payment reminders once a day, mid-morning UTC.
+        "run-recurring-invoices": {
+            "task": "app.tasks.receivables.run_recurring_invoices",
+            "schedule": crontab(minute=5),
+        },
+        "send-payment-reminders": {
+            "task": "app.tasks.receivables.send_payment_reminders",
+            "schedule": crontab(minute=0, hour=9),
         },
         "scan-due-report-subscriptions": {
             "task": "app.tasks.report_subscriptions.scan_due",

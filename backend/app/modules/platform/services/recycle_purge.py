@@ -19,6 +19,8 @@ PURGE_TARGETS: tuple[tuple[str, str], ...] = (
     # that a credit note or payment still references.
     ("finance_credit_notes", "id"),
     ("finance_pos_invoices", "id"),
+    # Invoices made by a profile keep it as SET NULL, so a profile purges on its own.
+    ("finance_recurring_invoices", "id"),
     # Draft vendor credits before bills and vendor returns (they point at both).
     ("purchase_vendor_credits", "id"),
     ("purchase_bills", "id"),

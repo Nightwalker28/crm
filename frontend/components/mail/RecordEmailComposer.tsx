@@ -79,6 +79,14 @@ type Props = {
    */
   recipientCandidates?: RecipientCandidate[];
   returnFocusRef?: React.RefObject<HTMLElement | null>;
+  /** Sending a commercial document (13d §3.4): its subject, its type's template, its PDF. */
+  defaultSubject?: string;
+  defaultTemplateId?: number | null;
+  /**
+   * A generated PDF to attach (13d §3.4). `payload` replaces the document flag when the PDF
+   * is not the record's own document, like an account's statement (13d §3.6).
+   */
+  documentPdf?: { filename: string; payload?: Record<string, unknown> } | null;
 };
 
 const EMAIL_PATTERN = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
@@ -127,6 +135,9 @@ export default function RecordEmailComposer({
   defaultRecipient,
   recipientCandidates,
   returnFocusRef,
+  defaultSubject,
+  defaultTemplateId,
+  documentPdf,
 }: Props) {
   const contextQuery = useMailContext();
   const documentsQuery = useDocuments({ moduleKey, entityId, limit: 25 });
@@ -138,7 +149,10 @@ export default function RecordEmailComposer({
   const [cc, setCc] = useState("");
   const [bcc, setBcc] = useState("");
   const [showCopyFields, setShowCopyFields] = useState(false);
-  const [subject, setSubject] = useState("");
+  const [subject, setSubject] = useState(defaultSubject ?? "");
+  // A document's own PDF goes with it unless the user unticks it (13d §3.4).
+  const [attachPdf, setAttachPdf] = useState(Boolean(documentPdf));
+  const [templateSeeded, setTemplateSeeded] = useState(false);
   const [body, setBody] = useState("");
   const [templateId, setTemplateId] = useState<number | null>(null);
   const [attachmentIds, setAttachmentIds] = useState<number[]>([]);
@@ -193,6 +207,16 @@ export default function RecordEmailComposer({
     const rest = toRecipients.filter((entry) => !sameAddress(candidate.email, entry));
     setTo((checked ? [...rest, candidate.email] : rest).join(", "));
     if (recipientError) setRecipientError(null);
+  }
+
+  // The document type's template is the starting body, once the templates have loaded.
+  if (!templateSeeded && defaultTemplateId && templates.length) {
+    setTemplateSeeded(true);
+    const template = templates.find((entry) => entry.id === defaultTemplateId);
+    if (template && !body.trim()) {
+      setTemplateId(template.id);
+      setBody(template.body);
+    }
   }
 
   function insertTemplate(value: string) {
@@ -263,6 +287,8 @@ export default function RecordEmailComposer({
         body_text: body,
         template_id: templateId,
         attachment_document_ids: attachmentIds,
+        ...(documentPdf && !documentPdf.payload ? { attach_document_pdf: attachPdf } : {}),
+        ...(documentPdf?.payload && attachPdf ? documentPdf.payload : {}),
         idempotency_key: idempotencyKey,
         ...(relatedContactIds.length ? { related_contact_ids: relatedContactIds } : {}),
       });
@@ -554,6 +580,15 @@ export default function RecordEmailComposer({
 
           <Field>
             <FieldLabel>Attachments</FieldLabel>
+            {documentPdf ? (
+              <label className="flex cursor-pointer items-start gap-3 border-y border-line-subtle py-2">
+                <Checkbox checked={attachPdf} onCheckedChange={(value) => setAttachPdf(value === true)} />
+                <span className="min-w-0">
+                  <span className="block truncate text-p-sm text-copy-primary">{documentPdf.filename}</span>
+                  <span className="block text-p-xs text-copy-muted">This document as a PDF, made when you send</span>
+                </span>
+              </label>
+            ) : null}
             {documentsQuery.isLoading ? (
               <FieldDescription role="status">Loading this record&apos;s files…</FieldDescription>
             ) : documentsQuery.error ? (

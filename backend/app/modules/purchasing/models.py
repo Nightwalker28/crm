@@ -2,7 +2,7 @@
 vendors and the receipts that bring their stock in; RFQs, vendor returns and vendor credits
 (13c §3.6–3.8)."""
 
-from sqlalchemy import BigInteger, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
+from sqlalchemy import BigInteger, Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, UniqueConstraint, func, text
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
@@ -39,7 +39,10 @@ class PurchaseOrder(Base):
     expected_date = Column(Date)
     vendor_reference = Column(String(120))
     notes = Column(Text)
+    # Lines net of discount, before tax; `total` adds the lines' tax (13d §3.1).
     subtotal = Column(Numeric(18, 2), nullable=False, server_default="0")
+    tax_total = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
+    total = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
     ordered_at = Column(DateTime(timezone=True))
     ordered_by = Column(BigInteger, ForeignKey("users.id", ondelete="SET NULL"))
     sent_at = Column(DateTime(timezone=True))
@@ -58,6 +61,13 @@ class PurchaseOrder(Base):
     warehouse = relationship("InventoryWarehouse", lazy="selectin")
     lines = relationship("PurchaseOrderLine", back_populates="order", cascade="all, delete-orphan", order_by="PurchaseOrderLine.sort_order")
 
+    @property
+    def tax_summary(self) -> list[dict]:
+        """Tax by rate over the lines (13d §3.1)."""
+        from app.modules.finance.services.tax_rates import document_tax_summary
+
+        return document_tax_summary(self, self.lines)
+
 
 class PurchaseOrderLine(Base):
     """A product or a service bought (13c §3.5). Products are received (tracked ones into
@@ -68,6 +78,7 @@ class PurchaseOrderLine(Base):
         CheckConstraint("quantity > 0", name="ck_purchase_order_line_positive"),
         CheckConstraint("unit_cost >= 0", name="ck_purchase_order_line_cost_nonnegative"),
         CheckConstraint("discount_amount >= 0", name="ck_purchase_order_line_discount_nonnegative"),
+        CheckConstraint("tax_amount >= 0", name="ck_purchase_order_line_tax_nonnegative"),
         CheckConstraint("(product_id IS NULL) <> (catalog_service_id IS NULL)", name="ck_purchase_order_line_one_item"),
         Index("ix_purchase_order_lines_tenant_product", "tenant_id", "product_id"),
     )
@@ -80,8 +91,13 @@ class PurchaseOrderLine(Base):
     description = Column(Text)
     quantity = Column(Numeric(12, 4), nullable=False)
     unit_cost = Column(Numeric(12, 4), nullable=False, server_default="0")
-    # An amount off the line, as on bills and sales lines; line_total = quantity × cost − discount.
+    # An amount off the line, as on sales lines; line_total = quantity × cost − discount + tax.
     discount_amount = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
+    tax_amount = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
+    # 13d §3.1: the rate the tax was computed from; `tax_manual` keeps a typed amount as is.
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="RESTRICT"), nullable=True)
+    tax_manual = Column(Boolean, nullable=False, default=False, server_default="false")
+    unit = Column(Text, nullable=True)
     line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     sort_order = Column(Integer, nullable=False, server_default="0")
 
@@ -206,6 +222,13 @@ class PurchaseBill(Base):
     order = relationship("PurchaseOrder", lazy="selectin")
     lines = relationship("PurchaseBillLine", back_populates="bill", cascade="all, delete-orphan", order_by="PurchaseBillLine.sort_order")
 
+    @property
+    def tax_summary(self) -> list[dict]:
+        """Tax by rate over the lines (13d §3.1)."""
+        from app.modules.finance.services.tax_rates import document_tax_summary
+
+        return document_tax_summary(self, self.lines)
+
 
 class PurchaseBillLine(Base):
     __tablename__ = "purchase_bill_lines"
@@ -230,6 +253,10 @@ class PurchaseBillLine(Base):
     # The PO line's cost when the line was made, so a price variance stays visible.
     po_unit_cost = Column(Numeric(12, 4))
     tax_amount = Column(Numeric(18, 2), nullable=False, server_default="0")
+    # 13d §3.1: the rate the tax was computed from; `tax_manual` keeps a typed amount as is.
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="RESTRICT"), nullable=True)
+    tax_manual = Column(Boolean, nullable=False, default=False, server_default="false")
+    unit = Column(Text, nullable=True)
     line_total = Column(Numeric(18, 2), nullable=False, server_default="0")
     sort_order = Column(Integer, nullable=False, server_default="0")
 
@@ -342,6 +369,13 @@ class PurchaseVendorCredit(Base):
     lines = relationship("PurchaseVendorCreditLine", back_populates="credit", cascade="all, delete-orphan",
                          order_by="PurchaseVendorCreditLine.sort_order")
 
+    @property
+    def tax_summary(self) -> list[dict]:
+        """Tax by rate over the lines (13d §3.1)."""
+        from app.modules.finance.services.tax_rates import document_tax_summary
+
+        return document_tax_summary(self, self.lines)
+
 
 class PurchaseVendorCreditLine(Base):
     __tablename__ = "purchase_vendor_credit_lines"
@@ -364,6 +398,9 @@ class PurchaseVendorCreditLine(Base):
     quantity = Column(Numeric(12, 4), nullable=False)
     unit_cost = Column(Numeric(12, 4), nullable=False, default=0, server_default="0")
     tax_amount = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
+    # 13d §3.1: the rate the tax was computed from; `tax_manual` keeps a typed amount as is.
+    tax_rate_id = Column(BigInteger, ForeignKey("finance_tax_rates.id", ondelete="RESTRICT"), nullable=True)
+    tax_manual = Column(Boolean, nullable=False, default=False, server_default="false")
     line_total = Column(Numeric(18, 2), nullable=False, default=0, server_default="0")
     sort_order = Column(Integer, nullable=False, default=0, server_default="0")
 

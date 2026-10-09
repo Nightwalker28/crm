@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
+import { DocumentPdfButton } from "@/components/transactions/DocumentPdfButton";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { FormFooter } from "@/components/ui/ActionBar";
 import { Button } from "@/components/ui/button";
@@ -201,6 +202,7 @@ export function ReceiptDocumentPage({ receiptId = null, orderId = null }: { rece
       actions={
         <div className="flex flex-wrap gap-2">
           {receipt ? <StatusValue status={getPurchaseReceiptStatus(receipt.status)} context="record" /> : null}
+          {receipt?.id ? <DocumentPdfButton moduleKey="purchase_receipts" recordId={receipt.id} /> : null}
           {receipt?.status === "draft" && actions?.can_edit ? <Button onClick={() => void post()} disabled={mutations.isSaving}>Post</Button> : null}
           {receipt?.status === "posted" && canBill && order.data?.bill_status === "to_bill" ? (
             <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?receipt_id=${receipt.id}`}>Bill this receipt</Link></Button>

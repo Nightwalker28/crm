@@ -1,6 +1,7 @@
 import {
   Activity,
   BadgePercent,
+  BellRing,
   Blocks,
   Building2,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   FileText,
   Fingerprint,
   FolderTree,
+  Percent,
   Warehouse,
   Globe,
   KeyRound,
@@ -94,6 +96,7 @@ export const MODULE_REGISTRY: readonly ModuleRegistryEntry[] = [
   { key: "finance_pos", label: "Invoices", route: DASHBOARD_ROUTES.invoices, group: "finance", status: "tier2", enabled: true, sortOrder: 20, quickAction: { label: "Create invoice", description: "Add an itemized invoice", href: `${DASHBOARD_ROUTES.invoices}/new` } },
   // Credit notes start from an invoice or a return, so there is no quick action.
   { key: "finance_credit_notes", label: "Credit notes", route: DASHBOARD_ROUTES.creditNotes, group: "finance", status: "tier2", enabled: true, sortOrder: 25 },
+  { key: "finance_recurring_invoices", label: "Recurring invoices", route: DASHBOARD_ROUTES.recurringInvoices, group: "finance", status: "tier2", enabled: true, sortOrder: 27, quickAction: { label: "Create recurring invoice", description: "Bill a customer on a schedule", href: `${DASHBOARD_ROUTES.recurringInvoices}/new`, requiredAction: "create" } },
   { key: "finance_payments", label: "Payments", route: DASHBOARD_ROUTES.payments, group: "finance", status: "tier2", enabled: true, sortOrder: 30, quickAction: { label: "Record payment", description: "Apply a payment to an outstanding invoice", href: `${DASHBOARD_ROUTES.payments}/record`, requiredAction: "create" } },
   { key: "reports", label: "Reports", route: DASHBOARD_ROUTES.reports, group: "reports", status: "tier2", enabled: true, sortOrder: 90, quickAction: { label: "Build report", description: "Start a new report from scratch", href: `${DASHBOARD_ROUTES.reports}/new` } },
   { key: "message_templates", label: "Templates", route: SETTINGS_ROUTES.templates, group: "settings", status: "tier2", enabled: true, sortOrder: 80, adminOnly: true, quickAction: { label: "Create message template", description: "Add a reusable message template", href: `${SETTINGS_ROUTES.templates}/new` } },
@@ -152,6 +155,9 @@ export const SETTINGS_NAV_GROUPS = [
       { href: SETTINGS_ROUTES.recordLayouts, label: "Record layouts", description: "Arrange the fields of forms and record details, per role or team.", icon: LayoutTemplate, sortOrder: 85 },
       { href: SETTINGS_ROUTES.pipeline, label: "Deal pipeline", description: "Name, order and weight the stages deals move through.", icon: Columns3, sortOrder: 87 },
       { href: SETTINGS_ROUTES.catalogCategories, label: "Catalog categories", description: "Group products and services the way your team browses them.", icon: FolderTree, sortOrder: 88 },
+      { href: SETTINGS_ROUTES.taxes, label: "Taxes", description: "Tax rates and groups, the defaults lines start with, and whether prices include tax.", icon: Percent, sortOrder: 88.5 },
+      { href: SETTINGS_ROUTES.documentSettings, label: "Documents", description: "How PDFs look, and the terms, notes and email each document type starts with.", icon: FileText, sortOrder: 88.6 },
+      { href: SETTINGS_ROUTES.receivables, label: "Receivables", description: "Payment reminders and the write-off limit.", icon: BellRing, sortOrder: 88.7 },
       { href: SETTINGS_ROUTES.warehouses, label: "Warehouses", description: "Manage inventory locations and the default warehouse.", icon: Warehouse, sortOrder: 89 },
       { href: SETTINGS_ROUTES.templates, label: "Templates", description: "Manage reusable message templates.", icon: FileText, sortOrder: 130 },
       { href: SETTINGS_ROUTES.automation, label: "Automation", description: "Configure event-based workflow rules and review run history.", icon: Repeat2, sortOrder: 90 },

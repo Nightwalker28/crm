@@ -30,7 +30,10 @@ import {
   serializeTransactionItems,
   transactionCatalogLink,
   transactionItemsFromCopy,
+  transactionLineFields,
+  transactionTaxFields,
   TransactionLineItemsEditor,
+  useTransactionTax,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionTotals } from "@/components/transactions/TransactionTotals";
@@ -59,6 +62,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDefaultTaxMode, type TaxMode } from "@/hooks/finance/useTaxRates";
 import { useCloneDraft, type CloneDraft } from "@/hooks/useCloneDraft";
 import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
@@ -70,7 +74,7 @@ import {
 } from "@/hooks/useModuleFieldConfigs";
 import { apiFetch } from "@/lib/api";
 import { apiErrorFromResponse } from "@/lib/apiErrors";
-import { formatDateTime } from "@/lib/datetime";
+import { formatDateTime, todayIsoDate } from "@/lib/datetime";
 import { formValuesFromCopy } from "@/lib/formValues";
 
 /** The quote form's value: flat, keyed by field key, as `RecordForm` draws it (13b Phase 4e). */
@@ -90,6 +94,8 @@ type QuoteForm = RecordFormValue & {
   issue_date: string;
   expiry_date: string;
   currency: string;
+  /** "" until chosen: the company's default applies (13d §3.1). */
+  tax_mode: string;
   notes: string;
 };
 
@@ -110,6 +116,7 @@ const EMPTY_FORM: QuoteForm = {
   issue_date: "",
   expiry_date: "",
   currency: "",
+  tax_mode: "",
   notes: "",
 };
 const STATUSES = [
@@ -153,6 +160,7 @@ type QuoteEditSource = {
     issue_date?: string | null;
     expiry_date?: string | null;
     currency?: string | null;
+    tax_mode?: string | null;
     notes?: string | null;
     updated_at?: string | null;
     custom_fields?: Record<string, unknown> | null;
@@ -165,6 +173,12 @@ type QuoteEditSource = {
       unit_price: string | number;
       discount_amount: string | number;
       tax_amount: string | number;
+      tax_rate_id?: number | null;
+      tax_manual?: boolean | null;
+      line_type?: string | null;
+      discount_percent?: string | number | null;
+      unit?: string | null;
+      is_optional?: boolean | null;
     }>;
   };
   contact?: {
@@ -234,6 +248,7 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
       issue_date: quote.issue_date ?? "",
       expiry_date: quote.expiry_date ?? "",
       currency: quote.currency ?? "",
+      tax_mode: quote.tax_mode ?? "",
       notes: quote.notes ?? "",
     },
     items: quote.items?.length
@@ -245,11 +260,33 @@ function quoteSeed(source?: QuoteEditSource, deal?: DealForDocument | null): Quo
           quantity: String(item.quantity),
           unit_price: String(item.unit_price),
           discount_amount: String(item.discount_amount),
-          tax_amount: String(item.tax_amount),
+          ...transactionTaxFields(item),
+          ...transactionLineFields(item),
         }))
       : [createTransactionLineItem("quote")],
     customValues: quote.custom_fields ?? {},
   };
+}
+
+/**
+ * A new quote is issued today and valid for the company's period (13d §3.5); the server
+ * applies the same defaults when the dates are left empty.
+ */
+function withDefaultDates(form: QuoteForm, validityDays: number): QuoteForm {
+  const issue = form.issue_date || todayIsoDate();
+  return { ...form, issue_date: issue, expiry_date: form.expiry_date || addDaysIso(issue, validityDays) };
+}
+
+function addDaysIso(isoDate: string, days: number) {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day + days)).toISOString().slice(0, 10);
+}
+
+async function fetchQuoteValidityDays() {
+  const res = await apiFetch("/users/company");
+  if (!res.ok) throw new Error(`Failed with ${res.status}`);
+  const body = (await res.json().catch(() => null)) as { quote_validity_days?: number } | null;
+  return body?.quote_validity_days ?? 30;
 }
 
 /** *Clone* (13b Phase 5): the copied customer, addresses, terms and lines; a new number, status and dates. */
@@ -282,7 +319,14 @@ export default function QuoteRecordFormPage({
     staleTime: 30_000,
   });
   const clone = useCloneDraft("sales_quotes", mode === "create");
+  const validity = useQuery({
+    queryKey: ["company-quote-validity-days"],
+    queryFn: fetchQuoteValidityDays,
+    enabled: mode === "create",
+    staleTime: 5 * 60_000,
+  });
   if (mode === "edit" && query.isLoading) return <RouteLoadingState />;
+  if (mode === "create" && validity.isLoading) return <RouteLoadingState />;
   if (mode === "create" && dealId && dealQuery.isLoading) return <RouteLoadingState />;
   if (clone.isLoading) return <RouteLoadingState />;
   if (clone.error)
@@ -303,7 +347,8 @@ export default function QuoteRecordFormPage({
         backLabel="Back to quotes"
       />
     );
-  const seed = clone.draft ? quoteSeedFromCopy(clone.draft) : quoteSeed(query.data, dealQuery.data);
+  const baseSeed = clone.draft ? quoteSeedFromCopy(clone.draft) : quoteSeed(query.data, dealQuery.data);
+  const seed = mode === "create" ? { ...baseSeed, form: withDefaultDates(baseSeed.form, validity.data ?? 30) } : baseSeed;
   return (
     <QuoteRecordFormEditor
       key={`${mode}:${quoteId ?? "new"}:${query.data?.quote.updated_at ?? ""}:${dealQuery.data?.opportunity_id ?? ""}:${clone.cloneId ?? ""}`}
@@ -353,7 +398,10 @@ function QuoteRecordFormEditor({
   const { fields: moduleFields } = useModuleFieldConfigs("sales_quotes");
   const baseCurrency = useBaseCurrency();
   const currency = form.currency || baseCurrency.data || "USD";
-  const totals = useMemo(() => calculateTransactionTotals(items), [items]);
+  const defaultTaxMode = useDefaultTaxMode();
+  const taxMode: TaxMode = form.tax_mode === "inclusive" || form.tax_mode === "exclusive" ? form.tax_mode : (defaultTaxMode.data ?? "exclusive");
+  const tax = useTransactionTax(taxMode);
+  const totals = useMemo(() => calculateTransactionTotals(items, tax), [items, tax]);
   const shippingCharge = shippingChargeAmount(form);
   const snapshot = useMemo(
     () => JSON.stringify([form, items, customValues]),
@@ -364,6 +412,9 @@ function QuoteRecordFormEditor({
   function validate() {
     const nextErrors = layoutQuery.data ? validateLayoutDrivenQuickCreate(layoutQuery.data, form, customValues) : {};
     if (!form.customer_name.trim() && !nextErrors.customer_name) nextErrors.customer_name = "Customer name is required.";
+    // ISO dates compare as strings. The copy is the server's (13d §3.5).
+    if (form.issue_date && form.expiry_date && form.expiry_date < form.issue_date && !nextErrors.expiry_date)
+      nextErrors.expiry_date = "The expiry date cannot be before the issue date.";
     const validItems = areTransactionItemsValid(items);
     setFieldErrors(nextErrors);
     setItemsError(
@@ -420,6 +471,7 @@ function QuoteRecordFormEditor({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...payload,
+            tax_mode: taxMode,
             items: serializeTransactionItems(items),
           }),
         },
@@ -514,6 +566,9 @@ function QuoteRecordFormEditor({
                   currency={currency}
                   error={itemsError}
                   idPrefix="quote"
+                  taxMode={taxMode}
+                  onTaxModeChange={(next) => setForm({ ...form, tax_mode: next })}
+                  allowOptional
                 />
               ),
             },

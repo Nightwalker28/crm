@@ -62,6 +62,8 @@ const STATIC_ROUTES = [
   "/dashboard/finance/payments",
   "/dashboard/finance/payments/record",
   "/dashboard/finance/credit-notes",
+  "/dashboard/finance/recurring-invoices",
+  "/dashboard/finance/recurring-invoices/new",
   "/dashboard/finance/invoices",
   "/dashboard/finance/invoices/new",
   "/dashboard/mail",
@@ -91,6 +93,9 @@ const STATIC_ROUTES = [
   "/dashboard/settings/calendar-booking",
   "/dashboard/settings/customer-groups",
   "/dashboard/settings/catalog-categories",
+  "/dashboard/settings/taxes",
+  "/dashboard/settings/documents",
+  "/dashboard/settings/receivables",
   "/dashboard/settings/picklists",
   "/dashboard/settings/picklists/lead_status",
   "/dashboard/settings/picklists/country",
@@ -141,6 +146,7 @@ const LISTS: Array<{ list: string; re: string; suffixes: string[]; record?: bool
   { list: "/dashboard/purchasing/vendor-credits", re: "^/dashboard/purchasing/vendor-credits/\\d+$", suffixes: [""] },
   { list: "/dashboard/finance/credit-notes",     re: "^/dashboard/finance/credit-notes/\\d+$",    suffixes: [""] },
   { list: "/dashboard/finance/payments",         re: "^/dashboard/finance/payments/\\d+$",        suffixes: [""] },
+  { list: "/dashboard/finance/recurring-invoices", re: "^/dashboard/finance/recurring-invoices/\\d+$", suffixes: [""] },
   { list: "/dashboard/settings/modules",        re: "^/dashboard/settings/modules/\\d+$",       suffixes: [""] },
   { list: "/dashboard/settings/message-templates", re: "^/dashboard/settings/message-templates/\\d+/edit$", suffixes: [""] },
 ];
@@ -165,8 +171,12 @@ const CLIENT_ROUTES = [
   "/client/catalog",
   "/client/documents",
   "/client/orders",
+  "/client/invoices",
+  "/client/account",
   "/client/quotes",
   "/client/setup",
+  "/client/forgot",
+  "/client/reset?token=e2e-placeholder-token",
 ];
 // Client lists whose first row opens an archetype-2 record.
 const CLIENT_RECORD_LISTS = ["/client/bookings", "/client/catalog", "/client/orders", "/client/quotes"];

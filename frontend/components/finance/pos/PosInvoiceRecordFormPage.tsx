@@ -21,8 +21,12 @@ import {
   areTransactionItemsValid,
   calculateTransactionTotals,
   createTransactionLineItem,
+  parseTransactionDiscount,
   transactionCatalogLink,
+  transactionLineFields,
+  transactionTaxFields,
   TransactionLineItemsEditor,
+  useTransactionTax,
   type TransactionLineItem,
 } from "@/components/transactions/TransactionLineItemsEditor";
 import { TransactionLineItemsTable } from "@/components/transactions/TransactionLineItemsTable";
@@ -31,7 +35,6 @@ import { Button } from "@/components/ui/button";
 import {
   Field,
   FieldDescription,
-  FieldError,
   FieldLabel,
 } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -48,6 +51,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { useDefaultTaxMode, type TaxMode } from "@/hooks/finance/useTaxRates";
 import { useBaseCurrency } from "@/hooks/useCompanyCurrencies";
 import { useAccessibleModules } from "@/hooks/useAccessibleModules";
 import { useResolvedRecordLayout, type ResolvedRecordLayoutField } from "@/hooks/useResolvedRecordLayout";
@@ -73,8 +77,8 @@ type InvoiceForm = RecordFormValue & {
   template_id: string;
   accent_color: string;
   currency: string;
-  discount_amount: string;
-  tax_rate: string;
+  /** "" until chosen: the company's default applies (13d §3.1). */
+  tax_mode: string;
   payment_terms: string;
   notes: string;
 };
@@ -93,8 +97,7 @@ const EMPTY_FORM: InvoiceForm = {
   template_id: "modern",
   accent_color: "#14b8a6", // design-exempt: tenant brand colour is data, this is the unset fallback (§2.5)
   currency: "",
-  discount_amount: "0",
-  tax_rate: "0",
+  tax_mode: "",
   payment_terms: "",
   notes: "",
 };
@@ -168,8 +171,7 @@ function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
       template_id: invoice.template_id,
       accent_color: invoice.accent_color,
       currency: invoice.currency,
-      discount_amount: String(invoice.discount_amount),
-      tax_rate: String(invoice.tax_rate),
+      tax_mode: invoice.tax_mode ?? "",
       payment_terms: invoice.payment_terms ?? "",
       notes: invoice.notes ?? "",
     },
@@ -184,7 +186,8 @@ function invoiceSeed(invoice?: PosInvoice): InvoiceSeed {
           quantity: String(line.quantity),
           unit_price: String(line.unit_price),
           discount_amount: String(line.discount_amount ?? 0),
-          tax_amount: String(line.tax_amount ?? 0),
+          ...transactionTaxFields(line),
+          ...transactionLineFields(line),
         }))
       : [createTransactionLineItem("invoice")],
     customValues: invoice.custom_fields ?? {},
@@ -281,21 +284,13 @@ function PosInvoiceRecordFormEditor({
   const [linesError, setLinesError] = useState<string | null>(null);
   // The `full_form` layout (13b Phase 4e); the body below reads the same cached query.
   const layoutQuery = useResolvedRecordLayout("finance_pos", "full_form");
-  // One error per pricing field: an error names the fix (§7.5).
-  const [discountError, setDiscountError] = useState<string | null>(null);
-  const [taxRateError, setTaxRateError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
-  const baseTotals = useMemo(() => calculateTransactionTotals(lines), [lines]);
-  // Lines first (quantity × price − discount + tax, as on orders), then the invoice-level
-  // discount and tax rate — the same arithmetic the server applies.
-  const totals = useMemo(() => {
-    const net = baseTotals.subtotal - baseTotals.discount;
-    const discount = Math.max(0, numberValue(form.discount_amount));
-    const taxable = Math.max(0, net - discount);
-    const tax = baseTotals.tax + (taxable * Math.max(0, numberValue(form.tax_rate))) / 100;
-    return { subtotal: net, discount, tax, total: taxable + tax };
-  }, [baseTotals.subtotal, baseTotals.discount, baseTotals.tax, form.discount_amount, form.tax_rate]);
+  // The same line arithmetic the server applies (13d §3.1): one definition of totals (H16).
+  const defaultTaxMode = useDefaultTaxMode();
+  const taxMode: TaxMode = form.tax_mode === "inclusive" || form.tax_mode === "exclusive" ? form.tax_mode : (defaultTaxMode.data ?? "exclusive");
+  const tax = useTransactionTax(taxMode);
+  const totals = useMemo(() => calculateTransactionTotals(lines, tax), [lines, tax]);
   const snapshot = useMemo(() => JSON.stringify([form, lines, customValues]), [form, lines, customValues]);
   const dirty = snapshot !== initialSnapshot;
   useUnsavedChangesGuard(dirty, submitting);
@@ -307,21 +302,12 @@ function PosInvoiceRecordFormEditor({
       nextErrors.customer_email = "Enter a valid email address.";
     }
     const validLines = areTransactionItemsValid(lines);
-    const validDiscount =
-      numberValue(form.discount_amount) >= 0 &&
-      numberValue(form.discount_amount) <= totals.subtotal;
-    const validTaxRate =
-      numberValue(form.tax_rate) >= 0 && numberValue(form.tax_rate) <= 100;
     setFieldErrors(nextErrors);
     setLinesError(
       validLines
         ? null
         : "Each line needs a description, positive quantity, and non-negative price.",
     );
-    setDiscountError(
-      validDiscount ? null : "Enter a discount between zero and the subtotal.",
-    );
-    setTaxRateError(validTaxRate ? null : "Enter a tax rate between 0 and 100.");
     const firstInvalid = Object.keys(nextErrors)[0];
     if (firstInvalid) {
       document.getElementById(
@@ -333,9 +319,7 @@ function PosInvoiceRecordFormEditor({
       document
         .querySelector<HTMLInputElement>("[data-line-field='name']")
         ?.focus();
-    else if (!validDiscount) document.getElementById("invoice-discount")?.focus();
-    else if (!validTaxRate) document.getElementById("invoice-tax-rate")?.focus();
-    return !firstInvalid && validLines && validDiscount && validTaxRate;
+    return !firstInvalid && validLines;
   }
   function payload() {
     const full: Record<string, unknown> = {
@@ -351,8 +335,7 @@ function PosInvoiceRecordFormEditor({
       template_id: form.template_id,
       accent_color: form.accent_color,
       currency,
-      discount_amount: numberValue(form.discount_amount),
-      tax_rate: numberValue(form.tax_rate),
+      tax_mode: taxMode,
       payment_terms: form.payment_terms.trim() || null,
       notes: form.notes.trim() || null,
       custom_fields: customValues,
@@ -360,10 +343,17 @@ function PosInvoiceRecordFormEditor({
         ...(line.id ? { id: line.id } : {}),
         ...transactionCatalogLink(line),
         description: line.name.trim(),
-        quantity: numberValue(line.quantity),
-        unit_price: numberValue(line.unit_price),
-        discount_amount: numberValue(line.discount_amount),
-        tax_amount: numberValue(line.tax_amount),
+        line_type: line.line_type,
+        quantity: line.line_type === "item" ? numberValue(line.quantity) : 1,
+        unit_price: line.line_type === "item" ? numberValue(line.unit_price) : 0,
+        ...(() => {
+          const discount = parseTransactionDiscount(line.discount_amount);
+          return { discount_amount: numberValue(discount.amount), discount_percent: discount.percent === null ? null : numberValue(discount.percent) };
+        })(),
+        unit: line.unit.trim() || null,
+        tax_rate_id: line.tax_rate_id,
+        tax_manual: line.tax_manual,
+        tax_amount: line.tax_manual ? numberValue(line.tax_amount) : 0,
       })),
     };
     if (!locked) return full;
@@ -486,7 +476,7 @@ function PosInvoiceRecordFormEditor({
                   items={(invoice.lines ?? []).map((line, index) => ({
                     id: line.id ?? index, name: line.description, quantity: line.quantity, unit_price: line.unit_price,
                     discount_amount: line.discount_amount ?? 0, tax_amount: line.tax_amount ?? 0, line_total: line.line_total ?? 0,
-                    catalog_product_id: line.catalog_product_id, catalog_service_id: line.catalog_service_id,
+                    catalog_product_id: line.catalog_product_id, catalog_service_id: line.catalog_service_id, line_type: line.line_type, unit: line.unit,
                   }))}
                   currency={invoice.currency}
                   itemLabel="Description"
@@ -503,6 +493,8 @@ function PosInvoiceRecordFormEditor({
                   idPrefix="invoice"
                   itemLabel="Description"
                   showDescription={false}
+                  taxMode={taxMode}
+                  onTaxModeChange={(next) => setForm({ ...form, tax_mode: next })}
                 />
               ),
             },
@@ -512,14 +504,7 @@ function PosInvoiceRecordFormEditor({
                 onChange={setForm}
                 currency={currency}
                 totals={totals}
-                discountError={discountError}
-                taxRateError={taxRateError}
-                locked={locked}
                 showPaidNow={mode === "create" && canIssue && canPayNow}
-                onClearPricingError={() => {
-                  setDiscountError(null);
-                  setTaxRateError(null);
-                }}
               />
             ),
           }}
@@ -594,27 +579,19 @@ function invoiceCustomerRenderer(form: InvoiceForm) {
   };
 }
 
-/** Totals, invoice-level pricing, the till's *paid now*, and print settings. */
+/** Totals, the till's *paid now*, and print settings. */
 function InvoiceSidebar({
   form,
   onChange,
   currency,
   totals,
-  discountError,
-  taxRateError,
-  locked,
   showPaidNow,
-  onClearPricingError,
 }: {
   form: InvoiceForm;
   onChange: (form: InvoiceForm) => void;
   currency: string;
   totals: { subtotal: number; discount: number; tax: number; total: number };
-  discountError: string | null;
-  taxRateError: string | null;
-  locked: boolean;
   showPaidNow: boolean;
-  onClearPricingError: () => void;
 }) {
   return (
     <>
@@ -623,51 +600,11 @@ function InvoiceSidebar({
         currency={currency}
         rows={[
           { label: "Subtotal", amount: totals.subtotal },
-          { label: "Invoice discount", amount: totals.discount, negative: true },
+          { label: "Discount", amount: totals.discount, negative: true },
           { label: "Tax", amount: totals.tax },
           { label: "Total", amount: totals.total, resolved: true },
         ]}
       />
-      <FormSection
-        title="Pricing and tax"
-        description={locked ? "Fixed once the invoice is issued." : "Invoice-level adjustments, applied after the lines' own discount and tax."}
-      >
-        <fieldset disabled={locked} className="space-y-4">
-          <Field data-invalid={Boolean(discountError)}>
-            <FieldLabel htmlFor="invoice-discount">Discount amount</FieldLabel>
-            <Input
-              id="invoice-discount"
-              type="number"
-              min="0"
-              step="0.01"
-              value={form.discount_amount}
-              aria-invalid={Boolean(discountError)}
-              onChange={(event) => {
-                onClearPricingError();
-                onChange({ ...form, discount_amount: event.target.value });
-              }}
-            />
-            {discountError ? <FieldError>{discountError}</FieldError> : null}
-          </Field>
-          <Field data-invalid={Boolean(taxRateError)}>
-            <FieldLabel htmlFor="invoice-tax-rate">Tax rate (%)</FieldLabel>
-            <Input
-              id="invoice-tax-rate"
-              type="number"
-              min="0"
-              max="100"
-              step="0.01"
-              value={form.tax_rate}
-              aria-invalid={Boolean(taxRateError)}
-              onChange={(event) => {
-                onClearPricingError();
-                onChange({ ...form, tax_rate: event.target.value });
-              }}
-            />
-            {taxRateError ? <FieldError>{taxRateError}</FieldError> : null}
-          </Field>
-        </fieldset>
-      </FormSection>
       {/* Money is recorded as payments on the issued invoice (12c §3.3). The one exception is
           the till: a walk-in sale is issued and paid in the same step. */}
       {showPaidNow ? (

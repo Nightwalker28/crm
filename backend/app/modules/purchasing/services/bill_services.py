@@ -18,7 +18,8 @@ from sqlalchemy.orm import Session, selectinload
 
 from app.core.pagination import Pagination, build_paged_response
 from app.modules.catalog.services.line_links import PRODUCT_LINK_FIELD, SERVICE_LINK_FIELD, normalize_catalog_line_links
-from app.modules.finance.services.document_amounts import ZERO, decimal_input, line_amounts, money, units
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import ZERO, clean_unit, decimal_input, money, pro_rata, units
 from app.modules.finance.services.invoice_balances import default_due_date, is_overdue, payment_status_for
 from app.modules.platform.services.activity_logs import log_activity
 from app.modules.platform.services.numbering import allocate_business_number
@@ -169,6 +170,8 @@ def _apply_lines(db: Session, *, bill: PurchaseBill, order: PurchaseOrder | None
     rows = billing_lines(db, order=order, exclude_bill_id=bill.id) if order else {}
     links = normalize_catalog_line_links(db, tenant_id=bill.tenant_id, lines=[
         {PRODUCT_LINK_FIELD: line.get("catalog_product_id"), SERVICE_LINK_FIELD: line.get("catalog_service_id")} for line in lines])
+    resolver = tax_rates.TaxResolver(db, tenant_id=bill.tenant_id, side="purchases",
+                                     allowed_inactive=tax_rates.used_rate_ids(bill.lines) | tax_rates.used_rate_ids(po_lines.values()))
     requested: dict[int, Decimal] = {}
     result = []
     for index, payload in enumerate(lines):
@@ -183,19 +186,25 @@ def _apply_lines(db: Session, *, bill: PurchaseBill, order: PurchaseOrder | None
         # A PO line is billed at its cost after discount (13c §3.5).
         raw_cost = payload.get("unit_cost")
         unit_cost = decimal_input(raw_cost if raw_cost is not None else (po_line.net_unit_cost if po_line else None), field="Unit cost")
-        tax = money(decimal_input(payload.get("tax_amount") or 0, field="Tax", places=2))
+        decimal_input(payload.get("tax_amount") or 0, field="Tax", places=2)
         description = (payload.get("description") or "").strip() or (po_line.description if po_line and po_line.description else None) \
             or (po_line.item_name if po_line else None)
         if not description:
             raise HTTPException(status_code=400, detail="Describe every line")
-        _net, total = line_amounts(quantity=quantity, unit_price=unit_cost, tax=tax, label=description)
+        if po_line is not None and _tax_unspecified(payload):
+            payload = {**payload, **_po_line_tax(po_line, quantity)}
+        link = {PRODUCT_LINK_FIELD: po_line.product_id if po_line else links[index][PRODUCT_LINK_FIELD],
+                SERVICE_LINK_FIELD: po_line.catalog_service_id if po_line else links[index][SERVICE_LINK_FIELD]}
+        choice, amounts = tax_rates.compute_payload_line(resolver, payload, link, quantity=quantity, unit_price=unit_cost, label=description)
+        tax, total = amounts.tax, amounts.total
         result.append(PurchaseBillLine(
             tenant_id=bill.tenant_id, order_line_id=po_line.id if po_line else None,
             receipt_line_id=payload.get("receipt_line_id") if po_line else None,
             catalog_product_id=po_line.product_id if po_line else links[index][PRODUCT_LINK_FIELD],
             catalog_service_id=po_line.catalog_service_id if po_line else links[index][SERVICE_LINK_FIELD],
             description=description, quantity=quantity, unit_cost=unit_cost, po_unit_cost=po_line.net_unit_cost if po_line else None,
-            tax_amount=tax, line_total=total, sort_order=index))
+            tax_amount=tax, tax_rate_id=choice.rate_id, tax_manual=choice.manual, line_total=total,
+            unit=po_line.unit if po_line else clean_unit(payload.get("unit")), sort_order=index))
     for line_id, quantity in requested.items():
         left = rows[line_id]["to_bill"]
         if quantity > left:
@@ -208,6 +217,18 @@ def _apply_lines(db: Session, *, bill: PurchaseBill, order: PurchaseOrder | None
     bill.total = bill.subtotal + bill.tax_total
     variance = any(line.po_unit_cost is not None and Decimal(line.unit_cost) != Decimal(line.po_unit_cost) for line in result)
     bill.match_status = "variance" if variance else ("matched" if any(line.order_line_id for line in result) else "none")
+
+
+def _tax_unspecified(payload: dict) -> bool:
+    return not payload.get("tax_rate_id") and not payload.get("tax_manual") and not Decimal(str(payload.get("tax_amount") or 0))
+
+
+def _po_line_tax(po_line, quantity: Decimal) -> dict:
+    """A bill line takes its PO line's tax: the rate, or a typed tax pro rata (13d §3.1)."""
+    if po_line.tax_rate_id and not po_line.tax_manual:
+        return {"tax_rate_id": po_line.tax_rate_id}
+    return {"tax_rate_id": po_line.tax_rate_id, "tax_manual": True,
+            "tax_amount": pro_rata(po_line.tax_amount or 0, quantity, po_line.quantity)}
 
 
 def _check_duplicate(db: Session, *, bill: PurchaseBill) -> None:
@@ -278,7 +299,8 @@ def post_bill(db: Session, *, tenant_id: int, actor_user_id: int | None, bill_id
     _apply_lines(db, bill=bill, order=order, lines=[{
         "order_line_id": line.order_line_id, "receipt_line_id": line.receipt_line_id, "catalog_product_id": None if line.order_line_id else line.catalog_product_id,
         "catalog_service_id": line.catalog_service_id, "description": line.description, "quantity": line.quantity,
-        "unit_cost": line.unit_cost, "tax_amount": line.tax_amount} for line in bill.lines], posting=True)
+        "unit_cost": line.unit_cost, "tax_amount": line.tax_amount, "unit": line.unit, **tax_rates.line_tax_fields(line)} for line in bill.lines],
+        posting=True)
     bill.status, bill.posted_at, bill.posted_by = "posted", datetime.now(timezone.utc), actor_user_id
     db.flush()
     from app.modules.inventory.services.valuation_services import apply_bill_variance
@@ -379,7 +401,8 @@ def serialize_bill(db: Session, *, tenant_id: int, bill: PurchaseBill, include_l
             "id": line.id, "order_line_id": line.order_line_id, "receipt_line_id": line.receipt_line_id,
             "catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id,
             "description": line.description, "quantity": line.quantity, "unit_cost": line.unit_cost, "po_unit_cost": line.po_unit_cost,
-            "tax_amount": line.tax_amount, "line_total": line.line_total,
+            "tax_amount": line.tax_amount, "tax_rate_id": line.tax_rate_id, "tax_manual": bool(line.tax_manual), "line_total": line.line_total,
+            "unit": line.unit,
             "price_variance": line.po_unit_cost is not None and Decimal(line.unit_cost) != Decimal(line.po_unit_cost),
             "variance_stock_change": variance[line.id][0] if line.id in variance else None,
             "variance_cogs_change": variance[line.id][1] if line.id in variance else None,
@@ -387,6 +410,7 @@ def serialize_bill(db: Session, *, tenant_id: int, bill: PurchaseBill, include_l
             "billable": rows.get(line.order_line_id, {}).get("to_bill") if line.order_line_id else None,
         } for line in bill.lines]
         result["payments"] = payments_for(db, tenant_id=tenant_id, bill_id=bill.id)
+        result["tax_summary"] = bill.tax_summary
         from app.modules.purchasing.services.vendor_credit_services import bill_credits
 
         result["vendor_credits"] = bill_credits(db, tenant_id=tenant_id, bill_id=bill.id)

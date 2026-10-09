@@ -13,6 +13,8 @@ from app.modules.platform.services.custom_fields import sync_custom_fields
 from app.modules.sales.services.document_fields import carried_fields, fill_addresses_from_account, normalize_document_fields
 from app.modules.platform.services.numbering import allocate_business_number
 from app.modules.catalog.services.line_links import normalize_catalog_line_links
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import document_totals, money
 from app.modules.catalog.models import CatalogProduct
 from app.modules.inventory.models import InventoryDelivery, InventoryDeliveryLine, InventoryReservation, InventoryWarehouse
 from app.modules.inventory.services.delivery_services import (
@@ -172,26 +174,40 @@ def _normalize_order_payload(db: Session, payload: dict, *, tenant_id: int, curr
 
 def _refresh_total(order: SalesOrder) -> None:
     """Lines plus the shipping charge (13b §5 decision 8)."""
-    money = lambda value: Decimal(value or 0)  # noqa: E731
-    order.grand_total = (money(order.subtotal) - money(order.discount_total) + money(order.tax_total) + money(order.shipping_charge)).quantize(Decimal("0.01"))
+    order.grand_total = money(order.subtotal) - money(order.discount_total) + money(order.tax_total) + money(order.shipping_charge)
 
 
-def _normalize_items(db: Session, items: list[dict], *, tenant_id: int) -> list[SalesOrderItem]:
+def _tax_context(db: Session, *, tenant_id: int, organization_id: int | None, tax_mode: str, order: SalesOrder | None = None):
+    resolver = tax_rates.TaxResolver(db, tenant_id=tenant_id, side="sales",
+                                     exempt=tax_rates.account_is_exempt(db, tenant_id=tenant_id, organization_id=organization_id),
+                                     allowed_inactive=tax_rates.used_rate_ids(order.items) if order is not None else ())
+    return resolver, tax_mode == "inclusive"
+
+
+def _normalize_items(db: Session, items: list[dict], *, tenant_id: int, organization_id: int | None = None, tax_mode: str = "exclusive",
+                     order: SalesOrder | None = None) -> tuple[list[SalesOrderItem], dict[str, Decimal]]:
+    """The submitted lines, computed through the shared line function (13d §3.1), and the
+    order's line totals."""
     catalog_links = normalize_catalog_line_links(db, tenant_id=tenant_id, lines=items)
-    return [
-        _normalize_item_payload(item, tenant_id=tenant_id, sort_order=index, catalog_link=catalog_links[index])
-        for index, item in enumerate(items)
-    ]
+    resolver, inclusive = _tax_context(db, tenant_id=tenant_id, organization_id=organization_id, tax_mode=tax_mode, order=order)
+    lines, amounts = [], []
+    for index, item in enumerate(items):
+        line, line_amounts = _normalize_item_payload(item, tenant_id=tenant_id, sort_order=index, catalog_link=catalog_links[index],
+                                                     resolver=resolver, inclusive=inclusive)
+        lines.append(line)
+        amounts.append(line_amounts)
+    totals = document_totals(amounts)
+    return lines, {"subtotal": totals["subtotal"], "discount_total": totals["discount"], "tax_total": totals["tax"], "grand_total": totals["total"]}
 
 
-def _apply_items(db: Session, order: SalesOrder, items: list[dict]) -> tuple[list[SalesOrderItem], list[int]]:
+def _apply_items(db: Session, order: SalesOrder, items: list[dict], *, organization_id: int | None, tax_mode: str) -> tuple[list[SalesOrderItem], list[int], dict[str, Decimal]]:
     """Merge submitted lines into the order: a line with an `id` is updated in place, so it
     keeps its identity (stock holds and movements point at it); the rest are new.
 
-    Returns the order's new lines and the IDs of the lines that were removed.
+    Returns the order's new lines, the IDs of the lines that were removed, and the totals.
     """
     existing = {line.id: line for line in order.items}
-    normalized = _normalize_items(db, items, tenant_id=order.tenant_id)
+    normalized, totals = _normalize_items(db, items, tenant_id=order.tenant_id, organization_id=organization_id, tax_mode=tax_mode, order=order)
     result: list[SalesOrderItem] = []
     kept: set[int] = set()
     for payload, fresh in zip(items, normalized):
@@ -203,41 +219,44 @@ def _apply_items(db: Session, order: SalesOrder, items: list[dict]) -> tuple[lis
         if line is None or line_id in kept:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order line not found")
         kept.add(line_id)
-        for field in ("catalog_product_id", "catalog_service_id", "name", "description", "quantity", "unit_price", "discount_amount", "tax_amount", "line_total", "sort_order"):
+        if line.line_type != fresh.line_type:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="A line cannot change between an item, a section and a note")
+        for field in ("catalog_product_id", "catalog_service_id", "name", "description", "quantity", "unit_price", "discount_amount",
+                      "discount_percent", "unit", "tax_amount", "tax_rate_id", "tax_manual", "line_total", "sort_order"):
             setattr(line, field, getattr(fresh, field))
         result.append(line)
-    return result, [line_id for line_id in existing if line_id not in kept]
+    return result, [line_id for line_id in existing if line_id not in kept], totals
 
 
-def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int, catalog_link: dict[str, int | None]) -> SalesOrderItem:
+def _existing_item_payload(item: SalesOrderItem) -> dict:
+    return {"id": item.id, "catalog_product_id": item.catalog_product_id, "catalog_service_id": item.catalog_service_id, "name": item.name,
+            "description": item.description, "quantity": item.quantity, "unit_price": item.unit_price,
+            "discount_amount": item.discount_amount, **tax_rates.line_payload(item)}
+
+
+def _normalize_item_payload(item: dict, *, tenant_id: int, sort_order: int, catalog_link: dict[str, int | None], resolver, inclusive: bool):
     name = _coerce_optional(item.get("name"))
     if not name:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item name is required")
     quantity = _coerce_decimal(item.get("quantity", "1"))
     unit_price = _coerce_decimal(item.get("unit_price"))
     discount = _coerce_decimal(item.get("discount_amount"))
-    tax = _coerce_decimal(item.get("tax_amount"))
-    if quantity <= 0:
+    is_item = (item.get("line_type") or "item") == "item"
+    if is_item and quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item quantity must be greater than zero")
-    if min(unit_price, discount, tax) < 0:
+    if is_item and min(unit_price, discount, _coerce_decimal(item.get("tax_amount"))) < 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item amounts cannot be negative")
-    extended = quantity * unit_price
-    line_total = extended - discount + tax
-    if line_total < 0:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Order item discount cannot exceed its value and tax")
+    line = tax_rates.compute_sales_line(resolver, item, catalog_link, quantity=quantity, unit_price=unit_price, discount=discount,
+                                        inclusive=inclusive, label=name)
+    links = catalog_link if line.line_type == "item" else {key: None for key in catalog_link}
     return SalesOrderItem(
         tenant_id=tenant_id,
-        **catalog_link,
+        **links,
         name=name,
-        description=_coerce_optional(item.get("description")),
-        quantity=quantity,
-        unit_price=unit_price,
-        discount_amount=discount,
-        tax_amount=tax,
-        line_total=line_total.quantize(Decimal("0.01")),
+        description=_coerce_optional(item.get("description")) if line.line_type == "item" else None,
+        **tax_rates.sales_line_fields(line),
         sort_order=sort_order,
-    )
-
+    ), line.amounts
 
 def _waiting_for_stock_expression():
     """A confirmed order with a stocked line that needs more than is delivered and held."""
@@ -367,16 +386,16 @@ def create_sales_order(db: Session, payload: dict, current_user) -> SalesOrder:
     # the order form only (13b §5 decision 9).
     custom_payload = {"custom_fields": payload.pop("custom_fields")} if "custom_fields" in payload else {}
     data = _normalize_order_payload(db, payload, tenant_id=current_user.tenant_id, current_user=current_user)
-    normalized_items = _normalize_items(db, items_payload, tenant_id=current_user.tenant_id)
+    data["tax_mode"] = tax_rates.normalize_tax_mode(data.get("tax_mode"), default=tax_rates.default_tax_mode(db, tenant_id=current_user.tenant_id))
+    if not data.get("quote_id"):
+        # A converted order carries its quote's texts; a new one starts with the defaults (13d §3.3).
+        from app.modules.sales.services.quotes_services import _apply_default_texts
+
+        _apply_default_texts(db, data, tenant_id=current_user.tenant_id, kind="sales_order")
+    normalized_items, item_totals = _normalize_items(db, items_payload, tenant_id=current_user.tenant_id,
+                                                     organization_id=data.get("organization_id"), tax_mode=data["tax_mode"])
     if normalized_items:
-        data.update(
-            {
-                "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "discount_total": sum((item.discount_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "tax_total": sum((item.tax_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "grand_total": sum((item.line_total for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-            }
-        )
+        data.update(item_totals)
     order = SalesOrder(tenant_id=current_user.tenant_id, **data)
     order.items = normalized_items
     _refresh_total(order)
@@ -418,6 +437,7 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
         "tax_total": quote.tax_amount,
         "discount_total": quote.discount_amount,
         "grand_total": quote.total_amount,
+        "tax_mode": quote.tax_mode,
         **carried_fields(quote),
         "owner_id": quote.assigned_to or (current_user.id if current_user else None),
         "items": [
@@ -429,11 +449,18 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
                 "quantity": item.quantity,
                 "unit_price": item.unit_price,
                 "discount_amount": item.discount_amount,
+                "discount_percent": item.discount_percent,
+                "unit": item.unit,
+                "line_type": item.line_type,
                 "tax_amount": item.tax_amount,
+                # The quote's tax as computed, not the item's rate today (13d §3.1).
+                "tax_rate_id": item.tax_rate_id,
+                "tax_manual": True,
                 "line_total": item.line_total,
                 "sort_order": item.sort_order,
             }
-            for item in quote.items
+            # Optional lines the customer did not take stay on the quote (13d §3.2).
+            for item in quote.items if not item.is_optional
         ] if quote.items else [
             {
                 "name": quote.title or f"Quote {quote.quote_number}",
@@ -442,6 +469,7 @@ def convert_quote_to_order(db: Session, quote: SalesQuote, current_user, *, allo
                 "unit_price": quote.subtotal_amount,
                 "discount_amount": quote.discount_amount,
                 "tax_amount": quote.tax_amount,
+                "tax_manual": True,
                 "line_total": quote.total_amount,
                 "sort_order": 0,
             }
@@ -476,12 +504,19 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
         raise HTTPException(status_code=409, detail="The warehouse cannot change once the order has deliveries")
     items_payload = payload.pop("items", None)
     data = _normalize_order_payload(db, payload, tenant_id=order.tenant_id, current_user=None, partial=True, existing=order)
+    if "tax_mode" in data:
+        data["tax_mode"] = tax_rates.normalize_tax_mode(data["tax_mode"], default=order.tax_mode)
+        if items_payload is None and data["tax_mode"] != order.tax_mode and order.items:
+            # The lines are recomputed in the new mode (13d §3.1).
+            items_payload = [_existing_item_payload(item) for item in order.items]
     normalized_items = None
     removed_line_ids: list[int] = []
     if items_payload is not None:
         products_before = {line.id: line.catalog_product_id for line in order.items}
         history = delivered_line_ids(db, tenant_id=order.tenant_id, line_ids=products_before)
-        normalized_items, removed_line_ids = _apply_items(db, order, items_payload)
+        normalized_items, removed_line_ids, item_totals = _apply_items(
+            db, order, items_payload, organization_id=data["organization_id"] if "organization_id" in data else order.organization_id,
+            tax_mode=data.get("tax_mode") or order.tax_mode)
         # A line a delivery points at is history: it keeps its product and cannot go.
         if history & set(removed_line_ids):
             raise HTTPException(status_code=409, detail="A line that has been on a delivery cannot be removed")
@@ -500,14 +535,7 @@ def update_sales_order(db: Session, order: SalesOrder, payload: dict, *, actor_u
                 delivered = delivered_quantity(db, line)
                 if Decimal(line.quantity) < delivered:
                     raise HTTPException(status_code=409, detail=f"{line.name}: {delivered.normalize():f} already delivered, so the quantity cannot be lower")
-        data.update(
-            {
-                "subtotal": sum((item.quantity * item.unit_price for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "discount_total": sum((item.discount_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "tax_total": sum((item.tax_amount for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-                "grand_total": sum((item.line_total for item in normalized_items), Decimal("0")).quantize(Decimal("0.01")),
-            }
-        )
+        data.update(item_totals)
     # Holds on removed lines go before the lines do, so the cached totals stay in step.
     release_for_order(db, tenant_id=order.tenant_id, order=order, line_ids=removed_line_ids, actor_user_id=actor_user_id)
     for field, value in data.items():

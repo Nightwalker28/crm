@@ -9,6 +9,7 @@ from app.modules.client_portal.routes.client_portal_routes import (
     client_bookings_router,
     client_catalog_router,
     client_documents_router,
+    client_invoices_router,
     client_orders_router,
     client_overview_router,
     client_quotes_router,
@@ -30,6 +31,7 @@ from app.modules.mail.routes.mail_routes import router as mail_router
 from app.modules.platform.routes.activity_logs import router as activity_log_router
 from app.modules.platform.routes.app_config import router as app_config_router
 from app.modules.platform.routes.clone_drafts import router as clone_drafts_router
+from app.modules.platform.routes.document_pdfs import router as document_pdfs_router
 from app.modules.platform.routes.automation_rules import router as automation_rules_router
 from app.modules.platform.routes.custom_fields import router as custom_fields_router, public_router as public_custom_fields_router
 from app.modules.platform.routes.custom_modules import builder_router as custom_module_builder_router, runtime_router as custom_module_runtime_router
@@ -106,6 +108,7 @@ router.include_router(linked_record_options_router)
 router.include_router(notifications_router)
 router.include_router(record_activity_router)
 router.include_router(clone_drafts_router)
+router.include_router(document_pdfs_router)
 router.include_router(record_comments_router)
 router.include_router(record_layouts_admin_router)
 router.include_router(record_layouts_router)
@@ -124,6 +127,7 @@ router.include_router(client_auth_router)
 router.include_router(client_bookings_router)
 router.include_router(client_catalog_router)
 router.include_router(client_documents_router)
+router.include_router(client_invoices_router)
 router.include_router(client_orders_router)
 router.include_router(client_overview_router)
 router.include_router(client_quotes_router)

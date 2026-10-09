@@ -25,9 +25,10 @@ from app.modules.platform.models import ActivityLog
 from app.modules.inventory.models import InventoryReservation
 from app.modules.sales.models import SalesContact, SalesOrder, SalesOrganization, SalesQuote
 from app.modules.sales.services.quotes_services import (
+    accept_quote,
+    decline_quote,
     get_client_quote_or_404,
     list_client_quotes,
-    respond_to_client_quote,
 )
 from app.modules.user_management import models as user_management_models  # noqa: F401
 from app.modules.user_management.models import Tenant, User, UserStatus
@@ -976,23 +977,19 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.db.add_all([quote, account])
         self.db.commit()
 
-        updated = respond_to_client_quote(
-            self.db,
-            quote=quote,
-            action="approve",
-            client_account_id=account.id,
-            message="Looks good.",
-        )
+        # 13d §3.5: the portal answers through the proposal page's own accept.
+        accept_quote(self.db, quote, signer_name="Buyer Contact", via="client portal", client_account_id=account.id)
+        self.db.commit()
 
-        self.assertEqual(updated.status, "accepted")
+        self.assertEqual(quote.status, "accepted")
+        self.assertEqual(quote.accepted_by_name, "Buyer Contact")
         log = (
             self.db.query(ActivityLog)
-            .filter(ActivityLog.module_key == "sales_quotes", ActivityLog.entity_id == "504")
+            .filter(ActivityLog.module_key == "sales_quotes", ActivityLog.entity_id == "504", ActivityLog.action == "quote.accepted")
             .one()
         )
-        self.assertEqual(log.action, "portal.quote.approved")
         self.assertEqual(log.after_state["client_account_id"], 42)
-        self.assertEqual(log.after_state["message"], "Looks good.")
+        self.assertIn("client portal", log.description)
 
     def test_client_quote_reject_blocks_when_not_open(self):
         quote = SalesQuote(
@@ -1009,16 +1006,9 @@ class ClientPortalServiceTests(unittest.TestCase):
         self.db.commit()
 
         with self.assertRaises(HTTPException) as exc:
-            respond_to_client_quote(
-                self.db,
-                quote=quote,
-                action="reject",
-                client_account_id=42,
-                message="No longer needed.",
-            )
+            decline_quote(self.db, quote, note="No longer needed.", via="client portal", client_account_id=42)
 
-        self.assertEqual(exc.exception.status_code, 400)
-        self.assertEqual(exc.exception.detail, "Quote is not open for portal response.")
+        self.assertEqual(exc.exception.status_code, 409)
 
     def test_client_portal_writes_are_activity_logged(self):
         group = client_portal_services.create_customer_group(

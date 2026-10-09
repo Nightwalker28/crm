@@ -12,6 +12,11 @@ import { LayoutRecordFormBody } from "@/components/forms/LayoutRecordFormBody";
 import type { RecordFormValue } from "@/components/forms/RecordForm";
 import { validateLayoutDrivenQuickCreate } from "@/components/forms/quickCreateLayout";
 import { vendorFieldRenderer } from "@/components/purchasing/vendorFieldRenderer";
+import {
+  emptyPurchaseLineTax, PurchaseLineTaxCell, purchaseLinePreview, purchaseLineTaxFrom, purchaseLineTaxPayload, usePurchaseTaxRates, type PurchaseLineTax,
+} from "@/components/finance/tax/purchaseLineTax";
+import { DocumentSendAction } from "@/components/transactions/DocumentSendAction";
+import { TaxSummary } from "@/components/finance/tax/TaxSummary";
 import { DocumentDetailHeader } from "@/components/transactions/DocumentLayoutHeader";
 import { LineItemsEditor, LineNumberInput, LineTextInput } from "@/components/transactions/LineItemsEditor";
 import { FormFooter } from "@/components/ui/ActionBar";
@@ -43,12 +48,18 @@ import { useResolvedRecordLayout } from "@/hooks/useResolvedRecordLayout";
 import { DocumentHistory } from "@/components/recordActivity/DocumentHistory";
 
 /** A line is a product (tracked or not) or a service (13c §3.5); `itemId` is that record's id. */
-type DraftLine = { key: number; kind: "product" | "service"; itemId: number | null; name: string; description: string; quantity: string; unitCost: string; discount: string };
+type DraftLine = {
+  key: number; kind: "product" | "service"; itemId: number | null; name: string; description: string; quantity: string; unitCost: string; discount: string;
+  tax: PurchaseLineTax;
+};
 let nextKey = 1;
-const blankLine = (): DraftLine => ({ key: nextKey++, kind: "product", itemId: null, name: "", description: "", quantity: "1", unitCost: "0", discount: "" });
+const blankLine = (): DraftLine => ({ key: nextKey++, kind: "product", itemId: null, name: "", description: "", quantity: "1", unitCost: "0", discount: "", tax: emptyPurchaseLineTax() });
 const lineTotal = (line: Pick<DraftLine, "quantity" | "unitCost" | "discount">) =>
   (Number(line.quantity) || 0) * (Number(line.unitCost) || 0) - (Number(line.discount) || 0);
-const draftLine = (line: { product_id?: unknown; catalog_service_id?: unknown; product_name?: unknown; description?: unknown; quantity?: unknown; unit_cost?: unknown; discount_amount?: unknown }): DraftLine => {
+const draftLine = (line: {
+  product_id?: unknown; catalog_service_id?: unknown; product_name?: unknown; description?: unknown; quantity?: unknown; unit_cost?: unknown; discount_amount?: unknown;
+  tax_rate_id?: number | null; tax_manual?: boolean | null; tax_amount?: unknown;
+}): DraftLine => {
   const serviceId = (line.catalog_service_id as number | null | undefined) ?? null;
   return {
     key: nextKey++,
@@ -59,6 +70,7 @@ const draftLine = (line: { product_id?: unknown; catalog_service_id?: unknown; p
     quantity: String(Number(line.quantity ?? 1)),
     unitCost: String(Number(line.unit_cost ?? 0)),
     discount: Number(line.discount_amount ?? 0) ? String(Number(line.discount_amount)) : "",
+    tax: purchaseLineTaxFrom(line),
   };
 };
 
@@ -178,7 +190,8 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
     setLines(order?.lines?.length ? order.lines.map((line) => draftLine(line)) : [blankLine()]);
   }
 
-  const total = lines.reduce((sum, line) => sum + lineTotal(line), 0);
+  const taxRates = usePurchaseTaxRates();
+  const total = lines.reduce((sum, line) => sum + purchaseLinePreview(line, taxRates).total, 0);
   const currencyCode = header?.currency || order?.currency || defaultCurrency;
   // Stock is costed in the base currency, so an order in another one carries a rate (12d §3.5).
   const baseCurrency = order?.base_currency ?? baseCurrencyQuery.data ?? defaultCurrency;
@@ -191,7 +204,8 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
   /** A picked item takes the vendor's last price, then the item's cost (13c §5 decision 7). */
   async function pickItem(line: DraftLine, option: LinkedRecordOption) {
     const kind = option.module_key === "catalog_services" ? "service" : "product";
-    updateLine({ ...line, kind, itemId: option.id, name: option.label });
+    const raw = (option.raw ?? {}) as { purchase_tax_rate_id?: number | null };
+    updateLine({ ...line, kind, itemId: option.id, name: option.label, tax: { ...line.tax, auto_rate_id: raw.purchase_tax_rate_id ?? null } });
     if (!header?.vendor_id) return;
     const cost = await fetchLineCostDefault(header.vendor_id, kind, option.id).catch(() => null);
     if (cost != null) setLines((current) => current.map((row) => (row.key === line.key && row.itemId === option.id ? { ...row, unitCost: String(Number(cost)) } : row)));
@@ -222,6 +236,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
       lines: lines.map((line) => ({
         product_id: line.kind === "product" ? line.itemId : null, catalog_service_id: line.kind === "service" ? line.itemId : null,
         description: line.description.trim() || null, quantity: line.quantity, unit_cost: line.unitCost, discount_amount: line.discount || "0",
+        ...purchaseLineTaxPayload(line.tax),
       })),
     };
     try {
@@ -312,7 +327,9 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
           {order?.bill_status === "to_bill" && billActions?.can_create ? (
             <Button asChild variant={toReceive && receiptActions?.can_create ? "outline" : "default"}><Link href={`${DASHBOARD_ROUTES.purchaseBills}/new?order_id=${order.id}`}>Create bill</Link></Button>
           ) : null}
-          {order && order.status !== "draft" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseOrders}/${order.id}/print`}><Printer />Print</Link></Button> : null}
+          {/* Sending a draft is what sends the request for quotation (13c §3.8, 13d §3.4). */}
+          {order ? <DocumentSendAction moduleKey="purchase_orders" recordId={order.id} label={order.status === "draft" ? "Send request" : "Send"} /> : null}
+          {order && order.status !== "draft" ? <Button asChild variant="outline"><Link href={`${DASHBOARD_ROUTES.purchaseOrders}/${order.id}/print`}><Printer />{order.status === "sent" ? "Request PDF" : "Preview and PDF"}</Link></Button> : null}
           {/* 13b Phase 5: a new draft with this order's vendor and lines. */}
           {order && actions?.can_create ? <Button asChild variant="outline"><Link href={cloneHref(`${DASHBOARD_ROUTES.purchaseOrders}/new`, order.id)}><Copy />Clone</Link></Button> : null}
           {order?.status === "ordered" && order.receipt_status === "partial" && actions?.can_edit ? <Button variant="outline" onClick={() => { setError(null); setPanel("close"); }}>Close remaining</Button> : null}
@@ -417,7 +434,11 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
               { key: "discount", label: "Discount", size: "sm", align: "right", share: 1.25, render: (line, { cellProps }) => (
                 <LineNumberInput cellProps={cellProps("discount")} ariaLabel={`Discount for ${line.name || "line"}`} step="0.01" value={line.discount} onChange={(value) => updateLine({ ...line, discount: value })} />
               ) },
-              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={lineTotal(line)} currency={currencyCode} /></span> },
+              { key: "tax", label: "Tax", size: "md", share: 1.75, render: (line, { cellProps }) => (
+                <PurchaseLineTaxCell value={line.tax} rates={taxRates} label={line.name || "line"} cellProps={cellProps("tax")}
+                  onChange={(tax) => updateLine({ ...line, tax })} />
+              ) },
+              { key: "total", label: "Total", size: "sm", align: "right", share: 1.5, render: (line) => <span className="block truncate tabular-nums"><Money amount={purchaseLinePreview(line, taxRates).total} currency={currencyCode} /></span> },
             ]}
           />
         ) : (
@@ -432,9 +453,10 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
                 ? <TextLink href={`${DASHBOARD_ROUTES.services}/${line.catalog_service_id}`}>{line.product_name}</TextLink>
                 : <TextLink href={`${DASHBOARD_ROUTES.products}/${line.product_id}${line.track_inventory ? "?tab=stock" : ""}`}>{line.product_name}</TextLink>) },
               { key: "vendor_sku", label: "Vendor SKU", size: "sm", render: (line) => line.vendor_sku ?? "—" },
-              { key: "quantity", label: "Ordered", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.quantity)}</span> },
+              { key: "quantity", label: "Ordered", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.quantity)}{line.unit ? ` ${line.unit}` : ""}</span> },
               { key: "cost", label: "Unit cost", size: "sm", align: "right", render: (line) => <Money amount={line.unit_cost} currency={order?.currency ?? currencyCode} /> },
               { key: "discount", label: "Discount", size: "sm", align: "right", render: (line) => (Number(line.discount_amount) ? <Money amount={line.discount_amount} currency={order?.currency ?? currencyCode} /> : "—") },
+              { key: "tax", label: "Tax", size: "sm", align: "right", render: (line) => (Number(line.tax_amount) ? <Money amount={line.tax_amount} currency={order?.currency ?? currencyCode} /> : "—") },
               { key: "total", label: "Total", size: "sm", align: "right", render: (line) => <Money amount={line.line_total} currency={order?.currency ?? currencyCode} /> },
               { key: "received", label: "Received", size: "sm", align: "right", render: (line) => <span className="tabular-nums">{quantity(line.received)}</span> },
               { key: "to_receive", label: "To receive", size: "sm", align: "right", render: (line) => (line.needs_receipt === false
@@ -444,6 +466,7 @@ export function PurchaseOrderDocumentPage({ orderId = null }: { orderId?: number
             ]}
           />
         )}
+        {!editable ? <TaxSummary rows={order?.tax_summary} currency={order?.currency} /> : null}
       </section>
 
       {order?.receipts?.length ? (

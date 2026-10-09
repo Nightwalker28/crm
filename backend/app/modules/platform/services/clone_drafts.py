@@ -144,6 +144,11 @@ _DOCUMENT_LINE_FIELDS = (
     "unit_price",
     "discount_amount",
     "tax_amount",
+    "tax_rate_id",
+    "tax_manual",
+    "line_type",
+    "discount_percent",
+    "unit",
     "sort_order",
 )
 
@@ -157,6 +162,8 @@ _CATALOG_FIELDS = (
     "list_price",
     "cost_price",
     "tax_category",
+    "tax_rate_id",
+    "purchase_tax_rate_id",
     "is_public",
     "is_active",
 )
@@ -209,19 +216,19 @@ CLONE_SPECS: dict[str, CloneSpec] = {
         label="quote",
         load=_quote,
         fields=(
-            "title", "customer_name", "contact_id", "organization_id", "opportunity_id", "currency",
+            "title", "customer_name", "contact_id", "organization_id", "opportunity_id", "currency", "tax_mode",
             *_address("billing"), *_address("shipping"), "terms_and_conditions", "shipping_method",
             "shipping_charge", "notes", "assigned_to",
         ),
         lines_key="items",
-        line_fields=_DOCUMENT_LINE_FIELDS,
+        line_fields=(*_DOCUMENT_LINE_FIELDS, "is_optional"),
         name_fields=("contact_name", "organization_name", "opportunity_name", "assigned_to_name"),
     ),
     "sales_orders": CloneSpec(
         label="order",
         load=_order,
         fields=(
-            "organization_id", "contact_id", "opportunity_id", "currency", *_address("billing"),
+            "organization_id", "contact_id", "opportunity_id", "currency", "tax_mode", *_address("billing"),
             *_address("shipping"), "terms_and_conditions", "shipping_method", "shipping_charge",
             "payment_terms", "notes", "owner_id", "warehouse_id", "priority",
         ),
@@ -250,7 +257,7 @@ CLONE_SPECS: dict[str, CloneSpec] = {
         fields=("vendor_id", "warehouse_id", "currency", "notes"),
         lines_key="lines",
         line_fields=("product_id", "catalog_service_id", "kind", "product_name", "sku", "description", "quantity", "unit_cost",
-                     "discount_amount"),
+                     "discount_amount", "tax_amount", "tax_rate_id", "tax_manual", "unit"),
         name_fields=("vendor_name", "warehouse_name"),
     ),
 }

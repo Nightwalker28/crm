@@ -120,7 +120,28 @@ def normalize_catalog_detail_fields(db: Session, *, tenant_id: int, payload: dic
         values["tax_category"] = lists.resolve(
             "tax_category", raw_category, current=getattr(existing, "tax_category", None), field_key="tax_category", field_label="Tax category",
         )
+    for field in ("tax_rate_id", "purchase_tax_rate_id"):
+        if field in payload or not partial:
+            values[field] = normalize_catalog_tax_rate_id(db, tenant_id=tenant_id, value=payload.get(field), current=getattr(existing, field, None))
     return values
+
+
+def normalize_catalog_tax_rate_id(db: Session, *, tenant_id: int, value, current: int | None = None) -> int | None:
+    """A rate of the item's own tenant, active unless the item already has it (13d §3.1)."""
+    from app.modules.finance.tax_models import FinanceTaxRate
+
+    if value in (None, "", 0, "0"):
+        return None
+    try:
+        rate_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tax rate not found") from exc
+    rate = db.query(FinanceTaxRate).filter(FinanceTaxRate.tenant_id == tenant_id, FinanceTaxRate.id == rate_id).first()
+    if rate is None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Tax rate not found")
+    if not rate.is_active and rate_id != current:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"{rate.name} is no longer active")
+    return rate_id
 
 
 def normalize_catalog_code(value) -> str | None:
@@ -139,4 +160,8 @@ def catalog_detail_payload(record) -> dict:
         "unit": record.unit or "unit",
         "list_price": record.list_price,
         "tax_category": record.tax_category,
+        "tax_rate_id": record.tax_rate_id,
+        "tax_rate_name": record.tax_rate_name,
+        "purchase_tax_rate_id": record.purchase_tax_rate_id,
+        "purchase_tax_rate_name": record.purchase_tax_rate_name,
     }

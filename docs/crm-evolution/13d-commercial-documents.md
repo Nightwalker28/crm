@@ -532,3 +532,93 @@ New pages go into both guards' route lists.
 - Online payment and *Pay* in the portal: payment links stay deferred.
 - Units as a managed list (F6.2), named payment terms (F6), numbering per type (F6).
 - Automation triggers on the new events (F12) and posting to the ledger (F7).
+
+## 7. Build notes
+
+**5.1 (2026-10-09).** Where the build differs from §3.1:
+- **Purchase documents are tax exclusive only.** Stock is costed and bills are matched on the
+  price before tax, so `tax_mode` is on quotes, orders, invoices and credit notes; POs, bills and
+  vendor credits always add tax. The Taxes settings page says so.
+- **The invoice header discount is gone too**, not only the header rate: the migration spreads
+  both over the lines. Invoices then have one mechanism, like quotes and orders.
+- **The tax mode is a switch above the line editor**, not a layout field, because changing it
+  recomputes every line.
+- **"No tax" is a manual tax of zero.** A line that names no rate and types no tax takes the
+  default, so older clients and website orders keep working.
+- **The tax report is two sources**, *Tax on sales* (issued invoice lines) and *Tax on
+  purchases* (posted bill lines). Credit notes and vendor credits reach the tax return through
+  F7's ledger, as cost of goods did in F4.
+- **Backups match rates by id.** A same-tenant restore keeps every line's rate; a rate renamed
+  since the backup is overwritten by the backup's name when the backup wins.
+
+**5.2 (2026-10-09).** Where the build differs from §3.2:
+- **Reorder is a row menu** (*Move up*, *Move down*, *Duplicate*), not a drag handle: it works
+  from the keyboard, and the line grid has no drag primitive yet.
+- **Choosing optional lines** on the proposal page and in the portal comes with 5.5; until then
+  an optional line is shown, marked *Optional*, and left out of the total and the order.
+- **The unit column appears once a line has a unit** other than "unit"; there is no column
+  picker on the line grid.
+
+**5.3 (2026-10-09).** Where the build differs from §3.3:
+- **Snapshots are taken on first download or send**, and again when an issued document has
+  changed since its latest snapshot, not inside the issuing request. Issuing stays fast and
+  needs no background job; an issued document's content is what it was issued as either way.
+- **Snapshot files live under `uploads/document-pdfs/`**, not in the documents module, so they
+  do not appear in the Documents list. Backups carry the document settings, not the snapshot
+  files: an issued document renders the same snapshot again from its unchanged data.
+- **Settings → Documents** holds the layout, brand colour, payment details and footer, and the
+  per-type title, default terms, notes and email template.
+
+**5.4 (2026-10-09).** Where the build differs from §3.4:
+- **No "Sent" badge column on invoices.** The send is on the invoice's history (`document.sent`
+  with the recipients), which is where Zoho shows it too; a column can follow if lists need it.
+- **Drafts are sent only for quotes and POs** (a quote's first send and an RFQ); every other
+  document is sent once issued or posted, and *Send* says why it is unavailable before then.
+
+**5.5 (2026-10-09).** Where the build differs from §3.5:
+- **The signature is stored on the quote** (`signature_data`, a PNG `data:` URI of at most
+  300k characters), not as a document beside the snapshot. It is small, shown on the quote
+  page, and needs no file in backups.
+- **No *Revise* on a converted quote.** Decision 7 lists sent, expired and declined; the order
+  is where a converted quote changes.
+- **Accept and decline are rate-limited per link and address** with the client page limits
+  (`PUBLIC_CLIENT_PAGE_ACTION_LIMIT` per window); the events route stays unlimited, as before.
+- **The expiry scan runs daily at 00:20 UTC** against each quote's own expiry date, not the
+  company's timezone; F6's company timezone (A8) moves it.
+
+**5.6 (2026-10-09).** Where the build differs from §3.6:
+- **A fourth table, `finance_reminder_sends`**, records each reminder per rule and invoice. It is
+  what makes "one per rule per invoice" hold and lets the invoice page list the reminders; an
+  invoice whose customer has no address is recorded as skipped, so it is not retried daily.
+- **Recurring lines are stored as JSON** in the invoice payload's shape, not a lines table;
+  they are checked through the invoice line function on save and again when each invoice is
+  made, so a rate removed since shows on the profile as an error to fix.
+- **A past start date begins at the next scheduled date**, not with a backlog of invoices; a
+  scan that missed days catches up one period per hourly run.
+- **The write-off is the whole open balance**, and can be reversed by a finance administrator
+  (an invoice with a write-off cannot be voided until it is). Partial write-offs are a later
+  addition if UAT asks.
+- **The statement ageing is of today's open balances**, also on an activity statement for a
+  past period; ageing as at a past date needs the ledger (F7).
+- **No `quote.expired`-style events for reminders and write-offs yet**: 08a has no finance
+  family, so they are history rows (`invoice.reminder_sent`, `invoice.written_off`) until F10.
+- **The account's *No payment reminders* flag is a layout field**, beside *Tax exempt*.
+
+**5.7 (2026-10-09).** Where the build differs from §3.7:
+- **No `REQ` numbering.** Since Step 5 a portal request is a draft sales order with its own
+  `SO-…` number, so that number is the reference the confirmation shows; a second sequence
+  would give one thing two names.
+- **Invoices list issued and void ones**, so a customer can still see an invoice that was
+  replaced. Drafts never show.
+- **Draft quotes are hidden from the portal**, which they were not before; a quote shows once
+  it is sent.
+- **Invite and reset emails use `send_transactional_message`** (workspace sender, or the
+  platform sender in cloud mode), the same path as CRM invites (B3/B4), rather than the
+  workspace sender alone.
+- **The templates are fixed text** in `client_access_services.py`; making them editable is F12's
+  template work.
+- **A password reset does not end sessions already signed in**; client tokens are short-lived
+  (`CLIENT_ACCESS_TOKEN_EXPIRE_MINUTES`). Revoking them goes with F13.
+- **`/client-auth/setup-info`** is new: the setup page needs the company's name for "Set your
+  password to sign in to {company}".
+

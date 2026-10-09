@@ -31,7 +31,8 @@ export type DocumentListModuleKey =
   | "inventory_adjustments"
   | "inventory_transfers"
   | "finance_credit_notes"
-  | "finance_payments";
+  | "finance_payments"
+  | "finance_recurring_invoices";
 
 type StateSlot = { icon?: React.ComponentType<{ className?: string }>; title: string; description?: string; action?: ReactNode };
 

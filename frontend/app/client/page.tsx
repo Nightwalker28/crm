@@ -78,9 +78,9 @@ export default function ClientPortalHomePage() {
       {profile ? (
         <Card className="p-4">
           <FactList>
-            <Fact label="Pricing group">{profile.customer_group?.name ?? "Standard"}</Fact>
-            <Fact label="How pricing is resolved">
-              {profile.customer_group?.description ?? "Pricing is resolved from your account context."}
+            <Fact label="Your prices">{profile.customer_group?.name ?? "Standard prices"}</Fact>
+            <Fact label="About your prices">
+              {profile.customer_group?.description ?? "The prices you see in the catalog are the ones we charge you."}
             </Fact>
           </FactList>
         </Card>
@@ -89,7 +89,7 @@ export default function ClientPortalHomePage() {
       <Card className="flex flex-col gap-4 p-4">
         <PanelHeader
           title="Next actions"
-          description="Current work tied to your account."
+          description="What is waiting on you, and what is on its way."
         />
         {nextActions.length === 0 ? (
           <EmptyState

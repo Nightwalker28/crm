@@ -67,6 +67,7 @@ from app.modules.tasks.services.tasks_services import (
 
 
 SUPPORTED_RECYCLE_MODULES = {
+    "finance_recurring_invoices",
     "sales_leads",
     "sales_contacts",
     "sales_organizations",
@@ -101,6 +102,18 @@ def list_recycle_items(
     module_key: str,
     tenant_id: int,
 ):
+    if module_key == "finance_recurring_invoices":
+        from app.modules.finance.models import FinanceRecurringInvoice
+        from app.modules.finance.services import recurring_invoices
+
+        query = db.query(FinanceRecurringInvoice).filter(FinanceRecurringInvoice.tenant_id == tenant_id, FinanceRecurringInvoice.deleted_at.isnot(None)) \
+            .order_by(FinanceRecurringInvoice.deleted_at.desc(), FinanceRecurringInvoice.id.desc())
+        total = query.count()
+        serialized = [{"module_key": module_key, "record_id": item.id, "title": item.name, "subtitle": item.customer_name, "deleted_at": item.deleted_at,
+                       "details": jsonable_encoder(recurring_invoices.serialize_profile(db, item, include_totals=False))}
+                      for item in query.offset(pagination.offset).limit(pagination.limit).all()]
+        return build_paged_response(serialized, total_count=total, pagination=pagination)
+
     if module_key == "sales_contacts":
         items, total = list_deleted_sales_contacts(db, tenant_id, pagination)
         serialized = [
@@ -390,6 +403,14 @@ def restore_recycle_item(
     record_id: int,
     current_user,
 ):
+    if module_key == "finance_recurring_invoices":
+        from app.modules.finance.services import recurring_invoices
+
+        profile = recurring_invoices.get_profile(db, tenant_id=current_user.tenant_id, profile_id=record_id, include_deleted=True)
+        recurring_invoices.restore(db, profile=profile, actor_user_id=current_user.id)
+        db.commit()
+        return jsonable_encoder(recurring_invoices.serialize_profile(db, profile, include_totals=False))
+
     if module_key == "sales_contacts":
         contact = get_contact_or_404(db, record_id, tenant_id=current_user.tenant_id, include_deleted=True)
         restored = restore_sales_contact(db, contact)

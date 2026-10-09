@@ -23,7 +23,8 @@ from app.modules.catalog.services.line_links import PRODUCT_LINK_FIELD, SERVICE_
 from app.modules.finance.models import FinancePosInvoice, FinancePosInvoiceLine
 from app.modules.finance.repositories import pos_invoice_repository
 from app.modules.finance.services.common import finance_date_to_iso, finance_datetime_to_iso
-from app.modules.finance.services.document_amounts import ZERO, line_amounts, money
+from app.modules.finance.services import tax_rates
+from app.modules.finance.services.document_amounts import ZERO, document_totals, money
 from app.modules.finance.services.invoice_balances import default_due_date, is_overdue, refresh_invoice_balance
 from app.modules.platform.models import ActivityLog
 from app.modules.platform.services.numbering import allocate_business_number
@@ -34,7 +35,6 @@ INVOICE_NUMBER_SCOPE = "finance_invoices"
 INVOICE_NUMBER_PREFIX = "INV"
 VALID_TEMPLATES = {"modern", "classic", "compact"}
 VALID_SOURCES = {"manual", "pos", "sales_order"}
-MAX_TAX_RATE = Decimal("100")
 # What an issued invoice still lets you change (12c §3.3 decision 3).
 # Custom fields describe the invoice, not its money, so they stay editable after issue (13b §3.4).
 ISSUED_EDITABLE_FIELDS = {"due_date", "notes", "payment_terms", "template_id", "accent_color", "custom_fields"}
@@ -180,8 +180,8 @@ def _resolve_organization(
     return organization
 
 
-def _apply_lines(db: Session, invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> Decimal:
-    """Replace the lines; returns the subtotal net of line discounts, before tax.
+def _apply_lines(db: Session, invoice: FinancePosInvoice, lines: list[dict[str, Any]]) -> None:
+    """Replace the lines and set the totals, through the shared line function (13d §3.1).
 
     A line sent with an existing `id` keeps its order and delivery links; links are never
     taken from the payload, so a client cannot attach another order's line.
@@ -189,57 +189,55 @@ def _apply_lines(db: Session, invoice: FinancePosInvoice, lines: list[dict[str, 
     if not lines:
         raise HTTPException(status_code=400, detail="At least one line item is required")
     catalog_links = normalize_catalog_line_links(db, tenant_id=invoice.tenant_id, lines=lines)
+    resolver = tax_rates.TaxResolver(
+        db, tenant_id=invoice.tenant_id, side="sales", allowed_inactive=tax_rates.used_rate_ids(invoice.lines),
+        exempt=tax_rates.account_is_exempt(db, tenant_id=invoice.tenant_id, organization_id=invoice.customer_organization_id))
     existing_by_id = {line.id: line for line in invoice.lines if line.id is not None}
     updated_lines: list[FinancePosInvoiceLine] = []
-    subtotal = Decimal("0")
+    amounts = []
     for index, line in enumerate(lines):
         description = _normalize_text(line.get("description"))
         if not description:
             raise HTTPException(status_code=400, detail="Line item description is required")
-        quantity = _to_decimal(line.get("quantity"))
+        is_item = (line.get("line_type") or "item") == "item"
+        quantity = _to_decimal(line.get("quantity"), default=Decimal("1"))
         unit_price = _to_decimal(line.get("unit_price"))
-        if quantity <= 0:
+        if is_item and quantity <= 0:
             raise HTTPException(status_code=400, detail="Line quantity must be greater than zero")
-        if unit_price < 0:
+        if is_item and unit_price < 0:
             raise HTTPException(status_code=400, detail="Line unit price cannot be negative")
         discount = _to_decimal(line.get("discount_amount"))
-        tax = _to_decimal(line.get("tax_amount"))
-        if discount < 0 or tax < 0:
+        if is_item and (discount < 0 or _to_decimal(line.get("tax_amount")) < 0):
             raise HTTPException(status_code=400, detail="Line discount and tax cannot be negative")
-        net, line_total = line_amounts(quantity=quantity, unit_price=unit_price, discount=discount, tax=tax, label=description)
-        subtotal += net
+        resolved = tax_rates.compute_sales_line(resolver, line, catalog_links[index], quantity=quantity, unit_price=unit_price,
+                                                discount=discount, inclusive=invoice.tax_mode == "inclusive", label=description)
+        amounts.append(resolved.amounts)
         line_id = line.get("id")
         invoice_line = existing_by_id.pop(int(line_id), None) if line_id is not None else None
         if invoice_line is None:
             invoice_line = FinancePosInvoiceLine(tenant_id=invoice.tenant_id)
-        invoice_line.catalog_product_id = catalog_links[index][PRODUCT_LINK_FIELD]
-        invoice_line.catalog_service_id = catalog_links[index][SERVICE_LINK_FIELD]
+        if invoice_line.id is not None and invoice_line.line_type != resolved.line_type:
+            raise HTTPException(status_code=400, detail="A line cannot change between an item, a section and a note")
+        is_item = resolved.line_type == "item"
+        invoice_line.catalog_product_id = catalog_links[index][PRODUCT_LINK_FIELD] if is_item else None
+        invoice_line.catalog_service_id = catalog_links[index][SERVICE_LINK_FIELD] if is_item else None
         invoice_line.description = description
-        invoice_line.quantity = quantity
-        invoice_line.unit_price = unit_price
-        invoice_line.discount_amount = _money(discount)
-        invoice_line.tax_amount = _money(tax)
-        invoice_line.line_total = line_total
+        for field, value in tax_rates.sales_line_fields(resolved).items():
+            setattr(invoice_line, field, value)
         invoice_line.sort_order = index
         updated_lines.append(invoice_line)
     invoice.lines = updated_lines
-    return _money(subtotal)
+    totals = document_totals(amounts)
+    invoice.subtotal_amount = totals["subtotal"]
+    invoice.discount_amount = totals["discount"]
+    invoice.tax_amount = totals["tax"]
+    invoice.total_amount = totals["total"]
 
 
-def _apply_totals(invoice: FinancePosInvoice, subtotal: Decimal, data: dict[str, Any]) -> None:
-    """Header discount and tax rate on top of the lines' own (kept for POS and older invoices)."""
-    discount = _money(max(Decimal("0"), _to_decimal(data.get("discount_amount"))))
-    tax_rate = max(Decimal("0"), _to_decimal(data.get("tax_rate")))
-    if tax_rate > MAX_TAX_RATE:
-        raise HTTPException(status_code=400, detail="Tax rate cannot exceed 100")
-    taxable = max(Decimal("0"), subtotal - discount)
-    line_tax = sum((_money(_to_decimal(line.tax_amount)) for line in invoice.lines), Decimal("0"))
-    tax = _money(taxable * tax_rate / Decimal("100")) + line_tax
-    invoice.subtotal_amount = subtotal
-    invoice.discount_amount = discount
-    invoice.tax_rate = tax_rate
-    invoice.tax_amount = tax
-    invoice.total_amount = _money(taxable + tax)
+def _existing_line_payload(line: FinancePosInvoiceLine) -> dict[str, Any]:
+    return {"id": line.id, "catalog_product_id": line.catalog_product_id, "catalog_service_id": line.catalog_service_id,
+            "description": line.description, "quantity": line.quantity, "unit_price": line.unit_price,
+            "discount_amount": line.discount_amount, **tax_rates.line_payload(line)}
 
 
 def _add_invoice_activity(
@@ -283,6 +281,11 @@ def _serialize_line(line: FinancePosInvoiceLine) -> dict[str, Any]:
         "unit_price": float(line.unit_price),
         "discount_amount": float(line.discount_amount or 0),
         "tax_amount": float(line.tax_amount or 0),
+        "tax_rate_id": line.tax_rate_id,
+        "tax_manual": bool(line.tax_manual),
+        "line_type": line.line_type or "item",
+        "discount_percent": float(line.discount_percent) if line.discount_percent is not None else None,
+        "unit": line.unit,
         "line_total": float(line.line_total),
         "sort_order": int(line.sort_order or 0),
     }
@@ -328,11 +331,13 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
         "currency": invoice.currency,
         "subtotal_amount": float(_to_decimal(invoice.subtotal_amount)),
         "discount_amount": float(_to_decimal(invoice.discount_amount)),
-        "tax_rate": float(_to_decimal(invoice.tax_rate)),
+        "tax_mode": invoice.tax_mode or "exclusive",
         "tax_amount": float(_to_decimal(invoice.tax_amount)),
         "total_amount": float(_to_decimal(invoice.total_amount)),
         "amount_paid": float(_to_decimal(invoice.amount_paid)),
         "amount_credited": float(_to_decimal(invoice.amount_credited)),
+        "amount_written_off": float(_to_decimal(invoice.amount_written_off)),
+        "recurring_invoice_id": invoice.recurring_invoice_id,
         "balance_due": float(balance),
         "payment_terms": invoice.payment_terms,
         "notes": invoice.notes,
@@ -345,6 +350,8 @@ def serialize_invoice(invoice: FinancePosInvoice, *, current_user=None, include_
     }
     if include_lines:
         data["lines"] = [_serialize_line(line) for line in invoice.lines]
+        data["tax_summary"] = [{**row, "rate": float(row["rate"]) if row["rate"] is not None else None, "taxable": float(row["taxable"]),
+                                "tax": float(row["tax"])} for row in invoice.tax_summary]
     return data
 
 
@@ -435,6 +442,13 @@ def _apply_customer(db: Session, current_user, invoice: FinancePosInvoice, paylo
     invoice.customer_organization_id = organization.org_id if organization else None
 
 
+def _default_notes(db: Session, tenant_id: int) -> str | None:
+    """A new invoice starts with the invoice type's default notes (13d §3.3)."""
+    from app.modules.platform.services.document_pdfs import default_texts
+
+    return default_texts(db, tenant_id=tenant_id, kind="invoice")["notes"]
+
+
 def create_invoice(db: Session, current_user, payload: dict[str, Any], *, commit: bool = True) -> FinancePosInvoice:
     """A draft, or (`issue`) an issued invoice. `paid_now` records a payment in the same step,
     the POS fast path (12c §3.3)."""
@@ -467,14 +481,14 @@ def create_invoice(db: Session, current_user, payload: dict[str, Any], *, commit
         due_date=_date(payload.get("due_date")),
         currency=_currency(db, current_user, payload.get("currency")),
         payment_terms=_normalize_text(payload.get("payment_terms")),
-        notes=_normalize_text(payload.get("notes")),
+        notes=_normalize_text(payload.get("notes")) or _default_notes(db, current_user.tenant_id),
         amount_paid=ZERO,
         amount_credited=ZERO,
         balance_due=ZERO,
     )
+    invoice.tax_mode = tax_rates.normalize_tax_mode(payload.get("tax_mode"), default=tax_rates.default_tax_mode(db, tenant_id=current_user.tenant_id))
     _apply_customer(db, current_user, invoice, payload, customer_name=customer_name)
-    subtotal = _apply_lines(db, invoice, payload.get("lines") or [])
-    _apply_totals(invoice, subtotal, payload)
+    _apply_lines(db, invoice, payload.get("lines") or [])
     _assign_sqlite_test_ids(db, invoice)
     db.add(invoice)
     db.flush()
@@ -542,11 +556,14 @@ def update_invoice(db: Session, current_user, invoice_id: int, payload: dict[str
     if "currency" in payload:
         invoice.currency = _currency(db, current_user, payload.get("currency"))
     if invoice.status == "draft":
+        mode_changed = False
+        if payload.get("tax_mode") is not None:
+            mode = tax_rates.normalize_tax_mode(payload["tax_mode"], default=invoice.tax_mode)
+            mode_changed, invoice.tax_mode = mode != invoice.tax_mode, mode
         if "lines" in payload:
-            subtotal = _apply_lines(db, invoice, payload.get("lines") or [])
-        else:
-            subtotal = _money(sum((_to_decimal(line.line_total) - _to_decimal(line.tax_amount) for line in invoice.lines), Decimal("0")))
-        _apply_totals(invoice, subtotal, {"discount_amount": invoice.discount_amount, "tax_rate": invoice.tax_rate, **payload})
+            _apply_lines(db, invoice, payload.get("lines") or [])
+        elif mode_changed and invoice.lines:
+            _apply_lines(db, invoice, [_existing_line_payload(line) for line in invoice.lines])
         _assign_sqlite_test_ids(db, invoice)
     db.add(invoice)
     db.flush()
@@ -630,6 +647,10 @@ def _void(db: Session, current_user, invoice: FinancePosInvoice, reason: str) ->
     if db.query(FinanceCreditNote.id).filter(FinanceCreditNote.tenant_id == invoice.tenant_id, FinanceCreditNote.invoice_id == invoice.id,
             FinanceCreditNote.deleted_at.is_(None), FinanceCreditNote.status.in_(["draft", "issued"])).first() is not None:
         raise HTTPException(status_code=409, detail="This invoice has credit notes; void or remove them first")
+    from app.modules.finance.models import FinanceWriteOff
+
+    if db.query(FinanceWriteOff.id).filter(FinanceWriteOff.tenant_id == invoice.tenant_id, FinanceWriteOff.invoice_id == invoice.id).first():
+        raise HTTPException(status_code=409, detail="A balance on this invoice was written off; reverse the write-off first")
     orders = invoicing_services.orders_of(db, invoice=invoice, lock=True)
     invoice.status = "void"
     invoice.voided_at = datetime.now(timezone.utc)
@@ -664,13 +685,14 @@ def void_and_copy(db: Session, current_user, invoice_id: int, *, reason: str) ->
         accent_color=invoice.accent_color, customer_name=invoice.customer_name, customer_email=invoice.customer_email,
         customer_address=invoice.customer_address, issue_date=None, due_date=None, currency=invoice.currency,
         payment_terms=invoice.payment_terms, notes=invoice.notes, discount_amount=invoice.discount_amount,
-        tax_rate=invoice.tax_rate, amount_paid=ZERO, amount_credited=ZERO, balance_due=ZERO,
+        tax_mode=invoice.tax_mode, amount_paid=ZERO, amount_credited=ZERO, balance_due=ZERO,
     )
     copy.lines = [FinancePosInvoiceLine(
         tenant_id=invoice.tenant_id, catalog_product_id=line.catalog_product_id, catalog_service_id=line.catalog_service_id,
         sales_order_item_id=line.sales_order_item_id, delivery_line_id=line.delivery_line_id, description=line.description,
         quantity=line.quantity, unit_price=line.unit_price, discount_amount=line.discount_amount, tax_amount=line.tax_amount,
-        line_total=line.line_total, sort_order=line.sort_order) for line in invoice.lines]
+        tax_rate_id=line.tax_rate_id, tax_manual=line.tax_manual, line_type=line.line_type, discount_percent=line.discount_percent,
+        unit=line.unit, line_total=line.line_total, sort_order=line.sort_order) for line in invoice.lines]
     copy.subtotal_amount, copy.tax_amount, copy.total_amount = invoice.subtotal_amount, invoice.tax_amount, invoice.total_amount
     _assign_sqlite_test_ids(db, copy)
     db.add(copy)

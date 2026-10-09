@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, apiFetch } from "@/lib/api";
 import { downloadBlob, openBlobInNewTab } from "@/lib/browser";
 import { apiUrl } from "@/lib/runtime-config";
+import type { QuoteAcceptValues, QuoteDeclineValues, QuoteOptionalItem } from "@/components/quotes/QuoteResponse";
 
 export const CLIENT_TOKEN_STORAGE_KEY = "lynk:client-access-token";
 
@@ -39,6 +40,9 @@ export type ClientAccount = {
   last_login_at?: string | null;
   created_at: string;
   updated_at: string;
+  /** 13d §3.7: whether the setup link was emailed when it was made, and why not. */
+  invite_sent?: boolean | null;
+  invite_error?: string | null;
 };
 
 export type ClientMe = {
@@ -50,6 +54,8 @@ export type ClientMe = {
   contact_name?: string | null;
   organization_name?: string | null;
   customer_group?: CustomerGroup | null;
+  /** The business whose portal this is, for the top bar. */
+  company_name?: string | null;
 };
 
 export type ClientOverviewMetric = {
@@ -101,11 +107,17 @@ export type ClientPortalOrderLine = {
   line_total: string | number;
 };
 
-/** A sales order the client placed in the portal. `draft` means the team has not confirmed it yet. */
+/**
+ * One of the account's orders (13d §3.7): confirmed orders, and the requests the client made
+ * here. A request in `draft` is waiting for the team, so it has no document yet.
+ */
 export type ClientPortalOrder = {
   id: number;
   order_number: string;
   status: string;
+  delivery_status?: string | null;
+  is_request?: boolean;
+  has_document?: boolean;
   currency: string;
   grand_total: string | number;
   notes?: string | null;
@@ -145,13 +157,32 @@ export type ClientQuote = {
   notes?: string | null;
   contact_id?: number | null;
   organization_id?: number | null;
-  proposal_document_id?: number | null;
-  proposal_title?: string | null;
-  proposal_content_text?: string | null;
-  proposal_generated_at?: string | null;
+  /** 13d §3.5: open (can be answered), pending, accepted, declined, expired or replaced. */
+  state: "open" | "pending" | "accepted" | "declined" | "expired" | "replaced";
   can_respond: boolean;
+  accepted_by_name?: string | null;
+  accepted_at?: string | null;
   created_time: string;
   updated_at?: string | null;
+  /** The quote page only: the document as issued, its optional items, the decline reasons. */
+  html?: string | null;
+  optional_items?: QuoteOptionalItem[];
+  decline_reasons?: Array<{ key: string; label: string }>;
+};
+
+/** An issued invoice of the client's account (13d §3.7). */
+export type ClientInvoice = {
+  id: number;
+  invoice_number: string | null;
+  status: "issued" | "void";
+  payment_status: "unpaid" | "partial" | "paid";
+  is_overdue: boolean;
+  issue_date: string | null;
+  due_date: string | null;
+  currency: string;
+  total_amount: string | number;
+  amount_paid: string | number;
+  balance_due: string | number;
 };
 
 export type ClientBooking = {
@@ -342,9 +373,15 @@ async function publicJson<T>(path: string, init: RequestInit = {}, fallback = "R
   const body = await readJsonSafely(res);
   if (!res.ok) {
     if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
-    throw new Error(fallback);
+    throw new Error(clientErrorMessage(res.status, body, fallback));
   }
   return body as T;
+}
+
+/** The server's own words for a refusal it explains (a 4xx with a sentence), else the fallback. */
+function clientErrorMessage(status: number, body: unknown, fallback: string) {
+  const detail = body && typeof body === "object" ? (body as { detail?: unknown }).detail : null;
+  return status >= 400 && status < 500 && typeof detail === "string" && !INVALID_CLIENT_SESSION_DETAILS.has(detail) ? detail : fallback;
 }
 
 async function publicBlob(path: string, init: RequestInit = {}, fallback = "Request failed."): Promise<Blob> {
@@ -360,9 +397,24 @@ async function publicBlob(path: string, init: RequestInit = {}, fallback = "Requ
   if (!res.ok) {
     const body = await readJsonSafely(res);
     if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
-    throw new Error(fallback);
+    throw new Error(clientErrorMessage(res.status, body, fallback));
   }
   return res.blob();
+}
+
+/** A download and the filename its response names. */
+async function publicFile(path: string, fallback: string): Promise<{ blob: Blob; filename: string | null }> {
+  const headers = new Headers({ Accept: "*/*" });
+  const token = storedClientToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(apiUrl(path), { credentials: "include", headers });
+  if (!res.ok) {
+    const body = await readJsonSafely(res);
+    if (shouldClearClientToken(res.status, body, Boolean(token))) clearClientToken();
+    throw new Error(clientErrorMessage(res.status, body, fallback));
+  }
+  const filename = /filename="([^"]+)"/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? null;
+  return { blob: await res.blob(), filename };
 }
 
 export function useClientPortalPages(sort: ClientPortalSortState = null) {
@@ -583,13 +635,29 @@ export async function resolveClientDocumentView(document: ClientDocument) {
   return { url: URL.createObjectURL(blob) };
 }
 
-export async function downloadClientQuoteProposal(quote: ClientQuote) {
-  const blob = await publicBlob(
-    `/client-quotes/${quote.quote_id}/proposal/download`,
-    {},
-    "Failed to download quote proposal.",
-  );
-  downloadBlob(blob, `${quote.quote_number || "quote"}-proposal.txt`);
+/** A quote's, order's or invoice's PDF, as the team sends it (13d §3.7). */
+export async function downloadClientPdf(kind: "quotes" | "orders" | "invoices", id: number, fallbackName: string) {
+  const path = kind === "quotes" ? `/client-quotes/${id}/pdf` : kind === "orders" ? `/client-orders/${id}/pdf` : `/client-invoices/${id}/pdf`;
+  const { blob, filename } = await publicFile(path, "The PDF could not be downloaded. Try again in a moment.");
+  downloadBlob(blob, filename ?? `${fallbackName}.pdf`);
+}
+
+/** The signed-in client, for the top bar (13d §3.7). */
+export function useClientMe() {
+  return useQuery({
+    queryKey: ["client-auth", "me"],
+    queryFn: () => publicJson<ClientMe>("/client-auth/me", {}, "Your account could not be loaded."),
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+export function useClientInvoices() {
+  return useQuery({
+    queryKey: ["client-invoices"],
+    queryFn: () => publicJson<{ results: ClientInvoice[] }>("/client-invoices", {}, "Your invoices could not be loaded."),
+    staleTime: 30_000,
+  });
 }
 
 export function useClientQuoteActions() {
@@ -598,18 +666,23 @@ export function useClientQuoteActions() {
     await queryClient.invalidateQueries({ queryKey: ["client-quotes"] });
     if (quoteId) await queryClient.invalidateQueries({ queryKey: ["client-quotes", String(quoteId)] });
   };
-  const respond = useMutation({
-    mutationFn: ({ quoteId, action, message }: { quoteId: number | string; action: "approve" | "reject"; message?: string | null }) =>
-      publicJson<ClientQuote>(
-        `/client-quotes/${quoteId}/${action}`,
-        { method: "POST", body: JSON.stringify({ message: message || null }) },
-        action === "approve" ? "Failed to approve quote." : "Failed to reject quote.",
-      ),
+  // The proposal page's own answers (13d §3.5), signed in.
+  const accept = useMutation({
+    mutationFn: ({ quoteId, values }: { quoteId: number | string; values: QuoteAcceptValues }) =>
+      publicJson<ClientQuote>(`/client-quotes/${quoteId}/accept`, { method: "POST", body: JSON.stringify(values) },
+        "The quote could not be accepted. Try again."),
+    onSuccess: (updated) => invalidate(updated.quote_id),
+  });
+  const decline = useMutation({
+    mutationFn: ({ quoteId, values }: { quoteId: number | string; values: QuoteDeclineValues }) =>
+      publicJson<ClientQuote>(`/client-quotes/${quoteId}/decline`, { method: "POST", body: JSON.stringify(values) },
+        "Your answer could not be sent. Try again."),
     onSuccess: (updated) => invalidate(updated.quote_id),
   });
   return {
-    respondToQuote: respond.mutateAsync,
-    isRespondingToQuote: respond.isPending,
+    acceptQuote: accept.mutateAsync,
+    declineQuote: decline.mutateAsync,
+    isAnswering: accept.isPending || decline.isPending,
   };
 }
 
@@ -734,7 +807,30 @@ export async function setupClientPassword(payload: { token: string; password: st
   return publicJson<ClientAccount>("/client-auth/setup", {
     method: "POST",
     body: JSON.stringify(payload),
-  }, "Failed to set password.");
+  }, "Your password could not be set. Try again.");
+}
+
+/** Who a setup link is for: the business's name and the address it signs in with. */
+export async function clientSetupInfo(payload: { token: string; tenant_slug?: string | null }) {
+  return publicJson<{ company_name: string; email: string }>("/client-auth/setup-info", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  }, "This setup link is invalid or has expired.");
+}
+
+export async function forgotClientPassword(payload: { email: string; tenant_slug?: string | null }) {
+  return publicJson<{ detail: string }>("/client-auth/forgot", { method: "POST", body: JSON.stringify(payload) },
+    "Your request could not be sent. Try again in a moment.");
+}
+
+export async function resetClientPassword(payload: { token: string; password: string; tenant_slug?: string | null }) {
+  return publicJson<{ detail: string; email: string }>("/client-auth/reset", { method: "POST", body: JSON.stringify(payload) },
+    "Your password could not be changed. Try again.");
+}
+
+export async function changeClientPassword(payload: { current_password: string; new_password: string }) {
+  return publicJson<null>("/client-auth/password", { method: "POST", body: JSON.stringify(payload) },
+    "Your password could not be changed. Try again.");
 }
 
 export async function recordClientPageAction(token: string, action: "accept" | "request-changes", payload: { message?: string; actor_name?: string; actor_email?: string }) {

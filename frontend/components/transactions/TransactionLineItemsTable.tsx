@@ -1,10 +1,12 @@
 "use client";
 
+import { TaxSummary } from "@/components/finance/tax/TaxSummary";
 import { Card } from "@/components/ui/Card";
 import { Money } from "@/components/ui/Money";
 import { RecordTable, type RecordRowId } from "@/components/ui/RecordTable";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { TextLink } from "@/components/ui/TextLink";
+import type { TaxSummaryRow } from "@/hooks/finance/useTaxRates";
 import { DASHBOARD_ROUTES } from "@/lib/routes";
 
 /**
@@ -33,7 +35,13 @@ export type TransactionLineItemRow = {
   line_total: number | string | null;
   catalog_product_id?: number | null;
   catalog_service_id?: number | null;
+  /** 13d §3.2: a section heading or note draws as text across the row. */
+  line_type?: string | null;
+  unit?: string | null;
+  is_optional?: boolean | null;
 };
+
+const isItem = (item: TransactionLineItemRow) => !item.line_type || item.line_type === "item";
 
 function catalogHref(item: TransactionLineItemRow) {
   if (item.catalog_product_id) return `${DASHBOARD_ROUTES.products}/${item.catalog_product_id}`;
@@ -54,6 +62,9 @@ export function TransactionLineItemsTable({
    * draws the same table and its customers cannot open catalog records.
    */
   linkCatalogItems = false,
+  /** The document's tax by rate (13d §3.1), drawn under the lines. */
+  taxSummary,
+  taxInclusive = false,
 }: {
   items: TransactionLineItemRow[];
   /** Nullable because a document's currency is: `Money` renders the bare figure without one. */
@@ -62,6 +73,8 @@ export function TransactionLineItemsTable({
   showAdjustments?: boolean;
   title?: string;
   linkCatalogItems?: boolean;
+  taxSummary?: TaxSummaryRow[] | null;
+  taxInclusive?: boolean;
 }) {
   return (
     // `min-w-0` for the same reason `FormSection` carries it: this card is a grid item on
@@ -82,31 +95,36 @@ export function TransactionLineItemsTable({
               key: "name",
               label: itemLabel,
               size: "lg",
-              render: (item) => (
-                <>
-                  <div className="font-medium text-copy-primary">
-                    {linkCatalogItems && catalogHref(item) ? (
-                      <TextLink href={catalogHref(item) as string}>{item.name}</TextLink>
-                    ) : item.name}
-                  </div>
-                  {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
-                </>
-              ),
+              render: (item) => {
+                if (item.line_type === "section") return <div className="font-semibold text-copy-primary">{item.name}</div>;
+                if (item.line_type === "note") return <div className="whitespace-pre-line text-sm text-copy-secondary">{item.name}</div>;
+                return (
+                  <>
+                    <div className="font-medium text-copy-primary">
+                      {linkCatalogItems && catalogHref(item) ? (
+                        <TextLink href={catalogHref(item) as string}>{item.name}</TextLink>
+                      ) : item.name}
+                      {item.is_optional ? <span className="ml-2 text-xs font-normal text-copy-muted">Optional</span> : null}
+                    </div>
+                    {item.description ? <div className="mt-1 text-xs text-copy-muted">{item.description}</div> : null}
+                  </>
+                );
+              },
             },
             {
               key: "quantity",
               label: "Quantity",
               align: "right",
               size: "sm",
-              render: (item) => (
-                <span className="tabular-nums text-copy-secondary">{Number(item.quantity ?? 0)}</span>
-              ),
+              render: (item) => (isItem(item) ? (
+                <span className="tabular-nums text-copy-secondary">{Number(item.quantity ?? 0)}{item.unit ? ` ${item.unit}` : ""}</span>
+              ) : null),
             },
             {
               key: "unit_price",
               label: "Unit price",
               align: "right",
-              render: (item) => <Money amount={item.unit_price} currency={currency} className="text-copy-secondary" />,
+              render: (item) => (isItem(item) ? <Money amount={item.unit_price} currency={currency} className="text-copy-secondary" /> : null),
             },
             ...(showAdjustments
               ? ([
@@ -114,17 +132,17 @@ export function TransactionLineItemsTable({
                     key: "discount_amount",
                     label: "Discount",
                     align: "right" as const,
-                    render: (item: TransactionLineItemRow) => (
+                    render: (item: TransactionLineItemRow) => (isItem(item) ? (
                       <Money amount={item.discount_amount} currency={currency} className="text-copy-secondary" />
-                    ),
+                    ) : null),
                   },
                   {
                     key: "tax_amount",
                     label: "Tax",
                     align: "right" as const,
-                    render: (item: TransactionLineItemRow) => (
+                    render: (item: TransactionLineItemRow) => (isItem(item) ? (
                       <Money amount={item.tax_amount} currency={currency} className="text-copy-secondary" />
-                    ),
+                    ) : null),
                   },
                 ])
               : []),
@@ -132,13 +150,18 @@ export function TransactionLineItemsTable({
               key: "line_total",
               label: "Total",
               align: "right",
-              render: (item) => (
-                <Money amount={item.line_total} currency={currency} className="font-medium text-copy-primary" />
-              ),
+              render: (item) => (isItem(item) ? (
+                <Money amount={item.line_total} currency={currency} className={item.is_optional ? "text-copy-muted" : "font-medium text-copy-primary"} />
+              ) : null),
             },
           ]}
         />
       </div>
+      {taxSummary?.length ? (
+        <div className="mt-4">
+          <TaxSummary rows={taxSummary} currency={currency} inclusive={taxInclusive} />
+        </div>
+      ) : null}
     </Card>
   );
 }
